@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import uuid
 from dataclasses import dataclass
@@ -7,6 +8,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -75,6 +78,20 @@ def delete_session(session_id: str) -> None:
         _cleanup_files(session)
 
 
+def cleanup_expired() -> int:
+    """Remove all expired sessions. Returns count of cleaned sessions."""
+    cleaned = 0
+    with _lock:
+        expired_ids = [
+            sid for sid, s in _sessions.items()
+            if _is_expired(s)
+        ]
+    for sid in expired_ids:
+        delete_session(sid)
+        cleaned += 1
+    return cleaned
+
+
 def _is_expired(session: UploadSession) -> bool:
     created = datetime.fromisoformat(session.created_at)
     return datetime.now(UTC) - created > _SESSION_TTL
@@ -83,5 +100,6 @@ def _is_expired(session: UploadSession) -> bool:
 def _cleanup_files(session: UploadSession) -> None:
     for path_str in (session.file_a_path, session.file_b_path):
         p = Path(path_str)
-        if p.exists() and p.parent == settings.UPLOADS_DIR:
+        if p.exists() and str(p.parent) == str(settings.UPLOADS_DIR):
             p.unlink(missing_ok=True)
+            logger.debug("Cleaned up session file: %s", p)

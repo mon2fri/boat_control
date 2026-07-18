@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rest_framework.request import Request  # type: ignore[import-untyped]
-from rest_framework.response import Response  # type: ignore[import-untyped]
-from rest_framework.views import APIView  # type: ignore[import-untyped]
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.files.filter_services import (
     parse_target_columns,
@@ -18,18 +18,19 @@ from apps.files.sessions import get_session
 class FilterPreparationView(APIView):  # type: ignore[misc]
     def post(self, request: Request) -> Response:
         session_id = request.data.get("session_id")
-        common_columns = request.data.get("common_columns")
 
         if not session_id:
-            return Response({"error": "session_id is required."}, status=400)
+            return Response(
+                {"error": "session_id is required."}, status=400
+            )
 
         session = get_session(session_id)
         if not session:
-            return Response({"error": "Session not found or expired."}, status=404)
+            return Response(
+                {"error": "Session not found or expired."}, status=404
+            )
 
-        if not common_columns:
-            common_columns = session.common_columns
-
+        common_columns = session.common_columns
         path_a = Path(session.file_a_path)
         path_b = Path(session.file_b_path)
 
@@ -57,15 +58,26 @@ class FilterPreparationView(APIView):  # type: ignore[misc]
 
 class FilterValidationView(APIView):  # type: ignore[misc]
     def post(self, request: Request) -> Response:
+        session_id = request.data.get("session_id")
         column = request.data.get("column")
         operator = request.data.get("operator")
         filter_value = request.data.get("filter_value")
-        common_columns = request.data.get("common_columns")
 
-        if not all([column, operator, filter_value, common_columns]):
-            return Response({"error": "All fields are required."}, status=400)
+        if not all([session_id, column, operator, filter_value]):
+            return Response(
+                {"error": "All fields are required."}, status=400
+            )
 
-        result = validate_filter(column, operator, filter_value, common_columns)
+        session = get_session(session_id)
+        if not session:
+            return Response(
+                {"error": "Session not found or expired."}, status=404
+            )
+
+        common_columns = session.common_columns
+        result = validate_filter(
+            column, operator, filter_value, common_columns
+        )
         return Response({"valid": result.valid, "errors": result.errors})
 
 

@@ -3,19 +3,18 @@ from __future__ import annotations
 import threading
 from typing import Any
 
-from rest_framework.request import Request  # type: ignore[import-untyped]
-from rest_framework.response import Response  # type: ignore[import-untyped]
-from rest_framework.views import APIView  # type: ignore[import-untyped]
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.rules.serializers import (
-    RemoteRulesRequestSerializer,
     RuleSerializer,
 )
 from apps.rules.services import (
     RulesFile,
+    _serialize_grouping_tree,
     create_rule,
     delete_rule,
-    load_remote_rules,
     load_rules,
     save_rules,
     update_rule,
@@ -48,8 +47,9 @@ def _rules_to_dict(rules_file: RulesFile) -> dict[str, Any]:
         }
         if rule.condition_relation:
             rule_dict["condition_relation"] = rule.condition_relation
-        if rule.grouping:
-            rule_dict["grouping"] = rule.grouping
+        tree = _serialize_grouping_tree(rule.grouping_tree)
+        if tree is not None:
+            rule_dict["grouping_tree"] = tree
         rules_data.append(rule_dict)
     return {"version": rules_file.version, "rules": rules_data}
 
@@ -83,27 +83,31 @@ class RuleDetailView(APIView):  # type: ignore[misc]
         rules_file = load_rules()
         for rule in rules_file.rules:
             if rule.rule_id == rule_id:
-                return Response(
-                    {
-                        "rule_id": rule.rule_id,
-                        "name": rule.name,
-                        "description": rule.description,
-                        "conditions": [
-                            {
-                                "column_name": c.column_name,
-                                "operator": c.operator,
-                                "filter_value": c.filter_value,
-                            }
-                            for c in rule.conditions
-                        ],
-                        "logic": {
-                            "format": rule.logic.format,
-                            "column_name": rule.logic.column_name,
-                            "operator": rule.logic.operator,
-                            "target_value": rule.logic.target_value,
-                        },
-                    }
-                )
+                data: dict[str, Any] = {
+                    "rule_id": rule.rule_id,
+                    "name": rule.name,
+                    "description": rule.description,
+                    "conditions": [
+                        {
+                            "column_name": c.column_name,
+                            "operator": c.operator,
+                            "filter_value": c.filter_value,
+                        }
+                        for c in rule.conditions
+                    ],
+                    "logic": {
+                        "format": rule.logic.format,
+                        "column_name": rule.logic.column_name,
+                        "operator": rule.logic.operator,
+                        "target_value": rule.logic.target_value,
+                    },
+                }
+                if rule.condition_relation:
+                    data["condition_relation"] = rule.condition_relation
+                tree = _serialize_grouping_tree(rule.grouping_tree)
+                if tree is not None:
+                    data["grouping_tree"] = tree
+                return Response(data)
         return Response({"error": f"Rule {rule_id} not found."}, status=404)
 
     def put(self, request: Request, rule_id: str) -> Response:
@@ -134,21 +138,3 @@ class RuleDetailView(APIView):  # type: ignore[misc]
                 )
             except ValueError as e:
                 return Response({"error": str(e)}, status=404)
-
-
-class RemoteRulesView(APIView):  # type: ignore[misc]
-    def post(self, request: Request) -> Response:
-        serializer = RemoteRulesRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        try:
-            remote_rules = load_remote_rules(serializer.validated_data["url"])
-            save_rules(remote_rules)
-            return Response(
-                {
-                    "message": f"Loaded {len(remote_rules.rules)} rules from remote.",
-                    "version": remote_rules.version,
-                }
-            )
-        except Exception as e:
-            return Response({"error": f"Failed to load remote rules: {e}"}, status=400)

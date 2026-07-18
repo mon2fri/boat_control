@@ -116,14 +116,21 @@ def save_run(
                 "comparison": asdict(result.comparison),
                 "validation": {
                     "total_violations": result.validation.total_violations,
+                    "distinct_violating_rows": result.validation.distinct_violating_rows,
+                    "distinct_violating_attributes": (
+                        result.validation.distinct_violating_attributes
+                    ),
                     "violations_by_rule": {
                         k: [asdict(v) for v in violations]
                         for k, violations in result.validation.violations_by_rule.items()
                     },
                     "violation_count_by_rule": result.validation.violation_count_by_rule,
+                    "violating_rows_by_rule": result.validation.violating_rows_by_rule,
+                    "violating_attributes_by_rule": result.validation.violating_attributes_by_rule,
                 },
                 "common_columns": result.common_columns,
                 "target_columns": result.target_columns,
+                "key_columns": result.key_columns,
                 "filters_applied": result.filters_applied,
             },
         }

@@ -20,6 +20,9 @@ INSTALLED_APPS = [
     "apps.rules",
     "apps.runs",
     "apps.reports",
+    "apps.settings",
+    "apps.saved_filters",
+    "apps.configs",
 ]
 
 ROOT_URLCONF = "boat_control.urls"
@@ -62,6 +65,8 @@ USE_I18N = False
 USE_TZ = False
 
 STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
 
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
@@ -79,5 +84,8 @@ MAX_COLUMNS = 500
 DEFAULT_RUN_RETENTION = 10
 
 SETTINGS_FILE = CONFIG_DIR / "settings" / "settings.yaml"
+SETTINGS_CONFIG_DIR = CONFIG_DIR / "settings"
 RULES_FILE = CONFIG_DIR / "rules" / "rules.yaml"
+RULES_CONFIG_DIR = CONFIG_DIR / "rules"
 FILTERS_DIR = CONFIG_DIR / "filters"
+FILTERS_CONFIG_DIR = CONFIG_DIR / "filters"

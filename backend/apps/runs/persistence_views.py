@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from rest_framework.request import Request  # type: ignore[import-untyped]
-from rest_framework.response import Response  # type: ignore[import-untyped]
-from rest_framework.views import APIView  # type: ignore[import-untyped]
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.runs.persistence import (
     list_runs,

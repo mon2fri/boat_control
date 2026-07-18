@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from rest_framework.request import Request  # type: ignore[import-untyped]
-from rest_framework.response import Response  # type: ignore[import-untyped]
-from rest_framework.views import APIView  # type: ignore[import-untyped]
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.files.sessions import get_session
 from apps.runs.persistence import save_run
@@ -13,7 +13,7 @@ from apps.runs.services import execute_comparison
 
 logger = logging.getLogger(__name__)
 
-_ERROR_MAP: dict[type, tuple[int, str]] = {
+_ERROR_MAP: dict[type, tuple[int, str | None]] = {
     FileNotFoundError: (404, "Upload files no longer available. Please re-upload."),
     ValueError: (400, None),
     KeyError: (400, "Invalid request data."),

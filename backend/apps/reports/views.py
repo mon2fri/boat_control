@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from django.http import HttpResponse
-from rest_framework.request import Request  # type: ignore[import-untyped]
-from rest_framework.views import APIView  # type: ignore[import-untyped]
+from rest_framework.request import Request
+from rest_framework.views import APIView
 
 from apps.reports.serializers import ExportRequestSerializer
 from apps.reports.services import export_csv, export_html

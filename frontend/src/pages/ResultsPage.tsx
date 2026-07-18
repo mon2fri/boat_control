@@ -1,13 +1,15 @@
-import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { RequireSession } from "../components/RequireSession";
 import { useRunExecution } from "../features/results/useRunExecution";
 import { OverallSummaryCards } from "../features/results/OverallSummaryCards";
 import { RuleResultSection } from "../features/results/RuleResultSection";
-import { DetailTable } from "../features/results/DetailTable";
 import { TableOfContents } from "../features/results/TableOfContents";
 import { ReportName } from "../features/reports/ReportName";
 import { ExportControls } from "../features/reports/ExportControls";
+import { PaginatedDetailSection } from "../features/results/PaginatedDetailSection";
+import { loadRun } from "../api/endpoints";
 import type { FilterRow, RunRequest } from "../api/domain";
 import type { WorkflowState } from "../state/WorkflowContext";
 
@@ -22,6 +24,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
     sessionId: state.header.sessionId,
     filters: completeFilters(state.filters),
     targetColumns: state.targetColumns,
+    keyColumns: state.keyColumns,
     ruleIndexes: state.selectedRuleIndexes,
     confirmFullSet: state.confirmFullSet,
   };
@@ -29,11 +32,45 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
 
 export function ResultsPage() {
   const navigate = useNavigate();
+  const { runId } = useParams<{ runId?: string }>();
   const { state, dispatch } = useWorkflow();
   const execution = useRunExecution((result) => dispatch({ type: "setResult", result }));
 
-  if (!state.header && !state.result) {
+  // Deep-link refresh: when the URL is /results/<runId> and the in-memory
+  // workflow state does not yet hold that result, fetch the persisted run
+  // document from the backend and seed the workflow state from it. This is
+  // the path that makes History links shareable and refresh-safe.
+  useEffect(() => {
+    if (!runId) return;
+    if (state.result && state.result.id === runId) return;
+    let cancelled = false;
+    loadRun(runId)
+      .then((result) => {
+        if (cancelled) return;
+        dispatch({ type: "setResult", result });
+      })
+      .catch(() => {
+        // Surface a quiet failure by leaving the result empty; the page's
+        // existing empty-state branch will tell the user to upload.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, state.result, dispatch]);
+
+  if (!state.header && !state.result && !runId) {
     return <RequireSession>Upload files and configure a run to see results.</RequireSession>;
+  }
+
+  if (runId && !state.result) {
+    return (
+      <section aria-labelledby="results-title">
+        <h2 id="results-title">Results</h2>
+        <p role="status" aria-live="polite" className="busy-row">
+          <span className="spinner" aria-hidden="true" /> Loading run {runId}…
+        </p>
+      </section>
+    );
   }
 
   const request = buildRunRequest(state);
@@ -110,7 +147,7 @@ export function ResultsPage() {
               <p className="section-logic">
                 <code>file1 value ≠ file2 value</code> on shared target columns.
               </p>
-              <DetailTable rows={state.result.changeDetails} caption="Attribute change details" />
+              <PaginatedDetailSection runId={state.result.id} kind="changed" caption="Attribute change details" />
             </section>
 
             {state.result.ruleResults.map((rule) => (

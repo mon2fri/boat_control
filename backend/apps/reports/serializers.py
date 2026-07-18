@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rest_framework import serializers  # type: ignore[import-untyped]
+from rest_framework import serializers
 
 
 class ExportRequestSerializer(serializers.Serializer):  # type: ignore[misc]

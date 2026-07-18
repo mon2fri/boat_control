@@ -3,9 +3,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from rest_framework.request import Request  # type: ignore[import-untyped]
-from rest_framework.response import Response  # type: ignore[import-untyped]
-from rest_framework.views import APIView  # type: ignore[import-untyped]
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.files.services import inspect_headers, safe_upload_path
 from apps.files.sessions import create_session, get_session

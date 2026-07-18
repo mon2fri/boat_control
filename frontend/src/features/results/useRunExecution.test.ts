@@ -11,6 +11,7 @@ const request: RunRequest = {
   sessionId: "s1",
   filters: [],
   targetColumns: [],
+  keyColumns: ["id"],
   ruleIndexes: ["R001"],
   confirmFullSet: true,
 };

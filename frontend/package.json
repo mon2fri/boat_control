@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:inspect": "vitest run tests/buildInspection.test.ts",
     "lint": "eslint .",
     "test": "vitest run",
     "test:integration": "vitest run tests/integration.test.ts",
+    "test:e2e": "npm run build && playwright test",
     "test:e2e:fixture": "cd .. && DJANGO_SETTINGS_MODULE=boat_control.settings PYTHONPATH=backend uv run python tests/integration/run_e2e_workflow.py --output frontend/tests/integration-fixtures/e2e_responses.json"
   },
   "dependencies": {
@@ -21,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",
+    "@playwright/test": "^1.49.1",
     "@testing-library/jest-dom": "^6.9.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.2.0",

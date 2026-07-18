@@ -18,6 +18,10 @@ export const routes: RouteObject[] = [
       { path: "prepare", element: <PreparePage /> },
       { path: "rules", element: <RulesPage /> },
       { path: "results", element: <ResultsPage /> },
+      // Deep-link route for viewing a persisted run by id. The History page
+      // links to `/results/<run_id>` so refreshing or sharing the URL still
+      // shows the saved result.
+      { path: "results/:runId", element: <ResultsPage /> },
       { path: "history", element: <HistoryPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "*", element: <NotFoundPage /> },

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rest_framework import serializers  # type: ignore[import-untyped]
+from rest_framework import serializers
 
 
 class ConditionSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -12,7 +12,9 @@ class ConditionSerializer(serializers.Serializer):  # type: ignore[misc]
 class LogicClauseSerializer(serializers.Serializer):  # type: ignore[misc]
     format = serializers.ChoiceField(choices=["value_vs_column", "column_vs_column"])
     column_name = serializers.CharField()
-    operator = serializers.CharField()
+    operator = serializers.ChoiceField(
+        choices=["eq", "neq", "contains", "ncontains", "gt", "lt", "gte", "lte"]
+    )
     target_value = serializers.CharField()
 
 
@@ -24,6 +26,7 @@ class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
         choices=["and", "or"], required=False, allow_null=True
     )
     grouping = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
+    grouping_tree = serializers.JSONField(required=False, allow_null=True)
     logic = LogicClauseSerializer()
 
 
@@ -36,13 +39,10 @@ class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
         choices=["and", "or"], required=False, allow_null=True
     )
     grouping = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
+    grouping_tree = serializers.JSONField(required=False, allow_null=True)
     logic = LogicClauseSerializer()
 
 
 class RulesListResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     version = serializers.IntegerField()
     rules = RuleResponseSerializer(many=True)
-
-
-class RemoteRulesRequestSerializer(serializers.Serializer):  # type: ignore[misc]
-    url = serializers.URLField()

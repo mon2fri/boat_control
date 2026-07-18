@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 from apps.rules.services import (
+    GroupingBranch,
+    GroupingLeaf,
     RulesFile,
+    _collect_condition_ids,
+    _parse_grouping_tree,
+    _serialize_grouping_tree,
+    _validate_grouping_tree,
     create_rule,
     delete_rule,
     load_rules,
@@ -156,3 +162,178 @@ class TestSaveAndLoadRules:
         loaded = load_rules(tmp_path / "nonexistent.yaml")
         assert loaded.rules == []
         assert loaded.next_index == 1
+
+
+class TestGroupingTreeParsing:
+    def test_parse_none_returns_none(self) -> None:
+        assert _parse_grouping_tree(None) is None
+
+    def test_parse_leaf(self) -> None:
+        node = _parse_grouping_tree({"kind": "leaf", "conditionId": "c0"})
+        assert isinstance(node, GroupingLeaf)
+        assert node.condition_id == "c0"
+
+    def test_parse_and_branch(self) -> None:
+        node = _parse_grouping_tree({
+            "kind": "and",
+            "children": [
+                {"kind": "leaf", "conditionId": "c0"},
+                {"kind": "leaf", "conditionId": "c1"},
+            ],
+        })
+        assert isinstance(node, GroupingBranch)
+        assert node.kind == "and"
+        assert len(node.children) == 2
+
+    def test_parse_nested_tree(self) -> None:
+        node = _parse_grouping_tree({
+            "kind": "or",
+            "children": [
+                {
+                    "kind": "and",
+                    "children": [
+                        {"kind": "leaf", "conditionId": "c0"},
+                        {"kind": "leaf", "conditionId": "c1"},
+                    ],
+                },
+                {"kind": "leaf", "conditionId": "c2"},
+            ],
+        })
+        assert isinstance(node, GroupingBranch)
+        assert node.kind == "or"
+        assert isinstance(node.children[0], GroupingBranch)
+        assert isinstance(node.children[1], GroupingLeaf)
+
+
+class TestGroupingTreeSerialization:
+    def test_round_trip(self) -> None:
+        original = {
+            "kind": "or",
+            "children": [
+                {
+                    "kind": "and",
+                    "children": [
+                        {"kind": "leaf", "conditionId": "c0"},
+                        {"kind": "leaf", "conditionId": "c1"},
+                    ],
+                },
+                {"kind": "leaf", "conditionId": "c2"},
+            ],
+        }
+        parsed = _parse_grouping_tree(original)
+        serialized = _serialize_grouping_tree(parsed)
+        assert serialized == original
+
+    def test_serialize_none(self) -> None:
+        assert _serialize_grouping_tree(None) is None
+
+
+class TestGroupingTreeValidation:
+    def test_valid_tree(self) -> None:
+        tree = GroupingBranch(
+            kind="and",
+            children=(GroupingLeaf(condition_id="c0"), GroupingLeaf(condition_id="c1")),
+        )
+        errors = _validate_grouping_tree(tree, 2)
+        assert errors == []
+
+    def test_references_nonexistent_condition(self) -> None:
+        tree = GroupingLeaf(condition_id="c5")
+        errors = _validate_grouping_tree(tree, 2)
+        assert len(errors) == 1
+        assert "c5" in errors[0]
+
+    def test_duplicate_condition_ids(self) -> None:
+        tree = GroupingBranch(
+            kind="and",
+            children=(GroupingLeaf(condition_id="c0"), GroupingLeaf(condition_id="c0")),
+        )
+        errors = _validate_grouping_tree(tree, 2)
+        assert any("Duplicate" in e for e in errors)
+
+    def test_branch_with_single_child(self) -> None:
+        tree = GroupingBranch(
+            kind="or",
+            children=(GroupingLeaf(condition_id="c0"),),
+        )
+        errors = _validate_grouping_tree(tree, 2)
+        assert any("at least 2 children" in e for e in errors)
+
+
+class TestGroupingTreeOmitsConditions:
+    def test_validate_rule_rejects_omitted_conditions(self) -> None:
+        data = {
+            "name": "Test",
+            "conditions": [
+                {"column_name": "a", "operator": "eq", "filter_value": "1"},
+                {"column_name": "b", "operator": "eq", "filter_value": "2"},
+            ],
+            "grouping_tree": {
+                "kind": "and",
+                "children": [
+                    {"kind": "leaf", "conditionId": "c0"},
+                ],
+            },
+            "logic": {
+                "format": "value_vs_column",
+                "column_name": "x",
+                "operator": "eq",
+                "target_value": "y",
+            },
+        }
+        result = validate_rule(data)
+        assert result.valid is False
+        assert any("omits conditions" in e for e in result.errors)
+        assert any("c1" in e for e in result.errors)
+
+
+class TestGroupingTreeCollectIds:
+    def test_collect_from_nested(self) -> None:
+        node = _parse_grouping_tree({
+            "kind": "or",
+            "children": [
+                {"kind": "leaf", "conditionId": "c0"},
+                {
+                    "kind": "and",
+                    "children": [
+                        {"kind": "leaf", "conditionId": "c1"},
+                        {"kind": "leaf", "conditionId": "c2"},
+                    ],
+                },
+            ],
+        })
+        ids = _collect_condition_ids(node)
+        assert ids == {"c0", "c1", "c2"}
+
+
+class TestGroupingTreeRoundTrip:
+    def test_save_load_with_tree(self, rules_path: Path) -> None:
+        rule_data = {
+            "name": "Tree Rule",
+            "conditions": [
+                {"column_name": "a", "operator": "eq", "filter_value": "1"},
+                {"column_name": "b", "operator": "eq", "filter_value": "2"},
+            ],
+            "condition_relation": "and",
+            "grouping_tree": {
+                "kind": "and",
+                "children": [
+                    {"kind": "leaf", "conditionId": "c0"},
+                    {"kind": "leaf", "conditionId": "c1"},
+                ],
+            },
+            "logic": {
+                "format": "value_vs_column",
+                "column_name": "x",
+                "operator": "eq",
+                "target_value": "y",
+            },
+        }
+        rules_file = RulesFile(version=1, rules=[], next_index=1)
+        new_file, _ = create_rule(rules_file, rule_data)
+        save_rules(new_file, rules_path)
+
+        loaded = load_rules(rules_path)
+        assert loaded.rules[0].grouping_tree is not None
+        assert isinstance(loaded.rules[0].grouping_tree, GroupingBranch)
+        assert loaded.rules[0].grouping_tree.kind == "and"

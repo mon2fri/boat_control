@@ -123,10 +123,19 @@ describe("critical user journey: upload → prepare → rules → run → result
     await waitFor(() => expect(screen.getByText(/shared column/)).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /Continue to filters/ }));
 
-    // 3. Prepare page: prepare loads, then continue to rules.
+    // 3. Prepare page: prepare loads, then select a key column, then continue.
     await waitFor(() => expect(screen.getByRole("heading", { name: /Filters & targets/ })).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByRole("button", { name: "Continue to rules" })).toBeEnabled());
-    fireEvent.click(screen.getByRole("button", { name: "Continue to rules" }));
+    // The "Continue to rules" button is disabled until a key column is picked.
+    const continueBtn = await screen.findByRole("button", { name: "Continue to rules" });
+    await waitFor(() => expect(continueBtn).toBeDisabled());
+    const keyCombobox = screen.getByLabelText("Add a key column");
+    fireEvent.focus(keyCombobox);
+    // The listbox opens on focus; commit via mouseDown (matches the
+    // combobox's onMouseDown handler).
+    const idOption = await screen.findByRole("option", { name: "id" });
+    fireEvent.mouseDown(idOption);
+    await waitFor(() => expect(continueBtn).toBeEnabled());
+    fireEvent.click(continueBtn);
 
     // 4. Rules load and default-select; continue to run.
     await waitFor(() => expect(screen.getByText(/Region present/)).toBeInTheDocument());

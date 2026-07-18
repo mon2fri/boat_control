@@ -27,7 +27,7 @@ function json(body: unknown, ok = true, status = 200) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("HistoryPage", () => {
-  it("lists saved runs and offers a load action", async () => {
+  it("lists saved runs and offers an Open deep link", async () => {
     const wireRuns = [
       {
         run_id: "run-2",
@@ -41,7 +41,9 @@ describe("HistoryPage", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(wireRuns)));
     renderHistory();
     await waitFor(() => expect(screen.getByText("b_vs_c")).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Load" })).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "Open" });
+    expect(link).toBeInTheDocument();
+    expect(link.getAttribute("href")).toBe("/results/run-2");
     vi.unstubAllGlobals();
   });
 
@@ -52,28 +54,26 @@ describe("HistoryPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("surfaces a load failure for a stale/missing run", async () => {
+  it("renders one Open link per saved run", async () => {
     const wireRuns = [
+      {
+        run_id: "run-1",
+        report_name: "a_vs_b",
+        file_a_name: "a.csv",
+        file_b_name: "b.csv",
+        created_at: "2026-07-18T00:00:00Z",
+      },
       {
         run_id: "run-2",
         report_name: "b_vs_c",
         file_a_name: "b.csv",
         file_b_name: "c.csv",
         created_at: "2026-07-18T01:00:00Z",
-        file_path: "/data/results/run-2.json",
       },
     ];
-    const fetchMock = vi.fn((url: string) => {
-      if (String(url).includes("/runs/run-2") && !String(url).includes("rename")) {
-        return Promise.resolve(json({ error: "gone" }, false, 404));
-      }
-      return Promise.resolve(json(wireRuns));
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(wireRuns)));
     renderHistory();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Load" })).toBeInTheDocument());
-    screen.getByRole("button", { name: "Load" }).click();
-    await waitFor(() => expect(screen.getByText(/Could not load that run/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByRole("link", { name: "Open" })).toHaveLength(2));
     vi.unstubAllGlobals();
   });
 });

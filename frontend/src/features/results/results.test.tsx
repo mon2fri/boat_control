@@ -9,7 +9,7 @@ import type { RunResult, RuleResult } from "../../api/domain";
 const ruleResult: RuleResult = {
   ruleIndex: "R001",
   ruleName: "Region present",
-  logicSummary: "region not_equals \"\"",
+  logicSummary: 'region must not equal ""',
   violationRowCount: 3,
   violationAttributeCount: 4,
   details: [
@@ -50,7 +50,7 @@ describe("result components", () => {
   it("shows the rule logic under the section title", () => {
     render(<RuleResultSection result={ruleResult} />);
     const section = screen.getByRole("region", { name: /Region present/ });
-    expect(within(section).getByText(/region not_equals/)).toBeInTheDocument();
+    expect(within(section).getByText(/region must not equal/)).toBeInTheDocument();
     expect(within(section).getByText("3")).toBeInTheDocument();
   });
 

@@ -21,20 +21,26 @@ def mock_result() -> ExecutionResult:
     comparison = ComparisonResult(
         total_rows_a=100,
         total_rows_b=100,
+        matched_rows=95,
         rows_with_changes=5,
         total_attribute_changes=10,
         row_details=[],
     )
     validation = ValidationResult(
         total_violations=3,
+        distinct_violating_rows=2,
+        distinct_violating_attributes=3,
         violations_by_rule={},
         violation_count_by_rule={},
+        violating_rows_by_rule={},
+        violating_attributes_by_rule={},
     )
     return ExecutionResult(
         comparison=comparison,
         validation=validation,
         common_columns=["id", "name"],
         target_columns=["name"],
+        key_columns=["id"],
         filters_applied=[],
     )
 

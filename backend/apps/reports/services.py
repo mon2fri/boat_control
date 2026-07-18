@@ -65,7 +65,7 @@ def export_html(result: dict[str, Any], report_name: str) -> str:
         sections.append("<table>")
         header = "<tr><th>Row</th><th>Key</th><th>Column</th><th>A</th><th>B</th></tr>"
         sections.append(header)
-        for row in comparison["row_details"][:1000]:
+        for row in comparison["row_details"]:
             key_str = _format_key(row.get("key_columns", {}))
             for change in row.get("attribute_changes", []):
                 sections.append("<tr>")
@@ -85,7 +85,7 @@ def export_html(result: dict[str, Any], report_name: str) -> str:
                 sections.append(f"<h3>Rule {_escape_html(rule_id)}</h3>")
                 sections.append("<table>")
                 sections.append("<tr><th>Row</th><th>Key</th><th>Details</th></tr>")
-                for v in violations[:500]:
+                for v in violations:
                     key_str = _format_key(v.get("key_columns", {}))
                     sections.append("<tr>")
                     sections.append(f"<td>{_escape_html(v.get('row_index', ''))}</td>")
@@ -121,7 +121,7 @@ def export_csv(result: dict[str, Any], report_name: str) -> str:
     row_details = comparison.get("row_details", [])
     if row_details:
         writer.writerow(["Changes", "Row", "Key", "Column", "A", "B"])
-        for row in row_details[:5000]:
+        for row in row_details:
             key_str = _format_key(row.get("key_columns", {}))
             for change in row.get("attribute_changes", []):
                 writer.writerow(
@@ -140,7 +140,7 @@ def export_csv(result: dict[str, Any], report_name: str) -> str:
         writer.writerow([])
         writer.writerow(["Violations", "Row", "Rule", "Key", "Details"])
         for rule_id, violations in violations_by_rule.items():
-            for v in violations[:5000]:
+            for v in violations:
                 key_str = _format_key(v.get("key_columns", {}))
                 writer.writerow(
                     [

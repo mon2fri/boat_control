@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
-import type { Condition, LogicClause, LogicOperator, Rule, RuleDraft } from "../../api/domain";
+import type { Condition, GroupNode, LogicClause, LogicOperator, Rule, RuleDraft } from "../../api/domain";
 import { ColumnField } from "../../components/ColumnField";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { nextId } from "../../lib/id";
 import { LOGIC_OPERATORS } from "./constants";
+import { GroupingTreeEditor } from "./GroupingTreeEditor";
+import { formatGroupTree } from "./groupingTree";
 
 interface Props {
   /** Existing rule when editing; undefined when creating. */
@@ -20,7 +22,13 @@ interface DraftState {
   description: string;
   conditions: Condition[];
   conditionJoin: "and" | "or" | null;
+  /**
+   * Legacy free-text grouping. Retained only so an in-flight edit does not
+   * silently drop user input when loading a rule persisted with the old
+   * format. New edits flow through `groupTree`.
+   */
   conditionGrouping: string;
+  groupTree: GroupNode | null;
   logic: LogicClause;
 }
 
@@ -32,6 +40,7 @@ function initialDraft(rule?: Rule): DraftState {
       conditions: rule.conditions,
       conditionJoin: rule.conditionJoin,
       conditionGrouping: rule.conditionGrouping ?? "",
+      groupTree: rule.groupTree,
       logic: rule.logic,
     };
   }
@@ -41,6 +50,7 @@ function initialDraft(rule?: Rule): DraftState {
     conditions: [],
     conditionJoin: null,
     conditionGrouping: "",
+    groupTree: null,
     logic: { id: nextId("logic"), format: "value", column: "", operator: "equals", target: "" },
   };
 }
@@ -67,6 +77,7 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
   const canGroup = draft.conditions.length >= 3;
 
   const validation = validateDraft(draft, needsJoin);
+  const logicPreview = previewLogicDescription(draft);
 
   function patch(next: Partial<DraftState>): void {
     setDraft((d) => ({ ...d, ...next }));
@@ -96,6 +107,22 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
       aria-label={rule ? `Edit rule ${rule.index}` : "New rule"}
     >
       <h3>{rule ? `Edit ${rule.index}` : "New rule"}</h3>
+
+      <details className="rule-semantic-help">
+        <summary>How rules work — what does this rule check?</summary>
+        <p>
+          A rule describes the <strong>required state</strong> for one column
+          (and optionally a set of preconditions). Rows that match the rule are
+          valid; rows that <em>do not</em> match are reported as violations.
+          Example: <code>status must equal "active"</code> flags every row whose
+          status is anything other than <code>active</code>.
+        </p>
+        <p>
+          Conditions narrow the rows the rule applies to (e.g. only check
+          <code> status</code> when <code>region</code> is <code>EMEA</code>);
+          the <em>logic</em> clause is the actual required state.
+        </p>
+      </details>
 
       <div className="field">
         <label htmlFor="rule-name">Name</label>
@@ -174,15 +201,25 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
 
         {canGroup && (
           <div className="field">
-            <label htmlFor="cond-group">
-              Custom grouping (optional, e.g. <code>(1 AND 2) OR 3</code>)
+            <label>
+              Grouping (optional)
             </label>
-            <input
-              id="cond-group"
-              value={draft.conditionGrouping}
-              onChange={(e) => patch({ conditionGrouping: e.target.value })}
-              placeholder="Leave blank to apply the join above uniformly"
+            <GroupingTreeEditor
+              conditions={draft.conditions}
+              value={draft.groupTree}
+              onChange={(groupTree) => patch({ groupTree })}
             />
+            <p className="field-hint" data-testid="grouping-preview">
+              <span className="visually-hidden">Grouping: </span>
+              <code>
+                {draft.groupTree
+                  ? formatGroupTree(draft.groupTree, (id) => {
+                      const c = draft.conditions.find((cc) => cc.id === id);
+                      return c ? `cond ${draft.conditions.indexOf(c) + 1}` : id;
+                    })
+                  : "Apply the join above uniformly"}
+              </code>
+            </p>
           </div>
         )}
       </fieldset>
@@ -241,6 +278,10 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
             </div>
           )}
         </div>
+        <p className="field-hint" data-testid="rule-logic-preview">
+          <span className="visually-hidden">Rule description: </span>
+          <code>{logicPreview}</code>
+        </p>
       </fieldset>
 
       {submitted && !validation.valid && (
@@ -341,9 +382,30 @@ function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
     ...(draft.description.trim() ? { description: draft.description.trim() } : {}),
     conditions: draft.conditions,
     conditionJoin: draft.conditions.length > 1 ? draft.conditionJoin : null,
-    conditionGrouping: draft.conditions.length >= 3 && draft.conditionGrouping.trim()
-      ? draft.conditionGrouping.trim()
-      : null,
+    // Persist only the executable tree. The legacy free-text field is never
+    // split on whitespace; it is preserved as-is for old payloads only.
+    conditionGrouping: null,
+    groupTree: draft.groupTree,
     logic: draft.logic,
   };
 }
+
+/** Live preview string for the logic fieldset, in required-state language. */
+function previewLogicDescription(draft: DraftState): string {
+  const phrase = OPERATOR_PHRASE[draft.logic.operator] ?? draft.logic.operator.replace(/_/g, " ");
+  const col = draft.logic.column.trim() || "<column>";
+  const rhs =
+    draft.logic.format === "column"
+      ? `column ${draft.logic.target.trim() || "<compared column>"}`
+      : `"${draft.logic.target.trim() || "<value>"}"`;
+  return `${col} ${phrase} ${rhs}`;
+}
+
+const OPERATOR_PHRASE: Record<string, string> = {
+  equals: "must equal",
+  not_equals: "must not equal",
+  contains: "must contain",
+  not_contains: "must not contain",
+  greater_than: "must be greater than",
+  less_than: "must be less than",
+};

@@ -11,6 +11,8 @@ export interface WorkflowState {
   header: HeaderReport | null;
   filters: FilterRow[];
   targetColumns: string[];
+  /** Record-identity columns. Empty array means "not yet chosen"; the backend refuses to run without one. */
+  keyColumns: string[];
   selectedRuleIndexes: string[];
   /** User acknowledged running against the full set with no filters. */
   confirmFullSet: boolean;
@@ -25,6 +27,7 @@ const initialState: WorkflowState = {
   header: null,
   filters: [],
   targetColumns: [],
+  keyColumns: [],
   selectedRuleIndexes: [],
   confirmFullSet: false,
   result: null,
@@ -36,6 +39,7 @@ type Action =
   | { type: "setHeader"; header: HeaderReport }
   | { type: "setFilters"; filters: FilterRow[] }
   | { type: "setTargetColumns"; columns: string[] }
+  | { type: "setKeyColumns"; columns: string[] }
   | { type: "setSelectedRules"; ruleIndexes: string[] }
   | { type: "setConfirmFullSet"; confirmed: boolean }
   | { type: "setServerRequiresConfirmation"; requires: boolean }
@@ -51,6 +55,8 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       return { ...state, filters: action.filters, confirmFullSet: false };
     case "setTargetColumns":
       return { ...state, targetColumns: action.columns };
+    case "setKeyColumns":
+      return { ...state, keyColumns: action.columns };
     case "setSelectedRules":
       return { ...state, selectedRuleIndexes: action.ruleIndexes };
     case "setConfirmFullSet":

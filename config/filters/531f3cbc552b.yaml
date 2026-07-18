@@ -1,0 +1,6 @@
+id: 531f3cbc552b
+name: "E2E active rows \u2014 updated"
+rows:
+- column: status
+  operator: eq
+  filter_value: active

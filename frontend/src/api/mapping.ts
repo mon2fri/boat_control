@@ -4,30 +4,40 @@
  * app keeps a stable vocabulary even if the backend contract shifts again.
  */
 import type {
+  AppSettings,
   Condition,
   DetailRow,
   FilterOperator,
   FilterRow,
+  GroupNode,
   HeaderReport,
   LogicClause,
   LogicFormat,
   LogicOperator,
   OverallSummary,
+  PresetSource,
   Rule,
   RuleResult,
   RunResult,
   RunSummary,
+  SavedFilter,
+  SourceFile,
 } from "./domain";
 import type {
   WireAttributeChange,
   WireColumnValue,
   WireCondition,
   WireFilterRow,
+  WireGroupNode,
   WireLogic,
+  WirePresetSource,
   WireRule,
   WireRunDocument,
   WireRunMetadata,
   WireRunRequest,
+  WireSavedFilter,
+  WireSettings,
+  WireSourceFile,
   wireScalarSchema,
   WireViolation,
 } from "./wire";
@@ -170,6 +180,12 @@ export function mapWireRule(rule: WireRule): Rule {
   // and an empty array for conditions.
   const conditions = (rule.conditions ?? []).map((c, i) => mapWireCondition(c, `c${i}`));
   const logic = mapWireLogic(rule.logic, "l0");
+  // Prefer the executable tree; fall back to the legacy group-id list only
+  // when the tree is absent (older persisted rules). The tree is the
+  // canonical representation going forward.
+  const groupTree: GroupNode | null = rule.grouping_tree
+    ? mapWireGroupNode(rule.grouping_tree)
+    : null;
   return {
     index: rule.rule_id,
     name: rule.name,
@@ -177,8 +193,19 @@ export function mapWireRule(rule: WireRule): Rule {
     conditions,
     conditionJoin: rule.condition_relation ?? (conditions.length > 1 ? "and" : null),
     conditionGrouping: rule.grouping ? rule.grouping.join(" ") : null,
+    groupTree,
     logic,
   };
+}
+
+function mapWireGroupNode(node: WireGroupNode): GroupNode {
+  if (node.kind === "leaf") return { kind: "leaf", conditionId: node.conditionId };
+  return { kind: node.kind, children: node.children.map(mapWireGroupNode) };
+}
+
+function mapGroupNodeToWire(node: GroupNode): WireGroupNode {
+  if (node.kind === "leaf") return { kind: "leaf", conditionId: node.conditionId };
+  return { kind: node.kind, children: node.children.map(mapGroupNodeToWire) };
 }
 
 export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string }) {
@@ -187,9 +214,9 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
     ...(rule.description ? { description: rule.description } : {}),
     conditions: rule.conditions.map(mapConditionToWire),
     ...(rule.conditionJoin ? { condition_relation: rule.conditionJoin } : {}),
-    ...(rule.conditionGrouping
-      ? { grouping: rule.conditionGrouping.split(/\s+/).filter(Boolean) }
-      : {}),
+    // Always serialize the executable tree; never split a free-text
+    // expression on whitespace (that loses grouping precedence).
+    ...(rule.groupTree ? { grouping_tree: mapGroupNodeToWire(rule.groupTree) } : {}),
     logic: mapLogicToWire(rule.logic),
   };
 }
@@ -200,13 +227,23 @@ export function mapRunRequestToWire(request: {
   sessionId: string;
   filters: FilterRow[];
   targetColumns: string[];
+  keyColumns: string[];
   ruleIndexes: string[];
 }): WireRunRequest {
   return {
     session_id: request.sessionId,
     target_columns: request.targetColumns.length > 0 ? request.targetColumns : null,
+    // Always send `key_columns` as an array (even when empty) so the backend
+    // can distinguish an explicit empty selection from omitted defaults. The
+    // backend will reject an empty array with a 400; the UI prevents the user
+    // from getting there by requiring at least one key column.
+    key_columns: [...request.keyColumns],
     filters: request.filters.filter((f) => f.column && f.value).map(mapFilterRowToWire),
-    rule_ids: request.ruleIndexes.length > 0 ? request.ruleIndexes : null,
+    // Always serialize `rule_ids` as an array so the backend can distinguish
+    // an explicit empty selection (zero rules) from an omitted/default-all
+    // selection. Translating an empty array to `null` here would cause every
+    // rule to run when the user deliberately deselected them all.
+    rule_ids: [...request.ruleIndexes],
   };
 }
 
@@ -230,50 +267,59 @@ export function mapAttributeChange(change: WireAttributeChange, rowKey: string, 
 }
 
 export function mapViolation(violation: WireViolation, index: number): DetailRow {
+  // Prefer the server-provided violating column/value when present. Older
+  // backend responses omit those fields; fall back to the rule id + details
+  // so the row remains identifiable in the detail table.
+  const column = violation.violating_column ?? violation.rule_id;
+  const value = violation.violating_value !== undefined
+    ? displayScalar(violation.violating_value)
+    : violation.details;
   return {
-    // Backend doesn't expose the violating attribute; we surface the rule name
-    // in the column slot so the row is at least identifiable in the detail
-    // table. The full attribute/value pair is a P1 follow-up.
     rowKey: `${rowKeyOf(violation.key_columns, violation.row_index)}#${index}`,
-    column: violation.rule_id,
+    column,
     file1Value: null,
-    file2Value: violation.details,
+    file2Value: value,
     kind: "violation",
+    ...(violation.violating_column ? { violatingColumn: violation.violating_column } : {}),
+    ...(violation.violating_value !== undefined
+      ? { violatingValue: displayScalar(violation.violating_value) }
+      : {}),
   };
 }
 
 export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
   const result = doc.result;
+  const validation = result.validation;
 
-  // Distinct violating rows (by row key).
-  const distinctViolationRows = new Set<string>();
-  for (const violations of Object.values(result.validation.violations_by_rule)) {
-    for (const v of violations) distinctViolationRows.add(rowKeyOf(v.key_columns, v.row_index));
-  }
-
-  // One attribute per violation in the current schema.
-  const violationAttributeCount = result.validation.total_violations;
+  // Prefer the backend's explicit distinct counts; fall back to a local
+  // derivation only if the server omitted them.
+  const distinctViolationRowCount =
+    validation.distinct_violating_rows ?? countDistinctViolationRows(validation.violations_by_rule);
+  const distinctViolationAttributeCount =
+    validation.distinct_violating_attributes ?? validation.total_violations;
 
   const overall: OverallSummary = {
     recordsLoaded: result.comparison.total_rows_a + result.comparison.total_rows_b,
-    ruleViolationRowCount: distinctViolationRows.size,
-    ruleViolationAttributeCount: violationAttributeCount,
+    ruleViolationRowCount: distinctViolationRowCount,
+    ruleViolationAttributeCount: distinctViolationAttributeCount,
     changedRowCount: result.comparison.rows_with_changes,
     changedAttributeCount: result.comparison.total_attribute_changes,
   };
 
   // Per-rule results.
-  const ruleResults: RuleResult[] = Object.entries(result.validation.violations_by_rule).map(
+  const ruleResults: RuleResult[] = Object.entries(validation.violations_by_rule).map(
     ([ruleId, violations]) => {
-      const distinctRows = new Set<string>();
-      for (const v of violations) distinctRows.add(rowKeyOf(v.key_columns, v.row_index));
+      const perRuleRowCount =
+        validation.violating_rows_by_rule?.[ruleId] ?? countDistinctRowsForViolations(violations);
+      const perRuleAttributeCount =
+        validation.violating_attributes_by_rule?.[ruleId] ?? violations.length;
       const sample = violations[0];
       return {
         ruleIndex: ruleId,
         ruleName: sample?.rule_name ?? ruleId,
         logicSummary: describeRuleLogicFromViolations(violations, ruleId),
-        violationRowCount: distinctRows.size,
-        violationAttributeCount: violations.length,
+        violationRowCount: perRuleRowCount,
+        violationAttributeCount: perRuleAttributeCount,
         details: violations.map((v, i) => mapViolation(v, i)),
       };
     },
@@ -302,8 +348,26 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
 }
 
 function describeRuleLogicFromViolations(violations: WireViolation[], ruleId: string): string {
-  if (violations.length === 0) return `${ruleId} (no violations)`;
-  return `${ruleId}: ${violations[0]!.rule_name}`;
+  if (violations.length === 0) return `${ruleId} (no rows did not match)`;
+  const first = violations[0]!;
+  if (first.rule_logic) return `${ruleId} — ${first.rule_name}: ${first.rule_logic}`;
+  return `${ruleId} — ${first.rule_name}: ${first.details.replace(/^Violated\s+/i, "did not match ")}`;
+}
+
+/** Local fallback for distinct-violating-row counts. The backend should
+ *  already provide these; the derivation here only runs when it doesn't. */
+function countDistinctViolationRows(byRule: Record<string, WireViolation[]>): number {
+  const set = new Set<string>();
+  for (const violations of Object.values(byRule)) {
+    for (const v of violations) set.add(rowKeyOf(v.key_columns, v.row_index));
+  }
+  return set.size;
+}
+
+function countDistinctRowsForViolations(violations: WireViolation[]): number {
+  const set = new Set<string>();
+  for (const v of violations) set.add(rowKeyOf(v.key_columns, v.row_index));
+  return set.size;
 }
 
 export function mapRunMetadata(meta: WireRunMetadata): RunSummary {
@@ -324,4 +388,62 @@ export function mapRunDocumentMetadata(doc: WireRunDocument): RunSummary {
     file1Name: doc.file_a_name,
     file2Name: doc.file_b_name,
   };
+}
+
+// --- Settings, saved filters, presets -----------------------------------
+
+export function mapSettings(wire: WireSettings): AppSettings {
+  return {
+    presetSourcePaths: [...wire.preset_source_paths],
+    rulesConfigPath: wire.rules_config_path,
+    filtersConfigPath: wire.filters_config_path,
+    fullSetThreshold: wire.full_set_threshold,
+  };
+}
+
+export function mapSettingsToWire(settings: AppSettings): WireSettings {
+  return {
+    preset_source_paths: [...settings.presetSourcePaths],
+    rules_config_path: settings.rulesConfigPath,
+    filters_config_path: settings.filtersConfigPath,
+    full_set_threshold: settings.fullSetThreshold,
+  };
+}
+
+export function mapSavedFilter(wire: WireSavedFilter): SavedFilter {
+  return {
+    id: wire.id,
+    name: wire.name,
+    rows: wire.rows.map((r, i) => ({
+      id: `f${i}`,
+      column: r.column,
+      operator: mapWireFilterOperator(r.operator),
+      value: r.filter_value,
+    })),
+  };
+}
+
+export function mapSavedFilterToWire(filter: Omit<SavedFilter, "id"> & { id?: string }): {
+  name: string;
+  rows: WireFilterRow[];
+} {
+  return {
+    name: filter.name,
+    rows: filter.rows
+      .filter((r) => r.column && r.value)
+      .map(mapFilterRowToWire),
+  };
+}
+
+export function mapPresetSource(wire: WirePresetSource): PresetSource {
+  return {
+    id: wire.id,
+    name: wire.name,
+    ...(wire.description ? { description: wire.description } : {}),
+    kind: wire.kind,
+  };
+}
+
+export function mapSourceFile(wire: WireSourceFile): SourceFile {
+  return { id: wire.id, name: wire.name, size: wire.size };
 }

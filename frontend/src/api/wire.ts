@@ -47,6 +47,23 @@ export const wireColumnValueSchema = z.object({
 });
 export type WireColumnValue = z.infer<typeof wireColumnValueSchema>;
 
+/**
+ * Paginated column-values endpoint response. The server caps the page size,
+ * exposes total distinct count, and includes `starred_availability` so the
+ * client can render an empty-state message and avoid re-fetching.
+ */
+export const wireColumnValuesPageSchema = z.object({
+  session_id: z.string(),
+  column: z.string(),
+  values: z.array(wireColumnValueSchema),
+  offset: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  has_more: z.boolean(),
+  starred_availability: z.boolean(),
+  search: z.string().optional(),
+});
+export type WireColumnValuesPage = z.infer<typeof wireColumnValuesPageSchema>;
+
 export const prepareResponseSchema = z.object({
   session_id: z.string(),
   columns: z.array(z.string()),
@@ -93,6 +110,31 @@ export const wireLogicSchema = z.object({
 });
 export type WireLogic = z.infer<typeof wireLogicSchema>;
 
+/**
+ * Recursive grouping tree sent to and received from the backend. Each node
+ * is one of:
+ * - `{ kind: "leaf", conditionId }` — references a condition by client id.
+ * - `{ kind: "and", children }` — every child must be true.
+ * - `{ kind: "or", children }` — any child may be true.
+ *
+ * The schema is recursive via `z.lazy`. Backend's evaluator consumes this
+ * tree directly; the legacy `grouping` array of group-ids is no longer
+ * accepted from the client (see the migration note in
+ * `docs/20260718_rule_semantics.md`).
+ */
+export type WireGroupNode =
+  | { kind: "leaf"; conditionId: string }
+  | { kind: "and"; children: WireGroupNode[] }
+  | { kind: "or"; children: WireGroupNode[] };
+
+export const wireGroupNodeSchema: z.ZodType<WireGroupNode> = z.lazy(() =>
+  z.union([
+    z.object({ kind: z.literal("leaf"), conditionId: z.string() }),
+    z.object({ kind: z.literal("and"), children: z.array(wireGroupNodeSchema).min(2) }),
+    z.object({ kind: z.literal("or"), children: z.array(wireGroupNodeSchema).min(2) }),
+  ]),
+);
+
 export const wireRuleSchema = z.object({
   rule_id: z.string().regex(/^R\d{3,}$/),
   name: z.string(),
@@ -100,6 +142,7 @@ export const wireRuleSchema = z.object({
   conditions: z.array(wireConditionSchema).optional(),
   condition_relation: z.enum(["and", "or"]).optional(),
   grouping: z.array(z.string()).optional(),
+  grouping_tree: wireGroupNodeSchema.optional(),
   logic: wireLogicSchema,
 });
 export type WireRule = z.infer<typeof wireRuleSchema>;
@@ -119,7 +162,7 @@ export const ruleDraftRequestSchema = z.object({
   description: z.string().optional(),
   conditions: z.array(wireConditionSchema).optional(),
   condition_relation: z.enum(["and", "or"]).optional(),
-  grouping: z.array(z.string()).optional(),
+  grouping_tree: wireGroupNodeSchema.optional(),
   logic: wireLogicSchema,
 });
 export type WireRuleDraftRequest = z.infer<typeof ruleDraftRequestSchema>;
@@ -157,6 +200,30 @@ export const wireRowDetailSchema = z.object({
 });
 export type WireRowDetail = z.infer<typeof wireRowDetailSchema>;
 
+/**
+ * Paginated detail rows endpoint response. Server caps the page size,
+ * exposes total count and has_more so the client can stream pages as the
+ * user scrolls. The frontend never has to hold the full row set in memory.
+ */
+export const wireDetailPageSchema = z.object({
+  run_id: z.string(),
+  section: z.enum(["changes", "violations"]),
+  offset: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  has_more: z.boolean(),
+  details: z.array(
+    z.object({
+      row_key: z.string(),
+      column: z.string(),
+      file_a_value: wireScalarSchema,
+      file_b_value: wireScalarSchema,
+      violating_column: z.string().optional(),
+      violating_value: wireScalarSchema.optional(),
+    }),
+  ),
+});
+export type WireDetailPage = z.infer<typeof wireDetailPageSchema>;
+
 export const wireComparisonSchema = z.object({
   total_rows_a: z.number().int().nonnegative(),
   total_rows_b: z.number().int().nonnegative(),
@@ -171,6 +238,12 @@ export const wireViolationSchema = z.object({
   rule_name: z.string(),
   key_columns: z.record(z.string(), wireScalarSchema),
   details: z.string(),
+  // Server-provided explicit fields. Older backend responses omit them; the
+  // mapper derives fallbacks from the rest of the violation record so the UI
+  // is never blank for an in-flight release.
+  violating_column: z.string().optional(),
+  violating_value: wireScalarSchema.optional(),
+  rule_logic: z.string().optional(),
 });
 export type WireViolation = z.infer<typeof wireViolationSchema>;
 
@@ -178,6 +251,12 @@ export const wireValidationSchema = z.object({
   total_violations: z.number().int().nonnegative(),
   violations_by_rule: z.record(z.string(), z.array(wireViolationSchema)),
   violation_count_by_rule: z.record(z.string(), z.number().int().nonnegative()),
+  // Distinct counts, computed by the backend. The mapper prefers these over
+  // locally-derived counts so the UI matches the persisted truth.
+  distinct_violating_rows: z.number().int().nonnegative().optional(),
+  distinct_violating_attributes: z.number().int().nonnegative().optional(),
+  violating_rows_by_rule: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  violating_attributes_by_rule: z.record(z.string(), z.number().int().nonnegative()).optional(),
 });
 
 export const wireRunResultSchema = z.object({
@@ -204,7 +283,10 @@ export const wireRunMetadataSchema = z.object({
   file_a_name: z.string(),
   file_b_name: z.string(),
   created_at: z.string(),
-  file_path: z.string(),
+  // `file_path` was removed from the canonical history/rename response per
+  // the worker matrix; it is accepted but ignored when present for backward
+  // compatibility with older backends during the cut-over.
+  file_path: z.string().optional(),
 });
 export type WireRunMetadata = z.infer<typeof wireRunMetadataSchema>;
 export const wireRunHistorySchema = z.array(wireRunMetadataSchema);
@@ -218,6 +300,54 @@ export const wireExportRequestSchema = z.object({
   format: z.enum(["html", "csv"]),
 });
 export type WireExportRequest = z.infer<typeof wireExportRequestSchema>;
+
+// --- Settings, saved filters, presets ----------------------------------
+
+/**
+ * Wire shape for the editable settings endpoint. Field names match the
+ * frozen API contract (`docs/20260718_contract_api_final.md` §10):
+ *
+ *   - `preset_source_paths` — array of allowed preset directories.
+ *   - `rules_config_path`   — path to the rules YAML file.
+ *   - `full_set_threshold`  — row count above which the full-set guard fires.
+ *
+ * The backend validates each field and returns the canonical (and possibly
+ * rewritten) value; the client treats the response as the source of truth
+ * and re-renders from it.
+ */
+export const wireSettingsSchema = z.object({
+  preset_source_paths: z.array(z.string()),
+  rules_config_path: z.string(),
+  filters_config_path: z.string(),
+  full_set_threshold: z.number().int().positive(),
+});
+export type WireSettings = z.infer<typeof wireSettingsSchema>;
+
+export const wireSavedFilterSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  rows: z.array(wireFilterRowSchema),
+});
+export type WireSavedFilter = z.infer<typeof wireSavedFilterSchema>;
+
+export const wireSavedFilterListSchema = z.array(wireSavedFilterSchema);
+
+export const wirePresetSourceSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().optional(),
+  kind: z.enum(["single", "pair"]),
+});
+export type WirePresetSource = z.infer<typeof wirePresetSourceSchema>;
+export const wirePresetListSchema = z.array(wirePresetSourceSchema);
+
+export const wireSourceFileSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  size: z.number(),
+});
+export type WireSourceFile = z.infer<typeof wireSourceFileSchema>;
+export const wireSourceFileListSchema = z.array(wireSourceFileSchema);
 
 // --- Error envelope ------------------------------------------------------
 

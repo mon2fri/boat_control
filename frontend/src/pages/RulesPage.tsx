@@ -4,7 +4,12 @@ import { useWorkflow } from "../state/WorkflowContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RuleEditor } from "../features/rules/RuleEditor";
 import { describeLogic, useCreateRule, useDeleteRule, useRules, useUpdateRule } from "../features/rules/useRules";
+import { useQueryClient } from "@tanstack/react-query";
+import { ConfigLoader } from "../features/configs/ConfigLoader";
+import { ConfigManager } from "../features/configs/ConfigManager";
 import type { Rule, RuleDraft } from "../api/domain";
+
+const RULES_KEY = ["rules"] as const;
 
 type EditorState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; rule: Rule };
 
@@ -18,7 +23,9 @@ export function RulesPage() {
 
   const [editor, setEditor] = useState<EditorState>({ mode: "closed" });
   const [pendingDelete, setPendingDelete] = useState<Rule | null>(null);
+  const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const initialized = useRef(false);
+  const queryClient = useQueryClient();
 
   const columns = state.header?.common ?? [];
   const selected = state.selectedRuleIndexes;
@@ -141,6 +148,25 @@ export function RulesPage() {
             />
           )}
         </>
+      )}
+
+      <ConfigManager
+        configType="rules"
+        currentContent={rules.data ?? []}
+        onLoad={(name) => setConfigLoadName(name)}
+        disabled={rules.isPending}
+        hasUnsavedChanges={editor.mode !== "closed"}
+      />
+
+      {configLoadName && (
+        <ConfigLoader
+          configType="rules"
+          name={configLoadName}
+          onLoad={() => {
+            void queryClient.invalidateQueries({ queryKey: RULES_KEY });
+          }}
+          onDone={() => setConfigLoadName(null)}
+        />
       )}
 
       <ConfirmDialog

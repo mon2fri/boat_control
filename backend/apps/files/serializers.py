@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from rest_framework import serializers  # type: ignore[import-untyped]
+from rest_framework import serializers
 
 from apps.files.services import HeaderInspectionResult
 

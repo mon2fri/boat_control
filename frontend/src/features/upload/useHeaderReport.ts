@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { ApiError } from "../../api/client";
-import { uploadFiles } from "../../api/endpoints";
+import { loadPresetFiles, uploadFiles } from "../../api/endpoints";
 import type { HeaderReport } from "../../api/domain";
 
 type Status = "idle" | "loading" | "success" | "error";
@@ -48,9 +48,14 @@ export function useHeaderReport(onSuccess: (report: HeaderReport) => void) {
     [run],
   );
 
+  const submitFromPreset = useCallback(
+    (fileAId: string, fileBId: string | null) => run((signal) => loadPresetFiles(fileAId, fileBId, signal)),
+    [run],
+  );
+
   const cancel = useCallback(() => {
     controllerRef.current?.abort();
   }, []);
 
-  return { ...state, submitUpload, cancel };
+  return { ...state, submitUpload, submitFromPreset, cancel };
 }

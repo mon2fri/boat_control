@@ -1,80 +1,53 @@
-# API Contract (Frontend ↔ Backend)
+# Frontend-facing API contract reference
 
-> **Reconciliation pending.** The backend was implemented to a different contract than this one.
-> See `reviews/20260718_review_frontend_handoff.md` for the concrete divergences and the recommended
-> canonical contract before wiring the two halves together.
+> The accepted canonical contract is owned by Worker A and lives in
+> [`docs/20260718_api_contract.md`](./20260718_api_contract.md). This document
+> is now a thin pointer to that source of truth plus the live fixture-based
+> conformance harness in `frontend/tests/integration.test.ts`. The
+> reconciliation-pending content that previously lived here has been removed;
+> the original divergences are recorded historically in
+> `reviews/20260718_review_frontend_handoff.md`.
 
-This is the client's expectation of the Django API. Worker B derived it from
-`requirements/20260717_initial_requirement.md`; Worker A owns the implementation. Any change must
-be reconciled here and in `frontend/src/api/schemas.ts` (the executable source of truth). Per the
-folder plan, this reconciliation note lives in `docs/`, never in `planning/`.
+## Canonical contract
 
-All endpoints are same-origin under `/api`. Mutations send `X-CSRFToken` from the `csrftoken`
-cookie. Responses are JSON and are Zod-validated on arrival.
+Read `docs/20260718_api_contract.md` for the authoritative endpoint table,
+request and response shapes, and error envelope. Any frontend change that
+adds a field must be reflected in that file in the same change.
 
-## Files & headers
+## Executable source of truth
 
-| Method | Path                                   | Body                              | Response            |
-| ------ | -------------------------------------- | --------------------------------- | ------------------- |
-| POST   | `/files/upload/`                       | multipart `file1`, `file2`        | `HeaderReport`      |
-| GET    | `/files/presets/`                      | —                                 | `PresetSource[]`    |
-| POST   | `/files/presets/load/`                 | `{ presetId, file1, file2 }`      | `HeaderReport`      |
-| GET    | `/files/{sessionId}/values/?column=`   | —                                 | `ColumnValues`      |
-| POST   | `/files/{sessionId}/validate-columns/` | `{ columns: string[] }`           | `{ valid, invalid }`|
+The Zod schemas in `frontend/src/api/wire.ts` are the executable contract
+the React app actually validates against on every response. They MUST agree
+with `docs/20260718_api_contract.md`. Drift between the two is recorded in
+`reviews/20260718_review_worker_convergence.md` as a Priority 0 finding.
 
-`HeaderReport` = `{ sessionId, file1Name, file2Name, common[], file1Only[], file2Only[],
-file1RowCount, file2RowCount }`. Comparison and validation operate on `common` columns only.
+## Live fixture conformance
 
-`ColumnValues.values[]` = `{ value, starred }`; `starred` marks a value present in only one file.
-Starred values are not selectable as filter values.
+The companion Python script `tests/integration/run_e2e_workflow.py` walks
+the full upload → prepare → rules → execute → history → load → rename →
+export flow against the real Django app and writes the raw backend
+responses to `frontend/tests/integration-fixtures/e2e_responses.json`.
 
-## Filters
+`frontend/tests/integration.test.ts` consumes that fixture and asserts:
 
-| Method | Path         | Body                         | Response          |
-| ------ | ------------ | ---------------------------- | ----------------- |
-| GET    | `/filters/`  | —                            | `SavedFilter[]`   |
-| POST   | `/filters/`  | `{ name, rows[] }`           | `SavedFilter`     |
+- every captured response validates through its Zod schema (`contract
+  conformance` block), and
+- every mapper-produced request body validates through its wire schema
+  (`request conformance` block).
 
-Filter row = `{ column, operator, value }`; operator ∈ `equals | not_equals | contains |
-not_contains`.
+If either side changes the wire contract, the regenerated fixture or the
+Zod schema, one of those tests fails before the change ships.
 
-## Rules
+## Regenerating the fixture
 
-| Method | Path            | Body        | Response  |
-| ------ | --------------- | ----------- | --------- |
-| GET    | `/rules/`       | —           | `Rule[]`  |
-| POST   | `/rules/`       | `RuleDraft` | `Rule`    |
-| PUT    | `/rules/{index}`| `RuleDraft` | `Rule`    |
-| DELETE | `/rules/{index}`| —           | `{ deleted }` |
+After a backend change:
 
-A `Rule` has a server-assigned `index` (`R001`, `R002`, …), a `name`, optional `description`,
-optional `conditions[]` joined by `conditionJoin` (`and`/`or`) with optional `conditionGrouping`,
-and one mandatory `logic` clause in `value` (Value-against-Column) or `column`
-(Column-against-Column) format.
+```bash
+cd /home/zwj808/python_projects/boat_control
+DJANGO_SETTINGS_MODULE=boat_control.settings PYTHONPATH=backend \
+  uv run python tests/integration/run_e2e_workflow.py \
+    --output frontend/tests/integration-fixtures/e2e_responses.json
+```
 
-## Runs & results
-
-| Method | Path                          | Body                | Response      |
-| ------ | ----------------------------- | ------------------- | ------------- |
-| POST   | `/runs/`                      | `RunRequest`        | `RunResult`   |
-| GET    | `/runs/`                      | —                   | `RunSummary[]` (≤10) |
-| GET    | `/runs/{id}`                  | —                   | `RunResult`   |
-| PATCH  | `/runs/{id}`                  | `{ reportName }`    | `RunResult`   |
-| GET    | `/runs/{id}/export/?format=`  | `html` \| `csv`     | file download |
-
-`RunRequest` = `{ sessionId, filters[], targetColumns[], ruleIndexes[], confirmFullSet }`. If no
-filters are supplied and the combined row count exceeds the settings threshold (default 2000),
-`confirmFullSet` must be `true`.
-
-`RunResult.overall` carries the five required counts: `recordsLoaded`, `ruleViolationRowCount`,
-`ruleViolationAttributeCount`, `changedRowCount`, `changedAttributeCount`. Per-rule stats and
-detail tables live in `ruleResults[]`; change details in `changeDetails[]`.
-
-## Settings
-
-| Method | Path         | Body       | Response   |
-| ------ | ------------ | ---------- | ---------- |
-| GET    | `/settings/` | —          | `Settings` |
-| PUT    | `/settings/` | `Settings` | `Settings` |
-
-`Settings` = `{ presetSourcePath, remoteRuleConfigPath, fullSetConfirmThreshold }`.
+Then re-run the frontend tests to confirm both the schema and the mapper
+still understand the live responses.

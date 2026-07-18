@@ -1,6 +1,7 @@
 from django.urls import path
 
 from apps.runs.persistence_views import RunDetailView, RunRenameView, RunsListView
+from apps.runs.run_detail_views import RunPaginatedDetailView
 from apps.runs.views import ExecuteComparisonView
 
 app_name = "runs"
@@ -10,4 +11,5 @@ urlpatterns = [
     path("", RunsListView.as_view(), name="runs-list"),
     path("<str:run_id>/", RunDetailView.as_view(), name="run-detail"),
     path("<str:run_id>/rename/", RunRenameView.as_view(), name="run-rename"),
+    path("<str:run_id>/details/", RunPaginatedDetailView.as_view(), name="run-paginated-detail"),
 ]

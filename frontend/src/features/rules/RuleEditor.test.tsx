@@ -77,4 +77,31 @@ describe("RuleEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(onCancel).toHaveBeenCalled();
   });
+
+  it("previews the logic clause in required-state language (must equal)", () => {
+    setup();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Status must be active" } });
+    fireEvent.change(screen.getByLabelText("Column"), { target: { value: "status" } });
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "active" } });
+    // The data-testid on the live preview pins the wording. If anyone rewords
+    // the editor preview away from required-state phrasing, this assertion
+    // fails before the wording reaches the rule list and history views.
+    const preview = screen.getByTestId("rule-logic-preview");
+    expect(preview.textContent).toMatch(/status must equal "active"/);
+  });
+
+  it("help text describes rules as required valid state, not invalid state", () => {
+    setup();
+    // The collapsed <details> opens on click so the paragraph is in the DOM.
+    const details = screen.getByText(/How rules work/i).closest("details");
+    expect(details).not.toBeNull();
+    const helpText = details!.textContent ?? "";
+    // Required-state language is the contract (docs/20260718_contract_rule_evaluation.md §1).
+    expect(helpText).toMatch(/required (?:valid )?state/i);
+    expect(helpText).toMatch(/must equal/i);
+    // Invalid-state language would describe rules the wrong way around; pin
+    // its absence so a regression to "matches are violations" wording fails
+    // here rather than silently shipping inverted rules to users.
+    expect(helpText).not.toMatch(/when (the )?expression (?:is )?true.*violation/i);
+  });
 });

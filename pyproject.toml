@@ -35,10 +35,15 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/integration/*" = ["E402", "I001"]
+
 [tool.mypy]
 python_version = "3.14"
+mypy_path = ["backend"]
 plugins = ["mypy_django_plugin.main"]
 strict = true
+disable_error_code = ["import-untyped"]
 
 [tool.django-stubs]
 django_settings_module = "boat_control.settings"

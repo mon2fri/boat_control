@@ -1,0 +1,484 @@
+{
+  "contract_version": 1,
+  "generated_at": "2026-07-18T00:00:00Z",
+  "description": "Machine-readable API contract v1 for Boat Control",
+  "endpoints": {
+    "health": {
+      "method": "GET",
+      "route": "/api/health/",
+      "request": {},
+      "response_200": {
+        "type": "object",
+        "required": ["status"],
+        "properties": {
+          "status": {"type": "string", "const": "ok"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "upload": {
+      "method": "POST",
+      "route": "/api/files/upload/",
+      "content_type": "multipart/form-data",
+      "request_fields": {
+        "file_a": {"type": "file", "required": true, "accept": ".csv"},
+        "file_b": {"type": "file", "required": true, "accept": ".csv"}
+      },
+      "response_200": {
+        "type": "object",
+        "required": ["session_id", "file_a_name", "file_b_name", "inspection"],
+        "properties": {
+          "session_id": {"type": "string", "minLength": 1},
+          "file_a_name": {"type": "string", "minLength": 1},
+          "file_b_name": {"type": "string", "minLength": 1},
+          "inspection": {"$ref": "#/definitions/inspection"}
+        },
+        "additionalProperties": false
+      },
+      "response_400": {"$ref": "#/definitions/error_response"}
+    },
+    "inspect": {
+      "method": "POST",
+      "route": "/api/files/inspect/",
+      "request": {
+        "type": "object",
+        "required": ["session_id"],
+        "properties": {
+          "session_id": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      },
+      "response_200": {
+        "type": "object",
+        "required": ["session_id", "inspection"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "inspection": {"$ref": "#/definitions/inspection"}
+        },
+        "additionalProperties": false
+      },
+      "response_400": {"$ref": "#/definitions/error_response"},
+      "response_404": {"$ref": "#/definitions/error_response"}
+    },
+    "filter_prepare": {
+      "method": "POST",
+      "route": "/api/files/filters/prepare/",
+      "request": {
+        "type": "object",
+        "required": ["session_id", "common_columns"],
+        "properties": {
+          "session_id": {"type": "string", "minLength": 1},
+          "common_columns": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+        },
+        "additionalProperties": false
+      },
+      "response_200": {
+        "type": "object",
+        "required": ["session_id", "columns", "column_values", "total_rows_a", "total_rows_b", "requires_confirmation"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "columns": {"type": "array", "items": {"type": "string"}},
+          "column_values": {"type": "object", "additionalProperties": {"type": "array", "items": {"$ref": "#/definitions/column_value"}}},
+          "total_rows_a": {"type": "integer", "minimum": 0},
+          "total_rows_b": {"type": "integer", "minimum": 0},
+          "requires_confirmation": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "filter_validate": {
+      "method": "POST",
+      "route": "/api/files/filters/validate/",
+      "request": {
+        "type": "object",
+        "required": ["session_id", "column", "operator", "filter_value"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "column": {"type": "string"},
+          "operator": {"type": "string", "enum": ["eq", "neq", "contains", "ncontains"]},
+          "filter_value": {"type": "string"}
+        }
+      },
+      "response_200": {
+        "type": "object",
+        "required": ["valid", "errors"],
+        "properties": {
+          "valid": {"type": "boolean"},
+          "errors": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "target_validate": {
+      "method": "POST",
+      "route": "/api/files/targets/validate/",
+      "request": {
+        "type": "object",
+        "required": ["session_id"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "target_columns": {"type": "array", "items": {"type": "string"}, "nullable": true}
+        }
+      },
+      "response_200": {
+        "type": "object",
+        "required": ["session_id", "valid_columns", "invalid_columns", "all_common_columns"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "valid_columns": {"type": "array", "items": {"type": "string"}},
+          "invalid_columns": {"type": "array", "items": {"type": "string"}},
+          "all_common_columns": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "target_input": {
+      "method": "POST",
+      "route": "/api/files/targets/input/",
+      "request": {
+        "type": "object",
+        "required": ["session_id", "input_str"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "input_str": {"type": "string"}
+        }
+      },
+      "response_200": {
+        "type": "object",
+        "required": ["session_id", "parsed_columns", "valid_columns", "invalid_columns"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "parsed_columns": {"type": "array", "items": {"type": "string"}},
+          "valid_columns": {"type": "array", "items": {"type": "string"}},
+          "invalid_columns": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "rules_list": {
+      "method": "GET",
+      "route": "/api/rules/",
+      "response_200": {
+        "type": "object",
+        "required": ["version", "rules"],
+        "properties": {
+          "version": {"type": "integer", "const": 1},
+          "rules": {"type": "array", "items": {"$ref": "#/definitions/rule"}}
+        }
+      }
+    },
+    "rule_create": {
+      "method": "POST",
+      "route": "/api/rules/",
+      "request": {"$ref": "#/definitions/rule_draft"},
+      "response_201": {
+        "type": "object",
+        "required": ["rule_id", "message"],
+        "properties": {
+          "rule_id": {"type": "string", "pattern": "^R\\d{3,}$"},
+          "message": {"type": "string"}
+        }
+      }
+    },
+    "rule_detail": {
+      "method": "GET",
+      "route": "/api/rules/<rule_id>/",
+      "response_200": {"$ref": "#/definitions/rule"},
+      "response_404": {"$ref": "#/definitions/error_response"}
+    },
+    "rule_update": {
+      "method": "PUT",
+      "route": "/api/rules/<rule_id>/",
+      "request": {"$ref": "#/definitions/rule_draft"},
+      "response_200": {
+        "type": "object",
+        "required": ["rule_id", "message"],
+        "properties": {
+          "rule_id": {"type": "string"},
+          "message": {"type": "string"}
+        }
+      }
+    },
+    "rule_delete": {
+      "method": "DELETE",
+      "route": "/api/rules/<rule_id>/",
+      "response_200": {
+        "type": "object",
+        "required": ["rule_id", "message"],
+        "properties": {
+          "rule_id": {"type": "string"},
+          "message": {"type": "string"}
+        }
+      }
+    },
+    "execute": {
+      "method": "POST",
+      "route": "/api/runs/execute/",
+      "request": {
+        "type": "object",
+        "required": ["session_id", "key_columns"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "target_columns": {"type": "array", "items": {"type": "string"}, "nullable": true},
+          "key_columns": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "filters": {"type": "array", "items": {"$ref": "#/definitions/filter_row"}},
+          "rule_ids": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "response_200": {"$ref": "#/definitions/run_document"},
+      "response_400": {"$ref": "#/definitions/error_response"}
+    },
+    "history": {
+      "method": "GET",
+      "route": "/api/runs/",
+      "response_200": {
+        "type": "array",
+        "items": {"$ref": "#/definitions/run_list_item"}
+      }
+    },
+    "run_detail": {
+      "method": "GET",
+      "route": "/api/runs/<run_id>/",
+      "response_200": {"$ref": "#/definitions/run_document"},
+      "response_404": {"$ref": "#/definitions/error_response"}
+    },
+    "run_rename": {
+      "method": "PUT",
+      "route": "/api/runs/<run_id>/rename/",
+      "request": {
+        "type": "object",
+        "required": ["report_name"],
+        "properties": {
+          "report_name": {"type": "string", "minLength": 1, "maxLength": 200}
+        }
+      },
+      "response_200": {
+        "type": "object",
+        "required": ["run_id", "report_name", "created_at"],
+        "properties": {
+          "run_id": {"type": "string"},
+          "report_name": {"type": "string"},
+          "created_at": {"type": "string"}
+        }
+      }
+    },
+    "export": {
+      "method": "POST",
+      "route": "/api/reports/export/",
+      "request": {
+        "type": "object",
+        "required": ["run_id", "format"],
+        "properties": {
+          "run_id": {"type": "string"},
+          "format": {"type": "string", "enum": ["html", "csv"]}
+        }
+      },
+      "response_200": {
+        "description": "File download with Content-Disposition header"
+      }
+    }
+  },
+  "definitions": {
+    "error_response": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": {"type": "string", "minLength": 1}
+      },
+      "additionalProperties": false
+    },
+    "inspection": {
+      "type": "object",
+      "required": ["columns_a", "columns_b", "common_columns", "only_in_a", "only_in_b"],
+      "properties": {
+        "columns_a": {"type": "array", "items": {"type": "string"}},
+        "columns_b": {"type": "array", "items": {"type": "string"}},
+        "common_columns": {"type": "array", "items": {"type": "string"}},
+        "only_in_a": {"type": "array", "items": {"type": "string"}},
+        "only_in_b": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "column_value": {
+      "type": "object",
+      "required": ["value", "in_file_a", "in_file_b", "display"],
+      "properties": {
+        "value": {"type": "string"},
+        "in_file_a": {"type": "boolean"},
+        "in_file_b": {"type": "boolean"},
+        "display": {"type": "string"}
+      }
+    },
+    "filter_row": {
+      "type": "object",
+      "required": ["column", "operator", "filter_value"],
+      "properties": {
+        "column": {"type": "string"},
+        "operator": {"type": "string", "enum": ["eq", "neq", "contains", "ncontains"]},
+        "filter_value": {"type": "string"}
+      }
+    },
+    "condition": {
+      "type": "object",
+      "required": ["column_name", "operator", "filter_value"],
+      "properties": {
+        "column_name": {"type": "string"},
+        "operator": {"type": "string", "enum": ["eq", "neq", "contains", "ncontains"]},
+        "filter_value": {"type": "string"}
+      }
+    },
+    "logic_clause": {
+      "type": "object",
+      "required": ["format", "column_name", "operator", "target_value"],
+      "properties": {
+        "format": {"type": "string", "enum": ["value_vs_column", "column_vs_column"]},
+        "column_name": {"type": "string"},
+        "operator": {"type": "string"},
+        "target_value": {"type": "string"}
+      }
+    },
+    "group_node": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "conditionId"],
+          "properties": {
+            "kind": {"const": "leaf"},
+            "conditionId": {"type": "string"}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "children"],
+          "properties": {
+            "kind": {"const": "and"},
+            "children": {"type": "array", "items": {"$ref": "#/definitions/group_node"}, "minItems": 2}
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "children"],
+          "properties": {
+            "kind": {"const": "or"},
+            "children": {"type": "array", "items": {"$ref": "#/definitions/group_node"}, "minItems": 2}
+          }
+        }
+      ]
+    },
+    "rule_draft": {
+      "type": "object",
+      "required": ["name", "logic"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "description": {"type": "string", "default": ""},
+        "conditions": {"type": "array", "items": {"$ref": "#/definitions/condition"}},
+        "condition_relation": {"type": "string", "enum": ["and", "or"], "nullable": true},
+        "grouping_tree": {"$ref": "#/definitions/group_node", "nullable": true},
+        "logic": {"$ref": "#/definitions/logic_clause"}
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["rule_id", "name", "description", "conditions", "logic"],
+      "properties": {
+        "rule_id": {"type": "string", "pattern": "^R\\d{3,}$"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "conditions": {"type": "array", "items": {"$ref": "#/definitions/condition"}},
+        "condition_relation": {"type": "string", "enum": ["and", "or"], "nullable": true},
+        "grouping_tree": {"$ref": "#/definitions/group_node", "nullable": true},
+        "logic": {"$ref": "#/definitions/logic_clause"}
+      }
+    },
+    "attribute_change": {
+      "type": "object",
+      "required": ["column", "file_a_value", "file_b_value"],
+      "properties": {
+        "column": {"type": "string"},
+        "file_a_value": {},
+        "file_b_value": {}
+      }
+    },
+    "row_comparison": {
+      "type": "object",
+      "required": ["row_index", "key_columns", "attribute_changes", "change_count"],
+      "properties": {
+        "row_index": {"type": "integer"},
+        "key_columns": {"type": "object"},
+        "attribute_changes": {"type": "array", "items": {"$ref": "#/definitions/attribute_change"}},
+        "change_count": {"type": "integer"}
+      }
+    },
+    "comparison_result": {
+      "type": "object",
+      "required": ["total_rows_a", "total_rows_b", "rows_with_changes", "total_attribute_changes", "row_details"],
+      "properties": {
+        "total_rows_a": {"type": "integer"},
+        "total_rows_b": {"type": "integer"},
+        "matched_rows": {"type": "integer"},
+        "rows_with_changes": {"type": "integer"},
+        "total_attribute_changes": {"type": "integer"},
+        "row_details": {"type": "array", "items": {"$ref": "#/definitions/row_comparison"}}
+      }
+    },
+    "validation_violation": {
+      "type": "object",
+      "required": ["row_index", "rule_id", "rule_name", "key_columns", "violating_column", "violating_value"],
+      "properties": {
+        "row_index": {"type": "integer"},
+        "rule_id": {"type": "string"},
+        "rule_name": {"type": "string"},
+        "key_columns": {"type": "object"},
+        "violating_column": {"type": "string"},
+        "violating_value": {},
+        "rule_logic": {"type": "string"},
+        "details": {"type": "string"}
+      }
+    },
+    "validation_result": {
+      "type": "object",
+      "required": ["total_violations", "distinct_violating_rows", "distinct_violating_attributes", "violations_by_rule", "violation_count_by_rule", "violating_rows_by_rule", "violating_attributes_by_rule"],
+      "properties": {
+        "total_violations": {"type": "integer"},
+        "distinct_violating_rows": {"type": "integer"},
+        "distinct_violating_attributes": {"type": "integer"},
+        "violations_by_rule": {"type": "object", "additionalProperties": {"type": "array", "items": {"$ref": "#/definitions/validation_violation"}}},
+        "violation_count_by_rule": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "violating_rows_by_rule": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "violating_attributes_by_rule": {"type": "object", "additionalProperties": {"type": "integer"}}
+      }
+    },
+    "run_result": {
+      "type": "object",
+      "required": ["comparison", "validation", "common_columns", "target_columns", "key_columns", "filters_applied"],
+      "properties": {
+        "comparison": {"$ref": "#/definitions/comparison_result"},
+        "validation": {"$ref": "#/definitions/validation_result"},
+        "common_columns": {"type": "array", "items": {"type": "string"}},
+        "target_columns": {"type": "array", "items": {"type": "string"}},
+        "key_columns": {"type": "array", "items": {"type": "string"}},
+        "filters_applied": {"type": "array", "items": {"$ref": "#/definitions/filter_row"}}
+      }
+    },
+    "run_document": {
+      "type": "object",
+      "required": ["run_id", "report_name", "created_at", "result"],
+      "properties": {
+        "run_id": {"type": "string", "minLength": 1},
+        "report_name": {"type": "string"},
+        "created_at": {"type": "string"},
+        "file_a_name": {"type": "string"},
+        "file_b_name": {"type": "string"},
+        "result": {"$ref": "#/definitions/run_result"}
+      }
+    },
+    "run_list_item": {
+      "type": "object",
+      "required": ["run_id", "report_name", "created_at"],
+      "properties": {
+        "run_id": {"type": "string"},
+        "report_name": {"type": "string"},
+        "file_a_name": {"type": "string"},
+        "file_b_name": {"type": "string"},
+        "created_at": {"type": "string"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -173,10 +173,13 @@ Owner: **Worker A and Worker B**
 
 - [ ] Worker A: serve the built React application and local static assets through the production
   Django configuration, including SPA deep-link fallback without intercepting `/api/` routes.
-- [ ] Worker B: add a real browser journey against the running Django server for upload → prepare →
-  keys/targets/rules → execute-and-save → history/load → rename → export.
-- [ ] Both: assert that no runtime request targets an external origin and that a deep-link refresh
-  succeeds.
+- [x] Worker B: add a real browser journey against the running Django server for upload → prepare →
+  keys/targets/rules → execute-and-save → history/load → rename → export. (See
+  `frontend/playwright.config.ts` and `frontend/e2e/journey.spec.ts`; 9 passing tests against the
+  Django-served production React build.)
+- [x] Both: assert that no runtime request targets an external origin and that a deep-link refresh
+  succeeds. (Worker B journey's `page.route` guard blocks any non-local request and exercises
+  `/results/<runId>` deep-link refresh.)
 
 ### 14. Clean repository and delivery artifacts
 
@@ -184,7 +187,7 @@ Owner: **Worker A and Worker B**
 
 - [ ] Worker A: remove the obsolete sample `main.py` and mutable uploaded/result artifacts from the
   submitted source tree; retain controlled fixtures only under tests.
-- [ ] Worker B: remove root `node_modules/`, add root `node_modules/` and TypeScript build-info files
+- [x] Worker B: remove root `node_modules/`, add root `node_modules/` and TypeScript build-info files
   to `.gitignore`, and keep installed packages only under the frontend workspace.
 - [ ] Both: remove caches, coverage output, and generated build artifacts from delivery; review the
   final status so only intentional source, configuration templates, tests, docs, and lockfiles remain.
@@ -193,8 +196,8 @@ Owner: **Worker A and Worker B**
 
 Owner: **Worker A and Worker B**
 
-- [ ] Each worker: mark only genuinely completed items in their assigned planning/follow-up files.
-- [ ] Each worker: write a final review record under `reviews/` with exact commands, outputs, known
-  limits, and cross-owner dependencies.
+- [x] Each worker: mark only genuinely completed items in their assigned planning/follow-up files.
+- [x] Each worker: write a final review record under `reviews/` with exact commands, outputs, known
+  limits, and cross-owner dependencies. (See `reviews/20260718_review_worker_b_third_pass.md`.)
 - [ ] Both: obtain a final convergence review only after pytest, Ruff, mypy, frontend tests/lint/build,
   the 120k × 200 benchmark, and the live browser journey all pass.

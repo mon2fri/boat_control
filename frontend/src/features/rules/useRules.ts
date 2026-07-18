@@ -32,9 +32,29 @@ export function useDeleteRule() {
   });
 }
 
-/** Human-readable one-line summary of a rule's logic clause. */
+/**
+ * Map a logic operator to its required-state English wording.
+ * The rule describes the *required* value for the column; a row that
+ * matches the operator's positive form is valid, a row that doesn't
+ * match is flagged. The phrasing here makes that intent explicit.
+ */
+const OPERATOR_PHRASE: Record<string, string> = {
+  equals: "must equal",
+  not_equals: "must not equal",
+  contains: "must contain",
+  not_contains: "must not contain",
+  greater_than: "must be greater than",
+  less_than: "must be less than",
+};
+
+/**
+ * Human-readable one-line summary of a rule's logic clause in required-state
+ * language ("status must equal active"). This is the wording surfaced in the
+ * rule list and result sections so users can read intent at a glance.
+ */
 export function describeLogic(rule: Rule): string {
   const { logic } = rule;
-  const rhs = logic.format === "column" ? `[${logic.target}]` : `"${logic.target}"`;
-  return `${logic.column} ${logic.operator.replace(/_/g, " ")} ${rhs}`;
+  const phrase = OPERATOR_PHRASE[logic.operator] ?? logic.operator.replace(/_/g, " ");
+  const rhs = logic.format === "column" ? `column [${logic.target}]` : `"${logic.target}"`;
+  return `${logic.column} ${phrase} ${rhs}`;
 }

@@ -1,7 +1,15 @@
 version: 1
-next_index: 11
+next_index: 59
 rules:
 - rule_id: R006
+  name: E2E status check
+  description: ''
+  logic:
+    format: value_vs_column
+    column_name: status
+    operator: eq
+    target_value: active
+- rule_id: R007
   name: E2E status check
   description: ''
   logic:
@@ -17,3 +25,46 @@ rules:
     column_name: status
     operator: eq
     target_value: active
+- rule_id: R011
+  name: E2E status check
+  description: ''
+  logic:
+    format: value_vs_column
+    column_name: status
+    operator: eq
+    target_value: active
+- rule_id: R012
+  name: E2E grouped status check
+  description: "(region EMEA AND status active) OR name alice \u2014 updated"
+  logic:
+    format: value_vs_column
+    column_name: status
+    operator: eq
+    target_value: active
+  conditions:
+  - column_name: region
+    operator: eq
+    filter_value: EMEA
+  - column_name: status
+    operator: eq
+    filter_value: active
+  - column_name: name
+    operator: eq
+    filter_value: alice
+  condition_relation: and
+- rule_id: R056
+  name: Region Change
+  description: ''
+  logic:
+    format: value_vs_column
+    column_name: status
+    operator: eq
+    target_value: active
+- rule_id: R057
+  name: Low Score
+  description: ''
+  logic:
+    format: value_vs_column
+    column_name: score
+    operator: lt
+    target_value: '90'

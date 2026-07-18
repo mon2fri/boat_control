@@ -1,0 +1,11 @@
+id,name,status,region,score
+1,Alice,active,North,85
+2,Bob,active,South,78
+3,Carol,inactive,East,92
+4,David,active,West,66
+5,Eve,active,North,74
+6,Frank,inactive,South,88
+7,Grace,active,East,95
+8,Henry,active,West,81
+9,Ivy,inactive,North,70
+10,Jack,active,South,89

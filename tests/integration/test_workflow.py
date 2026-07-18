@@ -103,20 +103,26 @@ class TestRunsWorkflow:
         comparison = ComparisonResult(
             total_rows_a=10,
             total_rows_b=10,
+            matched_rows=8,
             rows_with_changes=2,
             total_attribute_changes=4,
             row_details=[],
         )
         validation = ValidationResult(
             total_violations=1,
+            distinct_violating_rows=0,
+            distinct_violating_attributes=0,
             violations_by_rule={},
             violation_count_by_rule={},
+            violating_rows_by_rule={},
+            violating_attributes_by_rule={},
         )
         result = ExecutionResult(
             comparison=comparison,
             validation=validation,
             common_columns=["id"],
             target_columns=["id"],
+            key_columns=["id"],
             filters_applied=[],
         )
         meta = save_run(result, "test_a.csv", "test_b.csv")
@@ -143,20 +149,26 @@ class TestExportWorkflow:
         comparison = ComparisonResult(
             total_rows_a=5,
             total_rows_b=5,
+            matched_rows=5,
             rows_with_changes=1,
             total_attribute_changes=2,
             row_details=[],
         )
         validation = ValidationResult(
             total_violations=0,
+            distinct_violating_rows=0,
+            distinct_violating_attributes=0,
             violations_by_rule={},
             violation_count_by_rule={},
+            violating_rows_by_rule={},
+            violating_attributes_by_rule={},
         )
         result = ExecutionResult(
             comparison=comparison,
             validation=validation,
             common_columns=["id"],
             target_columns=["id"],
+            key_columns=["id"],
             filters_applied=[],
         )
         meta = save_run(result, "a.csv", "b.csv")

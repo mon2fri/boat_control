@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rest_framework import serializers  # type: ignore[import-untyped]
+from rest_framework import serializers
 
 
 class SaveRunRequestSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -15,7 +15,6 @@ class RunMetadataSerializer(serializers.Serializer):  # type: ignore[misc]
     file_a_name = serializers.CharField()
     file_b_name = serializers.CharField()
     created_at = serializers.CharField()
-    file_path = serializers.CharField()
 
 
 class RenameRunRequestSerializer(serializers.Serializer):  # type: ignore[misc]

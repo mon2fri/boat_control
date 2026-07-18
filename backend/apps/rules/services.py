@@ -19,6 +19,9 @@ LogicFormat = Literal["value_vs_column", "column_vs_column"]
 VALID_CONDITION_OPERATORS: set[ConditionOperator] = {"eq", "neq", "contains", "ncontains"}
 VALID_LOGIC_OPERATORS: set[LogicOperator] = {"and", "or"}
 VALID_LOGIC_FORMATS: set[LogicFormat] = {"value_vs_column", "column_vs_column"}
+VALID_LOGIC_CLAUSE_OPERATORS: set[str] = {
+    "eq", "neq", "contains", "ncontains", "gt", "lt", "gte", "lte",
+}
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,20 @@ class LogicClause:
 
 
 @dataclass(frozen=True)
+class GroupingLeaf:
+    condition_id: str
+
+
+@dataclass(frozen=True)
+class GroupingBranch:
+    kind: LogicOperator
+    children: tuple[GroupingLeaf | GroupingBranch, ...]
+
+
+GroupingNode = GroupingLeaf | GroupingBranch
+
+
+@dataclass(frozen=True)
 class Rule:
     rule_id: str
     name: str
@@ -44,6 +61,7 @@ class Rule:
     conditions: list[Condition]
     condition_relation: LogicOperator | None
     grouping: list[str] | None
+    grouping_tree: GroupingNode | None
     logic: LogicClause
 
 
@@ -51,6 +69,91 @@ class Rule:
 class RuleValidationResult:
     valid: bool
     errors: list[str]
+
+
+def _parse_grouping_tree(data: Any) -> GroupingNode | None:
+    if data is None:
+        return None
+    if not isinstance(data, dict):
+        return None
+    kind = data.get("kind")
+    if kind == "leaf":
+        cid = data.get("conditionId", "")
+        return GroupingLeaf(condition_id=cid)
+    if kind in ("and", "or"):
+        children_raw = data.get("children", [])
+        children = []
+        for child in children_raw:
+            parsed = _parse_grouping_tree(child)
+            if parsed is None:
+                return None
+            children.append(parsed)
+        return GroupingBranch(kind=kind, children=tuple(children))
+    return None
+
+
+def _serialize_grouping_tree(node: GroupingNode | None) -> Any:
+    if node is None:
+        return None
+    if isinstance(node, GroupingLeaf):
+        return {"kind": "leaf", "conditionId": node.condition_id}
+    return {
+        "kind": node.kind,
+        "children": [_serialize_grouping_tree(c) for c in node.children],
+    }
+
+
+def _validate_grouping_tree(
+    node: GroupingNode | None,
+    condition_count: int,
+    seen_ids: set[str] | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    if node is None:
+        return errors
+
+    if seen_ids is None:
+        seen_ids = set()
+
+    if isinstance(node, GroupingLeaf):
+        cid = node.condition_id
+        if not cid.startswith("c"):
+            errors.append(f"Invalid condition ID format: {cid}")
+            return errors
+        try:
+            idx = int(cid[1:])
+        except ValueError:
+            errors.append(f"Invalid condition ID format: {cid}")
+            return errors
+        if idx < 0 or idx >= condition_count:
+            errors.append(
+                f"Condition ID '{cid}' references non-existent condition "
+                f"(valid: c0..c{condition_count - 1})"
+            )
+        if cid in seen_ids:
+            errors.append(f"Duplicate condition ID '{cid}' in grouping_tree")
+        seen_ids.add(cid)
+        return errors
+
+    if isinstance(node, GroupingBranch):
+        if len(node.children) < 2:
+            errors.append(
+                f"Grouping node '{node.kind}' must have at least 2 children"
+            )
+        for child in node.children:
+            errors.extend(_validate_grouping_tree(child, condition_count, seen_ids))
+    return errors
+
+
+def _collect_condition_ids(node: GroupingNode | None) -> set[str]:
+    if node is None:
+        return set()
+    if isinstance(node, GroupingLeaf):
+        return {node.condition_id}
+    result: set[str] = set()
+    for child in node.children:
+        result |= _collect_condition_ids(child)
+    return result
 
 
 @dataclass(frozen=True)
@@ -107,6 +210,7 @@ def load_rules(path: Path | None = None) -> RulesFile:
                 conditions=conditions,
                 condition_relation=r.get("condition_relation"),
                 grouping=r.get("grouping"),
+                grouping_tree=_parse_grouping_tree(r.get("grouping_tree")),
                 logic=logic,
             )
         )
@@ -155,6 +259,9 @@ def save_rules(rules_file: RulesFile, path: Path | None = None) -> None:
             rule_data["condition_relation"] = rule.condition_relation
         if rule.grouping:
             rule_data["grouping"] = rule.grouping
+        serialized_tree = _serialize_grouping_tree(rule.grouping_tree)
+        if serialized_tree is not None:
+            rule_data["grouping_tree"] = serialized_tree
 
         rules_list.append(rule_data)
 
@@ -184,6 +291,12 @@ def validate_rule(rule_data: dict[str, Any]) -> RuleValidationResult:
             errors.append("Logic column_name is required.")
         if not logic.get("operator"):
             errors.append("Logic operator is required.")
+        elif logic.get("operator") not in VALID_LOGIC_CLAUSE_OPERATORS:
+            valid_ops = ", ".join(sorted(VALID_LOGIC_CLAUSE_OPERATORS))
+            errors.append(
+                f"Invalid logic operator '{logic.get('operator')}'. "
+                f"Must be one of: {valid_ops}"
+            )
         if "target_value" not in logic:
             errors.append("Logic target_value is required.")
 
@@ -200,6 +313,22 @@ def validate_rule(rule_data: dict[str, Any]) -> RuleValidationResult:
         grouping = rule_data["grouping"]
         if not isinstance(grouping, list) or len(grouping) < 2:
             errors.append("grouping must be a list with at least 2 elements for 3+ conditions.")
+
+    grouping_tree_raw = rule_data.get("grouping_tree")
+    if grouping_tree_raw is not None:
+        tree = _parse_grouping_tree(grouping_tree_raw)
+        if tree is None:
+            errors.append("Invalid grouping_tree structure.")
+        else:
+            tree_errors = _validate_grouping_tree(tree, len(conditions))
+            errors.extend(tree_errors)
+            expected_ids = {f"c{i}" for i in range(len(conditions))}
+            actual_ids = _collect_condition_ids(tree)
+            missing = expected_ids - actual_ids
+            if missing:
+                errors.append(
+                    f"grouping_tree omits conditions: {', '.join(sorted(missing))}"
+                )
 
     return RuleValidationResult(valid=len(errors) == 0, errors=errors)
 
@@ -233,6 +362,7 @@ def create_rule(rules_file: RulesFile, rule_data: dict[str, Any]) -> tuple[Rules
         conditions=conditions,
         condition_relation=rule_data.get("condition_relation"),
         grouping=rule_data.get("grouping"),
+        grouping_tree=_parse_grouping_tree(rule_data.get("grouping_tree")),
         logic=logic,
     )
 
@@ -278,6 +408,7 @@ def update_rule(rules_file: RulesFile, rule_id: str, rule_data: dict[str, Any]) 
                     conditions=conditions,
                     condition_relation=rule_data.get("condition_relation"),
                     grouping=rule_data.get("grouping"),
+                    grouping_tree=_parse_grouping_tree(rule_data.get("grouping_tree")),
                     logic=logic,
                 )
             )
@@ -302,62 +433,4 @@ def delete_rule(rules_file: RulesFile, rule_id: str) -> RulesFile:
         version=rules_file.version,
         rules=new_rules,
         next_index=rules_file.next_index,
-    )
-
-
-def load_remote_rules(url: str) -> RulesFile:
-    import urllib.request
-
-    allowed_roots = [settings.CONFIG_DIR, settings.DATA_DIR]
-    is_local = False
-    for root in allowed_roots:
-        try:
-            Path(url).resolve().relative_to(root.resolve())
-            is_local = True
-            break
-        except ValueError:
-            continue
-
-    if not is_local:
-        raise ValueError(
-            f"Remote rules must be within allowed directories: "
-            f"{', '.join(str(r) for r in allowed_roots)}"
-        )
-
-    with urllib.request.urlopen(url, timeout=30) as response:
-        data = yaml.safe_load(response.read())
-
-    rules = []
-    for r in data.get("rules", []):
-        conditions = [
-            Condition(
-                column_name=c["column_name"],
-                operator=c["operator"],
-                filter_value=c["filter_value"],
-            )
-            for c in r.get("conditions", [])
-        ]
-        logic_data = r.get("logic", {})
-        logic = LogicClause(
-            format=logic_data["format"],
-            column_name=logic_data["column_name"],
-            operator=logic_data["operator"],
-            target_value=logic_data["target_value"],
-        )
-        rules.append(
-            Rule(
-                rule_id=r["rule_id"],
-                name=r["name"],
-                description=r.get("description", ""),
-                conditions=conditions,
-                condition_relation=r.get("condition_relation"),
-                grouping=r.get("grouping"),
-                logic=logic,
-            )
-        )
-
-    return RulesFile(
-        version=data.get("version", 1),
-        rules=rules,
-        next_index=data.get("next_index", len(rules) + 1),
     )

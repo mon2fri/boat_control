@@ -1,42 +1,28 @@
-import { useNavigate } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { loadRun, loadRunHistory } from "../api/endpoints";
-import { useWorkflow } from "../state/WorkflowContext";
+import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { loadRunHistory } from "../api/endpoints";
 
 /**
- * History of the most recent runs (the backend retains up to ten). Selecting a
- * run loads its saved JSON result and shows it on the results page.
+ * History of the most recent runs (the backend retains up to ten). Each row
+ * is a deep link to `/results/<run_id>` so the URL is shareable and the
+ * page survives a refresh — the ResultsPage fetches the persisted run
+ * document from the backend when the in-memory state is empty.
  */
 export function HistoryPage() {
-  const navigate = useNavigate();
-  const { dispatch } = useWorkflow();
   const history = useQuery({
     queryKey: ["run-history"],
     queryFn: () => loadRunHistory(),
   });
 
-  const load = useMutation({
-    mutationFn: (id: string) => loadRun(id),
-    onSuccess: (result) => {
-      dispatch({ type: "setResult", result });
-      void navigate("/results");
-    },
-  });
-
   return (
     <section aria-labelledby="history-title">
       <h2 id="history-title">Run history</h2>
-      <p>The last ten runs are kept. Load any run to review or export it.</p>
+      <p>The last ten runs are kept. Open any run to review or export it.</p>
 
       {history.isLoading && <p role="status">Loading history…</p>}
       {history.isError && (
         <p className="alert alert--error" role="alert">
           Could not load history: {history.error.message}
-        </p>
-      )}
-      {load.isError && (
-        <p className="alert alert--error" role="alert">
-          Could not load that run: {load.error.message}
         </p>
       )}
 
@@ -66,14 +52,12 @@ export function HistoryPage() {
                 </td>
                 <td>{run.createdAt}</td>
                 <td>
-                  <button
-                    type="button"
+                  <Link
+                    to={`/results/${encodeURIComponent(run.id)}`}
                     className="btn"
-                    onClick={() => load.mutate(run.id)}
-                    disabled={load.isPending}
                   >
-                    Load
-                  </button>
+                    Open
+                  </Link>
                 </td>
               </tr>
             ))}
