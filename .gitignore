@@ -17,3 +17,4 @@ data/uploads/*
 !data/uploads/.gitkeep
 data/results/*
 !data/results/.gitkeep
+data/*.sqlite3
