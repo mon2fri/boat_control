@@ -1,0 +1,477 @@
+{
+  "upload": {
+    "session_id": "dbb8fce2002f",
+    "file_a_name": "a.csv",
+    "file_b_name": "b.csv",
+    "inspection": {
+      "columns_a": [
+        "id",
+        "name",
+        "status",
+        "score"
+      ],
+      "columns_b": [
+        "id",
+        "name",
+        "status",
+        "score"
+      ],
+      "common_columns": [
+        "id",
+        "name",
+        "status",
+        "score"
+      ],
+      "only_in_a": [],
+      "only_in_b": []
+    }
+  },
+  "prepare": {
+    "session_id": "dbb8fce2002f",
+    "columns": [
+      "id",
+      "name",
+      "status",
+      "score"
+    ],
+    "column_values": {
+      "id": [
+        {
+          "value": "1",
+          "in_file_a": true,
+          "in_file_b": true,
+          "display": "1"
+        },
+        {
+          "value": "2",
+          "in_file_a": true,
+          "in_file_b": true,
+          "display": "2"
+        },
+        {
+          "value": "3",
+          "in_file_a": true,
+          "in_file_b": true,
+          "display": "3"
+        }
+      ],
+      "name": [
+        {
+          "value": "alice",
+          "in_file_a": true,
+          "in_file_b": true,
+          "display": "alice"
+        },
+        {
+          "value": "bob",
+          "in_file_a": true,
+          "in_file_b": true,
+          "display": "bob"
+        },
+        {
+          "value": "carol",
+          "in_file_a": true,
+          "in_file_b": true,
+          "display": "carol"
+        }
+      ],
+      "status": [
+        {
+          "value": "active",
+          "in_file_a": true,
+          "in_file_b": true,
+          "display": "active"
+        },
+        {
+          "value": "inactive",
+          "in_file_a": true,
+          "in_file_b": false,
+          "display": "inactive*"
+        }
+      ],
+      "score": [
+        {
+          "value": "10",
+          "in_file_a": true,
+          "in_file_b": false,
+          "display": "10*"
+        },
+        {
+          "value": "15",
+          "in_file_a": false,
+          "in_file_b": true,
+          "display": "15*"
+        },
+        {
+          "value": "20",
+          "in_file_a": true,
+          "in_file_b": false,
+          "display": "20*"
+        },
+        {
+          "value": "25",
+          "in_file_a": false,
+          "in_file_b": true,
+          "display": "25*"
+        },
+        {
+          "value": "30",
+          "in_file_a": true,
+          "in_file_b": true,
+          "display": "30"
+        }
+      ]
+    },
+    "total_rows_a": 3,
+    "total_rows_b": 3,
+    "requires_confirmation": false
+  },
+  "rules": {
+    "version": 1,
+    "rules": []
+  },
+  "create_rule": {
+    "rule_id": "R006",
+    "message": "Rule created."
+  },
+  "execute": {
+    "run_id": "30be21910fae",
+    "report_name": "a_vs_b",
+    "file_a_name": "a.csv",
+    "file_b_name": "b.csv",
+    "created_at": "2026-07-18T00:55:34.689853+00:00",
+    "result": {
+      "comparison": {
+        "total_rows_a": 3,
+        "total_rows_b": 3,
+        "rows_with_changes": 3,
+        "total_attribute_changes": 6,
+        "row_details": [
+          {
+            "row_index": 0,
+            "key_columns": {
+              "id": 1
+            },
+            "attribute_changes": [
+              {
+                "column": "id",
+                "file_a_value": 1,
+                "file_b_value": null
+              },
+              {
+                "column": "score",
+                "file_a_value": 10,
+                "file_b_value": 15
+              }
+            ],
+            "change_count": 2
+          },
+          {
+            "row_index": 1,
+            "key_columns": {
+              "id": 2
+            },
+            "attribute_changes": [
+              {
+                "column": "id",
+                "file_a_value": 2,
+                "file_b_value": null
+              },
+              {
+                "column": "status",
+                "file_a_value": "inactive",
+                "file_b_value": "active"
+              },
+              {
+                "column": "score",
+                "file_a_value": 20,
+                "file_b_value": 25
+              }
+            ],
+            "change_count": 3
+          },
+          {
+            "row_index": 2,
+            "key_columns": {
+              "id": 3
+            },
+            "attribute_changes": [
+              {
+                "column": "id",
+                "file_a_value": 3,
+                "file_b_value": null
+              }
+            ],
+            "change_count": 1
+          }
+        ]
+      },
+      "validation": {
+        "total_violations": 2,
+        "violations_by_rule": {
+          "R006": [
+            {
+              "row_index": 0,
+              "rule_id": "R006",
+              "rule_name": "E2E status check",
+              "key_columns": {
+                "id": 1,
+                "name": "alice",
+                "status": "active"
+              },
+              "details": "Violated R006: E2E status check"
+            },
+            {
+              "row_index": 2,
+              "rule_id": "R006",
+              "rule_name": "E2E status check",
+              "key_columns": {
+                "id": 3,
+                "name": "carol",
+                "status": "active"
+              },
+              "details": "Violated R006: E2E status check"
+            }
+          ]
+        },
+        "violation_count_by_rule": {
+          "R006": 2
+        }
+      },
+      "common_columns": [
+        "id",
+        "name",
+        "status",
+        "score"
+      ],
+      "target_columns": [
+        "id",
+        "name",
+        "status",
+        "score"
+      ],
+      "filters_applied": []
+    }
+  },
+  "history": [
+    {
+      "run_id": "30be21910fae",
+      "report_name": "a_vs_b",
+      "file_a_name": "a.csv",
+      "file_b_name": "b.csv",
+      "created_at": "2026-07-18T00:55:34.689853+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/30be21910fae_a_vs_b.json"
+    },
+    {
+      "run_id": "280cbe037139",
+      "report_name": "New Report Name",
+      "file_a_name": "a.csv",
+      "file_b_name": "b.csv",
+      "created_at": "2026-07-18T00:44:29.828540+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/280cbe037139_New Report Name.json"
+    },
+    {
+      "run_id": "eab00c9cecb9",
+      "report_name": "c_vs_d",
+      "file_a_name": "c.csv",
+      "file_b_name": "d.csv",
+      "created_at": "2026-07-18T00:44:29.821348+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/eab00c9cecb9_c_vs_d.json"
+    },
+    {
+      "run_id": "1f38c0175d65",
+      "report_name": "a_vs_b",
+      "file_a_name": "a.csv",
+      "file_b_name": "b.csv",
+      "created_at": "2026-07-18T00:44:29.819018+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/1f38c0175d65_a_vs_b.json"
+    },
+    {
+      "run_id": "8a9e907f4ff1",
+      "report_name": "a_vs_b",
+      "file_a_name": "a.csv",
+      "file_b_name": "b.csv",
+      "created_at": "2026-07-18T00:44:29.812476+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/8a9e907f4ff1_a_vs_b.json"
+    },
+    {
+      "run_id": "5387146dccbb",
+      "report_name": "a_vs_b",
+      "file_a_name": "a.csv",
+      "file_b_name": "b.csv",
+      "created_at": "2026-07-18T00:44:29.806546+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/5387146dccbb_a_vs_b.json"
+    },
+    {
+      "run_id": "8a97d95d0a97",
+      "report_name": "New Report Name",
+      "file_a_name": "a.csv",
+      "file_b_name": "b.csv",
+      "created_at": "2026-07-18T00:43:31.392509+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/8a97d95d0a97_New Report Name.json"
+    },
+    {
+      "run_id": "2b3e16b0867d",
+      "report_name": "c_vs_d",
+      "file_a_name": "c.csv",
+      "file_b_name": "d.csv",
+      "created_at": "2026-07-18T00:43:31.388348+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/2b3e16b0867d_c_vs_d.json"
+    },
+    {
+      "run_id": "41c832ca26bd",
+      "report_name": "a_vs_b",
+      "file_a_name": "a.csv",
+      "file_b_name": "b.csv",
+      "created_at": "2026-07-18T00:43:31.386612+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/41c832ca26bd_a_vs_b.json"
+    },
+    {
+      "run_id": "f2742f6f9160",
+      "report_name": "a_vs_b",
+      "file_a_name": "a.csv",
+      "file_b_name": "b.csv",
+      "created_at": "2026-07-18T00:43:31.381321+00:00",
+      "file_path": "/home/zwj808/python_projects/boat_control/data/results/f2742f6f9160_a_vs_b.json"
+    }
+  ],
+  "load_run": {
+    "run_id": "30be21910fae",
+    "report_name": "a_vs_b",
+    "file_a_name": "a.csv",
+    "file_b_name": "b.csv",
+    "created_at": "2026-07-18T00:55:34.689853+00:00",
+    "result": {
+      "comparison": {
+        "total_rows_a": 3,
+        "total_rows_b": 3,
+        "rows_with_changes": 3,
+        "total_attribute_changes": 6,
+        "row_details": [
+          {
+            "row_index": 0,
+            "key_columns": {
+              "id": 1
+            },
+            "attribute_changes": [
+              {
+                "column": "id",
+                "file_a_value": 1,
+                "file_b_value": null
+              },
+              {
+                "column": "score",
+                "file_a_value": 10,
+                "file_b_value": 15
+              }
+            ],
+            "change_count": 2
+          },
+          {
+            "row_index": 1,
+            "key_columns": {
+              "id": 2
+            },
+            "attribute_changes": [
+              {
+                "column": "id",
+                "file_a_value": 2,
+                "file_b_value": null
+              },
+              {
+                "column": "status",
+                "file_a_value": "inactive",
+                "file_b_value": "active"
+              },
+              {
+                "column": "score",
+                "file_a_value": 20,
+                "file_b_value": 25
+              }
+            ],
+            "change_count": 3
+          },
+          {
+            "row_index": 2,
+            "key_columns": {
+              "id": 3
+            },
+            "attribute_changes": [
+              {
+                "column": "id",
+                "file_a_value": 3,
+                "file_b_value": null
+              }
+            ],
+            "change_count": 1
+          }
+        ]
+      },
+      "validation": {
+        "total_violations": 2,
+        "violations_by_rule": {
+          "R006": [
+            {
+              "row_index": 0,
+              "rule_id": "R006",
+              "rule_name": "E2E status check",
+              "key_columns": {
+                "id": 1,
+                "name": "alice",
+                "status": "active"
+              },
+              "details": "Violated R006: E2E status check"
+            },
+            {
+              "row_index": 2,
+              "rule_id": "R006",
+              "rule_name": "E2E status check",
+              "key_columns": {
+                "id": 3,
+                "name": "carol",
+                "status": "active"
+              },
+              "details": "Violated R006: E2E status check"
+            }
+          ]
+        },
+        "violation_count_by_rule": {
+          "R006": 2
+        }
+      },
+      "common_columns": [
+        "id",
+        "name",
+        "status",
+        "score"
+      ],
+      "target_columns": [
+        "id",
+        "name",
+        "status",
+        "score"
+      ],
+      "filters_applied": []
+    }
+  },
+  "rename": {
+    "run_id": "30be21910fae",
+    "report_name": "renamed_e2e_report",
+    "file_a_name": "a.csv",
+    "file_b_name": "b.csv",
+    "created_at": "2026-07-18T00:55:34.689853+00:00",
+    "file_path": "/home/zwj808/python_projects/boat_control/data/results/30be21910fae_renamed_e2e_report.json"
+  },
+  "export_html": {
+    "content_type": "text/html",
+    "content_disposition": "attachment; filename=\"renamed_e2e_report.html\"",
+    "size": 1561,
+    "starts_with": "<!DOCTYPE html>\n<html><head>\n<title>renamed_e2e_report</title>\n<style>\nbody { fo"
+  },
+  "export_csv": {
+    "content_type": "text/csv",
+    "content_disposition": "attachment; filename=\"renamed_e2e_report.csv\"",
+    "size": 550,
+    "starts_with": "Section,Metric,Value\r\nSummary,Total Rows A,3\r\nSummary,Total Rows B,3\r\nSummary,Ro"
+  }
+}

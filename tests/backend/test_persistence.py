@@ -1,0 +1,104 @@
+import pytest
+from apps.runs.persistence import (
+    _default_report_name,
+    _sanitize_report_name,
+    list_runs,
+    load_run,
+    rename_run,
+    save_run,
+)
+from apps.runs.services import (
+    ComparisonResult,
+    ExecutionResult,
+    ValidationResult,
+)
+from django.test import TestCase
+from rest_framework.test import APIClient  # type: ignore[import-untyped]
+
+
+@pytest.fixture
+def mock_result() -> ExecutionResult:
+    comparison = ComparisonResult(
+        total_rows_a=100,
+        total_rows_b=100,
+        rows_with_changes=5,
+        total_attribute_changes=10,
+        row_details=[],
+    )
+    validation = ValidationResult(
+        total_violations=3,
+        violations_by_rule={},
+        violation_count_by_rule={},
+    )
+    return ExecutionResult(
+        comparison=comparison,
+        validation=validation,
+        common_columns=["id", "name"],
+        target_columns=["name"],
+        filters_applied=[],
+    )
+
+
+class TestSanitizeReportName:
+    def test_removes_dangerous_chars(self) -> None:
+        result = _sanitize_report_name("../../../etc/passwd")
+        assert ".." not in result
+        assert "/" not in result
+
+    def test_truncates_long_names(self) -> None:
+        result = _sanitize_report_name("a" * 300)
+        assert len(result) <= 200
+
+    def test_empty_name_returns_default(self) -> None:
+        result = _sanitize_report_name("")
+        assert result == "unnamed_run"
+
+
+class TestDefaultReportName:
+    def test_combines_file_names(self) -> None:
+        result = _default_report_name("file_a.csv", "file_b.csv")
+        assert result == "file_a_vs_file_b"
+
+    def test_handles_extensions(self) -> None:
+        result = _default_report_name("data.v2.csv", "data.v3.csv")
+        assert result == "data.v2_vs_data.v3"
+
+
+class TestSaveAndLoadRun:
+    def test_save_creates_file(self, mock_result: ExecutionResult) -> None:
+        meta = save_run(mock_result, "a.csv", "b.csv")
+        assert meta.run_id
+        assert meta.report_name == "a_vs_b"
+
+    def test_load_returns_data(self, mock_result: ExecutionResult) -> None:
+        meta = save_run(mock_result, "a.csv", "b.csv")
+        data = load_run(meta.run_id)
+        assert data is not None
+        assert data["run_id"] == meta.run_id
+
+    def test_list_runs_returns_all(self, mock_result: ExecutionResult) -> None:
+        save_run(mock_result, "a.csv", "b.csv")
+        save_run(mock_result, "c.csv", "d.csv")
+        runs = list_runs()
+        assert len(runs) >= 2
+
+
+class TestRenameRun:
+    def test_rename_updates_name(self, mock_result: ExecutionResult) -> None:
+        meta = save_run(mock_result, "a.csv", "b.csv")
+        updated = rename_run(meta.run_id, "New Report Name")
+        assert updated.report_name == "New Report Name"
+
+    def test_rename_raises_on_missing(self) -> None:
+        with pytest.raises(ValueError, match="not found"):
+            rename_run("nonexistent", "New Name")
+
+
+class TestRunsListView(TestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
+
+    def test_list_runs(self) -> None:
+        response = self.client.get("/api/runs/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(response.json(), list)

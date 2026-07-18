@@ -1,0 +1,44 @@
+[project]
+name = "boat-control"
+version = "0.1.0"
+description = "Local-first CSV comparison and validation application"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "django>=6.0,<7.0",
+    "djangorestframework>=3.16,<4.0",
+    "platformdirs>=4.5,<5.0",
+    "polars>=1.37,<2.0",
+    "pyarrow>=22.0,<24.0",
+    "pyyaml>=6.0.3,<7.0",
+]
+
+[dependency-groups]
+dev = [
+    "django-stubs[compatible-mypy]>=5.2,<6.0",
+    "mypy>=1.19,<2.0",
+    "pytest>=9.0,<10.0",
+    "pytest-cov>=7.0,<8.0",
+    "pytest-django>=4.11,<5.0",
+    "ruff>=0.14,<0.16",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "boat_control.settings"
+pythonpath = ["backend"]
+testpaths = ["tests/backend", "tests/integration"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.14"
+plugins = ["mypy_django_plugin.main"]
+strict = true
+
+[tool.django-stubs]
+django_settings_module = "boat_control.settings"
