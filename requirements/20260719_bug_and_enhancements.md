@@ -1,4 +1,4 @@
-#### Upload files 
+#### Upload files (rename to 1. Upload) 
 --- Bug ---
 
 B1. In the upload page source only shows "local upload", without seeing remote option
@@ -19,7 +19,7 @@ E5. Within the same card of Continue to filters & targets, add a button: Start O
 --- Layout Component ---
 
 -----------------------
-Upload & compare files
+Upload & Precheck Files
 
 |Source [dropdown for local upload|remote] | Baseline Version: [upload button] | Comparison Version: [upload button]|
 
@@ -27,9 +27,28 @@ Upload & compare files
 Column Preview
 | Shared (x) | Only in Baseline: {file name of baseline file} (x) |Only in Comparison: {file name of comparison file} (x)| 
 
-Column Prefilter (To pick all related/needed columns for comparison and validation)
+Column Filter (To pick ALL related/needed columns for comparison and validation)
 input box accepts comma separated input, when active, shows searchabout checkbox dropdown list of shared columns.
+
+-----------------------
+Identifier Columns (Record Identity)
+input box accepts comma separated input, when active, shows searchabout checkbox dropdown list of columns selected in filter.
+this input box is mandatory for at least one columns, othewise continue button is disabled.
 
 -----------------------
 [continue button] [start over button]
 
+#### Filters & targets (rename to 2. compare and validate)
+
+-----------------------
+Row filters, same line offer the dropdown list of saved filters and columns) with load button and a saved current filters and columns.
+
+Current Filters section
+
+-----------------------
+Comparing columns
+Current Target Columns section, KEY COLUMNS is implemented in previous page, no longer needed here.
+
+-----------------------
+Validation rules
+Carry over current content from 3. Validation rules page, which not longer needed 
