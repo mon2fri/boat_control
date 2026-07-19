@@ -15,17 +15,19 @@ E4. base on E2 and E4, add another two cards: Columns Included and Columns Exclu
 E5. Within the same card of Continue to filters & targets, add a button: Start Over, which clears all uploads and current selection
 
 --- Layout Component ---
-=====
+
+-----------------------
 Upload & compare files
 
 |Source [dropdown for local upload|remote] | Baseline Version: [upload button] | Comparison Version: [upload button]|
 
-=====
+-----------------------
 Column Preview
 | Shared (x) | Only in Baseline: {file name of baseline file} (x) |Only in Comparison: {file name of comparison file} (x)| 
 
 Column Prefilter (To pick all related/needed columns for comparison and validation)
 input box accepts comma separated input, when active, shows searchabout checkbox dropdown list of shared columns.
 
-=====
+-----------------------
 [continue button] [start over button]
+
