@@ -26,6 +26,20 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+:root[data-theme="light"] {
+  --color-bg: #f6f8fb;
+  --color-surface: #ffffff;
+  --color-surface-raised: #eef2f7;
+  --color-border: #cbd5e1;
+  --color-border-light: #e2e8f0;
+  --color-text: #172033;
+  --color-muted: #536174;
+  --color-accent: #1769e0;
+  --color-accent-hover: #0f55bb;
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.1);
+  --shadow-elevated: 0 4px 12px rgba(15, 23, 42, 0.16);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -75,6 +89,17 @@ body {
   letter-spacing: 0.02em;
   margin: 0 0 calc(var(--space) * 2);
   color: var(--color-text);
+}
+.nav-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space);
+}
+.nav-title-row .theme-toggle {
+  font-size: 0.75rem;
+  padding: 4px 7px;
+  margin-bottom: calc(var(--space) * 2);
 }
 .app-nav ol {
   list-style: none;
@@ -224,6 +249,21 @@ input[aria-invalid="true"]:focus {
   color: var(--color-star);
   border-color: var(--color-star);
   background: rgba(249, 115, 22, 0.1);
+}
+.tag--included {
+  color: var(--color-ok);
+  border-color: var(--color-ok);
+  background: rgba(34, 197, 94, 0.1);
+}
+.tag--excluded {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.multi-check {
+  margin-right: 4px;
+  font-size: 0.9em;
 }
 
 .alert {
@@ -536,7 +576,8 @@ table.data td {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  max-height: 320px;
+  /* Preview only: keep roughly two tag rows visible and scroll the rest. */
+  max-height: 60px;
   overflow-y: auto;
 }
 

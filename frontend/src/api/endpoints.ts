@@ -74,6 +74,14 @@ export function reInspect(sessionId: string): Promise<HeaderReport> {
   }).then((response) => mapUploadToHeader({ ...response, file_a_name: "", file_b_name: "" }));
 }
 
+/** Discard server-side copies of the two uploaded files. Local source files are never touched. */
+export function clearUploadSession(sessionId: string): Promise<void> {
+  return apiRequest(`/files/sessions/${encodeURIComponent(sessionId)}/`, {
+    method: "DELETE",
+    schema: z.null(),
+  }).then(() => undefined);
+}
+
 export interface PrepareResult {
   columnValues: Record<string, { value: string; starred: boolean }[]>;
   totalRowsA: number;

@@ -1,23 +1,35 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { useHeaderReport } from "../features/upload/useHeaderReport";
 import { usePresetSources } from "../features/settings/useSettings";
-import { listSourceFiles } from "../api/endpoints";
+import { clearUploadSession, listSourceFiles } from "../api/endpoints";
 import { HeaderReview } from "../features/upload/HeaderReview";
 import type { SourceFile } from "../api/domain";
 
 export function UploadPage() {
   const navigate = useNavigate();
-  const { state, dispatch } = useWorkflow();
-  const header = useHeaderReport((report) => dispatch({ type: "setHeader", header: report }));
+  const { state, dispatch, reset } = useWorkflow();
   const presets = usePresetSources();
 
+  const [sourceKind, setSourceKind] = useState<"local" | "remote">("local");
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [remoteFiles, setRemoteFiles] = useState<SourceFile[]>([]);
   const [remoteFileA, setRemoteFileA] = useState<string | null>(null);
   const [remoteFileB, setRemoteFileB] = useState<string | null>(null);
   const [filesLoadKey, setFilesLoadKey] = useState(0);
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
+  const lastSessionIdRef = useRef<string | null>(null);
+
+  const initColumns = useCallback((columns: string[]) => {
+    setSelectedColumns([...columns]);
+  }, []);
+
+  const header = useHeaderReport((report) => {
+    dispatch({ type: "setHeader", header: report });
+    initColumns(report.common);
+    lastSessionIdRef.current = report.sessionId;
+  });
 
   const loadingFiles = sourceId !== null && remoteFiles.length === 0 && filesLoadKey > 0;
 
@@ -48,6 +60,26 @@ export function UploadPage() {
     void header.submitFromPreset(remoteFileA, remoteFileB);
   }, [remoteFileA, remoteFileB, header]);
 
+  const handleContinue = useCallback(() => {
+    if (!state.header) return;
+    if (selectedColumns.length === 0 || state.keyColumns.length === 0) return;
+    void navigate("/prepare");
+  }, [state.header, selectedColumns, state.keyColumns.length, navigate]);
+
+  const handleStartOver = useCallback(() => {
+    if (state.header) {
+      // The request only removes server-side copies. It never accesses a user's local CSV.
+      void clearUploadSession(state.header.sessionId).catch(() => undefined);
+    }
+    reset();
+    setSelectedColumns([]);
+    setSourceKind("local");
+    setSourceId(null);
+    setRemoteFiles([]);
+    setRemoteFileA(null);
+    setRemoteFileB(null);
+  }, [state.header, reset, setSelectedColumns, setSourceId, setRemoteFiles, setRemoteFileA, setRemoteFileB]);
+
   return (
     <section aria-labelledby="upload-title">
       <h2 id="upload-title">Upload &amp; compare files</h2>
@@ -67,34 +99,52 @@ export function UploadPage() {
           <label htmlFor="source-kind">Source</label>
           <select
             id="source-kind"
-            value={sourceId ?? "local"}
-            onChange={(e) => setSourceId(e.target.value === "local" ? null : e.target.value)}
+            value={sourceKind}
+            onChange={(e) => {
+              setSourceKind(e.target.value as "local" | "remote");
+              setSourceId(null);
+            }}
           >
             <option value="local">Local upload</option>
-            {presets.data?.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
+            <option value="remote">Remote source</option>
           </select>
         </div>
 
-        {!sourceId && (
+        {sourceKind === "local" && (
           <LocalUploadForm
             busy={header.status === "loading"}
             onSubmit={(f1, f2) => void header.submitUpload(f1, f2)}
           />
         )}
 
-        {sourceId && (
+        {sourceKind === "remote" && (
           <div>
+            <div className="field">
+              <label htmlFor="remote-source">Remote source</label>
+              <select
+                id="remote-source"
+                value={sourceId ?? ""}
+                onChange={(e) => setSourceId(e.target.value || null)}
+              >
+                <option value="">-- Select a configured source --</option>
+                {presets.data?.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
+              {!presets.isLoading && (presets.data?.length ?? 0) === 0 && (
+                <span className="field-hint">No remote sources are configured. Add one in Settings.</span>
+              )}
+            </div>
+
             {loadingFiles && (
               <p role="status" aria-live="polite" className="busy-row">
                 <span className="spinner" aria-hidden="true" /> Loading files…
               </p>
             )}
 
-            {!loadingFiles && remoteFiles.length > 0 && (
+            {sourceId && !loadingFiles && remoteFiles.length > 0 && (
               <>
                 <div className="field">
                   <label htmlFor="remote-file-a">Baseline file</label>
@@ -139,7 +189,7 @@ export function UploadPage() {
               </>
             )}
 
-            {!loadingFiles && remoteFiles.length === 0 && (
+            {sourceId && !loadingFiles && remoteFiles.length === 0 && (
               <p className="field-hint">No CSV files found in this source.</p>
             )}
           </div>
@@ -162,21 +212,40 @@ export function UploadPage() {
 
       {state.header && (
         <>
-          <HeaderReview report={state.header} />
+          <HeaderReview
+            report={state.header}
+            selectedColumns={selectedColumns}
+            onSelectedColumnsChange={setSelectedColumns}
+            keyColumns={state.keyColumns}
+            onKeyColumnsChange={(columns) => dispatch({ type: "setKeyColumns", columns })}
+          />
           <div className="card">
+            {selectedColumns.length === 0 && (
+              <p className="alert alert--error" role="alert">
+                Select at least one column before continuing.
+              </p>
+            )}
+            {state.keyColumns.length === 0 && (
+              <p className="alert alert--error" role="alert">
+                Select at least one identifier column before continuing.
+              </p>
+            )}
             <button
               type="button"
               className="btn btn--primary"
-              disabled={state.header.common.length === 0}
-              onClick={() => void navigate("/prepare")}
+              disabled={selectedColumns.length === 0 || state.keyColumns.length === 0}
+              onClick={() => void handleContinue()}
             >
-              Continue to filters &amp; targets
+              Continue to compare &amp; validate
             </button>
-            {state.header.common.length === 0 && (
-              <p className="alert alert--error" role="alert">
-                The files share no columns, so there is nothing to compare.
-              </p>
-            )}
+            <button
+              type="button"
+              className="btn btn--danger"
+              style={{ marginLeft: "var(--space)" }}
+              onClick={handleStartOver}
+            >
+              Start Over
+            </button>
           </div>
         </>
       )}

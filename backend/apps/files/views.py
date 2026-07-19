@@ -8,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.files.services import inspect_headers, safe_upload_path
-from apps.files.sessions import create_session, get_session
+from apps.files.sessions import create_session, delete_session, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -120,3 +120,13 @@ class HeaderInspectionView(APIView):  # type: ignore[misc]
                 "only_in_b": result.only_in_b,
             },
         })
+
+
+class UploadSessionView(APIView):  # type: ignore[misc]
+    """Discard server-side upload copies for a cancelled workflow."""
+
+    def delete(self, request: Request, session_id: str) -> Response:
+        if not get_session(session_id):
+            return Response({"error": "Session not found or expired."}, status=404)
+        delete_session(session_id)
+        return Response(status=204)

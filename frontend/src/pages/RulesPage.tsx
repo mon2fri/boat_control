@@ -13,7 +13,7 @@ const RULES_KEY = ["rules"] as const;
 
 type EditorState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; rule: Rule };
 
-export function RulesPage() {
+export function RulesPage({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const { state, dispatch } = useWorkflow();
   const rules = useRules();
@@ -68,8 +68,8 @@ export function RulesPage() {
       : createRule.error?.message ?? null;
 
   return (
-    <section aria-labelledby="rules-title">
-      <h2 id="rules-title">Validation rules</h2>
+    <section id={embedded ? "validation-rules" : undefined} aria-labelledby="rules-title">
+      {embedded ? <h3 id="rules-title">Validation rules</h3> : <h2 id="rules-title">Validation rules</h2>}
 
       {rules.isLoading && <p role="status">Loading rules…</p>}
       {rules.isError && (

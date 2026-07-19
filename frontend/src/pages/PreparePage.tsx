@@ -1,21 +1,19 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { RequireSession } from "../components/RequireSession";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBuilder } from "../features/filters/FilterBuilder";
 import { fullSetGuard } from "../features/filters/useFullSetGuard";
 import { TargetSelector } from "../features/targets/TargetSelector";
-import { KeyColumnSelector } from "../features/keys/KeyColumnSelector";
 import { useSavedFilters } from "../features/settings/useSettings";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { prepareFilters, type PrepareResult } from "../api/endpoints";
 import type { FilterRow as FilterRowType } from "../api/domain";
 import { useSessionExpiryDispatcher } from "../features/session/useSessionExpiry";
+import { RulesPage } from "./RulesPage";
 
 export function PreparePage() {
-  const navigate = useNavigate();
   const { state, dispatch } = useWorkflow();
   const handleSessionError = useSessionExpiryDispatcher();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -81,7 +79,7 @@ export function PreparePage() {
   function proceed(): void {
     dispatch({ type: "setConfirmFullSet", confirmed: guard.requiresConfirmation });
     setDialogOpen(false);
-    void navigate("/rules");
+    document.getElementById("validation-rules")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function handleContinue(): void {
@@ -91,7 +89,7 @@ export function PreparePage() {
 
   return (
     <section aria-labelledby="prepare-title">
-      <h2 id="prepare-title">Filters &amp; targets</h2>
+      <h2 id="prepare-title">Compare &amp; validate</h2>
       <p>
         Comparing <strong>{header.file1Name}</strong> and <strong>{header.file2Name}</strong> across{" "}
         {header.common.length} shared columns ({totalRows.toLocaleString()} total rows).
@@ -171,12 +169,6 @@ export function PreparePage() {
         onChange={(columns) => dispatch({ type: "setTargetColumns", columns })}
       />
 
-      <KeyColumnSelector
-        columns={header.common}
-        selected={state.keyColumns}
-        onChange={(columns) => dispatch({ type: "setKeyColumns", columns })}
-      />
-
       <div className="card">
         {guard.requiresConfirmation && (
           <p className="alert alert--warn" role="status">
@@ -184,21 +176,17 @@ export function PreparePage() {
             will be asked to confirm a full-set run.
           </p>
         )}
-        {state.keyColumns.length === 0 && (
-          <p className="alert alert--error" role="alert">
-            Pick at least one key column before continuing — it identifies a record across both
-            files.
-          </p>
-        )}
         <button
           type="button"
           className="btn btn--primary"
           onClick={handleContinue}
-          disabled={prepare.status !== "ready" || state.keyColumns.length === 0}
+          disabled={prepare.status !== "ready"}
         >
-          Continue to rules
+          Continue to validation rules
         </button>
       </div>
+
+      <RulesPage embedded />
 
       <ConfirmDialog
         title="Run against the full set?"

@@ -49,9 +49,9 @@ fi
 echo "Applying database migrations..."
 uv run python backend/manage.py migrate --settings=boat_control.settings --noinput
 
-echo "Starting Django at http://127.0.0.1:8000"
-uv run python backend/manage.py runserver 127.0.0.1:8000 \
-    --settings=boat_control.settings --noreload &
+echo "Starting Django on all network interfaces at http://0.0.0.0:8000"
+uv run python backend/manage.py runserver 0.0.0.0:8000 \
+    --settings=boat_control.settings &
 backend_pid=$!
 
 echo "Starting React at http://127.0.0.1:5173"

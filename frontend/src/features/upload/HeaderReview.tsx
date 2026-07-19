@@ -1,34 +1,43 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { HeaderReport } from "../../api/domain";
+import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { KeyColumnSelector } from "../keys/KeyColumnSelector";
 
 interface Props {
   report: HeaderReport;
+  selectedColumns: string[];
+  onSelectedColumnsChange: (columns: string[]) => void;
+  keyColumns?: string[];
+  onKeyColumnsChange?: (columns: string[]) => void;
 }
 
 /**
  * Presents the outcome of header inspection: which columns are shared (and
  * therefore eligible for comparison/validation) and which exist in only one
- * file. All names come from user files, so they are rendered as React text —
- * never as HTML — and long lists are filterable rather than truncated.
+ * file. Users can select which shared columns to include for comparison.
  */
-export function HeaderReview({ report }: Props) {
-  const [query, setQuery] = useState("");
-
-  const groups = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const match = (name: string) => !q || name.toLowerCase().includes(q);
-    return {
-      common: report.common.filter(match),
-      file1Only: report.file1Only.filter(match),
-      file2Only: report.file2Only.filter(match),
-    };
-  }, [report, query]);
-
+export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {} }: Props) {
   const hasDifferences = report.file1Only.length > 0 || report.file2Only.length > 0;
+
+  const sharedOptions = useMemo(
+    () => report.common.map((c) => ({ value: c, label: c })),
+    [report.common],
+  );
+
+  const includedSet = useMemo(() => new Set(selectedColumns), [selectedColumns]);
+  const excludedColumns = useMemo(
+    () => report.common.filter((c) => !includedSet.has(c)),
+    [report.common, includedSet],
+  );
+
+  const handleFilterChange = useCallback(
+    (columns: string[]) => onSelectedColumnsChange(columns),
+    [onSelectedColumnsChange],
+  );
 
   return (
     <section aria-labelledby="header-review-title">
-      <h3 id="header-review-title">Header review</h3>
+      <h3 id="header-review-title">Column preview</h3>
       <p role="status">
         {report.common.length} shared column{report.common.length === 1 ? "" : "s"}.{" "}
         Comparison and validation run on shared columns only.
@@ -41,34 +50,72 @@ export function HeaderReview({ report }: Props) {
         </p>
       )}
 
-      <div className="field">
-        <label htmlFor="header-filter">Filter columns</label>
-        <input
-          id="header-filter"
-          type="search"
-          value={query}
-          placeholder="Type to filter long header lists…"
-          onChange={(e) => setQuery(e.target.value)}
+      <div className="header-columns">
+        <HeaderColumnList
+          title={`Shared (${report.common.length})`}
+          tone="ok"
+          names={report.common}
+        />
+        <HeaderColumnList
+          title={`Only in ${report.file1Name} (${report.file1Only.length})`}
+          tone="star"
+          names={report.file1Only}
+        />
+        <HeaderColumnList
+          title={`Only in ${report.file2Name} (${report.file2Only.length})`}
+          tone="star"
+          names={report.file2Only}
         />
       </div>
 
-      <div className="header-columns">
-        <HeaderColumnList
-          title={`Shared (${groups.common.length})`}
-          tone="ok"
-          names={groups.common}
-        />
-        <HeaderColumnList
-          title={`Only in ${report.file1Name} (${groups.file1Only.length})`}
-          tone="star"
-          names={groups.file1Only}
-        />
-        <HeaderColumnList
-          title={`Only in ${report.file2Name} (${groups.file2Only.length})`}
-          tone="star"
-          names={groups.file2Only}
+      <div className="card" style={{ marginTop: "var(--space)" }}>
+        <h3>Column filter</h3>
+        <SearchableMultiSelect
+          label="Select columns to include"
+          options={sharedOptions}
+          selected={selectedColumns}
+          onChange={handleFilterChange}
+          placeholder="Search shared columns…"
+          hint="Pick columns for comparison and validation. Starts with all selected."
         />
       </div>
+
+      <div className="header-columns" style={{ marginTop: "var(--space)" }}>
+        <div className="card header-column-group">
+          <h4>Columns Included ({selectedColumns.length})</h4>
+          {selectedColumns.length === 0 ? (
+            <p className="field-hint">No columns selected</p>
+          ) : (
+            <ul aria-label="Columns Included" className="header-column-list">
+              {selectedColumns.map((name) => (
+                <li key={name}>
+                  <span className="tag tag--included">{name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="card header-column-group">
+          <h4>Columns Excluded ({excludedColumns.length})</h4>
+          {excludedColumns.length === 0 ? (
+            <p className="field-hint">All columns included</p>
+          ) : (
+            <ul aria-label="Columns Excluded" className="header-column-list">
+              {excludedColumns.map((name) => (
+                <li key={name}>
+                  <span className="tag tag--excluded">{name}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <KeyColumnSelector
+        columns={selectedColumns}
+        selected={keyColumns.filter((column) => selectedColumns.includes(column))}
+        onChange={onKeyColumnsChange}
+      />
     </section>
   );
 }

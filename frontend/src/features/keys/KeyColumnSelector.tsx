@@ -8,7 +8,7 @@
  * announce errors as they happen.
  */
 import { useId, useMemo } from "react";
-import { SearchableSelect, type SelectOption } from "../../components/SearchableSelect";
+import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
 
 interface Props {
   columns: string[];
@@ -36,24 +36,10 @@ export function KeyColumnSelector({
   const helpId = useId();
   const statusId = useId();
 
-  const available = useMemo<SelectOption[]>(
-    () =>
-      columns
-        .filter((c) => !selected.includes(c))
-        .map((c) => ({ value: c, label: c })),
-    [columns, selected],
-  );
+  const available = useMemo(() => columns.map((c) => ({ value: c, label: c })), [columns]);
 
   const hasSelection = selected.length > 0;
   const hasInvalid = (validation?.invalid.length ?? 0) > 0;
-
-  function add(column: string): void {
-    if (!selected.includes(column)) onChange([...selected, column]);
-  }
-
-  function remove(column: string): void {
-    onChange(selected.filter((c) => c !== column));
-  }
 
   return (
     <section aria-labelledby={headingId} className="card">
@@ -64,12 +50,13 @@ export function KeyColumnSelector({
         be rejected.
       </p>
 
-      <SearchableSelect
-        label="Add a key column"
+      <SearchableMultiSelect
+        label="Identifier columns"
         options={available}
-        value={null}
-        onChange={add}
-        placeholder="Search common columns…"
+        selected={selected}
+        onChange={onChange}
+        placeholder="Search or paste comma-separated columns…"
+        hint="Choose one or more selected comparison columns that identify a record."
       />
 
       {selected.length === 0 ? (
@@ -84,7 +71,7 @@ export function KeyColumnSelector({
               <button
                 type="button"
                 className="btn chip-remove"
-                onClick={() => remove(column)}
+                onClick={() => onChange(selected.filter((item) => item !== column))}
                 aria-label={`Remove key column ${column}`}
               >
                 ×

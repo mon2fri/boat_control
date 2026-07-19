@@ -84,6 +84,7 @@ function installFetchMock() {
   const fn = vi.fn((url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url.includes("/files/upload/")) return Promise.resolve(json(wireUpload));
+    if (url.includes("/files/trim/")) return Promise.resolve(json({ session_id: "s1", columns: ["id", "region", "status"], rows_a: 100, rows_b: 120 }));
     if (url.includes("/files/filters/prepare/")) return Promise.resolve(json(prepareResponse));
     if (url.includes("/rules/") && method === "GET") return Promise.resolve(json(rulesList));
     if (url.includes("/runs/execute/") && method === "POST") return Promise.resolve(json(runDoc));
@@ -119,21 +120,16 @@ describe("critical user journey: upload → prepare → rules → run → result
     fireEvent.change(file2, { target: { files: [new File(["b"], "candidate.csv")] } });
     fireEvent.click(screen.getByRole("button", { name: "Inspect headers" }));
 
-    // 2. Header review appears; continue to filters.
+    // 2. Header review appears; select a mandatory identifier, then continue.
     await waitFor(() => expect(screen.getByText(/shared column/)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: /Continue to filters/ }));
+    const identifierInput = screen.getByRole("searchbox", { name: "Identifier columns" });
+    fireEvent.focus(identifierInput);
+    fireEvent.mouseDown(screen.getByRole("option", { name: /id/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Continue to compare/ }));
 
-    // 3. Prepare page: prepare loads, then select a key column, then continue.
-    await waitFor(() => expect(screen.getByRole("heading", { name: /Filters & targets/ })).toBeInTheDocument());
-    // The "Continue to rules" button is disabled until a key column is picked.
-    const continueBtn = await screen.findByRole("button", { name: "Continue to rules" });
-    await waitFor(() => expect(continueBtn).toBeDisabled());
-    const keyCombobox = screen.getByLabelText("Add a key column");
-    fireEvent.focus(keyCombobox);
-    // The listbox opens on focus; commit via mouseDown (matches the
-    // combobox's onMouseDown handler).
-    const idOption = await screen.findByRole("option", { name: "id" });
-    fireEvent.mouseDown(idOption);
+    // 3. Compare and validate loads its filters, targets, and validation rules.
+    await waitFor(() => expect(screen.getByRole("heading", { name: /Compare & validate/ })).toBeInTheDocument());
+    const continueBtn = await screen.findByRole("button", { name: "Continue to validation rules" });
     await waitFor(() => expect(continueBtn).toBeEnabled());
     fireEvent.click(continueBtn);
 

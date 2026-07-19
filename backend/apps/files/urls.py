@@ -8,13 +8,14 @@ from apps.files.filter_views import (
     TargetColumnsView,
 )
 from apps.files.preset_views import PresetLoadView, PresetSourceFilesView, PresetSourcesView
-from apps.files.views import FileUploadView, HeaderInspectionView
+from apps.files.views import FileUploadView, HeaderInspectionView, UploadSessionView
 
 app_name = "files"
 
 urlpatterns = [
     path("upload/", FileUploadView.as_view(), name="file-upload"),
     path("inspect/", HeaderInspectionView.as_view(), name="header-inspection"),
+    path("sessions/<str:session_id>/", UploadSessionView.as_view(), name="upload-session"),
     path("filters/prepare/", FilterPreparationView.as_view(), name="filter-prepare"),
     path("filters/validate/", FilterValidationView.as_view(), name="filter-validate"),
     path("targets/validate/", TargetColumnsView.as_view(), name="target-validate"),
