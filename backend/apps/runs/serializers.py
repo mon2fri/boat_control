@@ -6,7 +6,10 @@ from rest_framework import serializers
 class FilterSerializer(serializers.Serializer):  # type: ignore[misc]
     column = serializers.CharField()
     operator = serializers.ChoiceField(choices=["eq", "neq", "contains", "ncontains"])
-    filter_value = serializers.CharField()
+    filter_value = serializers.CharField(required=False, allow_blank=True, default="")
+    filter_values = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True, default=list
+    )
 
 
 class ExecuteComparisonRequestSerializer(serializers.Serializer):  # type: ignore[misc]

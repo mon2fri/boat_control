@@ -8,7 +8,7 @@
  * rule", so collapsing would silently re-run the entire catalog.
  */
 import { describe, expect, it } from "vitest";
-import { mapRunRequestToWire } from "./mapping";
+import { mapFilterRowToWire, mapRunRequestToWire, mapWireFilterRow } from "./mapping";
 import { wireRunRequestSchema } from "./wire";
 
 const baseRequest = {
@@ -76,5 +76,55 @@ describe("mapRunRequestToWire", () => {
     expect(body.key_columns).toEqual([]);
     expect(body.key_columns).not.toBeNull();
     expect("key_columns" in body).toBe(true);
+  });
+});
+
+describe("filter row mapping", () => {
+  it("serializes multiple values to filter_values", () => {
+    const wire = mapFilterRowToWire({
+      id: "f1",
+      column: "status",
+      operator: "equals",
+      values: ["active", "pending"],
+    });
+    expect(wire.filter_values).toEqual(["active", "pending"]);
+    expect(wire).not.toHaveProperty("filter_value");
+  });
+
+  it("deserializes filter_values from wire", () => {
+    const row = mapWireFilterRow({
+      column: "status",
+      operator: "eq",
+      filter_values: ["active", "pending"],
+    });
+    expect(row.values).toEqual(["active", "pending"]);
+  });
+
+  it("backward-compat: deserializes legacy filter_value string", () => {
+    const row = mapWireFilterRow({
+      column: "status",
+      operator: "eq",
+      filter_value: "active",
+    });
+    expect(row.values).toEqual(["active"]);
+  });
+
+  it("backward-compat: deserializes empty legacy filter_value", () => {
+    const row = mapWireFilterRow({
+      column: "status",
+      operator: "eq",
+      filter_value: "",
+    });
+    expect(row.values).toEqual([]);
+  });
+
+  it("skips empty values when serializing to wire", () => {
+    const wire = mapFilterRowToWire({
+      id: "f1",
+      column: "status",
+      operator: "equals",
+      values: ["active", ""],
+    });
+    expect(wire.filter_values).toEqual(["active"]);
   });
 });

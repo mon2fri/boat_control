@@ -9,6 +9,8 @@ import type { FilterRow, HeaderReport, RunResult } from "../api/domain";
  */
 export interface WorkflowState {
   header: HeaderReport | null;
+  /** Shared columns selected for comparison. Initialized to all common columns on upload. */
+  comparisonColumns: string[];
   filters: FilterRow[];
   targetColumns: string[];
   /** Record-identity columns. Empty array means "not yet chosen"; the backend refuses to run without one. */
@@ -25,6 +27,7 @@ export interface WorkflowState {
 
 const initialState: WorkflowState = {
   header: null,
+  comparisonColumns: [],
   filters: [],
   targetColumns: [],
   keyColumns: [],
@@ -37,6 +40,8 @@ const initialState: WorkflowState = {
 
 type Action =
   | { type: "setHeader"; header: HeaderReport }
+  | { type: "setComparisonColumns"; columns: string[] }
+  | { type: "removeComparisonColumn"; column: string }
   | { type: "setFilters"; filters: FilterRow[] }
   | { type: "setTargetColumns"; columns: string[] }
   | { type: "setKeyColumns"; columns: string[] }
@@ -50,7 +55,22 @@ type Action =
 function reducer(state: WorkflowState, action: Action): WorkflowState {
   switch (action.type) {
     case "setHeader":
-      return { ...initialState, header: action.header };
+      return { ...initialState, header: action.header, comparisonColumns: [...action.header.common] };
+    case "setComparisonColumns":
+      return { ...state, comparisonColumns: action.columns };
+    case "removeComparisonColumn": {
+      const col = action.column;
+      const next = state.comparisonColumns.filter((c) => c !== col);
+      return {
+        ...state,
+        comparisonColumns: next,
+        keyColumns: state.keyColumns.filter((c) => c !== col),
+        targetColumns: state.targetColumns.filter((c) => c !== col),
+        filters: state.filters.map((f) =>
+          f.column === col ? { ...f, column: "" } : f,
+        ),
+      };
+    }
     case "setFilters":
       return { ...state, filters: action.filters, confirmFullSet: false };
     case "setTargetColumns":

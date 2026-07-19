@@ -43,8 +43,8 @@ export function KeyColumnSelector({
 
   return (
     <section aria-labelledby={headingId} className="card">
-      <h3 id={headingId}>Key columns (record identity)</h3>
-      <p id={helpId} className="field-hint">
+      <h3 id={headingId} className="card-heading">Key columns (record identity)</h3>
+      <p id={helpId} className="card-hint">
         Pick one or more columns that uniquely identify a record across the two
         files. Without a key column, the comparison cannot match rows and will
         be rejected.

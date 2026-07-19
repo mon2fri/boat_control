@@ -3,6 +3,7 @@ import { useCallback, useId, useMemo, useRef, useState } from "react";
 export interface MultiSelectOption {
   value: string;
   label: string;
+  disabled?: boolean;
 }
 
 interface Props {
@@ -122,7 +123,7 @@ export function SearchableMultiSelect({
             setQuery(e.target.value);
             setOpen(true);
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => { window.clearTimeout(blurTimer.current); setOpen(true); }}
           onBlur={() => {
             blurTimer.current = window.setTimeout(() => setOpen(false), 150);
           }}
@@ -162,11 +163,16 @@ export function SearchableMultiSelect({
                   key={option.value}
                   role="option"
                   aria-selected={isChecked}
-                  className={"combobox-option" + (isChecked ? " is-active" : "")}
+                  aria-disabled={option.disabled ? "true" : undefined}
+                  className={
+                    "combobox-option" +
+                    (isChecked ? " is-active" : "") +
+                    (option.disabled ? " is-starred" : "")
+                  }
                   onMouseDown={(e) => {
                     e.preventDefault();
                     window.clearTimeout(blurTimer.current);
-                    toggle(option.value);
+                    if (!option.disabled) toggle(option.value);
                   }}
                 >
                   <span className="multi-check">{isChecked ? "☑" : "☐"}</span>

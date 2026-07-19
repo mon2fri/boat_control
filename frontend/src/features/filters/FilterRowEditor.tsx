@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { FilterOperator, FilterRow } from "../../api/domain";
 import { SearchableSelect, type SelectOption } from "../../components/SearchableSelect";
+import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
 import { FILTER_OPERATORS } from "./constants";
 
 interface Props {
@@ -16,10 +17,11 @@ interface Props {
 }
 
 /**
- * One filter row: `{column} {operator} {value}`. Column and value use the
- * searchable combobox; values come from the prepare response (fetched once
- * at the Prepare page level) and carry a star marker when present in only
- * one file (not selectable).
+ * One filter row: `{column} {operator} {values}`. Column uses the
+ * searchable combobox; values use a searchable multi-select. Values come
+ * from the prepare response (fetched once at the Prepare page level) and
+ * carry a star marker when present in only one file (not selectable).
+ * Multiple values within a row are OR-ed; rows are AND-ed.
  */
 export function FilterRowEditor({
   row,
@@ -35,12 +37,12 @@ export function FilterRowEditor({
     [columns],
   );
 
-  const valueOptions = useMemo<SelectOption[]>(
+  const valueOptions = useMemo(
     () =>
       (columnValues[row.column] ?? []).map((v) => ({
         value: v.value,
-        label: v.value,
-        starred: v.starred,
+        label: v.starred ? `${v.value} *` : v.value,
+        disabled: v.starred,
       })),
     [columnValues, row.column],
   );
@@ -53,7 +55,7 @@ export function FilterRowEditor({
         label="Column"
         options={columnOptions}
         value={row.column || null}
-        onChange={(column) => onChange({ ...row, column, value: "" })}
+        onChange={(column) => onChange({ ...row, column, values: [] })}
         placeholder="Search columns…"
       />
       <div className="field">
@@ -70,11 +72,11 @@ export function FilterRowEditor({
           ))}
         </select>
       </div>
-      <SearchableSelect
+      <SearchableMultiSelect
         label="Value"
         options={valueOptions}
-        value={row.value || null}
-        onChange={(value) => onChange({ ...row, value })}
+        selected={row.values}
+        onChange={(values) => onChange({ ...row, values })}
         placeholder={row.column ? "Search values…" : "Pick a column first"}
         disabled={!row.column || loadingValues}
         hint={

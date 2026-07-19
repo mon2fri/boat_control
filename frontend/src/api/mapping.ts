@@ -121,16 +121,18 @@ export function mapFilterRowToWire(row: FilterRow) {
   return {
     column: row.column,
     operator: mapFilterOperatorToWire(row.operator),
-    filter_value: row.value,
+    filter_values: row.values.filter((v) => v.length > 0),
   };
 }
 
 export function mapWireFilterRow(row: WireFilterRow): FilterRow {
+  // Backward compatibility: accept legacy filter_value (string) or new filter_values (array)
+  const values = row.filter_values ?? (row.filter_value ? [row.filter_value] : []);
   return {
     id: "", // assigned by client when used
     column: row.column,
     operator: mapWireFilterOperator(row.operator),
-    value: row.filter_value,
+    values,
   };
 }
 
@@ -213,7 +215,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
     name: rule.name,
     ...(rule.description ? { description: rule.description } : {}),
     conditions: rule.conditions.map(mapConditionToWire),
-    ...(rule.conditionJoin ? { condition_relation: rule.conditionJoin } : {}),
+    ...(rule.conditionJoin && rule.conditionJoin !== "per_grouping" ? { condition_relation: rule.conditionJoin } : {}),
     // Always serialize the executable tree; never split a free-text
     // expression on whitespace (that loses grouping precedence).
     ...(rule.groupTree ? { grouping_tree: mapGroupNodeToWire(rule.groupTree) } : {}),
@@ -238,7 +240,7 @@ export function mapRunRequestToWire(request: {
     // backend will reject an empty array with a 400; the UI prevents the user
     // from getting there by requiring at least one key column.
     key_columns: [...request.keyColumns],
-    filters: request.filters.filter((f) => f.column && f.value).map(mapFilterRowToWire),
+    filters: request.filters.filter((f) => f.column && f.values.length > 0).map(mapFilterRowToWire),
     // Always serialize `rule_ids` as an array so the backend can distinguish
     // an explicit empty selection (zero rules) from an omitted/default-all
     // selection. Translating an empty array to `null` here would cause every
@@ -414,12 +416,16 @@ export function mapSavedFilter(wire: WireSavedFilter): SavedFilter {
   return {
     id: wire.id,
     name: wire.name,
-    rows: wire.rows.map((r, i) => ({
-      id: `f${i}`,
-      column: r.column,
-      operator: mapWireFilterOperator(r.operator),
-      value: r.filter_value,
-    })),
+    rows: wire.rows.map((r, i) => {
+      // Backward compatibility: accept legacy filter_value or new filter_values
+      const values = r.filter_values ?? (r.filter_value ? [r.filter_value] : []);
+      return {
+        id: `f${i}`,
+        column: r.column,
+        operator: mapWireFilterOperator(r.operator),
+        values,
+      };
+    }),
   };
 }
 
@@ -430,7 +436,7 @@ export function mapSavedFilterToWire(filter: Omit<SavedFilter, "id"> & { id?: st
   return {
     name: filter.name,
     rows: filter.rows
-      .filter((r) => r.column && r.value)
+      .filter((r) => r.column && r.values.length > 0)
       .map(mapFilterRowToWire),
   };
 }

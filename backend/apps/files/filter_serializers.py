@@ -39,7 +39,10 @@ class FilterPreparationResponseSerializer(serializers.Serializer):  # type: igno
 class FilterValidationRequestSerializer(serializers.Serializer):  # type: ignore[misc]
     column = serializers.CharField()
     operator = serializers.CharField()
-    filter_value = serializers.CharField()
+    filter_value = serializers.CharField(required=False, allow_blank=True)
+    filter_values = serializers.ListField(
+        child=serializers.CharField(), required=False, allow_empty=True
+    )
     common_columns = serializers.ListField(child=serializers.CharField())
 
 

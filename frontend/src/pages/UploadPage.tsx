@@ -18,16 +18,14 @@ export function UploadPage() {
   const [remoteFileA, setRemoteFileA] = useState<string | null>(null);
   const [remoteFileB, setRemoteFileB] = useState<string | null>(null);
   const [filesLoadKey, setFilesLoadKey] = useState(0);
-  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
   const lastSessionIdRef = useRef<string | null>(null);
 
   const initColumns = useCallback((columns: string[]) => {
-    setSelectedColumns([...columns]);
-  }, []);
+    dispatch({ type: "setComparisonColumns", columns });
+  }, [dispatch]);
 
   const header = useHeaderReport((report) => {
     dispatch({ type: "setHeader", header: report });
-    initColumns(report.common);
     lastSessionIdRef.current = report.sessionId;
   });
 
@@ -62,9 +60,9 @@ export function UploadPage() {
 
   const handleContinue = useCallback(() => {
     if (!state.header) return;
-    if (selectedColumns.length === 0 || state.keyColumns.length === 0) return;
+    if (state.comparisonColumns.length === 0 || state.keyColumns.length === 0) return;
     void navigate("/prepare");
-  }, [state.header, selectedColumns, state.keyColumns.length, navigate]);
+  }, [state.header, state.comparisonColumns.length, state.keyColumns.length, navigate]);
 
   const handleStartOver = useCallback(() => {
     if (state.header) {
@@ -72,18 +70,29 @@ export function UploadPage() {
       void clearUploadSession(state.header.sessionId).catch(() => undefined);
     }
     reset();
-    setSelectedColumns([]);
     setSourceKind("local");
     setSourceId(null);
     setRemoteFiles([]);
     setRemoteFileA(null);
     setRemoteFileB(null);
-  }, [state.header, reset, setSelectedColumns, setSourceId, setRemoteFiles, setRemoteFileA, setRemoteFileB]);
+  }, [state.header, reset, setSourceId, setRemoteFiles, setRemoteFileA, setRemoteFileB]);
+
+  const handleReplaceFiles = useCallback(() => {
+    if (state.header) {
+      void clearUploadSession(state.header.sessionId).catch(() => undefined);
+    }
+    reset();
+    setSourceKind("local");
+    setSourceId(null);
+    setRemoteFiles([]);
+    setRemoteFileA(null);
+    setRemoteFileB(null);
+  }, [state.header, reset, setSourceId, setRemoteFiles, setRemoteFileA, setRemoteFileB]);
 
   return (
     <section aria-labelledby="upload-title">
-      <h2 id="upload-title">Upload &amp; compare files</h2>
-      <p>
+      <h2 id="upload-title" className="section-heading">Upload &amp; compare files</h2>
+      <p className="section-hint">
         Provide two CSV versions to calibrate. Choose from local upload or a configured remote source.
       </p>
 
@@ -212,15 +221,33 @@ export function UploadPage() {
 
       {state.header && (
         <>
+          {state.comparisonColumns.length > 0 && (
+            <div className="card" role="group" aria-label="Loaded files">
+              <h3 className="card-heading">Loaded files</h3>
+              <p className="field-hint">
+                Baseline: <strong>{state.header.file1Name}</strong> — currently loaded
+                <br />
+                Comparison: <strong>{state.header.file2Name}</strong> — currently loaded
+              </p>
+              <button
+                type="button"
+                className="btn btn--danger"
+                style={{ marginTop: "var(--space)" }}
+                onClick={handleReplaceFiles}
+              >
+                Replace files
+              </button>
+            </div>
+          )}
           <HeaderReview
             report={state.header}
-            selectedColumns={selectedColumns}
-            onSelectedColumnsChange={setSelectedColumns}
+            selectedColumns={state.comparisonColumns}
+            onSelectedColumnsChange={(columns) => dispatch({ type: "setComparisonColumns", columns })}
             keyColumns={state.keyColumns}
             onKeyColumnsChange={(columns) => dispatch({ type: "setKeyColumns", columns })}
           />
           <div className="card">
-            {selectedColumns.length === 0 && (
+            {state.comparisonColumns.length === 0 && (
               <p className="alert alert--error" role="alert">
                 Select at least one column before continuing.
               </p>
@@ -233,7 +260,7 @@ export function UploadPage() {
             <button
               type="button"
               className="btn btn--primary"
-              disabled={selectedColumns.length === 0 || state.keyColumns.length === 0}
+              disabled={state.comparisonColumns.length === 0 || state.keyColumns.length === 0}
               onClick={() => void handleContinue()}
             >
               Continue to compare &amp; validate

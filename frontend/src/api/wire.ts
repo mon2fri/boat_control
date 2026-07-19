@@ -172,7 +172,8 @@ export type WireRuleDraftRequest = z.infer<typeof ruleDraftRequestSchema>;
 export const wireFilterRowSchema = z.object({
   column: z.string(),
   operator: z.string(),
-  filter_value: z.string(),
+  filter_value: z.string().optional(),
+  filter_values: z.array(z.string()).optional(),
 });
 export type WireFilterRow = z.infer<typeof wireFilterRowSchema>;
 

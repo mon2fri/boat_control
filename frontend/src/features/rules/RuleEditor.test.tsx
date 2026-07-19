@@ -54,9 +54,9 @@ describe("RuleEditor", () => {
     }
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByText(/Choose AND or OR/)).toBeInTheDocument();
+    expect(screen.getByText(/Choose AND, OR, or PER GROUPING/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Combine conditions with"), { target: { value: "and" } });
+    fireEvent.change(screen.getByLabelText("Combining above conditions with"), { target: { value: "and" } });
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ conditionJoin: "and" }));
   });

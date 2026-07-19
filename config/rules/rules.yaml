@@ -1,14 +1,6 @@
 version: 1
-next_index: 59
+next_index: 61
 rules:
-- rule_id: R006
-  name: E2E status check
-  description: ''
-  logic:
-    format: value_vs_column
-    column_name: status
-    operator: eq
-    target_value: active
 - rule_id: R007
   name: E2E status check
   description: ''

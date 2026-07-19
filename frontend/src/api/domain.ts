@@ -32,7 +32,7 @@ export interface FilterRow {
   id: string;
   column: string;
   operator: FilterOperator;
-  value: string;
+  values: string[];
 }
 
 export interface SavedFilter {

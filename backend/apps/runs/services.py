@@ -103,20 +103,34 @@ def apply_filters(
     for f in filters:
         col = f["column"]
         op = f["operator"]
-        val = f["filter_value"]
+        # Support both filter_value (legacy) and filter_values (new)
+        values = f.get("filter_values") or ([f["filter_value"]] if f.get("filter_value") else [])
+
+        if not values:
+            continue
 
         if op == "eq":
-            df_a = df_a.filter(pl.col(col) == val)
-            df_b = df_b.filter(pl.col(col) == val)
+            # IN semantics: value matches any in the list (OR within row)
+            df_a = df_a.filter(pl.col(col).is_in(values))
+            df_b = df_b.filter(pl.col(col).is_in(values))
         elif op == "neq":
-            df_a = df_a.filter(pl.col(col) != val)
-            df_b = df_b.filter(pl.col(col) != val)
+            # NOT IN: value must not be any in the list (AND across values)
+            df_a = df_a.filter(~pl.col(col).is_in(values))
+            df_b = df_b.filter(~pl.col(col).is_in(values))
         elif op == "contains":
-            df_a = df_a.filter(pl.col(col).str.contains(val))
-            df_b = df_b.filter(pl.col(col).str.contains(val))
+            # OR across values: match if any value is contained
+            cond_a = pl.lit(False)
+            cond_b = pl.lit(False)
+            for val in values:
+                cond_a = cond_a | pl.col(col).str.contains(val)
+                cond_b = cond_b | pl.col(col).str.contains(val)
+            df_a = df_a.filter(cond_a)
+            df_b = df_b.filter(cond_b)
         elif op == "ncontains":
-            df_a = df_a.filter(~pl.col(col).str.contains(val))
-            df_b = df_b.filter(~pl.col(col).str.contains(val))
+            # AND across values: must not contain any of the values
+            for val in values:
+                df_a = df_a.filter(~pl.col(col).str.contains(val))
+                df_b = df_b.filter(~pl.col(col).str.contains(val))
 
     return df_a, df_b
 

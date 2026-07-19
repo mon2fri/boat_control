@@ -159,6 +159,105 @@ h3 {
   text-transform: uppercase;
 }
 
+/* --- Visual hierarchy classes ------------------------------------------- */
+
+.section-heading {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0 0 var(--space);
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+  text-transform: none;
+}
+
+.section-hint {
+  font-size: 0.875rem;
+  color: var(--color-muted);
+  margin: 0 0 calc(var(--space) * 2);
+  line-height: 1.5;
+}
+
+.card-heading {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0 0 var(--space);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.card-hint {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  margin: 0 0 var(--space);
+}
+
+/* --- Responsive card grid ----------------------------------------------- */
+
+.card-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space);
+}
+@media (max-width: 720px) {
+  .card-grid-3 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: calc(var(--space) * 2.5);
+}
+@media (max-width: 720px) {
+  .card-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.half-width-card {
+  max-width: 50%;
+}
+@media (max-width: 720px) {
+  .half-width-card {
+    max-width: 100%;
+  }
+}
+
+/* --- Config card layout ------------------------------------------------- */
+
+.config-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: calc(var(--space) * 2.5);
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .config-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --- Validation rules two-column layout --------------------------------- */
+
+.rules-layout {
+  display: grid;
+  grid-template-columns: 25% 75%;
+  gap: calc(var(--space) * 2.5);
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .rules-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rules-layout .rule-select-panel {
+  position: sticky;
+  top: var(--space);
+}
+
 .btn {
   font: inherit;
   font-size: 0.875rem;

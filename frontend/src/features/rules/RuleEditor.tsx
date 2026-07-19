@@ -21,7 +21,7 @@ interface DraftState {
   name: string;
   description: string;
   conditions: Condition[];
-  conditionJoin: "and" | "or" | null;
+  conditionJoin: "and" | "or" | "per_grouping" | null;
   /**
    * Legacy free-text grouping. Retained only so an in-flight edit does not
    * silently drop user input when loading a rule persisted with the old
@@ -106,7 +106,7 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
       noValidate
       aria-label={rule ? `Edit rule ${rule.index}` : "New rule"}
     >
-      <h3>{rule ? `Edit ${rule.index}` : "New rule"}</h3>
+      <h3 className="card-heading">{rule ? `Edit ${rule.index}` : "New rule"}</h3>
 
       <details className="rule-semantic-help">
         <summary>How rules work — what does this rule check?</summary>
@@ -185,29 +185,37 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
 
         {needsJoin && (
           <div className="field">
-            <label htmlFor="cond-join">Combine conditions with</label>
+            <label htmlFor="cond-join">Combining above conditions with</label>
             <select
               id="cond-join"
               value={draft.conditionJoin ?? ""}
-              onChange={(e) => patch({ conditionJoin: (e.target.value || null) as "and" | "or" | null })}
+              onChange={(e) => {
+                const val = e.target.value || null;
+                patch({
+                  conditionJoin: val as "and" | "or" | "per_grouping" | null,
+                  ...(val !== "per_grouping" ? { groupTree: null } : {}),
+                });
+              }}
               aria-invalid={submitted && needsJoin && draft.conditionJoin === null}
             >
               <option value="">Choose…</option>
               <option value="and">AND — all must match</option>
               <option value="or">OR — any may match</option>
+              <option value="per_grouping">PER GROUPING — custom groups</option>
             </select>
           </div>
         )}
 
-        {canGroup && (
+        {canGroup && draft.conditionJoin === "per_grouping" && (
           <div className="field">
             <label>
-              Grouping (optional)
+              Grouping
             </label>
             <GroupingTreeEditor
               conditions={draft.conditions}
               value={draft.groupTree}
               onChange={(groupTree) => patch({ groupTree })}
+              groupingMode="per_grouping"
             />
             <p className="field-hint" data-testid="grouping-preview">
               <span className="visually-hidden">Grouping: </span>
@@ -217,7 +225,7 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
                       const c = draft.conditions.find((cc) => cc.id === id);
                       return c ? `cond ${draft.conditions.indexOf(c) + 1}` : id;
                     })
-                  : "Apply the join above uniformly"}
+                  : "Add groups to define custom combining logic"}
               </code>
             </p>
           </div>
@@ -361,7 +369,10 @@ function validateDraft(draft: DraftState, needsJoin: boolean): ValidationResult 
   const errors: string[] = [];
   if (!draft.name.trim()) errors.push("Name is required.");
   if (needsJoin && draft.conditionJoin === null) {
-    errors.push("Choose AND or OR to combine multiple conditions.");
+    errors.push("Choose AND, OR, or PER GROUPING to combine multiple conditions.");
+  }
+  if (needsJoin && draft.conditionJoin === "per_grouping" && !draft.groupTree) {
+    errors.push("Add at least one group when using PER GROUPING.");
   }
   for (const [i, c] of draft.conditions.entries()) {
     if (!c.column.trim() || !c.value.trim()) {
@@ -381,7 +392,12 @@ function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
     name: draft.name.trim(),
     ...(draft.description.trim() ? { description: draft.description.trim() } : {}),
     conditions: draft.conditions,
-    conditionJoin: draft.conditions.length > 1 ? draft.conditionJoin : null,
+    conditionJoin:
+      draft.conditionJoin === "per_grouping"
+        ? null
+        : draft.conditions.length > 1
+          ? draft.conditionJoin
+          : null,
     // Persist only the executable tree. The legacy free-text field is never
     // split on whitespace; it is preserved as-is for old payloads only.
     conditionGrouping: null,

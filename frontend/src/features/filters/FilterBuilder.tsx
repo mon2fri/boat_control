@@ -11,7 +11,7 @@ interface Props {
 }
 
 function newFilterRow(): FilterRow {
-  return { id: nextId("filter"), column: "", operator: "equals", value: "" };
+  return { id: nextId("filter"), column: "", operator: "equals", values: [] };
 }
 
 /** Manages the ordered list of filter rows (add / edit / remove). */
@@ -26,10 +26,10 @@ export function FilterBuilder({ columns, rows, columnValues, loadingValues, onCh
 
   return (
     <section aria-labelledby="filters-title" className="card">
-      <h3 id="filters-title">Filters</h3>
-      <p className="field-hint">
-        Each row applies one condition. Rows are combined with logical AND. Leave the list empty to
-        run against the full set.
+      <h3 id="filters-title" className="card-heading">Filtering Rows</h3>
+      <p className="card-hint">
+        Each row applies one condition. Values within a row are OR-ed. Rows are combined with logical AND.
+        Leave the list empty to run against the full set.
       </p>
 
       {rows.length === 0 ? (

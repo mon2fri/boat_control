@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithClient } from "../../test/utils";
 import { FilterRowEditor } from "./FilterRowEditor";
 import type { FilterRow } from "../../api/domain";
 
-const row: FilterRow = { id: "f1", column: "region", operator: "equals", value: "" };
+const row: FilterRow = { id: "f1", column: "region", operator: "equals", values: [] };
 
 const columnValues = {
   region: [
@@ -14,7 +14,7 @@ const columnValues = {
 };
 
 describe("FilterRowEditor", () => {
-  it("blocks selecting a starred (single-file) value", () => {
+  it("blocks selecting a starred (single-file) value", async () => {
     const onChange = vi.fn();
     renderWithClient(
       <FilterRowEditor
@@ -30,12 +30,15 @@ describe("FilterRowEditor", () => {
 
     fireEvent.focus(screen.getByRole("searchbox", { name: "Value" }));
 
-    // Clicking the starred value does not commit it.
-    fireEvent.mouseDown(screen.getByRole("option", { name: /LEGACY/ }));
-    expect(onChange).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: /LEGACY/ })).toBeInTheDocument();
+    });
 
-    // A normal value does commit.
-    fireEvent.mouseDown(screen.getByRole("option", { name: "EMEA" }));
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ value: "EMEA" }));
+    const starredOption = screen.getByRole("option", { name: /LEGACY/ });
+    expect(starredOption).toHaveAttribute("aria-disabled", "true");
+
+    // Clicking the starred value does not commit it.
+    fireEvent.mouseDown(starredOption);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

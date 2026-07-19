@@ -37,8 +37,8 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
 
   return (
     <section aria-labelledby="header-review-title">
-      <h3 id="header-review-title">Column preview</h3>
-      <p role="status">
+      <h3 id="header-review-title" className="section-heading">Column preview</h3>
+      <p className="section-hint" role="status">
         {report.common.length} shared column{report.common.length === 1 ? "" : "s"}.{" "}
         Comparison and validation run on shared columns only.
       </p>
@@ -69,7 +69,7 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
       </div>
 
       <div className="card" style={{ marginTop: "var(--space)" }}>
-        <h3>Column filter</h3>
+        <h3 className="card-heading">Column filter</h3>
         <SearchableMultiSelect
           label="Select columns to include"
           options={sharedOptions}
@@ -82,7 +82,7 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
 
       <div className="header-columns" style={{ marginTop: "var(--space)" }}>
         <div className="card header-column-group">
-          <h4>Columns Included ({selectedColumns.length})</h4>
+          <h4 className="card-heading">Columns Included ({selectedColumns.length})</h4>
           {selectedColumns.length === 0 ? (
             <p className="field-hint">No columns selected</p>
           ) : (
@@ -96,7 +96,7 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
           )}
         </div>
         <div className="card header-column-group">
-          <h4>Columns Excluded ({excludedColumns.length})</h4>
+          <h4 className="card-heading">Columns Excluded ({excludedColumns.length})</h4>
           {excludedColumns.length === 0 ? (
             <p className="field-hint">All columns included</p>
           ) : (
@@ -131,7 +131,7 @@ function HeaderColumnList({
 }) {
   return (
     <div className="card header-column-group">
-      <h4>{title}</h4>
+      <h4 className="card-heading">{title}</h4>
       {names.length === 0 ? (
         <p className="field-hint">None</p>
       ) : (

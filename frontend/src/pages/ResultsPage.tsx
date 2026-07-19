@@ -15,7 +15,7 @@ import type { WorkflowState } from "../state/WorkflowContext";
 
 /** Keep only fully-specified filter rows for the run request. */
 function completeFilters(filters: FilterRow[]): FilterRow[] {
-  return filters.filter((f) => f.column.trim() !== "" && f.value.trim() !== "");
+  return filters.filter((f) => f.column.trim() !== "" && f.values.length > 0);
 }
 
 function buildRunRequest(state: WorkflowState): RunRequest | null {

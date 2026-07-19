@@ -27,10 +27,9 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
   const initialized = useRef(false);
   const queryClient = useQueryClient();
 
-  const columns = state.header?.common ?? [];
+  const columns = state.comparisonColumns.length > 0 ? state.comparisonColumns : (state.header?.common ?? []);
   const selected = state.selectedRuleIndexes;
 
-  // Default to all rules selected the first time the catalog loads.
   useEffect(() => {
     if (!initialized.current && rules.data && rules.data.length > 0) {
       initialized.current = true;
@@ -54,7 +53,6 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
     } else {
       createRule.mutate(draft, {
         onSuccess: (created) => {
-          // Newly created rules join the selection by default.
           dispatch({ type: "setSelectedRules", ruleIndexes: [...selected, created.ruleId] });
           setEditor({ mode: "closed" });
         },
@@ -67,9 +65,147 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
       ? updateRule.error?.message ?? null
       : createRule.error?.message ?? null;
 
+  if (embedded) {
+    return (
+      <section id="validation-rules" aria-labelledby="rules-title">
+        <div className="rules-layout">
+          <div className="rule-select-panel">
+            <h3 id="rules-title" className="card-heading">Validation rules</h3>
+            {rules.isLoading && <p role="status">Loading rules…</p>}
+            {rules.isError && (
+              <p className="alert alert--error" role="alert">
+                Could not load rules: {rules.error.message}
+              </p>
+            )}
+            {rules.data && (
+              <>
+                {rules.data.length === 0 ? (
+                  <p role="status">No rules configured yet. Add one below.</p>
+                ) : (
+                  <ul className="rule-select-list" aria-label="Rules">
+                    {rules.data.map((rule) => (
+                      <li key={rule.index}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(rule.index)}
+                            onChange={() => toggle(rule.index)}
+                          />{" "}
+                          <strong>{rule.index}</strong> — {rule.name}
+                        </label>
+                        <div className="rule-actions">
+                          <code className="rule-logic">{describeLogic(rule)}</code>
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={() => setEditor({ mode: "edit", rule })}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--danger"
+                            onClick={() => setPendingDelete(rule)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="dialog-actions">
+                  {editor.mode === "closed" && (
+                    <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
+                      + Add rule
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={!state.header}
+                    onClick={() => void navigate("/results")}
+                  >
+                    Continue to run
+                  </button>
+                </div>
+                {!state.header && (
+                  <p className="field-hint">Upload files to run the selected rules.</p>
+                )}
+              </>
+            )}
+          </div>
+
+          <div>
+            {editor.mode !== "closed" ? (
+              <RuleEditor
+                {...(editor.mode === "edit" ? { rule: editor.rule } : {})}
+                columns={columns}
+                saving={createRule.isPending || updateRule.isPending}
+                error={saveError}
+                onSave={handleSave}
+                onCancel={() => setEditor({ mode: "closed" })}
+              />
+            ) : (
+              <div className="card">
+                <p className="card-hint">Select a rule to edit, or add a new rule.</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <ConfigManager
+          configType="rules"
+          currentContent={rules.data ?? []}
+          onLoad={(name) => setConfigLoadName(name)}
+          disabled={rules.isPending}
+          hasUnsavedChanges={editor.mode !== "closed"}
+          title="Load config for rules"
+        />
+
+        {configLoadName && (
+          <ConfigLoader
+            configType="rules"
+            name={configLoadName}
+            onLoad={() => {
+              void queryClient.invalidateQueries({ queryKey: RULES_KEY });
+            }}
+            onDone={() => setConfigLoadName(null)}
+          />
+        )}
+
+        <ConfirmDialog
+          title="Delete rule?"
+          open={pendingDelete !== null}
+          confirmLabel="Delete"
+          confirmTone="danger"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            if (pendingDelete) {
+              const index = pendingDelete.index;
+              deleteRule.mutate(index, {
+                onSuccess: () =>
+                  dispatch({
+                    type: "setSelectedRules",
+                    ruleIndexes: selected.filter((i) => i !== index),
+                  }),
+              });
+            }
+            setPendingDelete(null);
+          }}
+        >
+          <p>
+            Delete rule <strong>{pendingDelete?.index}</strong> ({pendingDelete?.name})? This cannot
+            be undone.
+          </p>
+        </ConfirmDialog>
+      </section>
+    );
+  }
+
   return (
-    <section id={embedded ? "validation-rules" : undefined} aria-labelledby="rules-title">
-      {embedded ? <h3 id="rules-title">Validation rules</h3> : <h2 id="rules-title">Validation rules</h2>}
+    <section aria-labelledby="rules-title">
+      <h2 id="rules-title" className="section-heading">Validation rules</h2>
 
       {rules.isLoading && <p role="status">Loading rules…</p>}
       {rules.isError && (
@@ -81,7 +217,7 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
       {rules.data && (
         <>
           <div className="card">
-            <h3>Select rules for this run</h3>
+            <h3 className="card-heading">Select rules for this run</h3>
             {rules.data.length === 0 ? (
               <p role="status">No rules configured yet. Add one below.</p>
             ) : (
@@ -156,6 +292,7 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
         onLoad={(name) => setConfigLoadName(name)}
         disabled={rules.isPending}
         hasUnsavedChanges={editor.mode !== "closed"}
+        title="Load config for rules"
       />
 
       {configLoadName && (

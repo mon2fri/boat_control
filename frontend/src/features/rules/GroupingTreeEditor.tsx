@@ -23,9 +23,11 @@ interface Props {
   conditions: Condition[];
   value: GroupNode | null;
   onChange: (next: GroupNode | null) => void;
+  /** When "per_grouping", group kind is fixed at creation (no per-group dropdown). */
+  groupingMode?: "and_or" | "per_grouping";
 }
 
-export function GroupingTreeEditor({ conditions, value, onChange }: Props) {
+export function GroupingTreeEditor({ conditions, value, onChange, groupingMode = "and_or" }: Props) {
   const helpId = useId();
   if (conditions.length === 0) {
     return <p className="field-hint">Add conditions to enable grouping.</p>;
@@ -48,6 +50,7 @@ export function GroupingTreeEditor({ conditions, value, onChange }: Props) {
         onChange={(next) => onChange(next)}
         onRemove={null}
         availableConditionIds={new Set(conditions.map((c) => c.id))}
+        groupingMode={groupingMode}
       />
       {ungrouped.length > 0 && (
         <p className="field-hint" role="status">
@@ -65,9 +68,10 @@ interface NodeEditorProps {
   onChange: (next: GroupNode) => void;
   onRemove: (() => void) | null;
   availableConditionIds: Set<string>;
+  groupingMode: "and_or" | "per_grouping";
 }
 
-function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, availableConditionIds }: NodeEditorProps) {
+function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, availableConditionIds, groupingMode }: NodeEditorProps) {
   const label = useId();
   if (node.kind === "leaf") {
     const cond = conditions.find((c) => c.id === node.conditionId);
@@ -124,11 +128,19 @@ function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, available
       style={{ marginLeft: depth * 16 }}
     >
       <legend>
-        <label htmlFor={label}>Combine with</label>{" "}
-        <select id={label} value={node.kind} onChange={(e) => setKind(e.target.value as "and" | "or")}>
-          <option value="and">AND — all must match</option>
-          <option value="or">OR — any may match</option>
-        </select>
+        {groupingMode === "per_grouping" ? (
+          <span>
+            Combined with <strong>{node.kind === "and" ? "AND" : "OR"}</strong>
+          </span>
+        ) : (
+          <>
+            <label htmlFor={label}>Combine with</label>{" "}
+            <select id={label} value={node.kind} onChange={(e) => setKind(e.target.value as "and" | "or")}>
+              <option value="and">AND — all must match</option>
+              <option value="or">OR — any may match</option>
+            </select>
+          </>
+        )}
         {onRemove && (
           <button type="button" className="btn btn--danger" onClick={onRemove} aria-label="Remove this group">
             Remove group
@@ -145,6 +157,7 @@ function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, available
               onChange={(next) => updateChild(i, next)}
               onRemove={() => removeChild(i)}
               availableConditionIds={availableConditionIds}
+              groupingMode={groupingMode}
             />
           </li>
         ))}

@@ -61,9 +61,13 @@ class FilterValidationView(APIView):  # type: ignore[misc]
         session_id = request.data.get("session_id")
         column = request.data.get("column")
         operator = request.data.get("operator")
-        filter_value = request.data.get("filter_value")
+        # Support both legacy filter_value (string) and new filter_values (array)
+        filter_values = request.data.get("filter_values", [])
+        filter_value = request.data.get("filter_value", "")
+        if not filter_values and filter_value:
+            filter_values = [filter_value]
 
-        if not all([session_id, column, operator, filter_value]):
+        if not all([session_id, column, operator]) or not filter_values:
             return Response(
                 {"error": "All fields are required."}, status=400
             )
@@ -75,10 +79,15 @@ class FilterValidationView(APIView):  # type: ignore[misc]
             )
 
         common_columns = session.common_columns
-        result = validate_filter(
-            column, operator, filter_value, common_columns
-        )
-        return Response({"valid": result.valid, "errors": result.errors})
+        # Validate each value in the array
+        all_valid = True
+        all_errors: list[str] = []
+        for val in filter_values:
+            result = validate_filter(column, operator, val, common_columns)
+            if not result.valid:
+                all_valid = False
+                all_errors.extend(result.errors)
+        return Response({"valid": all_valid, "errors": all_errors})
 
 
 class TargetColumnsView(APIView):  # type: ignore[misc]
