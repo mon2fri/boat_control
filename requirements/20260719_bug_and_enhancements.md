@@ -1,9 +1,11 @@
 #### Upload files 
 --- Bug ---
+
 B1. In the upload page source only shows "local upload", without seeing remote option
 B2. The filter columns cannot input multiple columns, it should accepts comma separated input, but not conflict with those from enhancement
 
 --- Enhancement ---
+
 E1. Add light / dark themes
 E2. In the header review section, the filter columns, make it a searchable dropdown list with checkbox
   - users can search and also select multipe items;
