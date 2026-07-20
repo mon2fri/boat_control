@@ -45,7 +45,10 @@ export interface Condition {
   id: string;
   column: string;
   operator: LogicOperator;
-  value: string;
+  /** Values inside one condition are evaluated with OR semantics. */
+  values?: string[];
+  /** Legacy scalar retained while older saved rules are migrated. */
+  value?: string;
 }
 
 export type LogicFormat = "value" | "column";
@@ -63,7 +66,7 @@ export interface Rule {
   name: string;
   description?: string;
   conditions: Condition[];
-  conditionJoin: "and" | "or" | null;
+  conditionJoin: "and" | "or" | "per_grouping" | null;
   /**
    * Legacy free-text grouping input. New code MUST build and persist
    * `groupTree` instead — splitting free text on whitespace cannot represent

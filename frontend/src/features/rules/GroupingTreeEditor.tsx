@@ -95,7 +95,13 @@ function PerGroupingEditor({
   onChange: (next: GroupNode | null) => void;
   helpId: string;
 }) {
-  const rootGroups = useMemo(() => groupForest(value), [value]);
+  // More than one independent group needs a transport-only OR wrapper. Keep
+  // that wrapper state locally so an explicit OR group made only of groups is
+  // not mistaken for the wrapper and flattened out of the preview.
+  const [forestMode, setForestMode] = useState(
+    () => value?.kind === "or" && value.children.length > 1 && value.children.every((child) => child.kind !== "leaf"),
+  );
+  const rootGroups = useMemo(() => groupForest(value, forestMode), [value, forestMode]);
 
   /**
    * Stable, post-order numeric IDs for every group in the tree.
@@ -179,6 +185,7 @@ function PerGroupingEditor({
 
   /** Emit root value, unwrapping the OR wrapper when only 1 group remains. */
   function emitRoot(children: GroupNode[]): void {
+    setForestMode(children.length > 1);
     if (children.length === 0) {
       onChange(null);
     } else if (children.length === 1) {
@@ -241,7 +248,8 @@ function PerGroupingEditor({
 
   function condLabel(id: string): string {
     const c = conditions.find((cc) => cc.id === id);
-    return c ? `${c.column || "<column>"} ${c.operator} ${c.value || "<value>"}` : `<missing:${id}>`;
+    const values = c ? (c.values ?? (c.value ? [c.value] : [])) : [];
+    return c ? `${c.column || "<column>"} ${c.operator} ${values.join(" OR ") || "<value>"}` : `<missing:${id}>`;
   }
 
   return (
@@ -253,7 +261,7 @@ function PerGroupingEditor({
       </p>
 
       {rootGroups.length > 0 && (
-        <ol className="group-tree-children" style={{ listStyle: "none", padding: 0 }}>
+        <ol className="group-tree-children group-tree-children--root">
           {rootGroups.map((child, i) => (
             <GroupTreeItem
               key={idOf(child)}
@@ -399,6 +407,8 @@ function GroupTreeItem({
   onKindChange,
   onRemoveMember,
   onRemoveRoot,
+  parentEditing = false,
+  onRemoveFromParent,
 }: {
   group: GroupNode;
   path: number[];
@@ -409,15 +419,27 @@ function GroupTreeItem({
   onKindChange: (path: number[], kind: "and" | "or") => void;
   onRemoveMember: (path: number[], memberIndex: number) => void;
   onRemoveRoot?: () => void;
+  parentEditing?: boolean;
+  onRemoveFromParent?: () => void;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   if (group.kind === "leaf") return null;
   const editing = samePath(editingPath, path);
 
   return (
-    <li className="group-tree-group" data-testid={`tree-${groupTitle(group)}`}>
-      <fieldset>
-        <legend>
-          <span>{groupTitle(group)}</span>{" "}
+    <li className="group-tree-node group-tree-node--group" data-testid={`tree-${groupTitle(group)}`}>
+      <div className="group-tree-member-row">
+          <button
+            type="button"
+            className="group-tree-collapse group-tree-label group-tree-label--group"
+            aria-expanded={!collapsed}
+            aria-label={`${collapsed ? "Expand" : "Collapse"} ${groupTitle(group)}`}
+            onClick={() => setCollapsed((current) => !current)}
+          >
+            <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+            {groupTitle(group)}
+          </button>
+          <span className="group-tree-type group-tree-type--group">Group</span>
           {editing ? (
             <select
               aria-label={`${groupTitle(group)} operator`}
@@ -429,7 +451,7 @@ function GroupTreeItem({
             </select>
           ) : (
             <strong>{group.kind.toUpperCase()}</strong>
-          )}{" "}
+          )}
           <button
             type="button"
             className="btn group-tree-edit"
@@ -448,18 +470,26 @@ function GroupTreeItem({
               Remove group
             </button>
           )}
-        </legend>
+          {parentEditing && onRemoveFromParent && (
+            <button
+              type="button"
+              className="btn btn--danger group-tree-member-remove"
+              onClick={onRemoveFromParent}
+              aria-label={`Remove ${groupTitle(group)} from its parent group`}
+            >
+              ×
+            </button>
+          )}
+      </div>
 
-        <ol className="group-tree-children">
+        {!collapsed && <ol className="group-tree-children">
           {group.children.map((child, index) => (
-            <li key={child.kind === "leaf" ? `leaf-${child.conditionId}` : `group-${idOfForKey(child, groupTitle)}`}>
-              <div className="group-tree-member-row">
-                {child.kind === "leaf" ? (
-                  <span>{condLabel(child.conditionId)}</span>
-                ) : (
-                  <span className="group-tree-branch" aria-hidden="true">&#9492;&#9472;&#9472;</span>
-                )}
-                {editing && (
+            child.kind === "leaf" ? (
+              <li key={`leaf-${child.conditionId}`} className="group-tree-node group-tree-node--condition">
+                <div className="group-tree-member-row">
+                  <span className="group-tree-type group-tree-type--condition">Condition</span>
+                  <span className="group-tree-label group-tree-label--condition">{condLabel(child.conditionId)}</span>
+                  {editing && (
                   <button
                     type="button"
                     className="btn btn--danger group-tree-member-remove"
@@ -468,35 +498,33 @@ function GroupTreeItem({
                   >
                     ×
                   </button>
-                )}
-              </div>
-              {child.kind !== "leaf" && (
-                <ol className="group-tree-children group-tree-children--nested">
-                  <GroupTreeItem
-                    group={child}
-                    path={[...path, index]}
-                    editingPath={editingPath}
-                    groupTitle={groupTitle}
-                    condLabel={condLabel}
-                    onToggleEdit={onToggleEdit}
-                    onKindChange={onKindChange}
-                    onRemoveMember={onRemoveMember}
-                  />
-                </ol>
-              )}
-            </li>
+                  )}
+                </div>
+              </li>
+            ) : (
+              <GroupTreeItem
+                key={`group-${idOfForKey(child, groupTitle)}`}
+                group={child}
+                path={[...path, index]}
+                editingPath={editingPath}
+                groupTitle={groupTitle}
+                condLabel={condLabel}
+                onToggleEdit={onToggleEdit}
+                onKindChange={onKindChange}
+                onRemoveMember={onRemoveMember}
+                parentEditing={editing}
+                onRemoveFromParent={() => onRemoveMember(path, index)}
+              />
+            )
           ))}
-        </ol>
-      </fieldset>
+        </ol>}
     </li>
   );
 }
 
-function groupForest(value: GroupNode | null): GroupNode[] {
+function groupForest(value: GroupNode | null, forestMode: boolean): GroupNode[] {
   if (!value) return [];
-  // Multiple independent groups are represented by an implicit OR wrapper.
-  // A user-created OR group containing a condition remains one visible group.
-  if (value.kind === "or" && value.children.length > 1 && value.children.every((child) => child.kind !== "leaf")) {
+  if (forestMode && value.kind === "or") {
     return value.children;
   }
   return [value];
@@ -559,7 +587,7 @@ function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, available
     return (
       <div className="group-tree-leaf" role="treeitem" aria-level={depth + 1}>
         <span>
-          Condition: <strong>{cond ? `${cond.column || "<column>"} ${cond.operator} ${cond.value || "<value>"}` : `<missing:${node.conditionId}>`}</strong>
+          Condition: <strong>{cond ? `${cond.column || "<column>"} ${cond.operator} ${(cond.values ?? (cond.value ? [cond.value] : [])).join(" OR ") || "<value>"}` : `<missing:${node.conditionId}>`}</strong>
         </span>
         {onRemove && (
           <button type="button" className="btn btn--danger" onClick={onRemove} aria-label="Remove this condition slot">

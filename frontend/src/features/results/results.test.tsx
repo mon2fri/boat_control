@@ -64,6 +64,8 @@ describe("result components", () => {
   it("renders a detail table header and an empty state", () => {
     const { rerender } = render(<DetailTable rows={result.changeDetails} caption="Changes" />);
     expect(screen.getByRole("columnheader", { name: "Column" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Rationale" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Kind" })).not.toBeInTheDocument();
     rerender(<DetailTable rows={[]} caption="Changes" />);
     expect(screen.getByText("No detail rows.")).toBeInTheDocument();
   });
@@ -71,7 +73,7 @@ describe("result components", () => {
   it("virtualizes large result sets (does not render every row)", () => {
     const many = Array.from({ length: 5000 }, (_, i) => ({
       rowKey: String(i),
-      keyColumns: {} as Record<string, string | null>,
+      keyColumns: {},
       column: "c",
       file1Value: "a",
       file2Value: "b",
@@ -83,4 +85,3 @@ describe("result components", () => {
     expect(bodyRows.length).toBeLessThan(200);
   });
 });
-

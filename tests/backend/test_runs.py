@@ -100,6 +100,26 @@ class TestValidateRows:
         assert violations[0].violating_column == "status"
         assert violations[0].violating_value == "inactive"
 
+    def test_rule_violation_includes_matching_comparison_value(self, rules_file: Path) -> None:
+        import polars as pl
+
+        baseline = pl.DataFrame({"id": [1], "status": ["inactive"]})
+        comparison = pl.DataFrame({"id": [1], "status": ["pending"]})
+        result = validate_rows(
+            baseline,
+            load_rules(rules_file).rules,
+            ["status"],
+            ["id"],
+            comparison_df=comparison,
+        )
+        violation = result.violations_by_rule["R001"][0]
+        assert violation.violating_value == "inactive"
+        assert violation.comparison_value == "pending"
+        assert result.rule_summaries["R001"] == {
+            "name": "Active Check",
+            "logic": "status equals 'active'",
+        }
+
     def test_grouping_tree_and(self, csv_a: Path, tmp_path: Path) -> None:
         from apps.rules.services import GroupingBranch, GroupingLeaf, Rule
         from apps.runs.services import _evaluate_grouping_tree
@@ -171,6 +191,41 @@ class TestValidateRows:
         assert _evaluate_grouping_tree(tree, [True, False, False]) is False
         assert _evaluate_grouping_tree(tree, [False, True, True]) is False
 
+    def test_condition_values_are_or_alternatives(self) -> None:
+        from apps.rules.services import Condition, LogicClause, Rule
+        from apps.runs.services import _check_rule
+
+        rule = Rule(
+            rule_id="R001",
+            name="Status alternatives",
+            description="",
+            conditions=[Condition("status", "eq", "active", ("active", "pending"))],
+            condition_relation=None,
+            grouping=None,
+            grouping_tree=None,
+            logic=LogicClause("value_vs_column", "result", "eq", "ok"),
+        )
+        assert _check_rule({"status": "active", "result": "bad"}, rule, [])[0] is True
+        assert _check_rule({"status": "pending", "result": "bad"}, rule, [])[0] is True
+        assert _check_rule({"status": "closed", "result": "bad"}, rule, [])[0] is False
+
+    def test_numeric_condition_accepts_decimal_and_negative_values(self) -> None:
+        from apps.rules.services import Condition, LogicClause, Rule
+        from apps.runs.services import _check_rule
+
+        rule = Rule(
+            rule_id="R001",
+            name="Numeric scope",
+            description="",
+            conditions=[Condition("score", "gt", "-2.5", ("-2.5",))],
+            condition_relation=None,
+            grouping=None,
+            grouping_tree=None,
+            logic=LogicClause("value_vs_column", "result", "eq", "ok"),
+        )
+        assert _check_rule({"score": "-2.4", "result": "bad"}, rule, [])[0] is True
+        assert _check_rule({"score": "-3", "result": "bad"}, rule, [])[0] is False
+
 
 class TestExecuteComparison:
     def test_full_execution(self, csv_a: Path, csv_b: Path, rules_file: Path) -> None:
@@ -213,9 +268,7 @@ class TestExecuteComparison:
         finally:
             settings.RULES_FILE = original_rules
 
-    def test_none_rule_ids_runs_all_rules(
-        self, csv_a: Path, csv_b: Path, rules_file: Path
-    ) -> None:
+    def test_none_rule_ids_runs_all_rules(self, csv_a: Path, csv_b: Path, rules_file: Path) -> None:
         import os
 
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "boat_control.settings")
@@ -239,9 +292,7 @@ class TestExecuteComparison:
         finally:
             settings.RULES_FILE = original_rules
 
-    def test_rejects_missing_key_columns(
-        self, csv_a: Path, csv_b: Path
-    ) -> None:
+    def test_rejects_missing_key_columns(self, csv_a: Path, csv_b: Path) -> None:
         with pytest.raises(ValueError, match="key_columns is required"):
             execute_comparison(
                 path_a=csv_a,

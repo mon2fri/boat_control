@@ -98,7 +98,8 @@ export const parseTargetsResponseSchema = z.object({
 export const wireConditionSchema = z.object({
   column_name: z.string(),
   operator: z.string(),
-  filter_value: z.string(),
+  filter_value: z.string().optional(),
+  filter_values: z.array(z.string()).optional(),
 });
 export type WireCondition = z.infer<typeof wireConditionSchema>;
 
@@ -246,6 +247,7 @@ export const wireViolationSchema = z.object({
   // is never blank for an in-flight release.
   violating_column: z.string().optional(),
   violating_value: wireScalarSchema.optional(),
+  comparison_value: wireScalarSchema.optional(),
   rule_logic: z.string().optional(),
 });
 export type WireViolation = z.infer<typeof wireViolationSchema>;
@@ -260,6 +262,10 @@ export const wireValidationSchema = z.object({
   distinct_violating_attributes: z.number().int().nonnegative().optional(),
   violating_rows_by_rule: z.record(z.string(), z.number().int().nonnegative()).optional(),
   violating_attributes_by_rule: z.record(z.string(), z.number().int().nonnegative()).optional(),
+  rule_summaries: z.record(
+    z.string(),
+    z.object({ name: z.string(), logic: z.string() }),
+  ).optional(),
 });
 
 export const wireRunResultSchema = z.object({

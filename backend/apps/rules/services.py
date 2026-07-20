@@ -12,15 +12,29 @@ from django.conf import settings
 
 _rules_lock = threading.Lock()
 
-ConditionOperator = Literal["eq", "neq", "contains", "ncontains"]
+ConditionOperator = Literal["eq", "neq", "contains", "ncontains", "gt", "lt"]
 LogicOperator = Literal["and", "or"]
 LogicFormat = Literal["value_vs_column", "column_vs_column"]
 
-VALID_CONDITION_OPERATORS: set[ConditionOperator] = {"eq", "neq", "contains", "ncontains"}
+VALID_CONDITION_OPERATORS: set[ConditionOperator] = {
+    "eq",
+    "neq",
+    "contains",
+    "ncontains",
+    "gt",
+    "lt",
+}
 VALID_LOGIC_OPERATORS: set[LogicOperator] = {"and", "or"}
 VALID_LOGIC_FORMATS: set[LogicFormat] = {"value_vs_column", "column_vs_column"}
 VALID_LOGIC_CLAUSE_OPERATORS: set[str] = {
-    "eq", "neq", "contains", "ncontains", "gt", "lt", "gte", "lte",
+    "eq",
+    "neq",
+    "contains",
+    "ncontains",
+    "gt",
+    "lt",
+    "gte",
+    "lte",
 }
 
 
@@ -29,6 +43,25 @@ class Condition:
     column_name: str
     operator: ConditionOperator
     filter_value: str
+    filter_values: tuple[str, ...] = ()
+
+
+def _condition_values(data: dict[str, Any]) -> tuple[str, ...]:
+    values = data.get("filter_values")
+    if isinstance(values, list):
+        return tuple(str(value) for value in values if str(value) != "")
+    legacy = data.get("filter_value", "")
+    return (str(legacy),) if legacy != "" else ()
+
+
+def _make_condition(data: dict[str, Any]) -> Condition:
+    values = _condition_values(data)
+    return Condition(
+        column_name=data["column_name"],
+        operator=data["operator"],
+        filter_value=values[0] if values else "",
+        filter_values=values,
+    )
 
 
 @dataclass(frozen=True)
@@ -137,9 +170,7 @@ def _validate_grouping_tree(
 
     if isinstance(node, GroupingBranch):
         if len(node.children) < 2:
-            errors.append(
-                f"Grouping node '{node.kind}' must have at least 2 children"
-            )
+            errors.append(f"Grouping node '{node.kind}' must have at least 2 children")
         for child in node.children:
             errors.extend(_validate_grouping_tree(child, condition_count, seen_ids))
     return errors
@@ -187,14 +218,7 @@ def load_rules(path: Path | None = None) -> RulesFile:
 
     rules = []
     for r in data.get("rules", []):
-        conditions = [
-            Condition(
-                column_name=c["column_name"],
-                operator=c["operator"],
-                filter_value=c["filter_value"],
-            )
-            for c in r.get("conditions", [])
-        ]
+        conditions = [_make_condition(c) for c in r.get("conditions", [])]
         logic_data = r.get("logic", {})
         logic = LogicClause(
             format=logic_data["format"],
@@ -252,6 +276,7 @@ def save_rules(rules_file: RulesFile, path: Path | None = None) -> None:
                     "column_name": c.column_name,
                     "operator": c.operator,
                     "filter_value": c.filter_value,
+                    "filter_values": list(c.filter_values or (c.filter_value,)),
                 }
                 for c in rule.conditions
             ]
@@ -294,15 +319,33 @@ def validate_rule(rule_data: dict[str, Any]) -> RuleValidationResult:
         elif logic.get("operator") not in VALID_LOGIC_CLAUSE_OPERATORS:
             valid_ops = ", ".join(sorted(VALID_LOGIC_CLAUSE_OPERATORS))
             errors.append(
-                f"Invalid logic operator '{logic.get('operator')}'. "
-                f"Must be one of: {valid_ops}"
+                f"Invalid logic operator '{logic.get('operator')}'. Must be one of: {valid_ops}"
             )
         if "target_value" not in logic:
             errors.append("Logic target_value is required.")
 
     conditions = rule_data.get("conditions", [])
-    if len(conditions) >= 2 and not rule_data.get("condition_relation"):
+    if (
+        len(conditions) >= 2
+        and not rule_data.get("condition_relation")
+        and not rule_data.get("grouping_tree")
+    ):
         errors.append("condition_relation is required when there are 2+ conditions.")
+
+    for index, condition in enumerate(conditions, start=1):
+        if condition.get("operator") not in VALID_CONDITION_OPERATORS:
+            errors.append(f"Invalid condition operator at condition {index}.")
+        values = _condition_values(condition)
+        if not values:
+            errors.append(f"Condition {index} requires at least one value.")
+        if condition.get("operator") in {"gt", "lt"}:
+            try:
+                for value in values:
+                    float(value)
+            except TypeError, ValueError:
+                errors.append(
+                    f"Condition {index} requires numeric values for {condition.get('operator')}."
+                )
 
     cond_rel = rule_data.get("condition_relation")
     if cond_rel and cond_rel not in VALID_LOGIC_OPERATORS:
@@ -326,9 +369,7 @@ def validate_rule(rule_data: dict[str, Any]) -> RuleValidationResult:
             actual_ids = _collect_condition_ids(tree)
             missing = expected_ids - actual_ids
             if missing:
-                errors.append(
-                    f"grouping_tree omits conditions: {', '.join(sorted(missing))}"
-                )
+                errors.append(f"grouping_tree omits conditions: {', '.join(sorted(missing))}")
 
     return RuleValidationResult(valid=len(errors) == 0, errors=errors)
 
@@ -339,14 +380,7 @@ def create_rule(rules_file: RulesFile, rule_data: dict[str, Any]) -> tuple[Rules
         raise ValueError(f"Invalid rule: {'; '.join(validation.errors)}")
 
     rule_id = _format_rule_id(rules_file.next_index)
-    conditions = [
-        Condition(
-            column_name=c["column_name"],
-            operator=c["operator"],
-            filter_value=c["filter_value"],
-        )
-        for c in rule_data.get("conditions", [])
-    ]
+    conditions = [_make_condition(c) for c in rule_data.get("conditions", [])]
     logic_data = rule_data["logic"]
     logic = LogicClause(
         format=logic_data["format"],
@@ -385,14 +419,7 @@ def update_rule(rules_file: RulesFile, rule_id: str, rule_data: dict[str, Any]) 
     for rule in rules_file.rules:
         if rule.rule_id == rule_id:
             found = True
-            conditions = [
-                Condition(
-                    column_name=c["column_name"],
-                    operator=c["operator"],
-                    filter_value=c["filter_value"],
-                )
-                for c in rule_data.get("conditions", [])
-            ]
+            conditions = [_make_condition(c) for c in rule_data.get("conditions", [])]
             logic_data = rule_data["logic"]
             logic = LogicClause(
                 format=logic_data["format"],

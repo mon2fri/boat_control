@@ -58,8 +58,9 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     expect(screen.getByText("Group 1")).toBeInTheDocument();
     expect(screen.getByText("Group 2")).toBeInTheDocument();
     // No sibling group was nested into the other: both top-level groups are
-    // listed as root fieldsets.
-    expect(screen.getAllByRole("list")[0]!.querySelectorAll("fieldset")).toHaveLength(2);
+    // listed as root tree nodes, without card/fieldset wrappers.
+    expect(screen.getAllByRole("list")[0]!.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(2);
+    expect(screen.getAllByRole("list")[0]!.querySelector("fieldset")).not.toBeInTheDocument();
   });
 
   it("keeps both groups at root after the user creates two disjoint groups", () => {
@@ -129,19 +130,18 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     fireEvent.click(screen.getByLabelText("col_c2 equals v2"));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
-    // After nesting, exactly one root fieldset remains at the top of the
-    // tree (the new outer wrapper). The original group survives as a nested
-    // fieldset inside it, retaining its stable "Group 1" identity.
+    // After nesting, exactly one root tree node remains at the top. The
+    // original group survives as a nested node with its stable identity.
     const rootList = screen.getAllByRole("list")[0]!;
-    const rootFieldsets = rootList.querySelectorAll(":scope > li > fieldset");
-    expect(rootFieldsets).toHaveLength(1);
-    expect(within(rootFieldsets[0] as HTMLElement).getByTestId("tree-Group 1")).toBeInTheDocument();
+    const rootNodes = rootList.querySelectorAll(":scope > .group-tree-node--group");
+    expect(rootNodes).toHaveLength(1);
+    expect(within(rootNodes[0] as HTMLElement).getByTestId("tree-Group 1")).toBeInTheDocument();
     expect(
-      within(rootFieldsets[0] as HTMLElement).getByText(/col_c2 equals v2/),
+      within(rootNodes[0] as HTMLElement).getByText(/col_c2 equals v2/),
     ).toBeInTheDocument();
     // The outer wrapper now uses the next post-order id ("Group 2"), not the
     // reused "Group 1" — that reassignment was the root of the original bug.
-    expect(within(rootFieldsets[0] as HTMLElement).getByText("Group 2")).toBeInTheDocument();
+    expect(within(rootNodes[0] as HTMLElement).getByText("Group 2")).toBeInTheDocument();
   });
 
   it("keeps stable group identities across sequential nesting (Group 1 stays Group 1, outer picks up Group 2 / Group 3)", () => {
@@ -180,15 +180,15 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     expect(screen.getByRole("button", { name: "Edit Group 2" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Group 3" })).toBeInTheDocument();
 
-    // Step 4 sanity: with every condition used, the only root fieldset is
+    // Step 4 sanity: with every condition used, the only root tree node is
     // labelled "Group 3" — not the reused "Group 1" the previous build
     // produced. The picklist itself hides because no further groups are
     // possible, but the fieldset name still tells the user which outer
     // wrapper they're looking at.
     const rootList = screen.getAllByRole("list")[0]!;
-    const rootFieldsets = rootList.querySelectorAll(":scope > li > fieldset");
-    expect(rootFieldsets).toHaveLength(1);
-    expect(within(rootFieldsets[0] as HTMLElement).getByText("Group 3")).toBeInTheDocument();
+    const rootNodes = rootList.querySelectorAll(":scope > .group-tree-node--group");
+    expect(rootNodes).toHaveLength(1);
+    expect(within(rootNodes[0] as HTMLElement).getByText("Group 3")).toBeInTheDocument();
   });
 
   it("edits only immediate children and removes a group when fewer than two remain", () => {
@@ -214,5 +214,40 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit Group 1" }));
     fireEvent.click(screen.getByRole("button", { name: /Remove col_c1 equals v1 from Group 1/ }));
     expect(screen.queryByText("Group 1")).not.toBeInTheDocument();
+  });
+
+  it("collapses and expands a group by clicking its name", () => {
+    const tree: GroupNode = {
+      kind: "and",
+      children: [
+        { kind: "leaf", conditionId: "c0" },
+        { kind: "leaf", conditionId: "c1" },
+      ],
+    };
+    render(<ControlledEditor initial={tree} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Group 1" }));
+    expect(screen.queryByText(/col_c0 equals v0/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Expand Group 1" }));
+    expect(screen.getByText(/col_c0 equals v0/)).toBeInTheDocument();
+  });
+
+  it("creates an OR group containing only existing groups", () => {
+    render(<ControlledEditor />);
+    for (const ids of [["c0", "c1"], ["c2", "c3"]]) {
+      for (const id of ids) fireEvent.click(screen.getByLabelText(`col_${id} equals v${id.slice(1)}`));
+      fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+    }
+
+    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
+    fireEvent.click(screen.getByTestId("pick-group:0"));
+    fireEvent.click(screen.getByTestId("pick-group:1"));
+    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+
+    const rootList = screen.getAllByRole("list")[0]!;
+    expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(1);
+    expect(screen.getByText("Group 1")).toBeInTheDocument();
+    expect(screen.getByText("Group 2")).toBeInTheDocument();
+    expect(screen.getByText("Group 3")).toBeInTheDocument();
   });
 });

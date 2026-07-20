@@ -174,31 +174,35 @@ class TestGroupingTreeParsing:
         assert node.condition_id == "c0"
 
     def test_parse_and_branch(self) -> None:
-        node = _parse_grouping_tree({
-            "kind": "and",
-            "children": [
-                {"kind": "leaf", "conditionId": "c0"},
-                {"kind": "leaf", "conditionId": "c1"},
-            ],
-        })
+        node = _parse_grouping_tree(
+            {
+                "kind": "and",
+                "children": [
+                    {"kind": "leaf", "conditionId": "c0"},
+                    {"kind": "leaf", "conditionId": "c1"},
+                ],
+            }
+        )
         assert isinstance(node, GroupingBranch)
         assert node.kind == "and"
         assert len(node.children) == 2
 
     def test_parse_nested_tree(self) -> None:
-        node = _parse_grouping_tree({
-            "kind": "or",
-            "children": [
-                {
-                    "kind": "and",
-                    "children": [
-                        {"kind": "leaf", "conditionId": "c0"},
-                        {"kind": "leaf", "conditionId": "c1"},
-                    ],
-                },
-                {"kind": "leaf", "conditionId": "c2"},
-            ],
-        })
+        node = _parse_grouping_tree(
+            {
+                "kind": "or",
+                "children": [
+                    {
+                        "kind": "and",
+                        "children": [
+                            {"kind": "leaf", "conditionId": "c0"},
+                            {"kind": "leaf", "conditionId": "c1"},
+                        ],
+                    },
+                    {"kind": "leaf", "conditionId": "c2"},
+                ],
+            }
+        )
         assert isinstance(node, GroupingBranch)
         assert node.kind == "or"
         assert isinstance(node.children[0], GroupingBranch)
@@ -289,19 +293,21 @@ class TestGroupingTreeOmitsConditions:
 
 class TestGroupingTreeCollectIds:
     def test_collect_from_nested(self) -> None:
-        node = _parse_grouping_tree({
-            "kind": "or",
-            "children": [
-                {"kind": "leaf", "conditionId": "c0"},
-                {
-                    "kind": "and",
-                    "children": [
-                        {"kind": "leaf", "conditionId": "c1"},
-                        {"kind": "leaf", "conditionId": "c2"},
-                    ],
-                },
-            ],
-        })
+        node = _parse_grouping_tree(
+            {
+                "kind": "or",
+                "children": [
+                    {"kind": "leaf", "conditionId": "c0"},
+                    {
+                        "kind": "and",
+                        "children": [
+                            {"kind": "leaf", "conditionId": "c1"},
+                            {"kind": "leaf", "conditionId": "c2"},
+                        ],
+                    },
+                ],
+            }
+        )
         ids = _collect_condition_ids(node)
         assert ids == {"c0", "c1", "c2"}
 
@@ -337,3 +343,47 @@ class TestGroupingTreeRoundTrip:
         assert loaded.rules[0].grouping_tree is not None
         assert isinstance(loaded.rules[0].grouping_tree, GroupingBranch)
         assert loaded.rules[0].grouping_tree.kind == "and"
+
+
+class TestMultiValueConditions:
+    def test_grouping_tree_replaces_condition_relation(self) -> None:
+        data = {
+            "name": "Grouped without flat relation",
+            "conditions": [
+                {"column_name": "a", "operator": "eq", "filter_values": ["1"]},
+                {"column_name": "b", "operator": "eq", "filter_values": ["2"]},
+            ],
+            "grouping_tree": {
+                "kind": "and",
+                "children": [
+                    {"kind": "leaf", "conditionId": "c0"},
+                    {"kind": "leaf", "conditionId": "c1"},
+                ],
+            },
+            "logic": {
+                "format": "value_vs_column",
+                "column_name": "result",
+                "operator": "eq",
+                "target_value": "ok",
+            },
+        }
+        assert validate_rule(data).valid is True
+
+    def test_multi_values_and_numeric_operator_round_trip(self, rules_path: Path) -> None:
+        data = {
+            "name": "Numeric alternatives",
+            "conditions": [
+                {"column_name": "score", "operator": "gt", "filter_values": ["-2.5", "10"]},
+            ],
+            "logic": {
+                "format": "value_vs_column",
+                "column_name": "result",
+                "operator": "eq",
+                "target_value": "ok",
+            },
+        }
+        new_file, _ = create_rule(RulesFile(version=1, rules=[], next_index=1), data)
+        save_rules(new_file, rules_path)
+        condition = load_rules(rules_path).rules[0].conditions[0]
+        assert condition.filter_values == ("-2.5", "10")
+        assert condition.filter_value == "-2.5"

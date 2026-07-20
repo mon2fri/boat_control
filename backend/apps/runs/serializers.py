@@ -49,6 +49,10 @@ class ValidationViolationSerializer(serializers.Serializer):  # type: ignore[mis
     rule_name = serializers.CharField()
     key_columns = serializers.DictField(child=serializers.JSONField())
     details = serializers.CharField()
+    violating_column = serializers.CharField(required=False)
+    violating_value = serializers.JSONField(required=False)
+    comparison_value = serializers.JSONField(required=False)
+    rule_logic = serializers.CharField(required=False)
 
 
 class ValidationResultSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -57,6 +61,7 @@ class ValidationResultSerializer(serializers.Serializer):  # type: ignore[misc]
         child=serializers.ListField(child=ValidationViolationSerializer())
     )
     violation_count_by_rule = serializers.DictField(child=serializers.IntegerField())
+    rule_summaries = serializers.DictField(required=False)
 
 
 class ExecutionResultSerializer(serializers.Serializer):  # type: ignore[misc]

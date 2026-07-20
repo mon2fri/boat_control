@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { Condition, GroupNode, LogicClause, LogicOperator, Rule, RuleDraft } from "../../api/domain";
 import { ColumnField } from "../../components/ColumnField";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
-import { SearchableSelect, type SelectOption } from "../../components/SearchableSelect";
+import { SearchableMultiSelect, type MultiSelectOption } from "../../components/SearchableMultiSelect";
 import { nextId } from "../../lib/id";
 import { LOGIC_OPERATORS } from "./constants";
 import { GroupingTreeEditor } from "./GroupingTreeEditor";
@@ -58,7 +58,15 @@ function initialDraft(rule?: Rule): DraftState {
 }
 
 function newCondition(): Condition {
-  return { id: nextId("cond"), column: "", operator: "equals", value: "" };
+  return { id: nextId("cond"), column: "", operator: "equals", values: [], value: "" };
+}
+
+function conditionValues(condition: Condition): string[] {
+  return condition.values ?? (condition.value ? [condition.value] : []);
+}
+
+function isNumericOperator(operator: LogicOperator): boolean {
+  return operator === "greater_than" || operator === "less_than";
 }
 
 /**
@@ -148,7 +156,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
           <p className="field-hint">No conditions — the rule always evaluates its logic.</p>
         )}
         {draft.conditions.map((condition, index) => {
-          const valueOptions: SelectOption[] = (columnValues[condition.column] ?? []).map((v) => ({
+          const valueOptions: MultiSelectOption[] = (columnValues[condition.column] ?? []).map((v) => ({
             value: v.value,
             label: v.starred ? `${v.value} *` : v.value,
             disabled: v.starred,
@@ -159,29 +167,41 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                 label="Column"
                 columns={columns}
                 value={condition.column}
-                onChange={(column) => updateCondition(condition.id, { column, value: "" })}
+                onChange={(column) => updateCondition(condition.id, { column, values: [], value: "" })}
               />
               <OperatorSelect
                 label="Operator"
                 value={condition.operator}
-                onChange={(operator) => updateCondition(condition.id, { operator })}
+                onChange={(operator) => updateCondition(condition.id, { operator, values: [], value: "" })}
               />
-              <SearchableSelect
-                label="Value"
-                options={valueOptions}
-                value={condition.value || null}
-                onChange={(value) => updateCondition(condition.id, { value })}
-                placeholder={condition.column ? "Search values or type…" : "Pick a column first"}
-                disabled={!condition.column}
-                freeText
-                hint={
-                  valueOptions.length > 0
-                    ? "Select from known values or type a custom value."
-                    : condition.column
-                      ? "No known values — type a custom value."
-                      : ""
-                }
-              />
+              {isNumericOperator(condition.operator) ? (
+                <div className="field">
+                  <label htmlFor={`condition-value-${condition.id}`}>Value</label>
+                  <input
+                    id={`condition-value-${condition.id}`}
+                    type="number"
+                    step="any"
+                    value={conditionValues(condition)[0] ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      updateCondition(condition.id, { values: value ? [value] : [], value });
+                    }}
+                    placeholder="Enter any number"
+                    disabled={!condition.column}
+                  />
+                </div>
+              ) : (
+                <SearchableMultiSelect
+                  label="Value"
+                  options={valueOptions}
+                  selected={conditionValues(condition)}
+                  onChange={(values) => updateCondition(condition.id, { values, value: values[0] ?? "" })}
+                  placeholder={condition.column ? "Search or type values…" : "Pick a column first"}
+                  disabled={!condition.column}
+                  freeText
+                  hint="Selected values are joined with OR within this condition."
+                />
+              )}
               <button
                 type="button"
                 className="btn btn--danger"
@@ -296,9 +316,11 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
               <label htmlFor="logic-value">Value</label>
               <input
                 id="logic-value"
+                type={isNumericOperator(draft.logic.operator) ? "number" : "text"}
+                step={isNumericOperator(draft.logic.operator) ? "any" : undefined}
                 value={draft.logic.target}
                 onChange={(e) => patch({ logic: { ...draft.logic, target: e.target.value } })}
-                placeholder="Literal value (choose “Others” to type any value)"
+                placeholder={isNumericOperator(draft.logic.operator) ? "Enter any number" : "Literal value"}
               />
             </div>
           )}
@@ -401,13 +423,18 @@ function validateDraft(draft: DraftState, needsJoin: boolean): ValidationResult 
     }
   }
   for (const [i, c] of draft.conditions.entries()) {
-    if (!c.column.trim() || !c.value.trim()) {
+    const values = conditionValues(c);
+    if (!c.column.trim() || values.length === 0 || values.every((value) => !value.trim())) {
       errors.push(`Condition ${i + 1} needs a column and a value.`);
+    } else if (isNumericOperator(c.operator) && !Number.isFinite(Number(values[0]))) {
+      errors.push(`Condition ${i + 1} needs a valid number.`);
     }
   }
   if (!draft.logic.column.trim()) errors.push("Logic needs a column.");
   if (!draft.logic.target.trim()) {
     errors.push(draft.logic.format === "column" ? "Logic needs a compared column." : "Logic needs a value.");
+  } else if (draft.logic.format === "value" && isNumericOperator(draft.logic.operator) && !Number.isFinite(Number(draft.logic.target))) {
+    errors.push("Logic needs a valid number.");
   }
   return { valid: errors.length === 0, errors };
 }

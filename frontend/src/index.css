@@ -245,9 +245,18 @@ h3 {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space);
+  gap: calc(var(--space) * 1.5);
   flex-wrap: wrap;
   margin-bottom: var(--space);
+}
+.results-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space);
+  min-width: 0;
+}
+.results-run-time {
+  white-space: nowrap;
 }
 .results-header .export-controls {
   margin: 0;
@@ -661,23 +670,41 @@ table.data td {
 .group-tree-children {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 28px;
 }
-.group-tree-group {
-  margin: var(--space) 0;
+.group-tree-children--root {
+  padding-left: 0;
 }
-.group-tree-group > fieldset {
-  margin: 0;
-  padding: var(--space) calc(var(--space) * 1.25) calc(var(--space) * 1.25);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--color-surface-raised) 35%, transparent);
+.group-tree-node {
+  position: relative;
+  padding: 5px 0;
 }
-.group-tree-group > fieldset > legend {
+.group-tree-children:not(.group-tree-children--root) > .group-tree-node::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: 20px;
+  width: 18px;
+  border-top: 2px solid var(--color-border);
+}
+.group-tree-children:not(.group-tree-children--root) > .group-tree-node::after {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: -5px;
+  bottom: -5px;
+  border-left: 2px solid var(--color-border);
+}
+.group-tree-children:not(.group-tree-children--root) > .group-tree-node:last-child::after {
+  bottom: auto;
+  height: 25px;
+}
+.group-tree-member-row {
   display: flex;
   align-items: center;
-  gap: var(--space);
-  padding: 0 var(--space);
+  gap: 8px;
+  min-height: 30px;
+  flex-wrap: wrap;
 }
 .group-tree-edit,
 .group-tree-remove,
@@ -685,20 +712,35 @@ table.data td {
   font-size: 0.75rem;
   padding: 2px 7px;
 }
-.group-tree-member-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space);
-  min-height: 30px;
+.group-tree-collapse {
+  border: 0;
+  background: transparent;
+  padding: 2px 4px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
 }
-.group-tree-children--nested {
-  margin-left: calc(var(--space) * 2);
-  padding-left: calc(var(--space) * 1.5);
-  border-left: 2px solid var(--color-border);
+.group-tree-type {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
-.group-tree-branch {
-  color: var(--color-muted);
-  font-family: var(--font-mono);
+.group-tree-type--group {
+  color: #a5b4fc;
+  background: color-mix(in srgb, #6366f1 24%, transparent);
+}
+.group-tree-type--condition {
+  color: #6ee7b7;
+  background: color-mix(in srgb, #10b981 22%, transparent);
+}
+.group-tree-label--group {
+  color: #c7d2fe;
+}
+.group-tree-label--condition {
+  color: #a7f3d0;
 }
 
 .report-name {
@@ -713,6 +755,9 @@ table.data td {
   cursor: pointer;
   color: inherit;
   text-align: left;
+}
+.report-name__trigger.section-heading {
+  margin: 0;
 }
 .pencil {
   padding: 2px 8px;

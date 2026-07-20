@@ -101,9 +101,7 @@ def save_run(
 ) -> RunMetadata:
     with _runs_lock:
         run_id = _generate_run_id()
-        effective_name = report_name or _default_report_name(
-            file_a_name, file_b_name
-        )
+        effective_name = report_name or _default_report_name(file_a_name, file_b_name)
         safe_name = _sanitize_report_name(effective_name)
 
         run_data: dict[str, Any] = {
@@ -127,6 +125,7 @@ def save_run(
                     "violation_count_by_rule": result.validation.violation_count_by_rule,
                     "violating_rows_by_rule": result.validation.violating_rows_by_rule,
                     "violating_attributes_by_rule": result.validation.violating_attributes_by_rule,
+                    "rule_summaries": result.validation.rule_summaries,
                 },
                 "common_columns": result.common_columns,
                 "target_columns": result.target_columns,

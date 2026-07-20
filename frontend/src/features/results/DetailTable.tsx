@@ -96,7 +96,7 @@ export function DetailTable({
             <th scope="col">Column</th>
             <th scope="col">In Baseline</th>
             <th scope="col">In Comparison</th>
-            <th scope="col">Kind</th>
+            <th scope="col">Rationale</th>
           </tr>
         </thead>
         <tbody style={{ height: `${renderedTotal}px` }}>
@@ -119,7 +119,7 @@ export function DetailTable({
                 <td>{row.column}</td>
                 <td>{row.file1Value ?? "—"}</td>
                 <td>{row.file2Value ?? "—"}</td>
-                <td>{row.kind}</td>
+                <td>{row.kind === "changed" ? "Values differ" : "Rule requirement not met"}</td>
               </tr>
             );
           })}

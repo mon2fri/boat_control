@@ -14,6 +14,8 @@ interface Props {
   placeholder?: string;
   hint?: string;
   disabled?: boolean;
+  /** Permit comma/Enter input that is not present in the option list. */
+  freeText?: boolean;
 }
 
 /**
@@ -29,6 +31,7 @@ export function SearchableMultiSelect({
   placeholder = "Type to search…",
   hint,
   disabled = false,
+  freeText = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -78,11 +81,17 @@ export function SearchableMultiSelect({
     const matchingValues = options
       .filter((option) => names.includes(option.label.toLowerCase()))
       .map((option) => option.value);
-    if (matchingValues.length > 0) {
-      onChange([...new Set([...selected, ...matchingValues])]);
+    const customValues = freeText
+      ? text.split(",").map((name) => name.trim()).filter((name) =>
+          name.length > 0 && !options.some((option) => option.label.toLowerCase() === name.toLowerCase()),
+        )
+      : [];
+    const nextValues = [...matchingValues, ...customValues];
+    if (nextValues.length > 0) {
+      onChange([...new Set([...selected, ...nextValues])]);
     }
     setQuery("");
-  }, [options, onChange, query, selected]);
+  }, [options, onChange, query, selected, freeText]);
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void {
     if (event.key === "Escape") {
@@ -158,7 +167,7 @@ export function SearchableMultiSelect({
             </li>
             {filtered.length === 0 && (
               <li role="option" aria-disabled="true" aria-selected="false" className="combobox-empty">
-                No matches
+                {freeText && query.trim() ? `Press Enter to add “${query.trim()}”` : "No matches"}
               </li>
             )}
             {filtered.map((option) => {

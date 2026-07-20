@@ -119,21 +119,22 @@ export function ResultsPage() {
 
       {state.result && (
         <>
-          <div className="results-header">
-            <ReportName
-              runId={state.result.id}
-              name={state.result.reportName}
-              onRenamed={(result) => dispatch({ type: "setResult", result })}
-            />
-            <ExportControls runId={state.result.id} reportName={state.result.reportName} />
-          </div>
-          <p className="field-hint">
-            Ran on {new Date(state.result.createdAt).toLocaleString()}
-          </p>
-
           <div className="result-layout">
             <TableOfContents result={state.result} />
             <div className="result-content">
+              <div className="results-header">
+                <div className="results-title-row">
+                  <ReportName
+                    runId={state.result.id}
+                    name={state.result.reportName}
+                    onRenamed={(result) => dispatch({ type: "setResult", result })}
+                  />
+                  <span className="field-hint results-run-time">
+                    Ran on {new Date(state.result.createdAt).toLocaleString()}
+                  </span>
+                </div>
+                <ExportControls runId={state.result.id} reportName={state.result.reportName} />
+              </div>
               <section id="overall" aria-labelledby="overall-title" className="card">
                 <h3 id="overall-title">Overall result</h3>
                 <p className="section-logic">

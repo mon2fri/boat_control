@@ -35,6 +35,7 @@ def _rules_to_dict(rules_file: RulesFile) -> dict[str, Any]:
                     "column_name": c.column_name,
                     "operator": c.operator,
                     "filter_value": c.filter_value,
+                    "filter_values": list(c.filter_values or (c.filter_value,)),
                 }
                 for c in rule.conditions
             ],
@@ -66,9 +67,7 @@ class RulesListView(APIView):  # type: ignore[misc]
         with _rules_lock:
             rules_file = load_rules()
             try:
-                new_file, rule = create_rule(
-                    rules_file, serializer.validated_data
-                )
+                new_file, rule = create_rule(rules_file, serializer.validated_data)
                 save_rules(new_file)
                 return Response(
                     {"rule_id": rule.rule_id, "message": "Rule created."},
@@ -92,6 +91,7 @@ class RuleDetailView(APIView):  # type: ignore[misc]
                             "column_name": c.column_name,
                             "operator": c.operator,
                             "filter_value": c.filter_value,
+                            "filter_values": list(c.filter_values or (c.filter_value,)),
                         }
                         for c in rule.conditions
                     ],
@@ -117,13 +117,9 @@ class RuleDetailView(APIView):  # type: ignore[misc]
         with _rules_lock:
             rules_file = load_rules()
             try:
-                new_file = update_rule(
-                    rules_file, rule_id, serializer.validated_data
-                )
+                new_file = update_rule(rules_file, rule_id, serializer.validated_data)
                 save_rules(new_file)
-                return Response(
-                    {"rule_id": rule_id, "message": "Rule updated."}
-                )
+                return Response({"rule_id": rule_id, "message": "Rule updated."})
             except ValueError as e:
                 return Response({"error": str(e)}, status=400)
 
@@ -133,8 +129,6 @@ class RuleDetailView(APIView):  # type: ignore[misc]
             try:
                 new_file = delete_rule(rules_file, rule_id)
                 save_rules(new_file)
-                return Response(
-                    {"rule_id": rule_id, "message": "Rule deleted."}
-                )
+                return Response({"rule_id": rule_id, "message": "Rule deleted."})
             except ValueError as e:
                 return Response({"error": str(e)}, status=404)

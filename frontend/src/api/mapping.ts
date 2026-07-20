@@ -139,20 +139,28 @@ export function mapWireFilterRow(row: WireFilterRow): FilterRow {
 // --- Rules ---------------------------------------------------------------
 
 export function mapConditionToWire(cond: Condition) {
+  const values = conditionValues(cond).filter((value) => value.length > 0);
   return {
     column_name: cond.column,
     operator: mapLogicOperatorToWire(cond.operator),
-    filter_value: cond.value,
+    filter_values: values,
   };
 }
 
 export function mapWireCondition(cond: WireCondition, id: string): Condition {
+  const values = cond.filter_values ?? (cond.filter_value ? [cond.filter_value] : []);
   return {
     id,
     column: cond.column_name,
     operator: mapWireLogicOperator(cond.operator),
-    value: cond.filter_value,
+    values,
+    value: values[0] ?? "",
   };
+}
+
+function conditionValues(cond: Condition): string[] {
+  if (Array.isArray(cond.values)) return cond.values;
+  return cond.value ? [cond.value] : [];
 }
 
 export function mapLogicToWire(logic: LogicClause) {
@@ -193,7 +201,9 @@ export function mapWireRule(rule: WireRule): Rule {
     name: rule.name,
     ...(rule.description ? { description: rule.description } : {}),
     conditions,
-    conditionJoin: rule.condition_relation ?? (conditions.length > 1 ? "and" : null),
+    conditionJoin: groupTree
+      ? "per_grouping"
+      : rule.condition_relation ?? (conditions.length > 1 ? "and" : null),
     conditionGrouping: rule.grouping ? rule.grouping.join(" ") : null,
     groupTree,
     logic,
@@ -205,20 +215,25 @@ function mapWireGroupNode(node: WireGroupNode): GroupNode {
   return { kind: node.kind, children: node.children.map(mapWireGroupNode) };
 }
 
-function mapGroupNodeToWire(node: GroupNode): WireGroupNode {
-  if (node.kind === "leaf") return { kind: "leaf", conditionId: node.conditionId };
-  return { kind: node.kind, children: node.children.map(mapGroupNodeToWire) };
+function mapGroupNodeToWire(node: GroupNode, conditionIds: Map<string, string>): WireGroupNode {
+  if (node.kind === "leaf") {
+    return { kind: "leaf", conditionId: conditionIds.get(node.conditionId) ?? node.conditionId };
+  }
+  return { kind: node.kind, children: node.children.map((child) => mapGroupNodeToWire(child, conditionIds)) };
 }
 
 export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string }) {
+  const conditionIds = new Map(rule.conditions.map((condition, index) => [condition.id, `c${index}`]));
   return {
     name: rule.name,
     ...(rule.description ? { description: rule.description } : {}),
     conditions: rule.conditions.map(mapConditionToWire),
-    ...(rule.conditionJoin ? { condition_relation: rule.conditionJoin } : {}),
+    ...(rule.conditionJoin && rule.conditionJoin !== "per_grouping"
+      ? { condition_relation: rule.conditionJoin }
+      : {}),
     // Always serialize the executable tree; never split a free-text
     // expression on whitespace (that loses grouping precedence).
-    ...(rule.groupTree ? { grouping_tree: mapGroupNodeToWire(rule.groupTree) } : {}),
+    ...(rule.groupTree ? { grouping_tree: mapGroupNodeToWire(rule.groupTree, conditionIds) } : {}),
     logic: mapLogicToWire(rule.logic),
   };
 }
@@ -281,12 +296,15 @@ export function mapViolation(violation: WireViolation, index: number): DetailRow
   const violatingValue = violation.violating_value !== undefined
     ? displayScalar(violation.violating_value)
     : null;
+  const comparisonValue = violation.comparison_value !== undefined
+    ? displayScalar(violation.comparison_value)
+    : null;
   return {
     rowKey: `${rowKeyOf(violation.key_columns, violation.row_index)}#${index}`,
     keyColumns: Object.fromEntries(Object.entries(violation.key_columns).map(([k, v]) => [k, displayScalar(v)])),
     column,
     file1Value: violatingValue,
-    file2Value: null,
+    file2Value: comparisonValue,
     kind: "exception",
     ...(violation.violating_column ? { violatingColumn: violation.violating_column } : {}),
     ...(violation.violating_value !== undefined
@@ -322,10 +340,13 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       const perRuleAttributeCount =
         validation.violating_attributes_by_rule?.[ruleId] ?? violations.length;
       const sample = violations[0];
+      const persistedSummary = validation.rule_summaries?.[ruleId];
       return {
         ruleIndex: ruleId,
-        ruleName: sample?.rule_name ?? ruleId,
-        logicSummary: describeRuleLogicFromViolations(violations, ruleId),
+        ruleName: persistedSummary?.name ?? sample?.rule_name ?? ruleId,
+        logicSummary: humanizeRuleLogic(
+          persistedSummary?.logic ?? describeRuleLogicFromViolations(violations, ruleId),
+        ),
         violationRowCount: perRuleRowCount,
         violationAttributeCount: perRuleAttributeCount,
         details: violations.map((v, i) => mapViolation(v, i)),
@@ -356,10 +377,24 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
 }
 
 function describeRuleLogicFromViolations(violations: WireViolation[], ruleId: string): string {
-  if (violations.length === 0) return `${ruleId} (no rows did not match)`;
+  if (violations.length === 0) return `${ruleId} — no exception; rule details unavailable for this older run`;
   const first = violations[0]!;
   if (first.rule_logic) return `${ruleId} — ${first.rule_name}: ${first.rule_logic}`;
   return `${ruleId} — ${first.rule_name}: ${first.details.replace(/^Violated\s+/i, "did not match ")}`;
+}
+
+function humanizeRuleLogic(summary: string): string {
+  const operators: Array<[RegExp, string]> = [
+    [/\bncontains\b/g, "does not contain"],
+    [/\bcontains\b/g, "contains"],
+    [/\bneq\b/g, "does not equal"],
+    [/\bgte\b/g, "greater than or equal to"],
+    [/\blte\b/g, "less than or equal to"],
+    [/\bgt\b/g, "greater than"],
+    [/\blt\b/g, "less than"],
+    [/\beq\b/g, "equals"],
+  ];
+  return operators.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), summary);
 }
 
 /** Local fallback for distinct-violating-row counts. The backend should

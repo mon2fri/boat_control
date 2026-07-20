@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +14,7 @@ from apps.rules.services import (
 )
 
 
-def _evaluate_grouping_tree(
-    node: GroupingLeaf | GroupingBranch, cond_results: list[bool]
-) -> bool:
+def _evaluate_grouping_tree(node: GroupingLeaf | GroupingBranch, cond_results: list[bool]) -> bool:
     if isinstance(node, GroupingLeaf):
         cid = node.condition_id
         if not cid.startswith("c"):
@@ -29,10 +27,7 @@ def _evaluate_grouping_tree(
             return cond_results[idx]
         return False
     if isinstance(node, GroupingBranch):
-        child_results = [
-            _evaluate_grouping_tree(child, cond_results)
-            for child in node.children
-        ]
+        child_results = [_evaluate_grouping_tree(child, cond_results) for child in node.children]
         if node.kind == "and":
             return all(child_results)
         return any(child_results)
@@ -64,6 +59,7 @@ class ValidationViolation:
     violating_column: str
     violating_value: Any
     rule_logic: str
+    comparison_value: Any = None
 
 
 @dataclass(frozen=True)
@@ -85,6 +81,7 @@ class ValidationResult:
     violation_count_by_rule: dict[str, int]
     violating_rows_by_rule: dict[str, int]
     violating_attributes_by_rule: dict[str, int]
+    rule_summaries: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -169,9 +166,7 @@ def compare_rows(
     matched_rows = inner_joined.height
 
     change_conditions = [
-        pl.col(col) != pl.col(f"{col}_b")
-        for col in target_columns
-        if f"{col}_b" in merged.columns
+        pl.col(col) != pl.col(f"{col}_b") for col in target_columns if f"{col}_b" in merged.columns
     ]
     if not change_conditions:
         return ComparisonResult(
@@ -199,9 +194,7 @@ def compare_rows(
             val_a = row[col]
             val_b = row[col_b]
             if val_a != val_b:
-                changes.append(
-                    AttributeChange(column=col, file_a_value=val_a, file_b_value=val_b)
-                )
+                changes.append(AttributeChange(column=col, file_a_value=val_a, file_b_value=val_b))
         if changes:
             rows_with_changes += 1
             total_changes += len(changes)
@@ -230,31 +223,52 @@ def validate_rows(
     rules: list[Rule],
     target_columns: list[str],
     key_columns: list[str] | None = None,
+    comparison_df: pl.DataFrame | None = None,
 ) -> ValidationResult:
     violations_by_rule: dict[str, list[ValidationViolation]] = {}
     violation_count_by_rule: dict[str, int] = {}
     violating_rows_by_rule: dict[str, int] = {}
     violating_attributes_by_rule: dict[str, int] = {}
+    rule_summaries: dict[str, dict[str, str]] = {}
 
     all_violating_rows: set[int] = set()
     all_violating_attrs: set[tuple[int, str]] = set()
 
+    comparison_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
+    if comparison_df is not None and key_columns:
+        comparison_by_key = {
+            tuple(row.get(column) for column in key_columns): row
+            for row in comparison_df.iter_rows(named=True)
+        }
+
     for rule in rules:
+        rule_summaries[rule.rule_id] = {
+            "name": rule.name,
+            "logic": _describe_rule_logic(rule),
+        }
         violations: list[ValidationViolation] = []
         rule_rows: set[int] = set()
         rule_attrs: set[tuple[int, str]] = set()
 
         for idx in range(df.height):
             row = df.row(idx, named=True)
-            is_violation, viol_col, viol_val = _check_rule(
-                row, rule, target_columns
-            )
+            is_violation, viol_col, viol_val = _check_rule(row, rule, target_columns)
             if is_violation:
                 if key_columns:
                     key_cols = {col: row[col] for col in key_columns if col in row}
                 else:
                     key_cols = {col: row[col] for col in df.columns[:3]}
                 rule_logic_str = _describe_rule_logic(rule)
+                comparison_row = (
+                    comparison_by_key.get(tuple(row.get(column) for column in key_columns))
+                    if key_columns
+                    else None
+                )
+                comparison_value = (
+                    comparison_row.get(viol_col)
+                    if comparison_row is not None and viol_col in comparison_row
+                    else None
+                )
                 violations.append(
                     ValidationViolation(
                         row_index=idx,
@@ -262,12 +276,12 @@ def validate_rows(
                         rule_name=rule.name,
                         key_columns=key_cols,
                         details=(
-                            f"Column '{viol_col}' has value "
-                            f"'{viol_val}' violating {rule.rule_id}"
+                            f"Column '{viol_col}' has value '{viol_val}' violating {rule.rule_id}"
                         ),
                         violating_column=viol_col,
                         violating_value=viol_val,
                         rule_logic=rule_logic_str,
+                        comparison_value=comparison_value,
                     )
                 )
                 rule_rows.add(idx)
@@ -289,12 +303,23 @@ def validate_rows(
         violation_count_by_rule=violation_count_by_rule,
         violating_rows_by_rule=violating_rows_by_rule,
         violating_attributes_by_rule=violating_attributes_by_rule,
+        rule_summaries=rule_summaries,
     )
 
 
 def _describe_rule_logic(rule: Rule) -> str:
     logic = rule.logic
-    desc = f"{logic.column_name} {logic.operator} "
+    operator = {
+        "eq": "equals",
+        "neq": "does not equal",
+        "contains": "contains",
+        "ncontains": "does not contain",
+        "gt": "greater than",
+        "lt": "less than",
+        "gte": "greater than or equal to",
+        "lte": "less than or equal to",
+    }.get(logic.operator, logic.operator.replace("_", " "))
+    desc = f"{logic.column_name} {operator} "
     if logic.format == "column_vs_column":
         desc += f"column '{logic.target_value}'"
     else:
@@ -322,38 +347,52 @@ def _check_rule(
                 cond_results.append(False)
                 continue
             val = str(raw)
-            if cond.operator == "eq":
-                cond_results.append(val == cond.filter_value)
-            elif cond.operator == "neq":
-                cond_results.append(val != cond.filter_value)
-            elif cond.operator == "contains":
-                cond_results.append(cond.filter_value in val)
-            elif cond.operator == "ncontains":
-                cond_results.append(cond.filter_value not in val)
-            else:
-                cond_results.append(False)
+            values = cond.filter_values or (cond.filter_value,)
+            matches: list[bool] = []
+            for expected in values:
+                if cond.operator == "eq":
+                    matches.append(val == expected)
+                elif cond.operator == "neq":
+                    matches.append(val != expected)
+                elif cond.operator == "contains":
+                    matches.append(expected in val)
+                elif cond.operator == "ncontains":
+                    matches.append(expected not in val)
+                elif cond.operator == "gt":
+                    try:
+                        matches.append(float(val) > float(expected))
+                    except TypeError, ValueError:
+                        matches.append(False)
+                elif cond.operator == "lt":
+                    try:
+                        matches.append(float(val) < float(expected))
+                    except TypeError, ValueError:
+                        matches.append(False)
+                else:
+                    matches.append(False)
+            # Multiple values within one condition are alternatives.
+            cond_results.append(any(matches))
 
         if rule.grouping_tree is not None:
-            tree_result = _evaluate_grouping_tree(
-                rule.grouping_tree, cond_results
-            )
+            tree_result = _evaluate_grouping_tree(rule.grouping_tree, cond_results)
             if not tree_result:
                 return (False, "", None)
         elif rule.grouping and len(rule.grouping) == len(cond_results):
             groups: dict[str, list[bool]] = {}
             for gid, res in zip(rule.grouping, cond_results, strict=True):
                 groups.setdefault(gid, []).append(res)
-            group_passed = [
-                any(results) for results in groups.values()
-            ]
+            group_passed = [any(results) for results in groups.values()]
             if not all(group_passed):
                 return (False, "", None)
-        elif (
-            rule.condition_relation == "and" and not all(cond_results)
-        ) or (
-            rule.condition_relation == "or" and not any(cond_results)
-        ):
-            return (False, "", None)
+        else:
+            # A single condition has no stored relation and behaves like AND.
+            # Multi-condition rules are validated to have a relation unless a
+            # grouping tree supplies the combination logic.
+            scope_matches = (
+                any(cond_results) if rule.condition_relation == "or" else all(cond_results)
+            )
+            if not scope_matches:
+                return (False, "", None)
 
     logic = rule.logic
     if logic.column_name not in row:
@@ -437,31 +476,24 @@ def execute_comparison(
 
     for f in filters:
         if f["column"] not in valid_filter_cols:
-            raise ValueError(
-                f"Filter column '{f['column']}' not found in data"
-            )
+            raise ValueError(f"Filter column '{f['column']}' not found in data")
 
     effective_targets: list[str]
     if target_columns:
         invalid = [c for c in target_columns if c not in comparison_columns]
         if invalid:
-            raise ValueError(
-                f"Invalid target columns: {', '.join(invalid)}"
-            )
+            raise ValueError(f"Invalid target columns: {', '.join(invalid)}")
         effective_targets = target_columns
     else:
         effective_targets = comparison_columns
 
     if not key_columns:
         raise ValueError(
-            "key_columns is required. Provide at least one common column "
-            "to use as record identity."
+            "key_columns is required. Provide at least one common column to use as record identity."
         )
     invalid = [c for c in key_columns if c not in comparison_columns]
     if invalid:
-        raise ValueError(
-            f"Invalid key columns: {', '.join(invalid)}"
-        )
+        raise ValueError(f"Invalid key columns: {', '.join(invalid)}")
     effective_keys = key_columns
 
     needed_columns = set(effective_keys)
@@ -478,8 +510,7 @@ def execute_comparison(
     for rule in rules:
         if rule.logic.column_name not in valid_filter_cols:
             raise ValueError(
-                f"Rule '{rule.rule_id}' references unknown column "
-                f"'{rule.logic.column_name}'"
+                f"Rule '{rule.rule_id}' references unknown column '{rule.logic.column_name}'"
             )
         needed_columns.add(rule.logic.column_name)
         if (
@@ -510,12 +541,8 @@ def execute_comparison(
     df_b_final = df_b_lazy.collect()
 
     for key_col in effective_keys:
-        null_count_a = df_a_final.filter(
-            pl.col(key_col).is_null()
-        ).height
-        null_count_b = df_b_final.filter(
-            pl.col(key_col).is_null()
-        ).height
+        null_count_a = df_a_final.filter(pl.col(key_col).is_null()).height
+        null_count_b = df_b_final.filter(pl.col(key_col).is_null()).height
         if null_count_a > 0 or null_count_b > 0:
             raise ValueError(
                 f"Key column '{key_col}' contains null values "
@@ -523,25 +550,26 @@ def execute_comparison(
             )
 
     dupes_a = (
-        df_a_final.group_by(effective_keys)
-        .agg(pl.len().alias("cnt"))
-        .filter(pl.col("cnt") > 1)
+        df_a_final.group_by(effective_keys).agg(pl.len().alias("cnt")).filter(pl.col("cnt") > 1)
     )
     dupes_b = (
-        df_b_final.group_by(effective_keys)
-        .agg(pl.len().alias("cnt"))
-        .filter(pl.col("cnt") > 1)
+        df_b_final.group_by(effective_keys).agg(pl.len().alias("cnt")).filter(pl.col("cnt") > 1)
     )
     if dupes_a.height > 0 or dupes_b.height > 0:
         total_dupes = dupes_a.height + dupes_b.height
         raise ValueError(
-            f"Key columns contain {total_dupes} duplicate key "
-            f"combinations across both files"
+            f"Key columns contain {total_dupes} duplicate key combinations across both files"
         )
 
     comparison = compare_rows(df_a_final, df_b_final, effective_targets, effective_keys)
 
-    validation = validate_rows(df_a_final, rules, effective_targets, effective_keys)
+    validation = validate_rows(
+        df_a_final,
+        rules,
+        effective_targets,
+        effective_keys,
+        comparison_df=df_b_final,
+    )
 
     return ExecutionResult(
         comparison=comparison,

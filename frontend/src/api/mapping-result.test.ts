@@ -35,6 +35,7 @@ function doc(overrides: Partial<WireRunDocument["result"]["validation"]> = {}): 
               details: "did not match required state",
               violating_column: "status",
               violating_value: "inactive",
+              comparison_value: "active",
               rule_logic: "status must equal \"active\"",
             },
             {
@@ -130,6 +131,7 @@ describe("mapRunDocumentToResult", () => {
     expect(detail.column).toBe("status");
     expect(detail.violatingColumn).toBe("status");
     expect(detail.violatingValue).toBe("inactive");
+    expect(detail.file2Value).toBe("active");
   });
 
   it("uses the server-provided rule_logic in the per-section summary when present", () => {
@@ -137,5 +139,22 @@ describe("mapRunDocumentToResult", () => {
     expect(result.ruleResults[0]!.logicSummary).toBe(
       'R001 — Status active: status must equal "active"',
     );
+  });
+
+  it("shows persisted rule content when a rule has no exceptions", () => {
+    const result = mapRunDocumentToResult(doc({
+      total_violations: 0,
+      violations_by_rule: { R001: [] },
+      violation_count_by_rule: { R001: 0 },
+      distinct_violating_rows: 0,
+      distinct_violating_attributes: 0,
+      violating_rows_by_rule: { R001: 0 },
+      violating_attributes_by_rule: { R001: 0 },
+      rule_summaries: {
+        R001: { name: "Low score", logic: "score lt '70'" },
+      },
+    }));
+    expect(result.ruleResults[0]!.ruleName).toBe("Low score");
+    expect(result.ruleResults[0]!.logicSummary).toBe("score less than '70'");
   });
 });

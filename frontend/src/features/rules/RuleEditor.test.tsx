@@ -64,6 +64,58 @@ describe("RuleEditor", () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ conditionJoin: "and" }));
   });
 
+  it("selects multiple values in one condition and keeps them as OR alternatives", () => {
+    const { onSave } = setup({
+      columns: ["status", "result"],
+      columnValues: {
+        status: [
+          { value: "active", starred: false },
+          { value: "pending", starred: false },
+        ],
+      },
+    });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Multiple statuses" } });
+    fireEvent.click(screen.getByRole("button", { name: "+ Add condition" }));
+    const condition = screen.getByRole("group", { name: "Condition 1" });
+    const conditionColumn = within(condition).getByLabelText("Column");
+    fireEvent.focus(conditionColumn);
+    fireEvent.change(conditionColumn, { target: { value: "status" } });
+    fireEvent.mouseDown(within(condition).getByRole("option", { name: "status" }));
+    const valueSearch = within(condition).getByRole("searchbox", { name: "Value" });
+    fireEvent.focus(valueSearch);
+    fireEvent.mouseDown(screen.getByRole("option", { name: /active/ }));
+    fireEvent.mouseDown(screen.getByRole("option", { name: /pending/ }));
+
+    const logicColumn = screen.getAllByLabelText("Column").at(-1)!;
+    fireEvent.focus(logicColumn);
+    fireEvent.change(logicColumn, { target: { value: "result" } });
+    const logicRow = logicColumn.closest(".filter-row")!;
+    fireEvent.mouseDown(within(logicRow as HTMLElement).getByRole("option", { name: "result" }));
+    fireEvent.change(document.querySelector("#logic-value")!, { target: { value: "ok" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+
+    expect(onSave.mock.calls[0]![0].conditions[0]!.values).toEqual(["active", "pending"]);
+    expect(within(condition).getByText(/joined with OR/i)).toBeInTheDocument();
+  });
+
+  it("uses unrestricted numeric inputs for greater-than and less-than values", () => {
+    setup({ columns: ["score"] });
+    fireEvent.click(screen.getByRole("button", { name: "+ Add condition" }));
+    const condition = screen.getByRole("group", { name: "Condition 1" });
+    fireEvent.change(within(condition).getByLabelText("Column"), { target: { value: "score" } });
+    fireEvent.change(within(condition).getByLabelText("Operator"), { target: { value: "greater_than" } });
+    const conditionValue = within(condition).getByLabelText("Value");
+    expect(conditionValue).toHaveAttribute("type", "number");
+    expect(conditionValue).toHaveAttribute("step", "any");
+    fireEvent.change(conditionValue, { target: { value: "-12.5" } });
+    expect(conditionValue).toHaveValue(-12.5);
+
+    const logicOperator = screen.getAllByLabelText("Operator").at(-1)!;
+    fireEvent.change(logicOperator, { target: { value: "less_than" } });
+    expect(document.querySelector("#logic-value")).toHaveAttribute("type", "number");
+    expect(document.querySelector("#logic-value")).toHaveAttribute("step", "any");
+  });
+
   it("switches to the column-against-column format", () => {
     setup();
     fireEvent.click(screen.getByRole("radio", { name: /Column against column/ }));

@@ -8,7 +8,15 @@
  * rule", so collapsing would silently re-run the entire catalog.
  */
 import { describe, expect, it } from "vitest";
-import { mapFilterRowToWire, mapRunRequestToWire, mapWireFilterRow } from "./mapping";
+import {
+  mapConditionToWire,
+  mapFilterRowToWire,
+  mapRuleToWireDraft,
+  mapRunRequestToWire,
+  mapWireCondition,
+  mapWireFilterRow,
+  mapWireRule,
+} from "./mapping";
 import { wireRunRequestSchema } from "./wire";
 
 const baseRequest = {
@@ -127,5 +135,86 @@ describe("filter row mapping", () => {
       values: ["active", ""],
     });
     expect(wire.filter_values).toEqual(["active"]);
+  });
+});
+
+describe("rule condition mapping", () => {
+  it("serializes multiple condition values as OR alternatives", () => {
+    expect(mapConditionToWire({
+      id: "temporary-id",
+      column: "status",
+      operator: "equals",
+      values: ["active", "pending"],
+    })).toEqual({
+      column_name: "status",
+      operator: "eq",
+      filter_values: ["active", "pending"],
+    });
+  });
+
+  it("loads both new arrays and legacy scalar condition values", () => {
+    expect(mapWireCondition({
+      column_name: "status",
+      operator: "eq",
+      filter_values: ["active", "pending"],
+    }, "c0").values).toEqual(["active", "pending"]);
+    expect(mapWireCondition({
+      column_name: "status",
+      operator: "eq",
+      filter_value: "active",
+    }, "c0").values).toEqual(["active"]);
+  });
+
+  it("remaps temporary condition IDs in grouping trees before save", () => {
+    const wire = mapRuleToWireDraft({
+      name: "Grouped",
+      conditions: [
+        { id: "cond-a", column: "a", operator: "equals", values: ["1"] },
+        { id: "cond-b", column: "b", operator: "equals", values: ["2"] },
+      ],
+      conditionJoin: null,
+      conditionGrouping: null,
+      groupTree: {
+        kind: "and",
+        children: [
+          { kind: "leaf", conditionId: "cond-a" },
+          { kind: "leaf", conditionId: "cond-b" },
+        ],
+      },
+      logic: { id: "l0", format: "value", column: "result", operator: "equals", target: "ok" },
+    });
+    expect(wire.grouping_tree).toEqual({
+      kind: "and",
+      children: [
+        { kind: "leaf", conditionId: "c0" },
+        { kind: "leaf", conditionId: "c1" },
+      ],
+    });
+  });
+
+  it("reopens a saved grouping tree in PER GROUPING mode", () => {
+    const rule = mapWireRule({
+      rule_id: "R001",
+      name: "Grouped",
+      conditions: [
+        { column_name: "a", operator: "eq", filter_values: ["1"] },
+        { column_name: "b", operator: "eq", filter_values: ["2"] },
+      ],
+      grouping_tree: {
+        kind: "and",
+        children: [
+          { kind: "leaf", conditionId: "c0" },
+          { kind: "leaf", conditionId: "c1" },
+        ],
+      },
+      logic: {
+        format: "value_vs_column",
+        column_name: "result",
+        operator: "eq",
+        target_value: "ok",
+      },
+    });
+    expect(rule.conditionJoin).toBe("per_grouping");
+    expect(mapRuleToWireDraft(rule)).not.toHaveProperty("condition_relation");
   });
 });
