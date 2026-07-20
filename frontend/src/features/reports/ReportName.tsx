@@ -60,7 +60,7 @@ export function ReportName({ runId, name, onRenamed }: Props) {
       <div className="report-name">
         <button
           type="button"
-          className="report-name__trigger"
+          className="report-name__trigger section-heading"
           onDoubleClick={() => setEditing(true)}
           onClick={() => setEditing(true)}
           title="Double-click or press Enter to rename"

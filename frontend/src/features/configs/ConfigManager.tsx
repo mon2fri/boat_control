@@ -68,14 +68,12 @@ export function ConfigManager({
       {configs.data && (
         <>
           {configs.data.length > 0 ? (
-            <div className="field">
-              <label htmlFor={`${configType}-config-select`}>Config selector</label>
+            <div className="config-inline-row">
               <select
                 id={`${configType}-config-select`}
                 value={selectedName}
                 onChange={(e) => {
                   setSelectedName(e.target.value);
-                  handleLoad(e.target.value);
                 }}
                 disabled={disabled}
               >
@@ -86,46 +84,45 @@ export function ConfigManager({
                   </option>
                 ))}
               </select>
+
+              <div className="config-inline-actions">
+                {selectedName && (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={disabled}
+                    onClick={() => {
+                      handleLoad(selectedName);
+                    }}
+                  >
+                    Load config
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  disabled={disabled}
+                  onClick={() => setShowSavePrompt(true)}
+                >
+                  Save new config
+                </button>
+
+                {selectedName && (
+                  <button
+                    type="button"
+                    className="btn btn--danger"
+                    disabled={disabled || del.isPending}
+                    onClick={() => setPendingDeleteName(selectedName)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <p className="card-hint">No named configs saved yet.</p>
           )}
-
-          <div className="dialog-actions" style={{ marginTop: "var(--space)", flexWrap: "wrap" }}>
-            {selectedName && (
-              <button
-                type="button"
-                className="btn"
-                disabled={disabled}
-                onClick={() => {
-                  setSelectedName("");
-                  onLoad(selectedName);
-                }}
-              >
-                Load config
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="btn btn--primary"
-              disabled={disabled}
-              onClick={() => setShowSavePrompt(true)}
-            >
-              Save new config
-            </button>
-
-            {selectedName && (
-              <button
-                type="button"
-                className="btn btn--danger"
-                disabled={disabled || del.isPending}
-                onClick={() => setPendingDeleteName(selectedName)}
-              >
-                Remove selected config
-              </button>
-            )}
-          </div>
 
           {create.isSuccess && <p className="alert alert--success" style={{ marginTop: "var(--space)" }}>Saved.</p>}
           {create.isError && (

@@ -251,6 +251,45 @@ class TestExecuteComparison:
                 key_columns=None,
             )
 
+    def test_rejects_invalid_filter_column_not_in_comparison_columns(
+        self, csv_a: Path, csv_b: Path
+    ) -> None:
+        with pytest.raises(ValueError, match="Filter column 'nonexistent' not found"):
+            execute_comparison(
+                path_a=csv_a,
+                path_b=csv_b,
+                comparison_columns=["id", "name", "status", "score"],
+                target_columns=["score"],
+                filters=[{"column": "nonexistent", "operator": "eq", "filter_value": "x"}],
+                key_columns=["id"],
+            )
+
+    def test_rejects_filter_column_in_headers_but_not_in_comparison_columns(
+        self, csv_a: Path, csv_b: Path
+    ) -> None:
+        with pytest.raises(ValueError, match="Filter column 'status' not found"):
+            execute_comparison(
+                path_a=csv_a,
+                path_b=csv_b,
+                comparison_columns=["id", "name", "score"],
+                target_columns=["score"],
+                filters=[{"column": "status", "operator": "eq", "filter_value": "active"}],
+                key_columns=["id"],
+            )
+
+    def test_accepts_filter_column_within_comparison_columns(
+        self, csv_a: Path, csv_b: Path
+    ) -> None:
+        result = execute_comparison(
+            path_a=csv_a,
+            path_b=csv_b,
+            comparison_columns=["id", "name", "status", "score"],
+            target_columns=["score"],
+            filters=[{"column": "status", "operator": "eq", "filter_value": "active"}],
+            key_columns=["id"],
+        )
+        assert result.comparison.total_rows_a == 2
+
 
 def load_rules(path: Path) -> RulesFile:
     from apps.rules.services import load_rules as _load_rules

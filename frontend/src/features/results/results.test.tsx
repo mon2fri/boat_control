@@ -13,7 +13,7 @@ const ruleResult: RuleResult = {
   violationRowCount: 3,
   violationAttributeCount: 4,
   details: [
-    { rowKey: "1", column: "region", file1Value: "EMEA", file2Value: null, kind: "violation" },
+    { rowKey: "1", keyColumns: {}, column: "region", file1Value: "EMEA", file2Value: null, kind: "exception" },
   ],
 };
 
@@ -32,7 +32,7 @@ const result: RunResult = {
   },
   ruleResults: [ruleResult],
   changeDetails: [
-    { rowKey: "2", column: "status", file1Value: "old", file2Value: "new", kind: "changed" },
+    { rowKey: "2", keyColumns: {}, column: "status", file1Value: "old", file2Value: "new", kind: "changed" },
   ],
 };
 
@@ -41,7 +41,7 @@ describe("result components", () => {
     render(<OverallSummaryCards summary={result.overall} />);
     const region = screen.getByLabelText("Overall result summary");
     expect(within(region).getByText("1,200")).toBeInTheDocument();
-    expect(within(region).getByText("Rows violating a rule")).toBeInTheDocument();
+    expect(within(region).getByText("Rows with rule exception")).toBeInTheDocument();
     expect(within(region).getByText("Attributes changed")).toBeInTheDocument();
     // Five metric cards, one per required count.
     expect(region.querySelectorAll(".metric")).toHaveLength(5);
@@ -71,6 +71,7 @@ describe("result components", () => {
   it("virtualizes large result sets (does not render every row)", () => {
     const many = Array.from({ length: 5000 }, (_, i) => ({
       rowKey: String(i),
+      keyColumns: {} as Record<string, string | null>,
       column: "c",
       file1Value: "a",
       file2Value: "b",

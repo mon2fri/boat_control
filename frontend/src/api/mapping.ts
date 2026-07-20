@@ -215,7 +215,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
     name: rule.name,
     ...(rule.description ? { description: rule.description } : {}),
     conditions: rule.conditions.map(mapConditionToWire),
-    ...(rule.conditionJoin && rule.conditionJoin !== "per_grouping" ? { condition_relation: rule.conditionJoin } : {}),
+    ...(rule.conditionJoin ? { condition_relation: rule.conditionJoin } : {}),
     // Always serialize the executable tree; never split a free-text
     // expression on whitespace (that loses grouping precedence).
     ...(rule.groupTree ? { grouping_tree: mapGroupNodeToWire(rule.groupTree) } : {}),
@@ -227,6 +227,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
 
 export function mapRunRequestToWire(request: {
   sessionId: string;
+  comparisonColumns: string[];
   filters: FilterRow[];
   targetColumns: string[];
   keyColumns: string[];
@@ -234,6 +235,7 @@ export function mapRunRequestToWire(request: {
 }): WireRunRequest {
   return {
     session_id: request.sessionId,
+    comparison_columns: [...request.comparisonColumns],
     target_columns: request.targetColumns.length > 0 ? request.targetColumns : null,
     // Always send `key_columns` as an array (even when empty) so the backend
     // can distinguish an explicit empty selection from omitted defaults. The
@@ -258,9 +260,15 @@ function rowKeyOf(keyColumns: Record<string, WireScalar>, index: number): string
   return values.length > 0 ? values.join("/") : `#${index}`;
 }
 
-export function mapAttributeChange(change: WireAttributeChange, rowKey: string, index: number): DetailRow {
+export function mapAttributeChange(
+  change: WireAttributeChange,
+  rowKey: string,
+  keyColumns: Record<string, WireScalar>,
+  index: number,
+): DetailRow {
   return {
     rowKey: `${rowKey}#${change.column}#${index}`,
+    keyColumns: Object.fromEntries(Object.entries(keyColumns).map(([k, v]) => [k, displayScalar(v)])),
     column: change.column,
     file1Value: displayScalar(change.file_a_value),
     file2Value: displayScalar(change.file_b_value),
@@ -269,19 +277,17 @@ export function mapAttributeChange(change: WireAttributeChange, rowKey: string, 
 }
 
 export function mapViolation(violation: WireViolation, index: number): DetailRow {
-  // Prefer the server-provided violating column/value when present. Older
-  // backend responses omit those fields; fall back to the rule id + details
-  // so the row remains identifiable in the detail table.
   const column = violation.violating_column ?? violation.rule_id;
-  const value = violation.violating_value !== undefined
+  const violatingValue = violation.violating_value !== undefined
     ? displayScalar(violation.violating_value)
-    : violation.details;
+    : null;
   return {
     rowKey: `${rowKeyOf(violation.key_columns, violation.row_index)}#${index}`,
+    keyColumns: Object.fromEntries(Object.entries(violation.key_columns).map(([k, v]) => [k, displayScalar(v)])),
     column,
-    file1Value: null,
-    file2Value: value,
-    kind: "violation",
+    file1Value: violatingValue,
+    file2Value: null,
+    kind: "exception",
     ...(violation.violating_column ? { violatingColumn: violation.violating_column } : {}),
     ...(violation.violating_value !== undefined
       ? { violatingValue: displayScalar(violation.violating_value) }
@@ -333,7 +339,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
   for (const detail of result.comparison.row_details) {
     const rk = rowKeyOf(detail.key_columns, detail.row_index);
     for (const change of detail.attribute_changes) {
-      changeDetails.push(mapAttributeChange(change, rk, attrIndex++));
+      changeDetails.push(mapAttributeChange(change, rk, detail.key_columns, attrIndex++));
     }
   }
 

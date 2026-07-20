@@ -4,6 +4,7 @@ import type { WorkflowState } from "../../state/WorkflowContext";
 
 const baseState: WorkflowState = {
   header: null,
+  comparisonColumns: [],
   filters: [],
   targetColumns: [],
   keyColumns: [],

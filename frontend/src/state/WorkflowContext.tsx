@@ -56,8 +56,19 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
   switch (action.type) {
     case "setHeader":
       return { ...initialState, header: action.header, comparisonColumns: [...action.header.common] };
-    case "setComparisonColumns":
-      return { ...state, comparisonColumns: action.columns };
+    case "setComparisonColumns": {
+      const cols = action.columns;
+      const colSet = new Set(cols);
+      return {
+        ...state,
+        comparisonColumns: cols,
+        keyColumns: state.keyColumns.filter((c) => colSet.has(c)),
+        targetColumns: state.targetColumns.filter((c) => colSet.has(c)),
+        filters: state.filters.map((f) =>
+          colSet.has(f.column) ? f : { ...f, column: "" },
+        ),
+      };
+    }
     case "removeComparisonColumn": {
       const col = action.column;
       const next = state.comparisonColumns.filter((c) => c !== col);

@@ -30,7 +30,9 @@ class FilterPreparationView(APIView):  # type: ignore[misc]
                 {"error": "Session not found or expired."}, status=404
             )
 
-        common_columns = session.common_columns
+        # Use the caller-provided comparison columns; fall back to the
+        # session's raw common columns for backward compatibility.
+        common_columns = request.data.get("common_columns") or session.common_columns
         path_a = Path(session.file_a_path)
         path_b = Path(session.file_b_path)
 
@@ -78,7 +80,7 @@ class FilterValidationView(APIView):  # type: ignore[misc]
                 {"error": "Session not found or expired."}, status=404
             )
 
-        common_columns = session.common_columns
+        common_columns = request.data.get("common_columns") or session.common_columns
         # Validate each value in the array
         all_valid = True
         all_errors: list[str] = []
@@ -102,7 +104,8 @@ class TargetColumnsView(APIView):  # type: ignore[misc]
         if not session:
             return Response({"error": "Session not found or expired."}, status=404)
 
-        result = validate_target_columns(target_columns, session.common_columns)
+        common_columns = request.data.get("common_columns") or session.common_columns
+        result = validate_target_columns(target_columns, common_columns)
         return Response({
             "session_id": session.session_id,
             "valid_columns": result.valid_columns,
@@ -123,8 +126,9 @@ class TargetColumnsInputView(APIView):  # type: ignore[misc]
         if not session:
             return Response({"error": "Session not found or expired."}, status=404)
 
+        common_columns = request.data.get("common_columns") or session.common_columns
         columns = parse_target_columns(input_str)
-        result = validate_target_columns(columns, session.common_columns)
+        result = validate_target_columns(columns, common_columns)
         return Response({
             "session_id": session.session_id,
             "parsed_columns": columns,

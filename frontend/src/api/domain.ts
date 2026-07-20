@@ -93,6 +93,7 @@ export type GroupNode =
 
 export interface RunRequest {
   sessionId: string;
+  comparisonColumns: string[];
   filters: FilterRow[];
   targetColumns: string[];
   /**
@@ -115,13 +116,14 @@ export interface OverallSummary {
 
 export interface DetailRow {
   rowKey: string;
+  keyColumns: Record<string, string | null>;
   column: string;
   file1Value: string | null;
   file2Value: string | null;
   /** When the row is a violation, the server-provided violating column/value. */
   violatingColumn?: string;
   violatingValue?: string | null;
-  kind: "changed" | "violation";
+  kind: "changed" | "exception";
 }
 
 export interface RuleResult {

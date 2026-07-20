@@ -13,6 +13,7 @@ import { wireRunRequestSchema } from "./wire";
 
 const baseRequest = {
   sessionId: "s1",
+  comparisonColumns: ["id", "region"],
   filters: [],
   targetColumns: [],
   keyColumns: ["id"],

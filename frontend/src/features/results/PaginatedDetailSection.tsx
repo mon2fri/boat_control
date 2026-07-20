@@ -13,9 +13,10 @@ interface Props {
   runId: string;
   kind: "changed" | "violation";
   caption: string;
+  keyColumnNames?: string[];
 }
 
-export function PaginatedDetailSection({ runId, kind, caption }: Props) {
+export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }: Props) {
   const { rows, total, hasMore, loading, loadingMore, error, isEmpty, loadMore } = usePaginatedDetails(runId, kind);
 
   if (loading && rows.length === 0) {
@@ -44,6 +45,7 @@ export function PaginatedDetailSection({ runId, kind, caption }: Props) {
         hasMore={hasMore}
         onReachEnd={loadMore}
         caption={caption}
+        {...(keyColumnNames ? { keyColumnNames } : {})}
       />
       {loadingMore && (
         <p role="status" aria-live="polite" className="busy-row">

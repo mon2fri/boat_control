@@ -17,6 +17,8 @@ interface Props {
   /** Optional hint rendered under the control and wired via aria-describedby. */
   hint?: string;
   disabled?: boolean;
+  /** When true, the user can commit free text that does not match any option. */
+  freeText?: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ export function SearchableSelect({
   placeholder,
   hint,
   disabled = false,
+  freeText = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -48,8 +51,8 @@ export function SearchableSelect({
   }, [options, query]);
 
   const selectedLabel = useMemo(
-    () => options.find((o) => o.value === value)?.label ?? "",
-    [options, value],
+    () => options.find((o) => o.value === value)?.label ?? (freeText && value ? value : ""),
+    [options, value, freeText],
   );
 
   function commit(option: SelectOption): void {
@@ -72,6 +75,11 @@ export function SearchableSelect({
       if (open && option) {
         event.preventDefault();
         commit(option);
+      } else if (freeText && query.trim()) {
+        event.preventDefault();
+        onChange(query.trim());
+        setQuery("");
+        setOpen(false);
       }
     } else if (event.key === "Escape") {
       setOpen(false);
@@ -84,6 +92,11 @@ export function SearchableSelect({
       <label id={`${baseId}-label`} htmlFor={`${baseId}-input`}>
         {label}
       </label>
+      {hint && (
+        <span id={hintId} className="field-hint-inline">
+          {hint}
+        </span>
+      )}
       <div
         role="combobox"
         aria-expanded={open}
@@ -151,11 +164,6 @@ export function SearchableSelect({
           </ul>
         )}
       </div>
-      {hint && (
-        <span id={hintId} className="field-hint">
-          {hint}
-        </span>
-      )}
     </div>
   );
 }

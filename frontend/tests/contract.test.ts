@@ -150,6 +150,7 @@ describe("Contract v1 — mapper round-trip", () => {
   it("maps run request to wire with explicit empty arrays", () => {
     const wire = mapRunRequestToWire({
       sessionId: "abc123",
+      comparisonColumns: ["id"],
       targetColumns: [],
       keyColumns: ["id"],
       filters: [],

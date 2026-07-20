@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import { mapRuleToWireDraft, mapWireRule } from "../../api/mapping";
 import { ruleDraftRequestSchema, wireRuleSchema } from "../../api/wire";
 import type { Condition, GroupNode, Rule } from "../../api/domain";
+import { collectConditionIds } from "./groupingTree";
 
 function cond(id: string): Condition {
   return { id, column: `col_${id}`, operator: "equals", value: `v_${id}` };
@@ -137,5 +138,136 @@ describe("grouping tree round-trip", () => {
     });
     expect(wire).not.toHaveProperty("grouping");
     expect(wire.grouping_tree).toBeUndefined();
+  });
+});
+
+describe("collectConditionIds", () => {
+  it("collects ids from a leaf node", () => {
+    const tree: GroupNode = { kind: "leaf", conditionId: "c0" };
+    expect(collectConditionIds(tree)).toEqual(new Set(["c0"]));
+  });
+
+  it("collects ids from a flat AND group", () => {
+    const tree: GroupNode = {
+      kind: "and",
+      children: [
+        { kind: "leaf", conditionId: "c0" },
+        { kind: "leaf", conditionId: "c1" },
+      ],
+    };
+    expect(collectConditionIds(tree)).toEqual(new Set(["c0", "c1"]));
+  });
+
+  it("collects ids from nested groups", () => {
+    const tree: GroupNode = {
+      kind: "or",
+      children: [
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ],
+        },
+        { kind: "leaf", conditionId: "c2" },
+      ],
+    };
+    expect(collectConditionIds(tree)).toEqual(new Set(["c0", "c1", "c2"]));
+  });
+
+  it("collects ids from deeply nested groups", () => {
+    const tree: GroupNode = {
+      kind: "and",
+      children: [
+        { kind: "leaf", conditionId: "c0" },
+        {
+          kind: "or",
+          children: [
+            { kind: "leaf", conditionId: "c1" },
+            {
+              kind: "and",
+              children: [
+                { kind: "leaf", conditionId: "c2" },
+                { kind: "leaf", conditionId: "c3" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(collectConditionIds(tree)).toEqual(new Set(["c0", "c1", "c2", "c3"]));
+  });
+});
+
+describe("per_grouping tree shapes", () => {
+  it("supports nested groups as members", () => {
+    // Group1: (A AND B), Group2: (C OR Group1)
+    const tree: GroupNode = {
+      kind: "or",
+      children: [
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ],
+        },
+        {
+          kind: "or",
+          children: [
+            { kind: "leaf", conditionId: "c2" },
+            {
+              kind: "and",
+              children: [
+                { kind: "leaf", conditionId: "c0" },
+                { kind: "leaf", conditionId: "c1" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    // All conditions are referenced somewhere in the tree
+    const ids = collectConditionIds(tree);
+    expect(ids).toEqual(new Set(["c0", "c1", "c2"]));
+  });
+
+  it("serializes nested per_grouping trees through wire", () => {
+    const tree: GroupNode = {
+      kind: "or",
+      children: [
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ],
+        },
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "c2" },
+            { kind: "leaf", conditionId: "c3" },
+          ],
+        },
+      ],
+    };
+    const rule = ruleWithTree(tree);
+    const wire = mapRuleToWireDraft(rule);
+    const draft = ruleDraftRequestSchema.parse(wire);
+    const asWireRule = wireRuleSchema.parse({
+      rule_id: rule.index,
+      name: rule.name,
+      conditions: draft.conditions,
+      grouping_tree: draft.grouping_tree,
+      logic: {
+        format: "value_vs_column",
+        column_name: rule.logic.column,
+        operator: "eq",
+        target_value: rule.logic.target,
+      },
+    });
+    const back = mapWireRule(asWireRule);
+    expect(back.groupTree).toEqual(tree);
   });
 });

@@ -1,5 +1,5 @@
 version: 1
-next_index: 61
+next_index: 76
 rules:
 - rule_id: R007
   name: E2E status check

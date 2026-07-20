@@ -102,6 +102,11 @@ export function SearchableMultiSelect({
       <label id={`${baseId}-label`} htmlFor={`${baseId}-input`}>
         {label}
       </label>
+      {hint && (
+        <span id={hintId} className="field-hint-inline">
+          {hint}
+        </span>
+      )}
       <div
         role="combobox"
         aria-expanded={open}
@@ -183,11 +188,6 @@ export function SearchableMultiSelect({
           </ul>
         )}
       </div>
-      {hint && (
-        <span id={hintId} className="field-hint">
-          {hint}
-        </span>
-      )}
     </div>
   );
 }

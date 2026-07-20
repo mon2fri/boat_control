@@ -15,6 +15,10 @@ interface StaticProps {
   onReachEnd?: () => void;
   /** Whether more pages are available — disables the reach-end trigger when false. */
   hasMore?: boolean;
+  /** Key column names to render as individual columns instead of the combined "Row" column. */
+  keyColumnNames?: string[];
+  /** Message shown when rows is empty. Defaults to "No detail rows." */
+  emptyMessage?: string;
 }
 
 const ROW_HEIGHT = 34;
@@ -33,6 +37,8 @@ export function DetailTable({
   total,
   onReachEnd,
   hasMore = false,
+  keyColumnNames = [],
+  emptyMessage = "No detail rows.",
 }: StaticProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -59,7 +65,7 @@ export function DetailTable({
   }, [rows.length, hasMore, onReachEnd, virtualizer]);
 
   if (rows.length === 0) {
-    return <p role="status">No detail rows.</p>;
+    return <p role="status">{emptyMessage}</p>;
   }
 
   const items = virtualizer.getVirtualItems();
@@ -80,10 +86,16 @@ export function DetailTable({
         <caption className="visually-hidden">{caption}</caption>
         <thead>
           <tr>
-            <th scope="col">Row</th>
+            {keyColumnNames.length > 0 ? (
+              keyColumnNames.map((name) => (
+                <th key={name} scope="col">{name}</th>
+              ))
+            ) : (
+              <th scope="col">Row</th>
+            )}
             <th scope="col">Column</th>
-            <th scope="col">File 1</th>
-            <th scope="col">File 2</th>
+            <th scope="col">In Baseline</th>
+            <th scope="col">In Comparison</th>
             <th scope="col">Kind</th>
           </tr>
         </thead>
@@ -97,7 +109,13 @@ export function DetailTable({
                 data-index={item.index}
                 style={{ transform: `translateY(${item.start}px)` }}
               >
-                <td>{row.rowKey}</td>
+                {keyColumnNames.length > 0 ? (
+                  keyColumnNames.map((name) => (
+                    <td key={name}>{row.keyColumns[name] ?? "—"}</td>
+                  ))
+                ) : (
+                  <td>{row.rowKey}</td>
+                )}
                 <td>{row.column}</td>
                 <td>{row.file1Value ?? "—"}</td>
                 <td>{row.file2Value ?? "—"}</td>

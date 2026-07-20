@@ -14,6 +14,7 @@ import {
   wirePresetListSchema,
   wireRunDocumentSchema,
   wireRunHistorySchema,
+  wireRunMetadataSchema,
   wireRunRequestSchema,
   wireRuleSchema,
   wireSavedFilterListSchema,
@@ -38,6 +39,7 @@ import {
 } from "./mapping";
 import type {
   AppSettings,
+  DetailRow,
   Rule as DomainRule,
   FilterRow,
   HeaderReport,
@@ -138,15 +140,7 @@ export function fetchDetailPage(
   kind: "changed" | "violation",
   options: { offset?: number; limit?: number; signal?: AbortSignal } = {},
 ): Promise<{
-  rows: Array<{
-    rowKey: string;
-    column: string;
-    file1Value: string | null;
-    file2Value: string | null;
-    kind: "changed" | "violation";
-    violatingColumn?: string;
-    violatingValue?: string | null;
-  }>;
+  rows: DetailRow[];
   offset: number;
   total: number;
   hasMore: boolean;
@@ -163,10 +157,13 @@ export function fetchDetailPage(
     hasMore: r.has_more,
     rows: r.details.map((row) => ({
       rowKey: row.row_key,
+      keyColumns: row.key_columns
+        ? Object.fromEntries(Object.entries(row.key_columns).map(([k, v]) => [k, v === null ? null : String(v)]))
+        : {},
       column: row.column,
       file1Value: row.file_a_value === null ? null : String(row.file_a_value),
       file2Value: row.file_b_value === null ? null : String(row.file_b_value),
-      kind,
+      kind: kind === "violation" ? "exception" : kind,
       ...(row.violating_column ? { violatingColumn: row.violating_column } : {}),
       ...(row.violating_value !== undefined
         ? { violatingValue: row.violating_value === null ? null : String(row.violating_value) }
@@ -294,6 +291,7 @@ export function deleteRule(index: string): Promise<{ ruleId: string; message: st
 export function executeRun(
   request: {
     sessionId: string;
+    comparisonColumns: string[];
     filters: FilterRow[];
     targetColumns: string[];
     keyColumns: string[];
@@ -320,19 +318,10 @@ export function loadRun(id: string): Promise<RunResult> {
 }
 
 export function renameRun(id: string, reportName: string): Promise<RunSummary> {
-  const metadataSchema = z
-    .object({
-      run_id: z.string(),
-      report_name: z.string(),
-      file_a_name: z.string(),
-      file_b_name: z.string(),
-      created_at: z.string(),
-      file_path: z.string(),
-    });
   return apiRequest(`/runs/${encodeURIComponent(id)}/rename/`, {
     method: "PUT",
     body: { report_name: reportName },
-    schema: metadataSchema,
+    schema: wireRunMetadataSchema,
   }).then(mapRunMetadata);
 }
 

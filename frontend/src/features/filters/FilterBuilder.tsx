@@ -26,8 +26,8 @@ export function FilterBuilder({ columns, rows, columnValues, loadingValues, onCh
 
   return (
     <section aria-labelledby="filters-title" className="card">
-      <h3 id="filters-title" className="card-heading">Filtering Rows</h3>
-      <p className="card-hint">
+      <h3 id="filters-title" className="section-heading">Filtering Rows</h3>
+      <p className="section-hint">
         Each row applies one condition. Values within a row are OR-ed. Rows are combined with logical AND.
         Leave the list empty to run against the full set.
       </p>

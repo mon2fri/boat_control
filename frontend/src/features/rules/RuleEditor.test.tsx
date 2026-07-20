@@ -50,7 +50,10 @@ describe("RuleEditor", () => {
     for (const n of [1, 2]) {
       const group = screen.getByRole("group", { name: `Condition ${n}` });
       fireEvent.change(within(group).getByLabelText("Column"), { target: { value: `c${n}` } });
-      fireEvent.change(within(group).getByLabelText("Value"), { target: { value: `v${n}` } });
+      const valueInput = within(group).getByRole("searchbox", { name: "Value" });
+      fireEvent.focus(valueInput);
+      fireEvent.change(valueInput, { target: { value: `v${n}` } });
+      fireEvent.keyDown(valueInput, { key: "Enter" });
     }
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).not.toHaveBeenCalled();

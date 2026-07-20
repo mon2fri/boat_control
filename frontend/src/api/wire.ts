@@ -179,6 +179,7 @@ export type WireFilterRow = z.infer<typeof wireFilterRowSchema>;
 
 export const wireRunRequestSchema = z.object({
   session_id: z.string(),
+  comparison_columns: z.array(z.string()).nullable().optional(),
   target_columns: z.array(z.string()).nullable().optional(),
   key_columns: z.array(z.string()).nullable().optional(),
   filters: z.array(wireFilterRowSchema).optional(),
@@ -215,6 +216,7 @@ export const wireDetailPageSchema = z.object({
   details: z.array(
     z.object({
       row_key: z.string(),
+      key_columns: z.record(z.string(), wireScalarSchema).optional(),
       column: z.string(),
       file_a_value: wireScalarSchema,
       file_b_value: wireScalarSchema,

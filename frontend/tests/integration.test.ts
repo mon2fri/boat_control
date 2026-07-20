@@ -210,6 +210,7 @@ describe("client endpoints: happy path against the live contract", () => {
   it("mapRunRequestToWire produces a body that wireRunRequestSchema accepts", () => {
     const body = mapRunRequestToWire({
       sessionId: (bundle.upload as { session_id: string }).session_id,
+      comparisonColumns: ["id"],
       filters: [],
       targetColumns: [],
       keyColumns: ["id"],
@@ -303,6 +304,7 @@ describe("request conformance: every outgoing body validates through its Zod sch
   it("a run request with one selected rule parses through wireRunRequestSchema", () => {
     const body = mapRunRequestToWire({
       sessionId: (bundle.upload as { session_id: string }).session_id,
+      comparisonColumns: ["id"],
       filters: [],
       targetColumns: [],
       keyColumns: ["id"],
@@ -314,6 +316,7 @@ describe("request conformance: every outgoing body validates through its Zod sch
   it("a run request with an empty selection still parses (explicit [])", () => {
     const body = mapRunRequestToWire({
       sessionId: (bundle.upload as { session_id: string }).session_id,
+      comparisonColumns: ["id"],
       filters: [],
       targetColumns: [],
       keyColumns: ["id"],

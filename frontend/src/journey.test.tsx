@@ -127,17 +127,16 @@ describe("critical user journey: upload → prepare → rules → run → result
     fireEvent.mouseDown(screen.getByRole("option", { name: /id/ }));
     fireEvent.click(screen.getByRole("button", { name: /Continue to compare/ }));
 
-    // 3. Compare and validate loads its filters, targets, and validation rules.
+    // 3. Compare and validate page loads (embedded rules, filters, targets).
     await waitFor(() => expect(screen.getByRole("heading", { name: /Compare & validate/ })).toBeInTheDocument());
-    const continueBtn = await screen.findByRole("button", { name: "Continue to validation rules" });
-    await waitFor(() => expect(continueBtn).toBeEnabled());
-    fireEvent.click(continueBtn);
-
-    // 4. Rules load and default-select; continue to run.
     await waitFor(() => expect(screen.getByText(/Region present/)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Continue to run" }));
 
-    // 5. Results page: run, then the report renders with the overall counts.
+    // 4. Run comparison and validation from the prepare page.
+    const runBtn = await screen.findByRole("button", { name: "Run comparison and validation" });
+    await waitFor(() => expect(runBtn).toBeEnabled());
+    fireEvent.click(runBtn);
+
+    // 5. Results page: click "Run now", then the report renders with the overall counts.
     await waitFor(() => expect(screen.getByRole("button", { name: "Run now" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Run now" }));
 

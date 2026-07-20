@@ -35,12 +35,11 @@ class RunPaginatedDetailView(APIView):  # type: ignore[misc]
             raw_rows = comparison.get("row_details", [])
             rows = []
             for r in raw_rows:
-                key_str = ",".join(
-                    f"{k}={v}" for k, v in r.get("key_columns", {}).items()
-                )
+                key_cols = r.get("key_columns", {})
                 for change in r.get("attribute_changes", []):
                     rows.append({
-                        "row_key": key_str or str(r.get("row_index", "")),
+                        "row_key": ",".join(f"{k}={v}" for k, v in key_cols.items()) or str(r.get("row_index", "")),
+                        "key_columns": key_cols,
                         "column": change["column"],
                         "file_a_value": change.get("file_a_value"),
                         "file_b_value": change.get("file_b_value"),
@@ -50,11 +49,10 @@ class RunPaginatedDetailView(APIView):  # type: ignore[misc]
             rows = []
             for _rule_id, violations in raw_violations.items():
                 for v in violations:
-                    key_str = ",".join(
-                        f"{k}={kv}" for k, kv in v.get("key_columns", {}).items()
-                    )
+                    key_cols = v.get("key_columns", {})
                     rows.append({
-                        "row_key": key_str or str(v.get("row_index", "")),
+                        "row_key": ",".join(f"{k}={kv}" for k, kv in key_cols.items()) or str(v.get("row_index", "")),
+                        "key_columns": key_cols,
                         "column": v.get("violating_column", ""),
                         "file_a_value": v.get("violating_value"),
                         "file_b_value": None,

@@ -9,6 +9,7 @@ import { makeClient } from "../../test/utils";
 
 const request: RunRequest = {
   sessionId: "s1",
+  comparisonColumns: ["id"],
   filters: [],
   targetColumns: [],
   keyColumns: ["id"],

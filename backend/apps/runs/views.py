@@ -24,6 +24,7 @@ _ERROR_MAP: dict[type, tuple[int, str | None]] = {
 class ExecuteComparisonView(APIView):  # type: ignore[misc]
     def post(self, request: Request) -> Response:
         session_id = request.data.get("session_id")
+        comparison_columns = request.data.get("comparison_columns")
         target_columns = request.data.get("target_columns")
         key_columns = request.data.get("key_columns")
         filters = request.data.get("filters", [])
@@ -49,13 +50,32 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 status=404,
             )
 
+        # Use the user's comparison-column selection as the effective
+        # common set; fall back to the session's raw common columns when
+        # the client omits the field (backward compat).
+        if not comparison_columns:
+            comparison_columns = session.common_columns
+        else:
+            # Validate comparison_columns is a non-empty subset of session.common_columns
+            common_set = set(session.common_columns)
+            invalid = [c for c in comparison_columns if c not in common_set]
+            if invalid:
+                return Response(
+                    {"error": f"Invalid comparison columns: {', '.join(invalid)}"},
+                    status=400,
+                )
+
         if not key_columns:
-            key_columns = session.common_columns[:1]
+            return Response(
+                {"error": "key_columns is required. Select at least one identifier column."},
+                status=400,
+            )
 
         try:
             result = execute_comparison(
                 path_a=path_a,
                 path_b=path_b,
+                comparison_columns=comparison_columns,
                 target_columns=target_columns,
                 key_columns=key_columns,
                 filters=filters,

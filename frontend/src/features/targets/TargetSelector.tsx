@@ -24,8 +24,8 @@ export function TargetSelector({ columns, selected, onChange }: Props) {
 
   return (
     <section aria-labelledby="targets-title" className="card">
-      <h3 id="targets-title" className="card-heading">Comparing Columns</h3>
-      <p className="card-hint">
+      <h3 id="targets-title" className="section-heading">Comparing Columns</h3>
+      <p className="section-hint">
         Choose the columns to compare and validate. If none are chosen, all selected comparison columns are used.
       </p>
 

@@ -414,16 +414,26 @@ def _check_rule(
 def execute_comparison(
     path_a: Path,
     path_b: Path,
-    target_columns: list[str] | None,
-    filters: list[dict[str, str]],
+    comparison_columns: list[str] | None = None,
+    target_columns: list[str] | None = None,
+    filters: list[dict[str, str]] | None = None,
     rule_ids: list[str] | None = None,
     key_columns: list[str] | None = None,
 ) -> ExecutionResult:
+    if filters is None:
+        filters = []
+
     headers_a = pl.scan_csv(path_a).head(1).collect().columns
     headers_b = pl.scan_csv(path_b).head(1).collect().columns
 
-    common_columns = [c for c in headers_a if c in headers_b]
-    valid_filter_cols = set(headers_a)
+    all_common_columns = [c for c in headers_a if c in headers_b]
+
+    # Use the user's comparison-column selection; fall back to all common
+    # columns when the caller omits the field (backward compat).
+    if comparison_columns is None:
+        comparison_columns = all_common_columns
+
+    valid_filter_cols = set(comparison_columns)
 
     for f in filters:
         if f["column"] not in valid_filter_cols:
@@ -433,21 +443,21 @@ def execute_comparison(
 
     effective_targets: list[str]
     if target_columns:
-        invalid = [c for c in target_columns if c not in common_columns]
+        invalid = [c for c in target_columns if c not in comparison_columns]
         if invalid:
             raise ValueError(
                 f"Invalid target columns: {', '.join(invalid)}"
             )
         effective_targets = target_columns
     else:
-        effective_targets = common_columns
+        effective_targets = comparison_columns
 
     if not key_columns:
         raise ValueError(
             "key_columns is required. Provide at least one common column "
             "to use as record identity."
         )
-    invalid = [c for c in key_columns if c not in common_columns]
+    invalid = [c for c in key_columns if c not in comparison_columns]
     if invalid:
         raise ValueError(
             f"Invalid key columns: {', '.join(invalid)}"
@@ -536,7 +546,7 @@ def execute_comparison(
     return ExecutionResult(
         comparison=comparison,
         validation=validation,
-        common_columns=common_columns,
+        common_columns=comparison_columns,
         target_columns=effective_targets,
         key_columns=effective_keys,
         filters_applied=filters,

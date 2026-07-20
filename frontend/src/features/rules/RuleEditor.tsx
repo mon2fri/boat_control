@@ -2,15 +2,17 @@ import { useMemo, useState } from "react";
 import type { Condition, GroupNode, LogicClause, LogicOperator, Rule, RuleDraft } from "../../api/domain";
 import { ColumnField } from "../../components/ColumnField";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { SearchableSelect, type SelectOption } from "../../components/SearchableSelect";
 import { nextId } from "../../lib/id";
 import { LOGIC_OPERATORS } from "./constants";
 import { GroupingTreeEditor } from "./GroupingTreeEditor";
-import { formatGroupTree } from "./groupingTree";
+import { formatGroupTreeHierarchy } from "./groupingTree";
 
 interface Props {
   /** Existing rule when editing; undefined when creating. */
   rule?: Rule;
   columns: string[];
+  columnValues?: Record<string, { value: string; starred: boolean }[]>;
   saving: boolean;
   error?: string | null;
   onSave: (draft: RuleDraft) => void;
@@ -66,7 +68,7 @@ function newCondition(): Condition {
  * logic clause in either Value-against-Column or Column-against-Column format.
  * Guards against discarding unsaved edits.
  */
-export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: Props) {
+export function RuleEditor({ rule, columns, columnValues = {}, saving, error, onSave, onCancel }: Props) {
   const [draft, setDraft] = useState<DraftState>(() => initialDraft(rule));
   const [pristine] = useState<DraftState>(() => initialDraft(rule));
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -113,7 +115,7 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
         <p>
           A rule describes the <strong>required state</strong> for one column
           (and optionally a set of preconditions). Rows that match the rule are
-          valid; rows that <em>do not</em> match are reported as violations.
+          valid; rows that <em>do not</em> match are reported as exceptions.
           Example: <code>status must equal "active"</code> flags every row whose
           status is anything other than <code>active</code>.
         </p>
@@ -145,36 +147,51 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
         {draft.conditions.length === 0 && (
           <p className="field-hint">No conditions — the rule always evaluates its logic.</p>
         )}
-        {draft.conditions.map((condition, index) => (
-          <div key={condition.id} className="filter-row" role="group" aria-label={`Condition ${index + 1}`}>
-            <ColumnField
-              label="Column"
-              columns={columns}
-              value={condition.column}
-              onChange={(column) => updateCondition(condition.id, { column })}
-            />
-            <OperatorSelect
-              label="Operator"
-              value={condition.operator}
-              onChange={(operator) => updateCondition(condition.id, { operator })}
-            />
-            <div className="field">
-              <label htmlFor={`cond-val-${condition.id}`}>Value</label>
-              <input
-                id={`cond-val-${condition.id}`}
-                value={condition.value}
-                onChange={(e) => updateCondition(condition.id, { value: e.target.value })}
+        {draft.conditions.map((condition, index) => {
+          const valueOptions: SelectOption[] = (columnValues[condition.column] ?? []).map((v) => ({
+            value: v.value,
+            label: v.starred ? `${v.value} *` : v.value,
+            disabled: v.starred,
+          }));
+          return (
+            <div key={condition.id} className="filter-row" role="group" aria-label={`Condition ${index + 1}`}>
+              <ColumnField
+                label="Column"
+                columns={columns}
+                value={condition.column}
+                onChange={(column) => updateCondition(condition.id, { column, value: "" })}
               />
+              <OperatorSelect
+                label="Operator"
+                value={condition.operator}
+                onChange={(operator) => updateCondition(condition.id, { operator })}
+              />
+              <SearchableSelect
+                label="Value"
+                options={valueOptions}
+                value={condition.value || null}
+                onChange={(value) => updateCondition(condition.id, { value })}
+                placeholder={condition.column ? "Search values or type…" : "Pick a column first"}
+                disabled={!condition.column}
+                freeText
+                hint={
+                  valueOptions.length > 0
+                    ? "Select from known values or type a custom value."
+                    : condition.column
+                      ? "No known values — type a custom value."
+                      : ""
+                }
+              />
+              <button
+                type="button"
+                className="btn btn--danger"
+                onClick={() => patch({ conditions: draft.conditions.filter((c) => c.id !== condition.id) })}
+              >
+                Remove
+              </button>
             </div>
-            <button
-              type="button"
-              className="btn btn--danger"
-              onClick={() => patch({ conditions: draft.conditions.filter((c) => c.id !== condition.id) })}
-            >
-              Remove
-            </button>
-          </div>
-        ))}
+          );
+        })}
         <button
           type="button"
           className="btn"
@@ -219,9 +236,9 @@ export function RuleEditor({ rule, columns, saving, error, onSave, onCancel }: P
             />
             <p className="field-hint" data-testid="grouping-preview">
               <span className="visually-hidden">Grouping: </span>
-              <code>
+              <code style={{ whiteSpace: "pre-wrap" }}>
                 {draft.groupTree
-                  ? formatGroupTree(draft.groupTree, (id) => {
+                  ? formatGroupTreeHierarchy(draft.groupTree, (id) => {
                       const c = draft.conditions.find((cc) => cc.id === id);
                       return c ? `cond ${draft.conditions.indexOf(c) + 1}` : id;
                     })
@@ -371,8 +388,17 @@ function validateDraft(draft: DraftState, needsJoin: boolean): ValidationResult 
   if (needsJoin && draft.conditionJoin === null) {
     errors.push("Choose AND, OR, or PER GROUPING to combine multiple conditions.");
   }
-  if (needsJoin && draft.conditionJoin === "per_grouping" && !draft.groupTree) {
-    errors.push("Add at least one group when using PER GROUPING.");
+  if (needsJoin && draft.conditionJoin === "per_grouping") {
+    if (!draft.groupTree) {
+      errors.push("Add at least one group when using PER GROUPING.");
+    } else {
+      // Validate all conditions are grouped
+      const grouped = collectConditionIdsFromTree(draft.groupTree);
+      const missing = draft.conditions.filter((c) => !grouped.has(c.id));
+      if (missing.length > 0) {
+        errors.push(`All conditions must be grouped. ${missing.length} condition(s) not in any group.`);
+      }
+    }
   }
   for (const [i, c] of draft.conditions.entries()) {
     if (!c.column.trim() || !c.value.trim()) {
@@ -384,6 +410,16 @@ function validateDraft(draft: DraftState, needsJoin: boolean): ValidationResult 
     errors.push(draft.logic.format === "column" ? "Logic needs a compared column." : "Logic needs a value.");
   }
   return { valid: errors.length === 0, errors };
+}
+
+function collectConditionIdsFromTree(node: GroupNode): Set<string> {
+  const ids = new Set<string>();
+  const walk = (n: GroupNode) => {
+    if (n.kind === "leaf") ids.add(n.conditionId);
+    else n.children.forEach(walk);
+  };
+  walk(node);
+  return ids;
 }
 
 function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
