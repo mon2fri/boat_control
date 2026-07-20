@@ -18,6 +18,7 @@ class ExportView(APIView):  # type: ignore[misc]
         run_id = data.get("run_id")
         result_data = data.get("result_data")
         report_name = data.get("report_name", "export")
+        created_at = None
         fmt = data["format"]
 
         if run_id:
@@ -28,12 +29,13 @@ class ExportView(APIView):  # type: ignore[misc]
                 )
             result_data = loaded.get("result", {})
             report_name = loaded.get("report_name", report_name)
+            created_at = loaded.get("created_at")
 
         if result_data is None:
             return HttpResponse("No result data provided.", status=400, content_type="text/plain")
 
         if fmt == "html":
-            content = export_html(result_data, report_name)
+            content = export_html(result_data, report_name, created_at)
             response = HttpResponse(content, content_type="text/html")
             response["Content-Disposition"] = f'attachment; filename="{report_name}.html"'
         else:

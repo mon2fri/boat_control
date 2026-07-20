@@ -95,6 +95,8 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
             result=result,
             file_a_name=session.file_a_name,
             file_b_name=session.file_b_name,
+            file_a_path=path_a,
+            file_b_path=path_b,
         )
 
         from apps.runs.persistence import load_run

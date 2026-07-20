@@ -23,6 +23,7 @@ interface StaticProps {
 
 const ROW_HEIGHT = 34;
 const LOAD_MORE_THRESHOLD = 50;
+const VISIBLE_DATA_ROWS = 10;
 
 /**
  * Virtualized detail table for potentially large result sets (up to ~120k
@@ -77,7 +78,7 @@ export function DetailTable({
   return (
     <div
       ref={scrollRef}
-      className="detail-scroll"
+      className={`detail-scroll${rows.length > VISIBLE_DATA_ROWS ? " detail-scroll--capped" : ""}`}
       role="region"
       aria-label={caption}
       tabIndex={0}

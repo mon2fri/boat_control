@@ -6,6 +6,8 @@ from typing import Literal
 
 import polars as pl
 
+from apps.settings.services import load_settings
+
 FilterOperator = Literal["eq", "neq", "contains", "ncontains"]
 
 VALID_FILTER_OPERATORS: set[FilterOperator] = {"eq", "neq", "contains", "ncontains"}
@@ -76,7 +78,7 @@ def prepare_filters(
         column_values=column_values,
         total_rows_a=row_count_a,
         total_rows_b=row_count_b,
-        requires_confirmation=total >= 2000,
+        requires_confirmation=total >= load_settings().full_set_confirmation_rows,
     )
 
 

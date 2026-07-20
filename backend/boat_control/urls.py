@@ -1,3 +1,7 @@
+from apps.configs.views import (
+    RowsAndColumnsConfigDetailView,
+    RowsAndColumnsConfigListView,
+)
 from django.conf import settings
 from django.http import FileResponse, HttpResponseNotFound
 from django.urls import include, path
@@ -10,6 +14,16 @@ _api_patterns = [
     path("api/reports/", include("apps.reports.urls")),
     path("api/settings/", include("apps.settings.urls")),
     path("api/filters/", include("apps.saved_filters.urls")),
+    path(
+        "api/rows-and-columns/configs/",
+        RowsAndColumnsConfigListView.as_view(),
+        name="rows-and-columns-config-list",
+    ),
+    path(
+        "api/rows-and-columns/configs/<str:name>/",
+        RowsAndColumnsConfigDetailView.as_view(),
+        name="rows-and-columns-config-detail",
+    ),
 ]
 
 

@@ -14,10 +14,13 @@ function withQuery(node: React.ReactNode) {
 }
 
 const okSettings = {
-  preset_source_paths: ["/var/data/presets"],
-  rules_config_path: "/var/data/rules.yaml",
-  filters_config_path: "/var/data/filters.yaml",
-  full_set_threshold: 2000,
+  application_name: "Boat Control",
+  default_remote_path: "",
+  rule_config_path: "config/rules",
+  rows_and_columns_config_path: "config/rows_and_columns",
+  filter_config_path: "config/filters",
+  full_set_confirmation_rows: 2000,
+  run_history_path: "data/results",
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -34,16 +37,15 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows a clear 'not yet available' view when the endpoint is missing", async () => {
+  it("shows an error when the settings file cannot be loaded", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(jsonResponse({ detail: "Not found" }, 404)),
     );
     withQuery(<SettingsPage />);
     await waitFor(() =>
-      expect(screen.getByRole("status")).toHaveTextContent(/not yet/i),
+      expect(screen.getByRole("alert")).toHaveTextContent(/Could not load settings/i),
     );
-    expect(screen.getByText(/Editable settings are not available/)).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 
@@ -51,12 +53,15 @@ describe("SettingsPage", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(okSettings)));
     withQuery(<SettingsPage />);
     await waitFor(() =>
-      expect(screen.getByLabelText("Preset source path")).toBeInTheDocument(),
+      expect(screen.getByLabelText("Application name")).toBeInTheDocument(),
     );
-    expect(screen.getByLabelText("Preset source path")).toHaveValue("/var/data/presets");
-    expect(screen.getByLabelText("Rules config path")).toHaveValue("/var/data/rules.yaml");
-    expect(screen.getByLabelText("Filters config path")).toHaveValue("/var/data/filters.yaml");
-    expect(screen.getByLabelText("Full-set confirmation threshold (rows)")).toHaveValue(2000);
+    expect(screen.getByLabelText("Application name")).toHaveValue("Boat Control");
+    expect(screen.getByLabelText("Default Remote Path")).toHaveValue("");
+    expect(screen.getByLabelText("Rule Config Path")).toHaveValue("config/rules");
+    expect(screen.getByLabelText("Rows and Columns Config Path")).toHaveValue("config/rows_and_columns");
+    expect(screen.getByLabelText("Filter Config Path")).toHaveValue("config/filters");
+    expect(screen.getByLabelText("Full set confirmation (Rows)")).toHaveValue(2000);
+    expect(screen.getByLabelText("Run history Path")).toHaveValue("data/results");
     vi.unstubAllGlobals();
   });
 
@@ -74,13 +79,36 @@ describe("SettingsPage", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(okSettings)));
     withQuery(<SettingsPage />);
     await waitFor(() =>
-      expect(screen.getByLabelText("Preset source path")).toBeInTheDocument(),
+      expect(screen.getByLabelText("Application name")).toBeInTheDocument(),
     );
-    fireEvent.change(screen.getByLabelText("Preset source path"), {
-      target: { value: "/var/data/other-presets" },
+    fireEvent.change(screen.getByLabelText("Application name"), {
+      target: { value: "My Comparator" },
     });
     expect(screen.getByRole("button", { name: "Save settings" })).toBeEnabled();
     expect(screen.getByText(/Unsaved changes/)).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("saves all seven settings using the root config wire fields", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(okSettings))
+      .mockResolvedValueOnce(jsonResponse({ ...okSettings, application_name: "My Comparator" }));
+    vi.stubGlobal("fetch", fetchMock);
+    withQuery(<SettingsPage />);
+    await waitFor(() => expect(screen.getByLabelText("Application name")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Application name"), {
+      target: { value: "My Comparator" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() => expect(screen.getByText("Settings saved.")).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/settings/",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ ...okSettings, application_name: "My Comparator" }),
+      }),
+    );
     vi.unstubAllGlobals();
   });
 
@@ -88,14 +116,14 @@ describe("SettingsPage", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(okSettings)));
     withQuery(<SettingsPage />);
     await waitFor(() =>
-      expect(screen.getByLabelText("Full-set confirmation threshold (rows)")).toBeInTheDocument(),
+      expect(screen.getByLabelText("Full set confirmation (Rows)")).toBeInTheDocument(),
     );
-    fireEvent.change(screen.getByLabelText("Full-set confirmation threshold (rows)"), {
+    fireEvent.change(screen.getByLabelText("Full set confirmation (Rows)"), {
       target: { value: "0" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
     expect(
-      screen.getByText(/Full-set confirmation threshold must be a positive integer/),
+      screen.getByText(/Full set confirmation \(Rows\) must be a positive integer/),
     ).toBeInTheDocument();
     vi.unstubAllGlobals();
   });

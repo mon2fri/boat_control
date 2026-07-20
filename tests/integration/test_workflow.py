@@ -7,6 +7,7 @@ from apps.runs.services import (
     ExecutionResult,
     ValidationResult,
 )
+from django.conf import settings
 from rest_framework.test import APIClient  # type: ignore[import-untyped]
 
 
@@ -57,7 +58,12 @@ class TestFullWorkflow:
 
 
 class TestRulesWorkflow:
-    def test_crud_workflow(self, api_client: APIClient) -> None:
+    def test_crud_workflow(
+        self, api_client: APIClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        isolated_rules = tmp_path / "rules.yaml"
+        isolated_rules.write_text("version: 1\nnext_index: 1\nrules: []\n")
+        monkeypatch.setattr(settings, "RULES_FILE", isolated_rules)
         response = api_client.post(
             "/api/rules/",
             {

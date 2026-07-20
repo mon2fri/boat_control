@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.runs.persistence import (
+    delete_run,
     list_runs,
     load_run,
     rename_run,
@@ -27,6 +28,13 @@ class RunDetailView(APIView):  # type: ignore[misc]
         if data is None:
             return Response({"error": f"Run {run_id} not found."}, status=404)
         return Response(data)
+
+    def delete(self, request: Request, run_id: str) -> Response:
+        try:
+            delete_run(run_id)
+        except ValueError as error:
+            return Response({"error": str(error)}, status=404)
+        return Response({"run_id": run_id, "deleted": True})
 
 
 class RunRenameView(APIView):  # type: ignore[misc]

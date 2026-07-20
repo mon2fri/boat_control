@@ -312,23 +312,14 @@ export type WireExportRequest = z.infer<typeof wireExportRequestSchema>;
 
 // --- Settings, saved filters, presets ----------------------------------
 
-/**
- * Wire shape for the editable settings endpoint. Field names match the
- * frozen API contract (`docs/20260718_contract_api_final.md` §10):
- *
- *   - `preset_source_paths` — array of allowed preset directories.
- *   - `rules_config_path`   — path to the rules YAML file.
- *   - `full_set_threshold`  — row count above which the full-set guard fires.
- *
- * The backend validates each field and returns the canonical (and possibly
- * rewritten) value; the client treats the response as the source of truth
- * and re-renders from it.
- */
 export const wireSettingsSchema = z.object({
-  preset_source_paths: z.array(z.string()),
-  rules_config_path: z.string(),
-  filters_config_path: z.string(),
-  full_set_threshold: z.number().int().positive(),
+  application_name: z.string().min(1),
+  default_remote_path: z.string(),
+  rule_config_path: z.string().min(1),
+  rows_and_columns_config_path: z.string().min(1),
+  filter_config_path: z.string().min(1),
+  full_set_confirmation_rows: z.number().int().positive(),
+  run_history_path: z.string().min(1),
 });
 export type WireSettings = z.infer<typeof wireSettingsSchema>;
 

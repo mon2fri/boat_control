@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WorkflowProvider } from "../state/WorkflowContext";
@@ -27,7 +27,7 @@ function json(body: unknown, ok = true, status = 200) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("HistoryPage", () => {
-  it("lists saved runs and offers an Open deep link", async () => {
+  it("lists saved runs and offers adjacent Open and Delete actions", async () => {
     const wireRuns = [
       {
         run_id: "run-2",
@@ -44,6 +44,36 @@ describe("HistoryPage", () => {
     const link = screen.getByRole("link", { name: "Open" });
     expect(link).toBeInTheDocument();
     expect(link.getAttribute("href")).toBe("/results/run-2");
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("replaces Delete with Cancel then Confirm and removes the run", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(json([{
+        run_id: "run-2",
+        report_name: "b_vs_c",
+        file_a_name: "b.csv",
+        file_b_name: "c.csv",
+        created_at: "2026-07-18T01:00:00Z",
+      }]))
+      .mockResolvedValueOnce(json({ run_id: "run-2", deleted: true }))
+      .mockResolvedValueOnce(json([]));
+    vi.stubGlobal("fetch", fetchMock);
+    renderHistory();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    const confirm = screen.getByRole("button", { name: "Confirm" });
+    expect(cancel.compareDocumentPosition(confirm) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(confirm);
+
+    await waitFor(() => expect(screen.getByText(/No runs saved yet/)).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/runs/run-2/",
+      expect.objectContaining({ method: "DELETE" }),
+    );
     vi.unstubAllGlobals();
   });
 

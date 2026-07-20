@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import shutil
 
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -13,7 +12,7 @@ from apps.files.preset_services import (
     list_source_files,
     resolve_file_id,
 )
-from apps.files.services import inspect_headers, safe_upload_path
+from apps.files.services import inspect_headers, store_file
 from apps.files.sessions import create_session
 
 logger = logging.getLogger(__name__)
@@ -50,8 +49,7 @@ class PresetLoadView(APIView):  # type: ignore[misc]
                     status=404,
                 )
 
-            path_a = safe_upload_path(preset.file_a.name)
-            shutil.copy2(str(preset.file_a), str(path_a))
+            path_a = store_file(preset.file_a)
 
             if preset.file_b is not None:
                 if not preset.file_b.exists():
@@ -63,11 +61,9 @@ class PresetLoadView(APIView):  # type: ignore[misc]
                         },
                         status=404,
                     )
-                path_b = safe_upload_path(preset.file_b.name)
-                shutil.copy2(str(preset.file_b), str(path_b))
+                path_b = store_file(preset.file_b)
             else:
-                path_b = safe_upload_path(preset.file_a.name)
-                shutil.copy2(str(preset.file_a), str(path_b))
+                path_b = path_a
 
             file_a_name = preset.file_a.name
             file_b_name = (
@@ -84,8 +80,7 @@ class PresetLoadView(APIView):  # type: ignore[misc]
                     {"error": "Source file not found."}, status=404
                 )
 
-            path_a = safe_upload_path(file_a_path.name)
-            shutil.copy2(str(file_a_path), str(path_a))
+            path_a = store_file(file_a_path)
             file_a_name = file_a_path.name
 
             if file_b_id:
@@ -98,12 +93,10 @@ class PresetLoadView(APIView):  # type: ignore[misc]
                     return Response(
                         {"error": "Source file not found."}, status=404
                     )
-                path_b = safe_upload_path(file_b_path.name)
-                shutil.copy2(str(file_b_path), str(path_b))
+                path_b = store_file(file_b_path)
                 file_b_name = file_b_path.name
             else:
-                path_b = safe_upload_path(file_a_path.name)
-                shutil.copy2(str(file_a_path), str(path_b))
+                path_b = path_a
                 file_b_name = file_a_path.name
         else:
             return Response(

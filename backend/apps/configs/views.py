@@ -24,6 +24,11 @@ from apps.configs.services import (
     list_configs,
     update_config,
 )
+from apps.settings.services import (
+    get_filter_config_dir,
+    get_rows_and_columns_config_dir,
+    get_rule_config_dir,
+)
 
 
 class BaseConfigListView(APIView):  # type: ignore[misc]
@@ -107,25 +112,37 @@ def _config_to_response(config: ConfigFile) -> dict[str, Any]:
     }
 
 
-class SettingsConfigListView(BaseConfigListView):
-    config_setting = "SETTINGS_CONFIG_DIR"
-
-
-class SettingsConfigDetailView(BaseConfigDetailView):
-    config_setting = "SETTINGS_CONFIG_DIR"
-
-
 class RulesConfigListView(BaseConfigListView):
-    config_setting = "RULES_CONFIG_DIR"
+    @property
+    def directory(self) -> Path:
+        return get_rule_config_dir()
 
 
 class RulesConfigDetailView(BaseConfigDetailView):
-    config_setting = "RULES_CONFIG_DIR"
+    @property
+    def directory(self) -> Path:
+        return get_rule_config_dir()
 
 
 class FiltersConfigListView(BaseConfigListView):
-    config_setting = "FILTERS_CONFIG_DIR"
+    @property
+    def directory(self) -> Path:
+        return get_filter_config_dir()
 
 
 class FiltersConfigDetailView(BaseConfigDetailView):
-    config_setting = "FILTERS_CONFIG_DIR"
+    @property
+    def directory(self) -> Path:
+        return get_filter_config_dir()
+
+
+class RowsAndColumnsConfigListView(BaseConfigListView):
+    @property
+    def directory(self) -> Path:
+        return get_rows_and_columns_config_dir()
+
+
+class RowsAndColumnsConfigDetailView(BaseConfigDetailView):
+    @property
+    def directory(self) -> Path:
+        return get_rows_and_columns_config_dir()

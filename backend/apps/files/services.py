@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import hashlib
+import shutil
+import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 from django.conf import settings
@@ -22,6 +26,43 @@ class HeaderInspectionResult:
 def safe_upload_path(filename: str) -> Path:
     safe_name = f"{uuid.uuid4().hex}_{_sanitize_filename(filename)}"
     return settings.UPLOADS_DIR / safe_name
+
+
+def store_uploaded_file(uploaded_file: Any) -> Path:
+    """Store an upload once, keyed by its content hash."""
+    uploads_dir = Path(settings.UPLOADS_DIR)
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256()
+    with tempfile.NamedTemporaryFile(dir=uploads_dir, delete=False, suffix=".upload") as tmp:
+        temporary_path = Path(tmp.name)
+        for chunk in uploaded_file.chunks():
+            digest.update(chunk)
+            tmp.write(chunk)
+    return _finish_content_addressed_store(temporary_path, digest.hexdigest())
+
+
+def store_file(source: Path) -> Path:
+    """Copy a configured remote file into the same deduplicated upload store."""
+    uploads_dir = Path(settings.UPLOADS_DIR)
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256()
+    with open(source, "rb") as input_file, tempfile.NamedTemporaryFile(
+        dir=uploads_dir, delete=False, suffix=".upload"
+    ) as tmp:
+        temporary_path = Path(tmp.name)
+        while chunk := input_file.read(1024 * 1024):
+            digest.update(chunk)
+            tmp.write(chunk)
+    return _finish_content_addressed_store(temporary_path, digest.hexdigest())
+
+
+def _finish_content_addressed_store(temporary_path: Path, digest: str) -> Path:
+    target = Path(settings.UPLOADS_DIR) / f"{digest}.csv"
+    if target.exists():
+        temporary_path.unlink(missing_ok=True)
+    else:
+        shutil.move(str(temporary_path), str(target))
+    return target
 
 
 def _sanitize_filename(name: str) -> str:
@@ -67,5 +108,5 @@ def inspect_headers(path_a: Path, name_a: str, path_b: Path, name_b: str) -> Hea
 
 
 def delete_upload(path: Path) -> None:
-    if path.exists() and path.parent == settings.UPLOADS_DIR:
+    if path.exists() and path.resolve().parent == Path(settings.UPLOADS_DIR).resolve():
         path.unlink()

@@ -7,8 +7,13 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.files.services import inspect_headers, safe_upload_path
-from apps.files.sessions import create_session, delete_session, get_session
+from apps.files.services import inspect_headers, store_uploaded_file
+from apps.files.sessions import (
+    create_session,
+    delete_session,
+    get_session,
+    remove_upload_if_unreferenced,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,20 +39,23 @@ class FileUploadView(APIView):  # type: ignore[misc]
         if file_b.size and file_b.size > max_size:
             return Response({"error": "file_b exceeds 500 MB limit."}, status=400)
 
-        path_a = safe_upload_path(file_a.name)
-        path_b = safe_upload_path(file_b.name)
-
-        self._write_file(file_a, path_a)
-        self._write_file(file_b, path_b)
+        path_a = store_uploaded_file(file_a)
+        path_b = store_uploaded_file(file_b)
 
         try:
             result = inspect_headers(
                 path_a, file_a.name, path_b, file_b.name
             )
         except ValueError as e:
+            if path_a != path_b:
+                remove_upload_if_unreferenced(path_a)
+            remove_upload_if_unreferenced(path_b)
             return Response({"error": str(e)}, status=400)
         except Exception:
             logger.exception("Header inspection failed")
+            if path_a != path_b:
+                remove_upload_if_unreferenced(path_a)
+            remove_upload_if_unreferenced(path_b)
             return Response(
                 {"error": "Failed to inspect CSV headers."}, status=500
             )
@@ -76,12 +84,6 @@ class FileUploadView(APIView):  # type: ignore[misc]
                 "only_in_b": result.only_in_b,
             },
         })
-
-    def _write_file(self, uploaded_file, path: Path) -> None:  # type: ignore[no-untyped-def]
-        with open(path, "wb") as f:
-            for chunk in uploaded_file.chunks():
-                f.write(chunk)
-
 
 class HeaderInspectionView(APIView):  # type: ignore[misc]
     def post(self, request: Request) -> Response:

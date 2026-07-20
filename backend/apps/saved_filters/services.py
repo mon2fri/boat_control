@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from django.conf import settings
+
+from apps.settings.services import get_saved_filters_dir
 
 _filters_lock = threading.Lock()
 
@@ -28,7 +29,7 @@ class SavedFilter:
 
 
 def _filters_dir() -> Path:
-    d = settings.FILTERS_DIR
+    d = get_saved_filters_dir()
     d.mkdir(parents=True, exist_ok=True)
     return d
 

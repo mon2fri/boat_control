@@ -52,7 +52,9 @@ export function useSaveSettings() {
   });
 }
 
-export function useConfigs(configType: "settings" | "rules" | "filters") {
+type ConfigType = "rules" | "filters" | "rows-and-columns";
+
+export function useConfigs(configType: ConfigType) {
   return useQuery({
     queryKey: configListKey(configType),
     queryFn: () => listConfigs(configType),
@@ -60,7 +62,7 @@ export function useConfigs(configType: "settings" | "rules" | "filters") {
   });
 }
 
-export function useConfig(configType: "settings" | "rules" | "filters", name: string | null) {
+export function useConfig(configType: ConfigType, name: string | null) {
   return useQuery({
     queryKey: configDetailKey(configType, name ?? ""),
     queryFn: () => getConfig(configType, name!),
@@ -69,7 +71,7 @@ export function useConfig(configType: "settings" | "rules" | "filters", name: st
   });
 }
 
-export function useCreateConfig(configType: "settings" | "rules" | "filters") {
+export function useCreateConfig(configType: ConfigType) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ name, content }: { name: string; content: unknown }) =>
@@ -78,19 +80,19 @@ export function useCreateConfig(configType: "settings" | "rules" | "filters") {
   });
 }
 
-export function useUpdateConfig(configType: "settings" | "rules" | "filters") {
+export function useUpdateConfig(configType: ConfigType) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ name, content, version }: { name: string; content: unknown; version: number }) =>
       updateConfig(configType, name, content, version),
     onSuccess: (_, vars) => {
-      client.invalidateQueries({ queryKey: configListKey(configType) });
-      client.invalidateQueries({ queryKey: configDetailKey(configType, vars.name) });
+      void client.invalidateQueries({ queryKey: configListKey(configType) });
+      void client.invalidateQueries({ queryKey: configDetailKey(configType, vars.name) });
     },
   });
 }
 
-export function useDeleteConfig(configType: "settings" | "rules" | "filters") {
+export function useDeleteConfig(configType: ConfigType) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => deleteConfig(configType, name),

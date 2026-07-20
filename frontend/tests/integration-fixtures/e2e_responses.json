@@ -641,10 +641,13 @@
     "starts_with": "Section,Metric,Value\r\nSummary,Total Rows A,3\r\nSummary,Total Rows B,3\r\nSummary,Ro"
   },
   "settings": {
-    "preset_source_paths": [],
-    "rules_config_path": "",
-    "filters_config_path": "",
-    "full_set_threshold": 2000
+    "application_name": "Boat Control",
+    "default_remote_path": "",
+    "rule_config_path": "config/rules",
+    "rows_and_columns_config_path": "config/rows_and_columns",
+    "filter_config_path": "config/filters",
+    "full_set_confirmation_rows": 2000,
+    "run_history_path": "data/results"
   },
   "saved_filters": {
     "list_initial": [

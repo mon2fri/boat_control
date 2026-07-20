@@ -172,10 +172,13 @@ export interface ExportRequest {
  * preset directories; the form binds to the first one for editing.
  */
 export interface AppSettings {
-  presetSourcePaths: string[];
-  rulesConfigPath: string;
-  filtersConfigPath: string;
-  fullSetThreshold: number;
+  applicationName: string;
+  defaultRemotePath: string;
+  ruleConfigPath: string;
+  rowsAndColumnsConfigPath: string;
+  filterConfigPath: string;
+  fullSetConfirmationRows: number;
+  runHistoryPath: string;
 }
 
 /**

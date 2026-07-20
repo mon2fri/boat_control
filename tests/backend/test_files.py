@@ -6,8 +6,11 @@ from apps.files.services import (
     inspect_headers,
     read_csv_headers,
     safe_upload_path,
+    store_uploaded_file,
 )
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.test.utils import override_settings
 from rest_framework.test import APIClient  # type: ignore[import-untyped]
 
 
@@ -38,6 +41,17 @@ class TestSafeUploadPath:
     def test_handles_hidden_files(self) -> None:
         result = safe_upload_path(".hidden")
         assert not result.name.startswith(".")
+
+
+def test_identical_uploads_share_one_content_addressed_file(tmp_path: Path) -> None:
+    content = b"id,name\n1,alpha\n"
+    with override_settings(UPLOADS_DIR=tmp_path):
+        first = store_uploaded_file(SimpleUploadedFile("first.csv", content))
+        second = store_uploaded_file(SimpleUploadedFile("renamed.csv", content))
+
+    assert first == second
+    assert first.name.endswith(".csv")
+    assert [path for path in tmp_path.iterdir() if path.suffix == ".csv"] == [first]
 
 
 class TestReadCsvHeaders:

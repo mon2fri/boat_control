@@ -317,6 +317,13 @@ export function loadRun(id: string): Promise<RunResult> {
   );
 }
 
+export function deleteRun(id: string): Promise<void> {
+  return apiRequest(`/runs/${encodeURIComponent(id)}/`, {
+    method: "DELETE",
+    schema: z.object({ run_id: z.string(), deleted: z.literal(true) }),
+  }).then(() => undefined);
+}
+
 export function renameRun(id: string, reportName: string): Promise<RunSummary> {
   return apiRequest(`/runs/${encodeURIComponent(id)}/rename/`, {
     method: "PUT",
@@ -530,7 +537,7 @@ export function loadPresetFiles(
 // --- Named configuration files --------------------------------------------
 
 export function listConfigs(
-  configType: "settings" | "rules" | "filters",
+  configType: "rules" | "filters" | "rows-and-columns",
 ): Promise<Array<{ name: string; version: number }>> {
   return apiRequest(`/${configType}/configs/`, {
     schema: z.array(z.object({ name: z.string(), version: z.number() })),
@@ -538,7 +545,7 @@ export function listConfigs(
 }
 
 export function getConfig(
-  configType: "settings" | "rules" | "filters",
+  configType: "rules" | "filters" | "rows-and-columns",
   name: string,
 ): Promise<{ name: string; version: number; content: unknown }> {
   return apiRequest(`/${configType}/configs/${name}/`, {
@@ -551,7 +558,7 @@ export function getConfig(
 }
 
 export function createConfig(
-  configType: "settings" | "rules" | "filters",
+  configType: "rules" | "filters" | "rows-and-columns",
   name: string,
   content: unknown,
 ): Promise<{ name: string; version: number }> {
@@ -563,7 +570,7 @@ export function createConfig(
 }
 
 export function updateConfig(
-  configType: "settings" | "rules" | "filters",
+  configType: "rules" | "filters" | "rows-and-columns",
   name: string,
   content: unknown,
   version: number,
@@ -580,7 +587,7 @@ export function updateConfig(
 }
 
 export function deleteConfig(
-  configType: "settings" | "rules" | "filters",
+  configType: "rules" | "filters" | "rows-and-columns",
   name: string,
 ): Promise<void> {
   return apiRequest(`/${configType}/configs/${name}/`, {

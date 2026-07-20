@@ -437,19 +437,25 @@ export function mapRunDocumentMetadata(doc: WireRunDocument): RunSummary {
 
 export function mapSettings(wire: WireSettings): AppSettings {
   return {
-    presetSourcePaths: [...wire.preset_source_paths],
-    rulesConfigPath: wire.rules_config_path,
-    filtersConfigPath: wire.filters_config_path,
-    fullSetThreshold: wire.full_set_threshold,
+    applicationName: wire.application_name,
+    defaultRemotePath: wire.default_remote_path,
+    ruleConfigPath: wire.rule_config_path,
+    rowsAndColumnsConfigPath: wire.rows_and_columns_config_path,
+    filterConfigPath: wire.filter_config_path,
+    fullSetConfirmationRows: wire.full_set_confirmation_rows,
+    runHistoryPath: wire.run_history_path,
   };
 }
 
 export function mapSettingsToWire(settings: AppSettings): WireSettings {
   return {
-    preset_source_paths: [...settings.presetSourcePaths],
-    rules_config_path: settings.rulesConfigPath,
-    filters_config_path: settings.filtersConfigPath,
-    full_set_threshold: settings.fullSetThreshold,
+    application_name: settings.applicationName,
+    default_remote_path: settings.defaultRemotePath,
+    rule_config_path: settings.ruleConfigPath,
+    rows_and_columns_config_path: settings.rowsAndColumnsConfigPath,
+    filter_config_path: settings.filterConfigPath,
+    full_set_confirmation_rows: settings.fullSetConfirmationRows,
+    run_history_path: settings.runHistoryPath,
   };
 }
 

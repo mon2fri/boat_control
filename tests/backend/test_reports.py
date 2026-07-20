@@ -25,6 +25,8 @@ def sample_result() -> dict:
         },
         "validation": {
             "total_violations": 3,
+            "distinct_violating_rows": 1,
+            "distinct_violating_attributes": 1,
             "violations_by_rule": {
                 "R001": [
                     {
@@ -33,12 +35,24 @@ def sample_result() -> dict:
                         "rule_name": "Test Rule",
                         "key_columns": {"id": "456"},
                         "details": "Violated R001",
+                        "violating_column": "score",
+                        "violating_value": "10",
+                        "comparison_value": "15",
+                        "rule_logic": "score lt '20'",
                     }
                 ]
             },
             "violation_count_by_rule": {"R001": 3},
+            "violating_rows_by_rule": {"R001": 1},
+            "violating_attributes_by_rule": {"R001": 1},
+            "rule_summaries": {
+                "R001": {"name": "Test Rule", "logic": "score lt '20'"},
+                "R002": {"name": "No exception", "logic": "score eq '15'"},
+            },
         },
         "target_columns": ["score"],
+        "key_columns": ["id"],
+        "filters_applied": [],
     }
 
 
@@ -48,6 +62,16 @@ class TestExportHtml:
         assert "<!DOCTYPE html>" in result
         assert "Test Report" in result
         assert "100" in result
+        assert "Overall result" in result
+        assert "Rows with rule exception" in result
+        assert "Attribute changes" in result
+        assert "In Baseline" in result
+        assert "In Comparison" in result
+        assert "Rationale" in result
+        assert "R001 — Test Rule" in result
+        assert "score less than &#x27;20&#x27;" in result
+        assert "R002 — No exception" in result
+        assert "Nil exception detected under current rule." in result
 
     def test_escapes_html_injection(self, sample_result: dict) -> None:
         xss = "<script>alert('xss')</script>"
@@ -55,6 +79,17 @@ class TestExportHtml:
         result = export_html(sample_result, "Test")
         assert "<script>" not in result
         assert "&lt;script&gt;" in result
+
+    def test_exports_every_detail_row_without_viewport_truncation(
+        self, sample_result: dict
+    ) -> None:
+        changes = sample_result["comparison"]["row_details"][0]["attribute_changes"]
+        changes[:] = [
+            {"column": f"score_{index}", "file_a_value": index, "file_b_value": index + 1}
+            for index in range(15)
+        ]
+        result = export_html(sample_result, "Full table")
+        assert result.count("<td>Values differ</td>") == 15
 
 
 class TestExportCsv:

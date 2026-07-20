@@ -1,7 +1,10 @@
+from pathlib import Path
+
 import pytest
 from apps.runs.persistence import (
     _default_report_name,
     _sanitize_report_name,
+    delete_run,
     list_runs,
     load_run,
     rename_run,
@@ -13,6 +16,7 @@ from apps.runs.services import (
     ValidationResult,
 )
 from django.test import TestCase
+from django.test.utils import override_settings
 from rest_framework.test import APIClient  # type: ignore[import-untyped]
 
 
@@ -98,6 +102,55 @@ class TestRenameRun:
     def test_rename_raises_on_missing(self) -> None:
         with pytest.raises(ValueError, match="not found"):
             rename_run("nonexistent", "New Name")
+
+
+def test_shared_upload_is_removed_only_after_last_run_is_deleted(
+    tmp_path: Path, mock_result: ExecutionResult
+) -> None:
+    uploads_dir = tmp_path / "uploads"
+    results_dir = tmp_path / "results"
+    uploads_dir.mkdir()
+    shared_upload = uploads_dir / "shared.csv"
+    shared_upload.write_text("id\n1\n")
+
+    with override_settings(UPLOADS_DIR=uploads_dir, RESULTS_DIR=results_dir):
+        first = save_run(
+            mock_result,
+            "a.csv",
+            "b.csv",
+            file_a_path=shared_upload,
+            file_b_path=shared_upload,
+        )
+        second = save_run(
+            mock_result,
+            "a.csv",
+            "b.csv",
+            file_a_path=shared_upload,
+            file_b_path=shared_upload,
+        )
+        first_document = load_run(first.run_id)
+        second_document = load_run(second.run_id)
+        assert first_document is not None
+        assert second_document is not None
+        assert first_document["upload_refs"] == ["shared.csv"]
+        assert second_document["upload_refs"] == ["shared.csv"]
+
+        delete_run(first.run_id)
+        assert shared_upload.exists()
+
+        delete_run(second.run_id)
+        assert not shared_upload.exists()
+
+
+def test_delete_run_endpoint_removes_history_entry(
+    tmp_path: Path, mock_result: ExecutionResult
+) -> None:
+    with override_settings(RESULTS_DIR=tmp_path / "results"):
+        metadata = save_run(mock_result, "a.csv", "b.csv")
+        response = APIClient().delete(f"/api/runs/{metadata.run_id}/")
+
+    assert response.status_code == 200
+    assert response.json() == {"run_id": metadata.run_id, "deleted": True}
 
 
 class TestRunsListView(TestCase):

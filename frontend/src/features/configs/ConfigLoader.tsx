@@ -1,7 +1,7 @@
 import { useConfig } from "../settings/useSettings";
 
 interface ConfigLoaderProps {
-  configType: "settings" | "rules" | "filters";
+  configType: "rules" | "filters" | "rows-and-columns";
   name: string;
   onLoad: (content: unknown) => void;
   onDone: () => void;

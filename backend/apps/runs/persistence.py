@@ -12,8 +12,15 @@ from typing import Any
 from django.conf import settings
 
 from apps.runs.services import ExecutionResult
+from apps.settings.services import get_run_history_dir
 
 _runs_lock = threading.Lock()
+
+
+def _results_dir() -> Path:
+    directory = get_run_history_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
 
 
 @dataclass(frozen=True)
@@ -47,7 +54,7 @@ def _default_report_name(file_a_name: str, file_b_name: str) -> str:
 
 
 def _load_index() -> RunsIndex:
-    index_path = settings.RESULTS_DIR / "index.json"
+    index_path = _results_dir() / "index.json"
     if not index_path.exists():
         return RunsIndex(runs=[])
 
@@ -69,7 +76,8 @@ def _load_index() -> RunsIndex:
 
 
 def _save_index(index: RunsIndex) -> None:
-    index_path = settings.RESULTS_DIR / "index.json"
+    results_dir = _results_dir()
+    index_path = results_dir / "index.json"
     data = {
         "runs": [
             {
@@ -85,7 +93,7 @@ def _save_index(index: RunsIndex) -> None:
     }
 
     with tempfile.NamedTemporaryFile(
-        mode="w", dir=settings.RESULTS_DIR, delete=False, suffix=".json"
+        mode="w", dir=results_dir, delete=False, suffix=".json"
     ) as tmp:
         json.dump(data, tmp, indent=2)
         tmp_path = Path(tmp.name)
@@ -98,7 +106,10 @@ def save_run(
     file_a_name: str,
     file_b_name: str,
     report_name: str | None = None,
+    file_a_path: Path | None = None,
+    file_b_path: Path | None = None,
 ) -> RunMetadata:
+    expired_upload_paths: list[Path] = []
     with _runs_lock:
         run_id = _generate_run_id()
         effective_name = report_name or _default_report_name(file_a_name, file_b_name)
@@ -110,6 +121,13 @@ def save_run(
             "file_a_name": file_a_name,
             "file_b_name": file_b_name,
             "created_at": datetime.now(UTC).isoformat(),
+            "upload_refs": list(
+                dict.fromkeys(
+                    path.name
+                    for path in (file_a_path, file_b_path)
+                    if path is not None
+                )
+            ),
             "result": {
                 "comparison": asdict(result.comparison),
                 "validation": {
@@ -135,10 +153,11 @@ def save_run(
         }
 
         file_name = f"{run_id}_{safe_name}.json"
-        file_path = settings.RESULTS_DIR / file_name
+        results_dir = _results_dir()
+        file_path = results_dir / file_name
 
         with tempfile.NamedTemporaryFile(
-            mode="w", dir=settings.RESULTS_DIR, delete=False, suffix=".json"
+            mode="w", dir=results_dir, delete=False, suffix=".json"
         ) as tmp:
             json.dump(run_data, tmp, indent=2)
             tmp_path = Path(tmp.name)
@@ -156,19 +175,22 @@ def save_run(
 
         index = _load_index()
         index.runs.append(metadata)
-        _enforce_retention(index)
+        expired = _enforce_retention(index)
+        for old_meta in expired:
+            expired_upload_paths.extend(_upload_paths_for_metadata(old_meta))
+            Path(old_meta.file_path).unlink(missing_ok=True)
         _save_index(index)
 
-        return metadata
+    _cleanup_upload_paths(expired_upload_paths)
+    return metadata
 
 
-def _enforce_retention(index: RunsIndex) -> None:
+def _enforce_retention(index: RunsIndex) -> list[RunMetadata]:
+    expired: list[RunMetadata] = []
     max_runs = settings.DEFAULT_RUN_RETENTION
     while len(index.runs) > max_runs:
-        oldest = index.runs.pop(0)
-        old_path = Path(oldest.file_path)
-        if old_path.exists():
-            old_path.unlink()
+        expired.append(index.runs.pop(0))
+    return expired
 
 
 def rename_run(run_id: str, new_report_name: str) -> RunMetadata:
@@ -179,7 +201,7 @@ def rename_run(run_id: str, new_report_name: str) -> RunMetadata:
                 safe_name = _sanitize_report_name(new_report_name)
                 old_path = Path(meta.file_path)
                 new_file_name = f"{run_id}_{safe_name}.json"
-                new_path = settings.RESULTS_DIR / new_file_name
+                new_path = _results_dir() / new_file_name
 
                 if old_path.exists():
                     if old_path != new_path:
@@ -221,3 +243,63 @@ def load_run(run_id: str) -> dict[str, Any] | None:
 def list_runs() -> list[RunMetadata]:
     index = _load_index()
     return list(reversed(index.runs))
+
+
+def _upload_paths_for_metadata(metadata: RunMetadata) -> list[Path]:
+    result_path = Path(metadata.file_path)
+    if not result_path.exists():
+        return []
+    try:
+        with open(result_path) as file:
+            data = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        return []
+    refs = data.get("upload_refs", [])
+    if isinstance(refs, list):
+        return [
+            Path(settings.UPLOADS_DIR) / ref
+            for ref in refs
+            if isinstance(ref, str) and Path(ref).name == ref
+        ]
+    # Compatibility with documents written during early development.
+    paths = data.get("upload_paths", [])
+    if not isinstance(paths, list):
+        return []
+    return [Path(path) for path in paths if isinstance(path, str)]
+
+
+def upload_is_referenced(path: Path) -> bool:
+    normalized = path.resolve()
+    with _runs_lock:
+        index = _load_index()
+        return any(
+            normalized == candidate.resolve()
+            for metadata in index.runs
+            for candidate in _upload_paths_for_metadata(metadata)
+        )
+
+
+def _cleanup_upload_paths(paths: list[Path]) -> None:
+    if not paths:
+        return
+    from apps.files.sessions import remove_upload_if_unreferenced
+
+    for path in set(paths):
+        remove_upload_if_unreferenced(path)
+
+
+def delete_run(run_id: str) -> None:
+    released_paths: list[Path] = []
+    with _runs_lock:
+        index = _load_index()
+        for position, metadata in enumerate(index.runs):
+            if metadata.run_id != run_id:
+                continue
+            released_paths = _upload_paths_for_metadata(metadata)
+            Path(metadata.file_path).unlink(missing_ok=True)
+            index.runs.pop(position)
+            _save_index(index)
+            break
+        else:
+            raise ValueError(f"Run {run_id} not found.")
+    _cleanup_upload_paths(released_paths)

@@ -1,0 +1,12 @@
+filters: []
+targetColumns: []
+keyColumns:
+- id
+- name
+comparisonColumns:
+- id
+- name
+- status
+- region
+- score
+_version: 1

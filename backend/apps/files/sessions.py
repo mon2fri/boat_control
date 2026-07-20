@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from django.conf import settings
+from apps.files.services import delete_upload
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +98,27 @@ def _is_expired(session: UploadSession) -> bool:
 
 
 def _cleanup_files(session: UploadSession) -> None:
-    for path_str in (session.file_a_path, session.file_b_path):
-        p = Path(path_str)
-        if p.exists() and str(p.parent) == str(settings.UPLOADS_DIR):
-            p.unlink(missing_ok=True)
-            logger.debug("Cleaned up session file: %s", p)
+    for path_str in {session.file_a_path, session.file_b_path}:
+        remove_upload_if_unreferenced(Path(path_str))
+
+
+def is_upload_path_active(path: Path) -> bool:
+    normalized = str(path.resolve())
+    with _lock:
+        return any(
+            normalized in {str(Path(s.file_a_path).resolve()), str(Path(s.file_b_path).resolve())}
+            for s in _sessions.values()
+        )
+
+
+def remove_upload_if_unreferenced(path: Path) -> bool:
+    """Delete only after both active sessions and saved runs release the file."""
+    if is_upload_path_active(path):
+        return False
+    from apps.runs.persistence import upload_is_referenced
+
+    if upload_is_referenced(path):
+        return False
+    delete_upload(path)
+    logger.debug("Cleaned up unreferenced upload: %s", path)
+    return not path.exists()

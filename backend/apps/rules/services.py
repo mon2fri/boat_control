@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from django.conf import settings
+
+from apps.settings.services import get_rules_file
 
 _rules_lock = threading.Lock()
 
@@ -209,7 +210,7 @@ def _format_rule_id(index: int) -> str:
 
 
 def load_rules(path: Path | None = None) -> RulesFile:
-    target = path or settings.RULES_FILE
+    target = path or get_rules_file()
     if not target.exists():
         return RulesFile(version=1, rules=[], next_index=1)
 
@@ -248,7 +249,7 @@ def load_rules(path: Path | None = None) -> RulesFile:
 
 
 def save_rules(rules_file: RulesFile, path: Path | None = None) -> None:
-    target = path or settings.RULES_FILE
+    target = path or get_rules_file()
     target.parent.mkdir(parents=True, exist_ok=True)
 
     rules_list: list[dict[str, Any]] = []

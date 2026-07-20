@@ -84,4 +84,21 @@ describe("result components", () => {
     // Only a small window is materialized, never all 5,000 rows.
     expect(bodyRows.length).toBeLessThan(200);
   });
+
+  it("caps tables above ten data rows while leaving shorter tables natural", () => {
+    const rows = Array.from({ length: 11 }, (_, i) => ({
+      rowKey: String(i),
+      keyColumns: {},
+      column: "score",
+      file1Value: String(i),
+      file2Value: String(i + 1),
+      kind: "changed" as const,
+    }));
+    const { rerender } = render(<DetailTable rows={rows.slice(0, 10)} caption="Short" />);
+    expect(screen.getByRole("region", { name: "Short" })).not.toHaveClass("detail-scroll--capped");
+
+    rerender(<DetailTable rows={rows} caption="Long" />);
+    expect(screen.getByRole("region", { name: "Long" })).toHaveClass("detail-scroll--capped");
+    expect(screen.getByRole("columnheader", { name: "Column" })).toBeInTheDocument();
+  });
 });
