@@ -120,7 +120,7 @@ export function PreparePage() {
           </p>
         </div>
         <ConfigManager
-          configType="filters"
+          configType="rows-and-columns"
           currentContent={prepareConfigContent}
           onLoad={(name) => setConfigLoadName(name)}
           hasUnsavedChanges={hasUnsavedChanges}
@@ -130,7 +130,7 @@ export function PreparePage() {
 
       {configLoadName && (
         <ConfigLoader
-          configType="filters"
+          configType="rows-and-columns"
           name={configLoadName}
           onLoad={handleConfigLoad}
           onDone={() => setConfigLoadName(null)}

@@ -3,7 +3,7 @@ import { useConfigs, useCreateConfig, useDeleteConfig } from "../settings/useSet
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 
 interface ConfigManagerProps {
-  configType: "settings" | "rules" | "filters";
+  configType: "rules" | "filters" | "rows-and-columns";
   onLoad: (name: string) => void;
   currentContent: unknown;
   disabled?: boolean;
@@ -67,62 +67,64 @@ export function ConfigManager({
 
       {configs.data && (
         <>
-          {configs.data.length > 0 ? (
-            <div className="config-inline-row">
-              <select
-                id={`${configType}-config-select`}
-                value={selectedName}
-                onChange={(e) => {
-                  setSelectedName(e.target.value);
-                }}
-                disabled={disabled}
-              >
-                <option value="">-- Select --</option>
-                {configs.data.map((c) => (
-                  <option key={c.name} value={c.name}>
-                    {c.name} (v{c.version})
-                  </option>
-                ))}
-              </select>
+          <div className="config-inline-row">
+            <select
+              id={`${configType}-config-select`}
+              value={selectedName}
+              onChange={(e) => {
+                setSelectedName(e.target.value);
+              }}
+              disabled={disabled}
+            >
+              {configs.data.length === 0 ? (
+                <option value="">(new config)</option>
+              ) : (
+                <>
+                  <option value="">-- Select --</option>
+                  {configs.data.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name} (v{c.version})
+                    </option>
+                  ))}
+                </>
+              )}
+            </select>
 
-              <div className="config-inline-actions">
-                {selectedName && (
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={disabled}
-                    onClick={() => {
-                      handleLoad(selectedName);
-                    }}
-                  >
-                    Load config
-                  </button>
-                )}
-
+            <div className="config-inline-actions">
+              {selectedName && (
                 <button
                   type="button"
-                  className="btn btn--primary"
+                  className="btn"
                   disabled={disabled}
-                  onClick={() => setShowSavePrompt(true)}
+                  onClick={() => {
+                    handleLoad(selectedName);
+                  }}
                 >
-                  Save new config
+                  Load config
                 </button>
+              )}
 
-                {selectedName && (
-                  <button
-                    type="button"
-                    className="btn btn--danger"
-                    disabled={disabled || del.isPending}
-                    onClick={() => setPendingDeleteName(selectedName)}
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
+              <button
+                type="button"
+                className="btn btn--primary"
+                disabled={disabled}
+                onClick={() => setShowSavePrompt(true)}
+              >
+                Save new config
+              </button>
+
+              {selectedName && (
+                <button
+                  type="button"
+                  className="btn btn--danger"
+                  disabled={disabled || del.isPending}
+                  onClick={() => setPendingDeleteName(selectedName)}
+                >
+                  Remove
+                </button>
+              )}
             </div>
-          ) : (
-            <p className="card-hint">No named configs saved yet.</p>
-          )}
+          </div>
 
           {create.isSuccess && <p className="alert alert--success" style={{ marginTop: "var(--space)" }}>Saved.</p>}
           {create.isError && (

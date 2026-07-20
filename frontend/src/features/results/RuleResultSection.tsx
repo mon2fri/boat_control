@@ -14,7 +14,7 @@ export function RuleResultSection({ result, keyColumnNames = [] }: { result: Rul
         {result.ruleIndex} — {result.ruleName}
       </h3>
       <p className="section-logic">
-        <span className="visually-hidden">Rule logic: </span>
+        <span>Expectation: </span>
         <code>{result.logicSummary}</code>
       </p>
       <div className="summary-grid" style={{ marginBottom: "var(--space)" }}>

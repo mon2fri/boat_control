@@ -19,6 +19,7 @@
   --space: 8px;
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
   --shadow-elevated: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --app-header-height: 56px;
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--color-text);
   background: var(--color-bg);
@@ -69,9 +70,46 @@ body {
 }
 
 .app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex-shrink: 0;
+  min-height: var(--app-header-height);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--space) * 2);
+  padding: calc(var(--space) * 1.25) calc(var(--space) * 3);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-card);
+}
+.app-header__title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-header .theme-toggle {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+}
+
+.app-content {
   display: grid;
   grid-template-columns: 220px 1fr;
-  min-height: 100vh;
+  flex: 1;
+  min-height: 0;
 }
 
 .app-nav {
@@ -79,27 +117,9 @@ body {
   border-right: 1px solid var(--color-border);
   padding: calc(var(--space) * 2);
   position: sticky;
-  top: 0;
-  height: 100vh;
+  top: var(--app-header-height);
+  height: calc(100vh - var(--app-header-height));
   overflow-y: auto;
-}
-.app-nav h1 {
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  margin: 0 0 calc(var(--space) * 2);
-  color: var(--color-text);
-}
-.nav-title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space);
-}
-.nav-title-row .theme-toggle {
-  font-size: 0.75rem;
-  padding: 4px 7px;
-  margin-bottom: calc(var(--space) * 2);
 }
 .app-nav ol {
   list-style: none;
@@ -331,6 +351,13 @@ h3 {
 .btn--danger:hover {
   background: rgba(239, 68, 68, 0.1);
 }
+
+.history-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  white-space: nowrap;
+}
 .btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -559,10 +586,14 @@ table.data td {
 }
 
 .detail-scroll {
-  max-height: 440px;
-  overflow: auto;
+  overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+}
+.detail-scroll--capped {
+  /* One header plus ten 34px data rows. */
+  height: calc(34px * 11);
+  overflow-y: auto;
 }
 .detail-table {
   width: 100%;
@@ -578,6 +609,11 @@ table.data td {
   display: table;
   width: 100%;
   table-layout: fixed;
+}
+.detail-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 .detail-table tbody tr {
   position: absolute;

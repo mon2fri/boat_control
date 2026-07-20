@@ -161,6 +161,49 @@ class TestConfigCrud:
         names = [c.name for c in configs]
         assert names == ["alpha", "beta", "gamma"]
 
+    def test_create_with_list_content(self, config_dir: Path) -> None:
+        """Rules configs save an array as content; the service must accept
+        a list and round-trip it back to the caller unchanged."""
+        rules = [
+            {"rule_id": "R001", "name": "First", "logic": {}},
+            {"rule_id": "R002", "name": "Second", "logic": {}},
+        ]
+        cfg = create_config(config_dir, "rules-snapshot", rules)
+        assert cfg.version == 1
+        assert cfg.content == rules
+
+        loaded = get_config(config_dir, "rules-snapshot")
+        assert loaded is not None
+        assert loaded.version == 1
+        assert loaded.content == rules
+
+        listed = list_configs(config_dir)
+        assert [c.name for c in listed] == ["rules-snapshot"]
+        assert listed[0].content == rules
+
+    def test_update_with_list_content(self, config_dir: Path) -> None:
+        rules_v1 = [{"rule_id": "R001", "name": "First", "logic": {}}]
+        rules_v2 = [
+            {"rule_id": "R001", "name": "First", "logic": {}},
+            {"rule_id": "R002", "name": "Added", "logic": {}},
+        ]
+        create_config(config_dir, "rules-snapshot", rules_v1)
+        updated = update_config(
+            config_dir, "rules-snapshot", rules_v2, expected_version=1
+        )
+        assert updated.version == 2
+        assert updated.content == rules_v2
+
+        loaded = get_config(config_dir, "rules-snapshot")
+        assert loaded is not None
+        assert loaded.version == 2
+        assert loaded.content == rules_v2
+
+    def test_rejects_non_dict_non_list_content(self, config_dir: Path) -> None:
+        """Scalar content is not a valid config payload."""
+        with pytest.raises(ConfigNameError, match="object or array"):
+            create_config(config_dir, "scalar", "just a string")
+
 
 class TestPresetSourceOpaqueIds:
     def test_opaque_id_is_consistent(self) -> None:
