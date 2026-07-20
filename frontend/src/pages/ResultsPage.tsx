@@ -22,6 +22,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
   if (!state.header) return null;
   return {
     sessionId: state.header.sessionId,
+    comparisonColumns: state.comparisonColumns,
     filters: completeFilters(state.filters),
     targetColumns: state.targetColumns,
     keyColumns: state.keyColumns,
@@ -77,7 +78,7 @@ export function ResultsPage() {
 
   return (
     <section aria-labelledby="results-title">
-      <h2 id="results-title">Results</h2>
+      <h2 id="results-title" className="section-heading">3. Results</h2>
 
       {!state.result && (
         <div className="card">
@@ -117,50 +118,59 @@ export function ResultsPage() {
       )}
 
       {state.result && (
-        <div className="result-layout">
-          <TableOfContents result={state.result} />
-          <div className="result-content">
+        <>
+          <div className="results-header">
             <ReportName
               runId={state.result.id}
               name={state.result.reportName}
               onRenamed={(result) => dispatch({ type: "setResult", result })}
             />
-            <p className="field-hint">
-              {state.result.file1Name} vs {state.result.file2Name}
-            </p>
             <ExportControls runId={state.result.id} reportName={state.result.reportName} />
+          </div>
+          <p className="field-hint">
+            Ran on {new Date(state.result.createdAt).toLocaleString()}
+          </p>
 
-            <section id="overall" aria-labelledby="overall-title" className="card">
-              <h3 id="overall-title">Overall result</h3>
-              <p className="section-logic">
-                Comparison across{" "}
-                {state.targetColumns.length === 0
-                  ? "all common columns"
-                  : `${state.targetColumns.length} target columns`}{" "}
-                with {completeFilters(state.filters).length} filter(s).
-              </p>
-              <OverallSummaryCards summary={state.result.overall} />
-            </section>
+          <div className="result-layout">
+            <TableOfContents result={state.result} />
+            <div className="result-content">
+              <section id="overall" aria-labelledby="overall-title" className="card">
+                <h3 id="overall-title">Overall result</h3>
+                <p className="section-logic">
+                  Comparison across{" "}
+                  {state.targetColumns.length === 0
+                    ? "all common columns"
+                    : `${state.targetColumns.length} target columns`}{" "}
+                  with {completeFilters(state.filters).length} filter(s).
+                </p>
+                <OverallSummaryCards summary={state.result.overall} />
+              </section>
 
-            <section id="changes" aria-labelledby="changes-title" className="card">
-              <h3 id="changes-title">Attribute changes</h3>
-              <p className="section-logic">
-                <code>file1 value ≠ file2 value</code> on shared target columns.
-              </p>
-              <PaginatedDetailSection runId={state.result.id} kind="changed" caption="Attribute change details" />
-            </section>
+              <section id="changes" aria-labelledby="changes-title" className="card" style={{ marginTop: "var(--space)" }}>
+                <h3 id="changes-title">Attribute changes</h3>
+                <p className="section-logic">
+                  <code>In Baseline ≠ In Comparison</code> on shared target columns.
+                </p>
+                <PaginatedDetailSection runId={state.result.id} kind="changed" caption="Attribute change details" keyColumnNames={state.keyColumns} />
+              </section>
 
-            {state.result.ruleResults.map((rule) => (
-              <RuleResultSection key={rule.ruleIndex} result={rule} />
-            ))}
+              {state.result.ruleResults.map((rule) => (
+                <RuleResultSection key={rule.ruleIndex} result={rule} keyColumnNames={state.keyColumns} />
+              ))}
 
-            <div className="card">
-              <button type="button" className="btn" onClick={() => void navigate("/history")}>
-                View run history
-              </button>
+              <div className="card">
+                <div className="config-inline-row">
+                  <button type="button" className="btn btn--primary" onClick={() => void navigate("/prepare")}>
+                    Run another report
+                  </button>
+                  <button type="button" className="btn" onClick={() => void navigate("/history")}>
+                    View run history
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </section>
   );

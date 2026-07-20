@@ -13,9 +13,24 @@ const RULES_KEY = ["rules"] as const;
 
 type EditorState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; rule: Rule };
 
-export function RulesPage({ embedded = false }: { embedded?: boolean }) {
+function getRuleReferencedColumns(rule: Rule): string[] {
+  const cols = new Set<string>();
+  for (const cond of rule.conditions) {
+    if (cond.column) cols.add(cond.column);
+  }
+  if (rule.logic.column) cols.add(rule.logic.column);
+  if (rule.logic.format === "column" && rule.logic.target) cols.add(rule.logic.target);
+  return [...cols];
+}
+
+function ruleHasInvalidColumns(rule: Rule, validColumns: string[]): boolean {
+  const valid = new Set(validColumns);
+  return getRuleReferencedColumns(rule).some((c) => !valid.has(c));
+}
+
+export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: boolean; columnValues?: Record<string, { value: string; starred: boolean }[]> }) {
   const navigate = useNavigate();
-  const { state, dispatch } = useWorkflow();
+  const { state, dispatch, reset } = useWorkflow();
   const rules = useRules();
   const createRule = useCreateRule();
   const updateRule = useUpdateRule();
@@ -60,6 +75,10 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
     }
   }
 
+  function handleClearPage(): void {
+    reset();
+  }
+
   const saveError =
     editor.mode === "edit"
       ? updateRule.error?.message ?? null
@@ -68,9 +87,24 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
   if (embedded) {
     return (
       <section id="validation-rules" aria-labelledby="rules-title">
+        <div className="config-layout">
+          <div>
+            <h3 id="rules-title" className="section-heading">Validation rules</h3>
+            <p className="section-hint">Define rules to validate rows after comparison.</p>
+          </div>
+          <ConfigManager
+            configType="rules"
+            currentContent={rules.data ?? []}
+            onLoad={(name) => setConfigLoadName(name)}
+            disabled={rules.isPending}
+            hasUnsavedChanges={editor.mode !== "closed"}
+            title="Load config for rules"
+          />
+        </div>
+
         <div className="rules-layout">
           <div className="rule-select-panel">
-            <h3 id="rules-title" className="card-heading">Validation rules</h3>
+            <h4 className="section-heading" style={{ fontSize: "0.9rem", fontWeight: 600 }}>Select rules for this run</h4>
             {rules.isLoading && <p role="status">Loading rules…</p>}
             {rules.isError && (
               <p className="alert alert--error" role="alert">
@@ -83,54 +117,45 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
                   <p role="status">No rules configured yet. Add one below.</p>
                 ) : (
                   <ul className="rule-select-list" aria-label="Rules">
-                    {rules.data.map((rule) => (
-                      <li key={rule.index}>
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={selected.includes(rule.index)}
-                            onChange={() => toggle(rule.index)}
-                          />{" "}
-                          <strong>{rule.index}</strong> — {rule.name}
-                        </label>
-                        <div className="rule-actions">
-                          <code className="rule-logic">{describeLogic(rule)}</code>
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => setEditor({ mode: "edit", rule })}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn--danger"
-                            onClick={() => setPendingDelete(rule)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </li>
-                    ))}
+                    {rules.data.map((rule) => {
+                      const invalid = ruleHasInvalidColumns(rule, columns);
+                      return (
+                        <li key={rule.index} className={invalid ? "rule-select-list__item--warn" : undefined}>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={selected.includes(rule.index)}
+                              onChange={() => toggle(rule.index)}
+                            />{" "}
+                            <strong>{rule.index}</strong> — {rule.name}
+                            {invalid && <span className="rule-warn-badge" title="References columns not in current comparison selection">⚠</span>}
+                          </label>
+                          <div className="rule-actions">
+                            <code className="rule-logic">{describeLogic(rule)}</code>
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => setEditor({ mode: "edit", rule })}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--danger"
+                              onClick={() => setPendingDelete(rule)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
-                <div className="dialog-actions">
-                  {editor.mode === "closed" && (
-                    <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
-                      + Add rule
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    disabled={!state.header}
-                    onClick={() => void navigate("/results")}
-                  >
-                    Continue to run
+                {editor.mode === "closed" && (
+                  <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
+                    + Add rule
                   </button>
-                </div>
-                {!state.header && (
-                  <p className="field-hint">Upload files to run the selected rules.</p>
                 )}
               </>
             )}
@@ -141,6 +166,7 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
               <RuleEditor
                 {...(editor.mode === "edit" ? { rule: editor.rule } : {})}
                 columns={columns}
+                columnValues={columnValues}
                 saving={createRule.isPending || updateRule.isPending}
                 error={saveError}
                 onSave={handleSave}
@@ -154,14 +180,28 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
           </div>
         </div>
 
-        <ConfigManager
-          configType="rules"
-          currentContent={rules.data ?? []}
-          onLoad={(name) => setConfigLoadName(name)}
-          disabled={rules.isPending}
-          hasUnsavedChanges={editor.mode !== "closed"}
-          title="Load config for rules"
-        />
+        <div className="card">
+          <div className="config-inline-row">
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={!state.header}
+              onClick={() => void navigate("/results")}
+            >
+              Run comparison and validation
+            </button>
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={handleClearPage}
+            >
+              Clear current page
+            </button>
+            {!state.header && (
+              <p className="field-hint">Upload files to run the selected rules.</p>
+            )}
+          </div>
+        </div>
 
         {configLoadName && (
           <ConfigLoader
@@ -222,54 +262,45 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
               <p role="status">No rules configured yet. Add one below.</p>
             ) : (
               <ul className="rule-select-list" aria-label="Rules">
-                {rules.data.map((rule) => (
-                  <li key={rule.index}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={selected.includes(rule.index)}
-                        onChange={() => toggle(rule.index)}
-                      />{" "}
-                      <strong>{rule.index}</strong> — {rule.name}
-                    </label>
-                    <div className="rule-actions">
-                      <code className="rule-logic">{describeLogic(rule)}</code>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => setEditor({ mode: "edit", rule })}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--danger"
-                        onClick={() => setPendingDelete(rule)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                {rules.data.map((rule) => {
+                  const invalid = ruleHasInvalidColumns(rule, columns);
+                  return (
+                    <li key={rule.index} className={invalid ? "rule-select-list__item--warn" : undefined}>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(rule.index)}
+                          onChange={() => toggle(rule.index)}
+                        />{" "}
+                        <strong>{rule.index}</strong> — {rule.name}
+                        {invalid && <span className="rule-warn-badge" title="References columns not in current comparison selection">⚠</span>}
+                      </label>
+                      <div className="rule-actions">
+                        <code className="rule-logic">{describeLogic(rule)}</code>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => setEditor({ mode: "edit", rule })}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--danger"
+                          onClick={() => setPendingDelete(rule)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
-            <div className="dialog-actions">
-              {editor.mode === "closed" && (
-                <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
-                  + Add rule
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn btn--primary"
-                disabled={!state.header}
-                onClick={() => void navigate("/results")}
-              >
-                Continue to run
+            {editor.mode === "closed" && (
+              <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
+                + Add rule
               </button>
-            </div>
-            {!state.header && (
-              <p className="field-hint">Upload files to run the selected rules.</p>
             )}
           </div>
 
@@ -277,6 +308,7 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
             <RuleEditor
               {...(editor.mode === "edit" ? { rule: editor.rule } : {})}
               columns={columns}
+              columnValues={columnValues}
               saving={createRule.isPending || updateRule.isPending}
               error={saveError}
               onSave={handleSave}
@@ -285,6 +317,29 @@ export function RulesPage({ embedded = false }: { embedded?: boolean }) {
           )}
         </>
       )}
+
+      <div className="card">
+        <div className="config-inline-row">
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={!state.header}
+            onClick={() => void navigate("/results")}
+          >
+            Run comparison and validation
+          </button>
+          <button
+            type="button"
+            className="btn btn--danger"
+            onClick={handleClearPage}
+          >
+            Clear current page
+          </button>
+          {!state.header && (
+            <p className="field-hint">Upload files to run the selected rules.</p>
+          )}
+        </div>
+      </div>
 
       <ConfigManager
         configType="rules"

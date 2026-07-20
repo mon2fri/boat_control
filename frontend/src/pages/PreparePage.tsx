@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { useWorkflow } from "../state/WorkflowContext";
 import { RequireSession } from "../components/RequireSession";
-import { ConfirmDialog } from "../components/ConfirmDialog";
 import { FilterBuilder } from "../features/filters/FilterBuilder";
-import { fullSetGuard } from "../features/filters/useFullSetGuard";
 import { TargetSelector } from "../features/targets/TargetSelector";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
@@ -15,7 +13,6 @@ import { RulesPage } from "./RulesPage";
 export function PreparePage() {
   const { state, dispatch } = useWorkflow();
   const handleSessionError = useSessionExpiryDispatcher();
-  const [dialogOpen, setDialogOpen] = useState(false);
   const [prepare, setPrepare] = useState<{
     status: "loading" | "ready" | "error";
     data: PrepareResult | null;
@@ -25,7 +22,6 @@ export function PreparePage() {
   const [discardWarnings, setDiscardWarnings] = useState<string[]>([]);
 
   const header = state.header;
-  const guard = fullSetGuard(state);
   const totalRows = (prepare.data?.totalRowsA ?? 0) + (prepare.data?.totalRowsB ?? 0);
   const comparisonColumns = state.comparisonColumns;
 
@@ -74,7 +70,19 @@ export function PreparePage() {
     const warnings: string[] = [];
 
     if (data.filters) {
-      dispatch({ type: "setFilters", filters: data.filters.map((r, i) => ({ ...r, id: `fl-${i}` })) });
+      const validFilters: FilterRowType[] = [];
+      const discardedFilters: string[] = [];
+      for (const row of data.filters) {
+        if (!row.column || comparisonColumns.includes(row.column)) {
+          validFilters.push({ ...row, id: `fl-${validFilters.length}` });
+        } else {
+          discardedFilters.push(row.column);
+        }
+      }
+      if (discardedFilters.length > 0) {
+        warnings.push(`Filters discarded (column not in current selection): ${[...new Set(discardedFilters)].join(", ")}`);
+      }
+      dispatch({ type: "setFilters", filters: validFilters });
     }
 
     if (data.targetColumns) {
@@ -101,22 +109,11 @@ export function PreparePage() {
     }
   }
 
-  function proceed(): void {
-    dispatch({ type: "setConfirmFullSet", confirmed: guard.requiresConfirmation });
-    setDialogOpen(false);
-    document.getElementById("validation-rules")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  function handleContinue(): void {
-    if (guard.requiresConfirmation) setDialogOpen(true);
-    else proceed();
-  }
-
   return (
     <section aria-labelledby="prepare-title">
       <div className="config-layout">
         <div>
-          <h2 id="prepare-title" className="section-heading">Compare &amp; validate</h2>
+          <h2 id="prepare-title" className="section-heading">2. Compare &amp; validate</h2>
           <p className="section-hint">
             Comparing <strong>{header.file1Name}</strong> and <strong>{header.file2Name}</strong> across{" "}
             {comparisonColumns.length} selected columns ({totalRows.toLocaleString()} total rows).
@@ -173,37 +170,7 @@ export function PreparePage() {
         onChange={(columns) => dispatch({ type: "setTargetColumns", columns })}
       />
 
-      <div className="card">
-        {guard.requiresConfirmation && (
-          <p className="alert alert--warn" role="status">
-            No filters set and {totalRows.toLocaleString()} rows exceed the server threshold. You
-            will be asked to confirm a full-set run.
-          </p>
-        )}
-        <button
-          type="button"
-          className="btn btn--primary"
-          onClick={handleContinue}
-          disabled={prepare.status !== "ready"}
-        >
-          Continue to validation rules
-        </button>
-      </div>
-
-      <RulesPage embedded />
-
-      <ConfirmDialog
-        title="Run against the full set?"
-        open={dialogOpen}
-        confirmLabel="Yes, run on all rows"
-        onCancel={() => setDialogOpen(false)}
-        onConfirm={proceed}
-      >
-        <p>
-          You have not defined any filters and the combined row count is{" "}
-          {totalRows.toLocaleString()}. This will compare and validate every row. Continue?
-        </p>
-      </ConfirmDialog>
+      <RulesPage embedded columnValues={prepare.data?.columnValues ?? {}} />
     </section>
   );
 }

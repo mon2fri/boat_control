@@ -17,12 +17,10 @@ export function UploadPage() {
   const [remoteFiles, setRemoteFiles] = useState<SourceFile[]>([]);
   const [remoteFileA, setRemoteFileA] = useState<string | null>(null);
   const [remoteFileB, setRemoteFileB] = useState<string | null>(null);
+  const [localFile1, setLocalFile1] = useState<File | null>(null);
+  const [localFile2, setLocalFile2] = useState<File | null>(null);
   const [filesLoadKey, setFilesLoadKey] = useState(0);
   const lastSessionIdRef = useRef<string | null>(null);
-
-  const initColumns = useCallback((columns: string[]) => {
-    dispatch({ type: "setComparisonColumns", columns });
-  }, [dispatch]);
 
   const header = useHeaderReport((report) => {
     dispatch({ type: "setHeader", header: report });
@@ -30,6 +28,7 @@ export function UploadPage() {
   });
 
   const loadingFiles = sourceId !== null && remoteFiles.length === 0 && filesLoadKey > 0;
+  const hasSession = state.header !== null;
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -53,6 +52,11 @@ export function UploadPage() {
   }, [sourceId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  const handleLocalSubmit = useCallback(() => {
+    if (!localFile1 || !localFile2) return;
+    void header.submitUpload(localFile1, localFile2);
+  }, [localFile1, localFile2, header]);
+
   const handleRemoteSubmit = useCallback(() => {
     if (!remoteFileA) return;
     void header.submitFromPreset(remoteFileA, remoteFileB);
@@ -66,7 +70,6 @@ export function UploadPage() {
 
   const handleStartOver = useCallback(() => {
     if (state.header) {
-      // The request only removes server-side copies. It never accesses a user's local CSV.
       void clearUploadSession(state.header.sessionId).catch(() => undefined);
     }
     reset();
@@ -75,6 +78,8 @@ export function UploadPage() {
     setRemoteFiles([]);
     setRemoteFileA(null);
     setRemoteFileB(null);
+    setLocalFile1(null);
+    setLocalFile2(null);
   }, [state.header, reset, setSourceId, setRemoteFiles, setRemoteFileA, setRemoteFileB]);
 
   const handleReplaceFiles = useCallback(() => {
@@ -87,11 +92,13 @@ export function UploadPage() {
     setRemoteFiles([]);
     setRemoteFileA(null);
     setRemoteFileB(null);
+    setLocalFile1(null);
+    setLocalFile2(null);
   }, [state.header, reset, setSourceId, setRemoteFiles, setRemoteFileA, setRemoteFileB]);
 
   return (
     <section aria-labelledby="upload-title">
-      <h2 id="upload-title" className="section-heading">Upload &amp; compare files</h2>
+      <h2 id="upload-title" className="section-heading">1. Upload &amp; compare files</h2>
       <p className="section-hint">
         Provide two CSV versions to calibrate. Choose from local upload or a configured remote source.
       </p>
@@ -103,31 +110,33 @@ export function UploadPage() {
         </p>
       )}
 
-      <div className="card" role="group" aria-label="Source selection">
-        <div className="field">
-          <label htmlFor="source-kind">Source</label>
-          <select
-            id="source-kind"
-            value={sourceKind}
-            onChange={(e) => {
-              setSourceKind(e.target.value as "local" | "remote");
-              setSourceId(null);
-            }}
-          >
-            <option value="local">Local upload</option>
-            <option value="remote">Remote source</option>
-          </select>
-        </div>
+      {/* Three-card layout: Source, Baseline, Comparison */}
+      <div className="card-grid-3">
+        {/* Source card */}
+        <div className="card" role="group" aria-label="Source">
+          <h3 className="card-heading">Source</h3>
+          {hasSession ? (
+            <p className="field-hint">
+              <strong>{sourceKind === "local" ? "Local upload" : "Remote source"}</strong>
+            </p>
+          ) : (
+            <div className="field">
+              <label htmlFor="source-kind">Source type</label>
+              <select
+                id="source-kind"
+                value={sourceKind}
+                onChange={(e) => {
+                  setSourceKind(e.target.value as "local" | "remote");
+                  setSourceId(null);
+                }}
+              >
+                <option value="local">Local upload</option>
+                <option value="remote">Remote source</option>
+              </select>
+            </div>
+          )}
 
-        {sourceKind === "local" && (
-          <LocalUploadForm
-            busy={header.status === "loading"}
-            onSubmit={(f1, f2) => void header.submitUpload(f1, f2)}
-          />
-        )}
-
-        {sourceKind === "remote" && (
-          <div>
+          {!hasSession && sourceKind === "remote" && (
             <div className="field">
               <label htmlFor="remote-source">Remote source</label>
               <select
@@ -146,15 +155,40 @@ export function UploadPage() {
                 <span className="field-hint">No remote sources are configured. Add one in Settings.</span>
               )}
             </div>
+          )}
 
-            {loadingFiles && (
-              <p role="status" aria-live="polite" className="busy-row">
-                <span className="spinner" aria-hidden="true" /> Loading files…
-              </p>
-            )}
+          {!hasSession && header.status === "loading" && (
+            <p role="status" aria-live="polite" className="busy-row">
+              <span className="spinner" aria-hidden="true" /> Inspecting…{" "}
+              <button type="button" className="btn" onClick={header.cancel}>
+                Cancel
+              </button>
+            </p>
+          )}
+          {!hasSession && header.status === "error" && header.error && (
+            <p className="alert alert--error" role="alert">
+              {header.error}
+            </p>
+          )}
+        </div>
 
-            {sourceId && !loadingFiles && remoteFiles.length > 0 && (
-              <>
+        {/* Baseline card */}
+        <div className="card" role="group" aria-label="Baseline">
+          <h3 className="card-heading">Baseline</h3>
+          {hasSession ? (
+            <p className="field-hint">
+              <strong>{state.header!.file1Name}</strong> — currently loaded
+            </p>
+          ) : sourceKind === "local" ? (
+            <FileField id="file1" label="First file (baseline)" onSelect={setLocalFile1} />
+          ) : (
+            <div>
+              {loadingFiles && (
+                <p role="status" aria-live="polite" className="busy-row">
+                  <span className="spinner" aria-hidden="true" /> Loading files…
+                </p>
+              )}
+              {sourceId && !loadingFiles && remoteFiles.length > 0 && (
                 <div className="field">
                   <label htmlFor="remote-file-a">Baseline file</label>
                   <select
@@ -170,7 +204,26 @@ export function UploadPage() {
                     ))}
                   </select>
                 </div>
+              )}
+              {sourceId && !loadingFiles && remoteFiles.length === 0 && (
+                <p className="field-hint">No CSV files found in this source.</p>
+              )}
+            </div>
+          )}
+        </div>
 
+        {/* Comparison card */}
+        <div className="card" role="group" aria-label="Comparison">
+          <h3 className="card-heading">Comparison</h3>
+          {hasSession ? (
+            <p className="field-hint">
+              <strong>{state.header!.file2Name}</strong> — currently loaded
+            </p>
+          ) : sourceKind === "local" ? (
+            <FileField id="file2" label="Second file (candidate)" onSelect={setLocalFile2} />
+          ) : (
+            <div>
+              {sourceId && !loadingFiles && remoteFiles.length > 0 && (
                 <div className="field">
                   <label htmlFor="remote-file-b">Candidate file</label>
                   <select
@@ -186,61 +239,61 @@ export function UploadPage() {
                     ))}
                   </select>
                 </div>
-
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  disabled={!remoteFileA || header.status === "loading"}
-                  onClick={handleRemoteSubmit}
-                >
-                  Inspect headers
-                </button>
-              </>
-            )}
-
-            {sourceId && !loadingFiles && remoteFiles.length === 0 && (
-              <p className="field-hint">No CSV files found in this source.</p>
-            )}
-          </div>
-        )}
-
-        {header.status === "loading" && (
-          <p role="status" aria-live="polite" className="busy-row">
-            <span className="spinner" aria-hidden="true" /> Inspecting headers…{" "}
-            <button type="button" className="btn" onClick={header.cancel}>
-              Cancel
-            </button>
-          </p>
-        )}
-        {header.status === "error" && header.error && (
-          <p className="alert alert--error" role="alert">
-            {header.error}
-          </p>
-        )}
-      </div>
-
-      {state.header && (
-        <>
-          {state.comparisonColumns.length > 0 && (
-            <div className="card" role="group" aria-label="Loaded files">
-              <h3 className="card-heading">Loaded files</h3>
-              <p className="field-hint">
-                Baseline: <strong>{state.header.file1Name}</strong> — currently loaded
-                <br />
-                Comparison: <strong>{state.header.file2Name}</strong> — currently loaded
-              </p>
-              <button
-                type="button"
-                className="btn btn--danger"
-                style={{ marginTop: "var(--space)" }}
-                onClick={handleReplaceFiles}
-              >
-                Replace files
-              </button>
+              )}
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Local upload submit */}
+      {!hasSession && sourceKind === "local" && (
+        <div className="card" style={{ marginTop: "var(--space)" }}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={!localFile1 || !localFile2 || header.status === "loading"}
+            onClick={handleLocalSubmit}
+          >
+            Inspect headers
+          </button>
+        </div>
+      )}
+
+      {/* Remote upload submit */}
+      {!hasSession && sourceKind === "remote" && sourceId && !loadingFiles && remoteFiles.length > 0 && (
+        <div className="card" style={{ marginTop: "var(--space)" }}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={!remoteFileA || header.status === "loading"}
+            onClick={handleRemoteSubmit}
+          >
+            Inspect headers
+          </button>
+        </div>
+      )}
+
+      {/* Session loaded: column review + continue */}
+      {hasSession && (
+        <>
+          <div className="card" role="group" aria-label="Loaded files">
+            <h3 className="card-heading">Loaded files</h3>
+            <p className="field-hint">
+              Baseline: <strong>{state.header!.file1Name}</strong> — currently loaded
+              <br />
+              Comparison: <strong>{state.header!.file2Name}</strong> — currently loaded
+            </p>
+            <button
+              type="button"
+              className="btn btn--danger"
+              style={{ marginTop: "var(--space)" }}
+              onClick={handleReplaceFiles}
+            >
+              Replace files
+            </button>
+          </div>
           <HeaderReview
-            report={state.header}
+            report={state.header!}
             selectedColumns={state.comparisonColumns}
             onSelectedColumnsChange={(columns) => dispatch({ type: "setComparisonColumns", columns })}
             keyColumns={state.keyColumns}
@@ -277,32 +330,6 @@ export function UploadPage() {
         </>
       )}
     </section>
-  );
-}
-
-function LocalUploadForm({
-  busy,
-  onSubmit,
-}: {
-  busy: boolean;
-  onSubmit: (file1: File, file2: File) => void;
-}) {
-  const [file1, setFile1] = useState<File | null>(null);
-  const [file2, setFile2] = useState<File | null>(null);
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (file1 && file2) onSubmit(file1, file2);
-      }}
-    >
-      <FileField id="file1" label="First file (baseline)" onSelect={setFile1} />
-      <FileField id="file2" label="Second file (candidate)" onSelect={setFile2} />
-      <button type="submit" className="btn btn--primary" disabled={!file1 || !file2 || busy}>
-        Inspect headers
-      </button>
-    </form>
   );
 }
 
