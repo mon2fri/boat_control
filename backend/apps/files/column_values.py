@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
+
 import polars as pl
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.files.sessions import get_session
+
+logger = logging.getLogger(__name__)
 
 
 class ColumnValuesView(APIView):  # type: ignore[misc]
@@ -26,14 +30,20 @@ class ColumnValuesView(APIView):  # type: ignore[misc]
         except ValueError:
             return Response({"error": "offset and limit must be integers"}, status=400)
 
-        df_a = pl.scan_csv(session.file_a_path)
-        df_b = pl.scan_csv(session.file_b_path)
+        try:
+            df_a = pl.scan_csv(session.file_a_path, infer_schema=False)
+            df_b = pl.scan_csv(session.file_b_path, infer_schema=False)
 
-        if column not in df_a.columns or column not in df_b.columns:
-            return Response({"error": f"Column '{column}' not found"}, status=400)
+            if column not in df_a.columns or column not in df_b.columns:
+                return Response({"error": f"Column '{column}' not found"}, status=400)
 
-        vals_a = set(df_a.select(pl.col(column)).collect().get_column(column))
-        vals_b = set(df_b.select(pl.col(column)).collect().get_column(column))
+            vals_a = set(df_a.select(pl.col(column)).collect().get_column(column))
+            vals_b = set(df_b.select(pl.col(column)).collect().get_column(column))
+        except Exception:
+            logger.exception("Failed to read column values")
+            return Response(
+                {"error": "Failed to read column values from CSV."}, status=500
+            )
 
         all_values = vals_a | vals_b
         if search:

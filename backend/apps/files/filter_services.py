@@ -43,12 +43,17 @@ class TargetColumnsResult:
     all_common_columns: list[str]
 
 
-def get_column_values(path_a: Path, path_b: Path, column: str) -> list[ColumnValueInfo]:
-    df_a = pl.scan_csv(path_a).select(column).collect().drop_nulls()
-    df_b = pl.scan_csv(path_b).select(column).collect().drop_nulls()
+def _scan_csv(path: Path) -> pl.LazyFrame:
+    """Read a CSV with every column forced to string to avoid type-inference errors."""
+    return pl.scan_csv(path, infer_schema=False)
 
-    vals_a = set(df_a[column].cast(pl.Utf8).to_list())
-    vals_b = set(df_b[column].cast(pl.Utf8).to_list())
+
+def get_column_values(path_a: Path, path_b: Path, column: str) -> list[ColumnValueInfo]:
+    df_a = _scan_csv(path_a).select(column).collect().drop_nulls()
+    df_b = _scan_csv(path_b).select(column).collect().drop_nulls()
+
+    vals_a = set(df_a[column].to_list())
+    vals_b = set(df_b[column].to_list())
 
     all_values = vals_a | vals_b
     result = []
@@ -65,8 +70,8 @@ def prepare_filters(
     path_b: Path,
     common_columns: list[str],
 ) -> FilterPreparationResult:
-    row_count_a = pl.scan_csv(path_a).collect().height
-    row_count_b = pl.scan_csv(path_b).collect().height
+    row_count_a = _scan_csv(path_a).select(pl.len()).collect().item()
+    row_count_b = _scan_csv(path_b).select(pl.len()).collect().item()
     total = row_count_a + row_count_b
 
     column_values: dict[str, list[ColumnValueInfo]] = {}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from rest_framework.request import Request
@@ -13,6 +14,8 @@ from apps.files.filter_services import (
     validate_target_columns,
 )
 from apps.files.sessions import get_session
+
+logger = logging.getLogger(__name__)
 
 
 class FilterPreparationView(APIView):  # type: ignore[misc]
@@ -36,7 +39,16 @@ class FilterPreparationView(APIView):  # type: ignore[misc]
         path_a = Path(session.file_a_path)
         path_b = Path(session.file_b_path)
 
-        result = prepare_filters(path_a, path_b, common_columns)
+        try:
+            result = prepare_filters(path_a, path_b, common_columns)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except Exception:
+            logger.exception("Filter preparation failed")
+            return Response(
+                {"error": "Failed to prepare filters."}, status=500
+            )
+
         return Response({
             "session_id": session.session_id,
             "columns": result.columns,

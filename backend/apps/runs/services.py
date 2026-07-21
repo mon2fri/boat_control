@@ -462,8 +462,8 @@ def execute_comparison(
     if filters is None:
         filters = []
 
-    headers_a = pl.scan_csv(path_a).head(1).collect().columns
-    headers_b = pl.scan_csv(path_b).head(1).collect().columns
+    headers_a = pl.scan_csv(path_a, infer_schema=False).head(1).collect().columns
+    headers_b = pl.scan_csv(path_b, infer_schema=False).head(1).collect().columns
 
     all_common_columns = [c for c in headers_a if c in headers_b]
 
@@ -532,8 +532,8 @@ def execute_comparison(
 
     needed_list = sorted(needed_columns)
 
-    df_a_lazy = pl.scan_csv(path_a).select(pl.col(needed_list))
-    df_b_lazy = pl.scan_csv(path_b).select(pl.col(needed_list))
+    df_a_lazy = pl.scan_csv(path_a, infer_schema=False).select(pl.col(needed_list))
+    df_b_lazy = pl.scan_csv(path_b, infer_schema=False).select(pl.col(needed_list))
 
     df_a_lazy, df_b_lazy = apply_filters(df_a_lazy, df_b_lazy, filters)
 
