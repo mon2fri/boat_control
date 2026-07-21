@@ -713,6 +713,100 @@ table.data td {
   margin-bottom: 0;
 }
 
+/* Inline header filter in detail tables. */
+.filterable-th {
+  position: relative;
+}
+.filterable-th > span {
+  margin-right: 4px;
+}
+.th-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 1px 4px;
+  color: var(--color-muted);
+  vertical-align: middle;
+  line-height: 1;
+  transition: background 0.15s;
+}
+.th-filter-btn:hover { background: var(--color-surface-raised); }
+.th-filter-btn--active {
+  background: var(--color-primary, #4f46e5);
+  color: #fff;
+  border-color: var(--color-primary, #4f46e5);
+}
+.th-filter-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  min-width: 14px;
+  text-align: center;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  line-height: 1.2;
+  padding: 0 2px;
+}
+.th-filter-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 200;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: 180px;
+  max-height: 260px;
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+}
+.th-filter-search {
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+.th-filter-options {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+.th-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.th-filter-option:hover { background: var(--color-surface-raised); }
+.th-filter-option input { margin: 0; }
+.th-filter-empty {
+  padding: 8px;
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+.th-filter-clear {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  background: none;
+  padding: 5px;
+  cursor: pointer;
+  color: var(--color-danger);
+  font-size: 0.8rem;
+  text-align: center;
+}
+.th-filter-clear:hover { background: var(--color-surface-raised); }
+
 /* Structured validation-rule grouping tree. */
 .group-tree > .group-tree-children,
 .group-tree-children {
@@ -1041,6 +1135,9 @@ dl.card dd {
   padding: 4px 8px;
   text-align: left;
   border-bottom: 1px solid var(--color-border);
+}
+.group-stats-scroll {
+  overflow-y: auto;
 }
 .group-stats-table th {
   font-weight: 600;

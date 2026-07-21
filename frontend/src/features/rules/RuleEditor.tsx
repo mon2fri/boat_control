@@ -126,7 +126,9 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
         </p>
         <p>
           <strong>Rows</strong> that <span className="text-green">match</span> the rule are
-          <span className="text-green"> valid</span>;
+          <span className="text-green"> valid</span>.
+        </p>
+        <p>
           <strong>Rows</strong> that <span className="text-red">DO NOT match</span> are reported as
           <span className="text-red"> exceptions</span>.
         </p>
@@ -136,7 +138,9 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
         </p>
         <p>
           <strong>Conditions</strong> narrow the rows the rule applies to (e.g. only check
-          <code className="greybox">status</code> when <code className="greybox">region</code> is <code className="greybox">HBAP</code>);
+          <code className="greybox">status</code> when <code className="greybox">region</code> is <code className="greybox">HBAP</code>).
+        </p>
+        <p>
           <strong>Logic</strong> clause is the actual required state.
         </p>
       </details>

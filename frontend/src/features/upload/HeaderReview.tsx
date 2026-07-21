@@ -113,22 +113,47 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
         </div>
       </div>
 
-      <KeyColumnSelector
-        columns={selectedColumns}
-        selected={keyColumns.filter((column) => selectedColumns.includes(column))}
-        onChange={onKeyColumnsChange}
-      />
-
-      <div className="card" style={{ marginTop: "var(--space)" }}>
-        <h3 className="card-heading">Grouping Columns</h3>
-        <SearchableMultiSelect
-          label="Select grouping columns"
-          options={sharedOptions}
-          selected={groupingColumns.filter((c) => selectedColumns.includes(c))}
-          onChange={(cols) => onGroupingColumnsChange(cols.filter((c) => selectedColumns.includes(c)))}
-          placeholder="Search columns…"
-          hint="Optional. Pick columns for group-level statistics."
+      <div className="card-grid-2" style={{ marginTop: "var(--space)" }}>
+        <KeyColumnSelector
+          columns={selectedColumns}
+          selected={keyColumns.filter((column) => selectedColumns.includes(column))}
+          onChange={onKeyColumnsChange}
         />
+
+        <section className="card">
+          <h3 className="card-heading">Grouping Columns</h3>
+          <p className="card-hint">
+            Optional. Pick columns for group-level statistics.
+          </p>
+          <SearchableMultiSelect
+            label="Select grouping columns"
+            options={sharedOptions}
+            selected={groupingColumns.filter((c) => selectedColumns.includes(c))}
+            onChange={(cols) => onGroupingColumnsChange(cols.filter((c) => selectedColumns.includes(c)))}
+            placeholder="Search columns…"
+          />
+          {groupingColumns.filter((c) => selectedColumns.includes(c)).length === 0 ? (
+            <p className="field-hint" role="status">
+              No grouping columns selected.
+            </p>
+          ) : (
+            <ul aria-label="Selected grouping columns" className="chip-list">
+              {groupingColumns.filter((c) => selectedColumns.includes(c)).map((column) => (
+                <li key={column}>
+                  <span className="tag">{column}</span>
+                  <button
+                    type="button"
+                    className="btn chip-remove"
+                    onClick={() => onGroupingColumnsChange(groupingColumns.filter((item) => item !== column))}
+                    aria-label={`Remove grouping column ${column}`}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
     </section>
   );

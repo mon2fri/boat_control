@@ -1,14 +1,5 @@
-/**
- * Bridge between `usePaginatedDetails` and the virtualized `DetailTable`.
- *
- * The section owns the page lifecycle (reset on runId/kind change, fetch
- * first page, surface loading/error) and the trigger to fetch more pages as
- * the user scrolls. The DetailTable handles windowing; this component
- * decides when to ask the backend for more rows.
- */
-import { useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { DetailTable } from "./DetailTable";
-import { DetailFilterBar } from "./DetailFilterBar";
 import { usePaginatedDetails } from "./usePaginatedDetails";
 
 interface Props {
@@ -24,6 +15,30 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }:
     rows, total, hasMore, loading, loadingMore, error, isEmpty, loadMore,
     availableFilters,
   } = usePaginatedDetails(runId, kind, filters);
+
+  const handleFilterChange = useCallback((key: string, values: string[]) => {
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (values.length === 0) {
+        delete next[key];
+      } else {
+        next[key] = values;
+      }
+      return next;
+    });
+  }, []);
+
+  const columnFilters = useMemo(() => {
+    const filters: { key: string; label: string; options: string[] }[] = [];
+    for (const kc of keyColumnNames ?? []) {
+      const options = availableFilters[`key_${kc}`] ?? [];
+      filters.push({ key: `key_${kc}`, label: kc, options });
+    }
+    if (availableFilters["column"]) {
+      filters.push({ key: "column", label: "COLUMN", options: availableFilters["column"] });
+    }
+    return filters;
+  }, [keyColumnNames, availableFilters]);
 
   if (loading && rows.length === 0) {
     return (
@@ -45,14 +60,6 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }:
 
   return (
     <>
-      {keyColumnNames && keyColumnNames.length > 0 && (
-        <DetailFilterBar
-          keyColumnNames={keyColumnNames}
-          availableFilters={availableFilters}
-          activeFilters={filters}
-          onChange={setFilters}
-        />
-      )}
       <DetailTable
         rows={rows}
         total={total}
@@ -60,6 +67,9 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }:
         onReachEnd={loadMore}
         caption={caption}
         {...(keyColumnNames ? { keyColumnNames } : {})}
+        columnFilters={columnFilters}
+        activeFilters={filters}
+        onFilterChange={handleFilterChange}
       />
       {isEmpty && (
         <p role="status">No detail rows match the current filters.</p>

@@ -5,10 +5,14 @@ interface Props {
   stats: GroupStat[];
 }
 
+const VISIBLE_DATA_ROWS = 5;
+const ROW_HEIGHT = 32;
+
 /**
  * Renders group-statistic cards for one section (overall, attribute changes,
  * or a single rule). Each grouping column is a collapsible `<details>` card
- * showing a summary line and a table of per-value counts.
+ * showing a summary line and a table of per-value counts. When expanded,
+ * the table shows at most 5 data rows and is scrollable if there are more.
  */
 export function GroupStatisticsPanel({ stats }: Props) {
   if (stats.length === 0) return null;
@@ -26,24 +30,29 @@ export function GroupStatisticsPanel({ stats }: Props) {
                 {" — "}
                 Unique: {stat.uniqueCount} | Attribute: {stat.attributeCount}
               </summary>
-              <table className="group-stats-table">
-                <thead>
-                  <tr>
-                    <th>Value</th>
-                    <th>Unique Count</th>
-                    <th>Attribute Count</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stat.rows.map((row) => (
-                    <tr key={String(row.value)} className={row.value === "Total" ? "group-stats-total" : ""}>
-                      <td>{row.value === "Total" ? <strong>Total</strong> : String(row.value)}</td>
-                      <td>{row.uniqueCount}</td>
-                      <td>{row.attributeCount}</td>
+              <div
+                className="group-stats-scroll"
+                style={{ maxHeight: (VISIBLE_DATA_ROWS + 1) * ROW_HEIGHT }}
+              >
+                <table className="group-stats-table">
+                  <thead>
+                    <tr>
+                      <th>Value</th>
+                      <th>Unique Count</th>
+                      <th>Attribute Count</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {stat.rows.map((row) => (
+                      <tr key={String(row.value)} className={row.value === "Total" ? "group-stats-total" : ""}>
+                        <td>{row.value === "Total" ? <strong>Total</strong> : String(row.value)}</td>
+                        <td>{row.uniqueCount}</td>
+                        <td>{row.attributeCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </details>
           ))}
         </div>

@@ -27,19 +27,22 @@ def csv_b(tmp_path: Path) -> Path:
 
 class TestGetColumnValues:
     def test_marks_values_in_one_file(self, csv_a: Path, csv_b: Path) -> None:
-        """Phase 2: values come from comparison file (csv_b) only."""
+        """Values from both files; in_file_a/in_file_b set correctly."""
         result = get_column_values(csv_a, csv_b, "name")
         by_val = {v.value: v for v in result}
-        # All values come from csv_b (comparison)
-        assert by_val["alice"].in_file_a is False
+        # alice is in both files
+        assert by_val["alice"].in_file_a is True
         assert by_val["alice"].in_file_b is True
         assert by_val["alice"].display == "alice"
-        # bob is only in csv_a, so it should not appear
-        assert "bob" not in by_val
-        # dave is in csv_b
+        # bob is only in csv_a
+        assert by_val["bob"].in_file_a is True
+        assert by_val["bob"].in_file_b is False
+        # dave is only in csv_b
         assert by_val["dave"].in_file_a is False
         assert by_val["dave"].in_file_b is True
-        assert by_val["dave"].display == "dave"
+        # charlie is only in csv_a
+        assert by_val["charlie"].in_file_a is True
+        assert by_val["charlie"].in_file_b is False
 
 
 class TestPrepareFilters:
@@ -86,10 +89,10 @@ class TestValidateFilter:
         assert result.valid is False
         assert any("empty" in e for e in result.errors)
 
-    def test_star_value_rejected(self) -> None:
+    def test_star_value_accepted(self) -> None:
         result = validate_filter("name", "eq", "bob*", ["id", "name"])
-        assert result.valid is False
-        assert any("marked with '*'" in e for e in result.errors)
+        assert result.valid is True
+        assert result.errors == []
 
 
 class TestValidateTargetColumns:
