@@ -41,10 +41,15 @@ Copy the following release contents to the target machine:
 - `data/` — existing SQLite database, saved results, and uploads when those
   must be retained (otherwise deploy empty writable `data/` directories);
 - `trigger.py` — target-machine launcher; and
-- a Python runtime with the packages in `pyproject.toml` already installed.
-  A copied `.venv/` is suitable only when it was built for the same operating
-  system and Python version; otherwise provision an equivalent environment on
-  the target without relying on an online installer.
+- Python 3.12 or newer.
+
+Install the backend Python packages on the target once, then start the
+application normally. npm is never needed on the target:
+
+```bash
+python -m pip install .
+python trigger.py
+```
 
 To provision Python without target-machine internet access, build a wheel
 bundle on the build machine (using the same operating system, CPU, and Python
@@ -61,7 +66,8 @@ python -m pip install --no-index --find-links release/wheels boat-control
 
 The Python package includes the Django code under `backend/`; the separately
 copied `frontend/dist/`, `.config`, `config/`, and `data/` contents remain
-alongside it. Python 3.12 or newer is required.
+alongside it. Wheel bundles must match the target operating system, CPU, and
+Python version. Python 3.12 or newer is required.
 
 `frontend/node_modules/`, `package.json`, and npm are not needed on the
 target. Start the deployed application with:
@@ -70,6 +76,7 @@ target. Start the deployed application with:
 python trigger.py
 ```
 
-By default it listens on `0.0.0.0:8000`. Set `BOAT_CONTROL_PYTHON` when the
-deployed Python executable is not `.venv/bin/python`, or set
+By default it listens on `0.0.0.0:8000`. The launcher uses a local `.venv`
+when present, otherwise the Python interpreter used to run `trigger.py`.
+Set `BOAT_CONTROL_PYTHON` to override it, or set
 `BOAT_CONTROL_HOST` and `BOAT_CONTROL_PORT` to change the bind address.

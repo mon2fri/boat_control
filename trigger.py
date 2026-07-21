@@ -7,13 +7,14 @@ runs npm, Vite, uv sync, or a package installer.
 
 Required before launch:
 
-* a Python environment with the project's dependencies already installed;
+* Python 3.12 or newer with the project's dependencies installed via pip;
 * the prebuilt ``frontend/dist/index.html`` and assets; and
 * the project-root ``.config`` and configuration files.
 
-Set ``BOAT_CONTROL_PYTHON`` to the deployed Python executable when the
-environment is not located at ``.venv``. ``BOAT_CONTROL_HOST`` and
-``BOAT_CONTROL_PORT`` default to ``0.0.0.0`` and ``8000`` respectively.
+The launcher uses ``.venv`` when present; otherwise it uses the Python
+interpreter that started ``trigger.py``. Set ``BOAT_CONTROL_PYTHON`` to
+override that choice. ``BOAT_CONTROL_HOST`` and ``BOAT_CONTROL_PORT`` default
+to ``0.0.0.0`` and ``8000`` respectively.
 """
 
 from __future__ import annotations
@@ -37,15 +38,18 @@ def deployed_python() -> Path:
     configured = os.environ.get("BOAT_CONTROL_PYTHON")
     if configured:
         executable = Path(configured)
-    elif os.name == "nt":
-        executable = PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
     else:
-        executable = PROJECT_DIR / ".venv" / "bin" / "python"
+        venv_python = (
+            PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
+            if os.name == "nt"
+            else PROJECT_DIR / ".venv" / "bin" / "python"
+        )
+        executable = venv_python if venv_python.is_file() else Path(sys.executable)
 
     if not executable.is_file():
         raise SystemExit(
-            "[trigger] No deployed Python environment found. Set BOAT_CONTROL_PYTHON "
-            "or deploy .venv with the application's Python dependencies."
+            "[trigger] Python executable not found. Set BOAT_CONTROL_PYTHON to a valid "
+            "Python 3.12+ interpreter."
         )
     return executable
 
