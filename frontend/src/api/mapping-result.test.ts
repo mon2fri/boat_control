@@ -131,7 +131,8 @@ describe("mapRunDocumentToResult", () => {
     expect(detail.column).toBe("status");
     expect(detail.violatingColumn).toBe("status");
     expect(detail.violatingValue).toBe("inactive");
-    expect(detail.file2Value).toBe("active");
+    expect(detail.file1Value).toBe("active");
+    expect(detail.file2Value).toBe("inactive");
   });
 
   it("uses the server-provided rule_logic in the per-section summary when present", () => {

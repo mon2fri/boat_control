@@ -43,8 +43,8 @@ def _flatten_rows(result: dict, section: str) -> list[dict]:
                     or str(v.get("row_index", "")),
                     "key_columns": key_cols,
                     "column": v.get("violating_column", ""),
-                    "file_a_value": v.get("violating_value"),
-                    "file_b_value": v.get("comparison_value"),
+                    "file_a_value": v.get("comparison_value"),
+                    "file_b_value": v.get("violating_value"),
                     "violating_column": v.get("violating_column", ""),
                     "violating_value": v.get("violating_value"),
                 }

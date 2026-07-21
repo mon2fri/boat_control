@@ -322,8 +322,8 @@ export function mapViolation(violation: WireViolation, index: number): DetailRow
     rowKey: `${rowKeyOf(violation.key_columns, violation.row_index)}#${index}`,
     keyColumns: Object.fromEntries(Object.entries(violation.key_columns).map(([k, v]) => [k, displayScalar(v)])),
     column,
-    file1Value: violatingValue,
-    file2Value: comparisonValue,
+    file1Value: comparisonValue,
+    file2Value: violatingValue,
     kind: "exception",
     ...(violation.violating_column ? { violatingColumn: violation.violating_column } : {}),
     ...(violation.violating_value !== undefined
