@@ -31,13 +31,11 @@ class ColumnValuesView(APIView):  # type: ignore[misc]
             return Response({"error": "offset and limit must be integers"}, status=400)
 
         try:
-            df_a = pl.scan_csv(session.file_a_path, infer_schema=False)
             df_b = pl.scan_csv(session.file_b_path, infer_schema=False)
 
-            if column not in df_a.columns or column not in df_b.columns:
+            if column not in df_b.columns:
                 return Response({"error": f"Column '{column}' not found"}, status=400)
 
-            vals_a = set(df_a.select(pl.col(column)).collect().get_column(column))
             vals_b = set(df_b.select(pl.col(column)).collect().get_column(column))
         except Exception:
             logger.exception("Failed to read column values")
@@ -45,7 +43,7 @@ class ColumnValuesView(APIView):  # type: ignore[misc]
                 {"error": "Failed to read column values from CSV."}, status=500
             )
 
-        all_values = vals_a | vals_b
+        all_values = vals_b
         if search:
             all_values = {v for v in all_values if search.lower() in str(v).lower()}
 
@@ -58,17 +56,15 @@ class ColumnValuesView(APIView):  # type: ignore[misc]
         values = []
         for v in page_values:
             sv = str(v)
-            in_a = v in vals_a
-            in_b = v in vals_b
             values.append({
                 "value": sv,
-                "in_file_a": in_a,
-                "in_file_b": in_b,
+                "in_file_a": False,
+                "in_file_b": True,
                 "display": sv,
             })
 
         has_more = end < total
-        starred = any(not (v["in_file_a"] and v["in_file_b"]) for v in values)
+        starred = False  # Values come from comparison file only; no star needed
 
         return Response({
             "session_id": session_id,

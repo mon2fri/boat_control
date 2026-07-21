@@ -8,6 +8,7 @@ const baseState: WorkflowState = {
   filters: [],
   targetColumns: [],
   keyColumns: [],
+  groupingColumns: [],
   selectedRuleIndexes: [],
   confirmFullSet: false,
   result: null,

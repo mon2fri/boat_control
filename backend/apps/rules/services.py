@@ -71,6 +71,7 @@ class LogicClause:
     column_name: str
     operator: str
     target_value: str
+    target_values: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -221,11 +222,13 @@ def load_rules(path: Path | None = None) -> RulesFile:
     for r in data.get("rules", []):
         conditions = [_make_condition(c) for c in r.get("conditions", [])]
         logic_data = r.get("logic", {})
+        target_values = tuple(logic_data.get("target_values", []))
         logic = LogicClause(
             format=logic_data["format"],
             column_name=logic_data["column_name"],
             operator=logic_data["operator"],
             target_value=logic_data["target_value"],
+            target_values=target_values,
         )
         rules.append(
             Rule(
@@ -269,6 +272,11 @@ def save_rules(rules_file: RulesFile, path: Path | None = None) -> None:
                 "column_name": rule.logic.column_name,
                 "operator": rule.logic.operator,
                 "target_value": rule.logic.target_value,
+                **(
+                    {"target_values": list(rule.logic.target_values)}
+                    if rule.logic.target_values
+                    else {}
+                ),
             },
         }
         if rule.conditions:
@@ -383,11 +391,13 @@ def create_rule(rules_file: RulesFile, rule_data: dict[str, Any]) -> tuple[Rules
     rule_id = _format_rule_id(rules_file.next_index)
     conditions = [_make_condition(c) for c in rule_data.get("conditions", [])]
     logic_data = rule_data["logic"]
+    target_values = tuple(logic_data.get("target_values", []))
     logic = LogicClause(
         format=logic_data["format"],
         column_name=logic_data["column_name"],
         operator=logic_data["operator"],
         target_value=logic_data["target_value"],
+        target_values=target_values,
     )
 
     rule = Rule(
@@ -422,11 +432,13 @@ def update_rule(rules_file: RulesFile, rule_id: str, rule_data: dict[str, Any]) 
             found = True
             conditions = [_make_condition(c) for c in rule_data.get("conditions", [])]
             logic_data = rule_data["logic"]
+            target_values = tuple(logic_data.get("target_values", []))
             logic = LogicClause(
                 format=logic_data["format"],
                 column_name=logic_data["column_name"],
                 operator=logic_data["operator"],
                 target_value=logic_data["target_value"],
+                target_values=target_values,
             )
             updated_rules.append(
                 Rule(

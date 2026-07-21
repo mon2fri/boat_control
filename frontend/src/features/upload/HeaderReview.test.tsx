@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { HeaderReview } from "./HeaderReview";
 import type { HeaderReport } from "../../api/domain";
 
@@ -80,5 +80,42 @@ describe("HeaderReview", () => {
     const excluded = screen.getByRole("list", { name: /Columns Excluded/ });
     expect(within(excluded).getByText("region")).toHaveClass("tag--excluded");
     expect(within(excluded).getByText("status")).toHaveClass("tag--excluded");
+  });
+
+  it("renders Grouping Columns card after Key columns", () => {
+    render(<HeaderReview {...defaultProps} />);
+    const groupingHeading = screen.getByText("Grouping Columns");
+    expect(groupingHeading).toBeInTheDocument();
+    expect(groupingHeading.textContent).toBe("Grouping Columns");
+    const hint = screen.getByText(/Optional\. Pick columns for group-level statistics/);
+    expect(hint).toBeInTheDocument();
+  });
+
+  it("fires onGroupingColumnsChange when grouping columns are selected", () => {
+    const onGroupingColumnsChange = vi.fn();
+    render(
+      <HeaderReview
+        {...defaultProps}
+        onGroupingColumnsChange={onGroupingColumnsChange}
+      />,
+    );
+    const searchbox = screen.getByRole("searchbox", { name: "Select grouping columns" });
+    fireEvent.focus(searchbox);
+    fireEvent.mouseDown(screen.getByRole("option", { name: /region/ }));
+    expect(onGroupingColumnsChange).toHaveBeenCalledWith(["region"]);
+  });
+
+  it("renders grouping column selections from props", () => {
+    render(
+      <HeaderReview
+        {...defaultProps}
+        selectedColumns={["id", "region"]}
+        groupingColumns={["region"]}
+        onGroupingColumnsChange={vi.fn()}
+      />,
+    );
+    const searchbox = screen.getByRole("searchbox", { name: "Select grouping columns" });
+    expect(searchbox).toBeInTheDocument();
+    expect(searchbox).toHaveAttribute("placeholder", expect.stringContaining("1 selected"));
   });
 });

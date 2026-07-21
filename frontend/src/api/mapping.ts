@@ -10,6 +10,9 @@ import type {
   FilterOperator,
   FilterRow,
   GroupNode,
+  GroupStat,
+  GroupStatRow,
+  GroupStatisticsBundle,
   HeaderReport,
   LogicClause,
   LogicFormat,
@@ -29,6 +32,9 @@ import type {
   WireCondition,
   WireFilterRow,
   WireGroupNode,
+  WireGroupStatistics,
+  WireGroupStatisticsBundle,
+  WireGroupStatisticsRow,
   WireLogic,
   WirePresetSource,
   WireRule,
@@ -166,22 +172,33 @@ function conditionValues(cond: Condition): string[] {
 export function mapLogicToWire(logic: LogicClause) {
   const format: "value_vs_column" | "column_vs_column" =
     logic.format === "value" ? "value_vs_column" : "column_vs_column";
+  const normalizedValues = logic.values
+    ? [...new Set(logic.values.map((v) => v.trim()).filter((v) => v.length > 0))]
+    : undefined;
+  const targetValue = normalizedValues && normalizedValues.length > 0
+    ? normalizedValues[0]
+    : logic.target;
   return {
     format,
     column_name: logic.column,
     operator: mapLogicOperatorToWire(logic.operator),
-    target_value: logic.target,
+    target_value: targetValue,
+    ...(normalizedValues && normalizedValues.length > 0
+      ? { target_values: normalizedValues }
+      : {}),
   };
 }
 
 export function mapWireLogic(logic: WireLogic, id: string): LogicClause {
   const format: LogicFormat = logic.format === "value_vs_column" ? "value" : "column";
+  const values = logic.target_values ?? (logic.target_value ? [logic.target_value] : []);
   return {
     id,
     format,
     column: logic.column_name,
     operator: mapWireLogicOperator(logic.operator),
     target: logic.target_value,
+    ...(values.length > 0 ? { values } : {}),
   };
 }
 
@@ -246,6 +263,7 @@ export function mapRunRequestToWire(request: {
   filters: FilterRow[];
   targetColumns: string[];
   keyColumns: string[];
+  groupingColumns: string[];
   ruleIndexes: string[];
 }): WireRunRequest {
   return {
@@ -257,6 +275,7 @@ export function mapRunRequestToWire(request: {
     // backend will reject an empty array with a 400; the UI prevents the user
     // from getting there by requiring at least one key column.
     key_columns: [...request.keyColumns],
+    grouping_columns: request.groupingColumns,
     filters: request.filters.filter((f) => f.column && f.values.length > 0).map(mapFilterRowToWire),
     // Always serialize `rule_ids` as an array so the backend can distinguish
     // an explicit empty selection (zero rules) from an omitted/default-all
@@ -373,6 +392,42 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
     overall,
     ruleResults,
     changeDetails,
+    ...(result.group_statistics
+      ? { groupStatistics: mapGroupStatisticsBundle(result.group_statistics) }
+      : {}),
+    ...(result.filters_applied
+      ? { filtersApplied: result.filters_applied.map(mapWireFilterRow) }
+      : {}),
+  };
+}
+
+function mapGroupStatisticsRow(row: WireGroupStatisticsRow): GroupStatRow {
+  return {
+    value: row.value,
+    uniqueCount: row.unique_count,
+    attributeCount: row.attribute_count,
+  };
+}
+
+function mapGroupStatistics(stat: WireGroupStatistics): GroupStat {
+  return {
+    column: stat.column,
+    uniqueCount: stat.unique_count,
+    attributeCount: stat.attribute_count,
+    rows: stat.rows.map(mapGroupStatisticsRow),
+  };
+}
+
+function mapGroupStatisticsBundle(bundle: WireGroupStatisticsBundle): GroupStatisticsBundle {
+  return {
+    overall: bundle.overall.map(mapGroupStatistics),
+    attributeChanges: bundle.attribute_changes.map(mapGroupStatistics),
+    validationRules: Object.fromEntries(
+      Object.entries(bundle.validation_rules).map(([ruleId, stats]) => [
+        ruleId,
+        stats.map(mapGroupStatistics),
+      ]),
+    ),
   };
 }
 

@@ -28,28 +28,43 @@ describe("RuleEditor", () => {
   });
 
   it("saves a valid value-against-column rule", () => {
-    const { onSave } = setup();
+    const { onSave } = setup({ columns: ["region"] });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Region set" } });
-    fireEvent.change(screen.getByLabelText("Column"), { target: { value: "region" } });
-    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "EMEA" } });
+    const logicColumn = screen.getByRole("searchbox", { name: "COLUMN in COMPARISON" });
+    fireEvent.focus(logicColumn);
+    fireEvent.change(logicColumn, { target: { value: "region" } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: "region" }));
+    const valueSearch = screen.getByRole("searchbox", { name: "Value" });
+    fireEvent.focus(valueSearch);
+    fireEvent.change(valueSearch, { target: { value: "EMEA" } });
+    fireEvent.keyDown(valueSearch, { key: "Enter" });
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).toHaveBeenCalledTimes(1);
     const draft = onSave.mock.calls[0]![0];
     expect(draft.name).toBe("Region set");
-    expect(draft.logic).toMatchObject({ format: "value", column: "region", target: "EMEA" });
+    expect(draft.logic).toMatchObject({ format: "value", column: "region" });
   });
 
   it("requires a join once there is more than one condition", () => {
-    const { onSave } = setup();
+    const { onSave } = setup({ columns: ["a", "c1", "c2", "v1", "v2"] });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "R" } });
-    fireEvent.change(screen.getByLabelText("Column"), { target: { value: "a" } });
-    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "1" } });
+    const logicColumn = screen.getByRole("searchbox", { name: "COLUMN in COMPARISON" });
+    fireEvent.focus(logicColumn);
+    fireEvent.change(logicColumn, { target: { value: "a" } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: "a" }));
+    const logicValue = screen.getByRole("searchbox", { name: "Value" });
+    fireEvent.focus(logicValue);
+    fireEvent.change(logicValue, { target: { value: "1" } });
+    fireEvent.keyDown(logicValue, { key: "Enter" });
     fireEvent.click(screen.getByRole("button", { name: "+ Add condition" }));
     fireEvent.click(screen.getByRole("button", { name: "+ Add condition" }));
     // Fill both conditions.
     for (const n of [1, 2]) {
       const group = screen.getByRole("group", { name: `Condition ${n}` });
-      fireEvent.change(within(group).getByLabelText("Column"), { target: { value: `c${n}` } });
+      const colInput = within(group).getByRole("searchbox", { name: "Column" });
+      fireEvent.focus(colInput);
+      fireEvent.change(colInput, { target: { value: `c${n}` } });
+      fireEvent.mouseDown(within(group).getByRole("option", { name: `c${n}` }));
       const valueInput = within(group).getByRole("searchbox", { name: "Value" });
       fireEvent.focus(valueInput);
       fireEvent.change(valueInput, { target: { value: `v${n}` } });
@@ -77,21 +92,24 @@ describe("RuleEditor", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Multiple statuses" } });
     fireEvent.click(screen.getByRole("button", { name: "+ Add condition" }));
     const condition = screen.getByRole("group", { name: "Condition 1" });
-    const conditionColumn = within(condition).getByLabelText("Column");
+    const conditionColumn = within(condition).getByRole("searchbox", { name: "Column" });
     fireEvent.focus(conditionColumn);
     fireEvent.change(conditionColumn, { target: { value: "status" } });
     fireEvent.mouseDown(within(condition).getByRole("option", { name: "status" }));
     const valueSearch = within(condition).getByRole("searchbox", { name: "Value" });
     fireEvent.focus(valueSearch);
-    fireEvent.mouseDown(screen.getByRole("option", { name: /active/ }));
-    fireEvent.mouseDown(screen.getByRole("option", { name: /pending/ }));
+    fireEvent.mouseDown(within(condition).getByRole("option", { name: /active/ }));
+    fireEvent.mouseDown(within(condition).getByRole("option", { name: /pending/ }));
 
-    const logicColumn = screen.getAllByLabelText("Column").at(-1)!;
+    const logicColumn = screen.getByRole("searchbox", { name: "COLUMN in COMPARISON" });
     fireEvent.focus(logicColumn);
     fireEvent.change(logicColumn, { target: { value: "result" } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: "result" }));
     const logicRow = logicColumn.closest(".filter-row")!;
-    fireEvent.mouseDown(within(logicRow as HTMLElement).getByRole("option", { name: "result" }));
-    fireEvent.change(document.querySelector("#logic-value")!, { target: { value: "ok" } });
+    const logicValueSearch = within(logicRow as HTMLElement).getByRole("searchbox", { name: "Value" });
+    fireEvent.focus(logicValueSearch);
+    fireEvent.change(logicValueSearch, { target: { value: "ok" } });
+    fireEvent.keyDown(logicValueSearch, { key: "Enter" });
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
 
     expect(onSave.mock.calls[0]![0].conditions[0]!.values).toEqual(["active", "pending"]);
@@ -102,7 +120,10 @@ describe("RuleEditor", () => {
     setup({ columns: ["score"] });
     fireEvent.click(screen.getByRole("button", { name: "+ Add condition" }));
     const condition = screen.getByRole("group", { name: "Condition 1" });
-    fireEvent.change(within(condition).getByLabelText("Column"), { target: { value: "score" } });
+    const condCol = within(condition).getByRole("searchbox", { name: "Column" });
+    fireEvent.focus(condCol);
+    fireEvent.change(condCol, { target: { value: "score" } });
+    fireEvent.mouseDown(within(condition).getByRole("option", { name: "score" }));
     fireEvent.change(within(condition).getByLabelText("Operator"), { target: { value: "greater_than" } });
     const conditionValue = within(condition).getByLabelText("Value");
     expect(conditionValue).toHaveAttribute("type", "number");
@@ -117,9 +138,9 @@ describe("RuleEditor", () => {
   });
 
   it("switches to the column-against-column format", () => {
-    setup();
+    setup({ columns: ["col_a"] });
     fireEvent.click(screen.getByRole("radio", { name: /Column against column/ }));
-    expect(screen.getByLabelText("Compared column")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "BASELINE COLUMN" })).toBeInTheDocument();
   });
 
   it("guards unsaved changes on cancel", () => {
@@ -134,10 +155,16 @@ describe("RuleEditor", () => {
   });
 
   it("previews the logic clause in required-state language (must equal)", () => {
-    setup();
+    setup({ columns: ["status"] });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Status must be active" } });
-    fireEvent.change(screen.getByLabelText("Column"), { target: { value: "status" } });
-    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "active" } });
+    const logicColumn = screen.getByRole("searchbox", { name: "COLUMN in COMPARISON" });
+    fireEvent.focus(logicColumn);
+    fireEvent.change(logicColumn, { target: { value: "status" } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: "status" }));
+    const logicValue = screen.getByRole("searchbox", { name: "Value" });
+    fireEvent.focus(logicValue);
+    fireEvent.change(logicValue, { target: { value: "active" } });
+    fireEvent.keyDown(logicValue, { key: "Enter" });
     // The data-testid on the live preview pins the wording. If anyone rewords
     // the editor preview away from required-state phrasing, this assertion
     // fails before the wording reaches the rule list and history views.

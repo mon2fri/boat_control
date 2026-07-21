@@ -6,7 +6,9 @@
  * the user scrolls. The DetailTable handles windowing; this component
  * decides when to ask the backend for more rows.
  */
+import { useState } from "react";
 import { DetailTable } from "./DetailTable";
+import { DetailFilterBar } from "./DetailFilterBar";
 import { usePaginatedDetails } from "./usePaginatedDetails";
 
 interface Props {
@@ -17,7 +19,11 @@ interface Props {
 }
 
 export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }: Props) {
-  const { rows, total, hasMore, loading, loadingMore, error, isEmpty, loadMore } = usePaginatedDetails(runId, kind);
+  const [filters, setFilters] = useState<Record<string, string[]>>({});
+  const {
+    rows, total, hasMore, loading, loadingMore, error, isEmpty, loadMore,
+    availableFilters,
+  } = usePaginatedDetails(runId, kind, filters);
 
   if (loading && rows.length === 0) {
     return (
@@ -33,12 +39,20 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }:
       </p>
     );
   }
-  if (isEmpty) {
+  if (isEmpty && Object.keys(filters).length === 0) {
     return <p role="status">No detail rows.</p>;
   }
 
   return (
     <>
+      {keyColumnNames && keyColumnNames.length > 0 && (
+        <DetailFilterBar
+          keyColumnNames={keyColumnNames}
+          availableFilters={availableFilters}
+          activeFilters={filters}
+          onChange={setFilters}
+        />
+      )}
       <DetailTable
         rows={rows}
         total={total}
@@ -47,6 +61,9 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }:
         caption={caption}
         {...(keyColumnNames ? { keyColumnNames } : {})}
       />
+      {isEmpty && (
+        <p role="status">No detail rows match the current filters.</p>
+      )}
       {loadingMore && (
         <p role="status" aria-live="polite" className="busy-row">
           <span className="spinner" aria-hidden="true" /> Loading more…

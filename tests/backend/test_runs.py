@@ -52,7 +52,9 @@ class TestApplyFilters:
         df_b = pl.scan_csv(csv_b)
         filters = [{"column": "status", "operator": "eq", "filter_value": "active"}]
         filtered_a, filtered_b = apply_filters(df_a, df_b, filters)
-        assert filtered_a.collect().height == 2
+        # Phase 2: only df_b (comparison) is filtered; df_a (baseline) passes through
+        assert filtered_a.collect().height == 3  # baseline unchanged
+        # csv_b has all 3 rows with status=active, so all pass
         assert filtered_b.collect().height == 3
 
     def test_neq_filter(self, csv_a: Path, csv_b: Path) -> None:
@@ -62,7 +64,8 @@ class TestApplyFilters:
         df_b = pl.scan_csv(csv_b)
         filters = [{"column": "status", "operator": "neq", "filter_value": "active"}]
         filtered_a, filtered_b = apply_filters(df_a, df_b, filters)
-        assert filtered_a.collect().height == 1
+        # Phase 2: only df_b is filtered; df_a passes through
+        assert filtered_a.collect().height == 3  # baseline unchanged
 
 
 class TestCompareRows:
@@ -237,7 +240,9 @@ class TestExecuteComparison:
             rule_ids=None,
             key_columns=["id"],
         )
-        assert result.comparison.total_rows_a == 3
+        # Phase 2: baseline rows are joined using filtered comparison keys,
+        # so total_rows_a reflects only matched rows (IDs 1, 2 from csv_b)
+        assert result.comparison.total_rows_a == 2
         assert result.comparison.total_rows_b == 3
         assert "score" in result.target_columns
 
@@ -346,3 +351,232 @@ def load_rules(path: Path) -> RulesFile:
     from apps.rules.services import load_rules as _load_rules
 
     return _load_rules(path)
+
+
+class TestComputeGroupStatistics:
+    def test_empty_grouping_columns(self) -> None:
+        from apps.runs.services import compute_group_statistics
+
+        result = compute_group_statistics([], {}, [])
+        assert result == {"overall": [], "attribute_changes": [], "validation_rules": {}}
+
+    def test_no_changes_no_violations(self) -> None:
+        from apps.runs.services import compute_group_statistics
+
+        result = compute_group_statistics([], {}, ["region"])
+        # With grouping columns specified, stats are produced even with zero data
+        assert len(result["overall"]) == 1
+        assert result["overall"][0]["column"] == "region"
+        assert result["overall"][0]["unique_count"] == 0
+        assert result["overall"][0]["attribute_count"] == 0
+        assert result["overall"][0]["rows"] == [
+            {"value": "Total", "unique_count": 0, "attribute_count": 0}
+        ]
+
+    def test_single_grouping_column_with_changes(self) -> None:
+        from apps.runs.services import (
+            AttributeChange,
+            RowComparison,
+            compute_group_statistics,
+        )
+
+        changes = [
+            RowComparison(
+                row_index=0,
+                key_columns={"id": 1},
+                attribute_changes=[AttributeChange("score", 10, 15)],
+                change_count=1,
+                grouping_values={"region": "EMEA"},
+            ),
+            RowComparison(
+                row_index=1,
+                key_columns={"id": 2},
+                attribute_changes=[AttributeChange("score", 20, 25)],
+                change_count=1,
+                grouping_values={"region": "EMEA"},
+            ),
+            RowComparison(
+                row_index=2,
+                key_columns={"id": 3},
+                attribute_changes=[AttributeChange("score", 30, 40)],
+                change_count=1,
+                grouping_values={"region": "APAC"},
+            ),
+        ]
+        result = compute_group_statistics(changes, {}, ["region"])
+        overall = result["overall"]
+        assert len(overall) == 1
+        stats = overall[0]
+        assert stats["column"] == "region"
+        assert stats["unique_count"] == 3
+        assert stats["attribute_count"] == 3
+        # Total row first, then alphabetical
+        assert stats["rows"][0]["value"] == "Total"
+        assert stats["rows"][0]["unique_count"] == 3
+        assert stats["rows"][0]["attribute_count"] == 3
+        assert stats["rows"][1]["value"] == "APAC"
+        assert stats["rows"][1]["unique_count"] == 1
+        assert stats["rows"][2]["value"] == "EMEA"
+        assert stats["rows"][2]["unique_count"] == 2
+
+    def test_deduplication_of_keys(self) -> None:
+        from apps.runs.services import (
+            AttributeChange,
+            RowComparison,
+            compute_group_statistics,
+        )
+
+        # Two changes with the same key but different columns
+        changes = [
+            RowComparison(
+                row_index=0,
+                key_columns={"id": 1},
+                attribute_changes=[
+                    AttributeChange("score", 10, 15),
+                    AttributeChange("name", "a", "b"),
+                ],
+                change_count=2,
+                grouping_values={"region": "EMEA"},
+            ),
+        ]
+        result = compute_group_statistics(changes, {}, ["region"])
+        stats = result["overall"][0]
+        # Unique count should be 1 (one key), attribute count should be 2 (two changes)
+        assert stats["unique_count"] == 1
+        assert stats["attribute_count"] == 2
+
+    def test_null_and_empty_grouping_values(self) -> None:
+        from apps.runs.services import (
+            AttributeChange,
+            RowComparison,
+            compute_group_statistics,
+        )
+
+        changes = [
+            RowComparison(
+                row_index=0,
+                key_columns={"id": 1},
+                attribute_changes=[AttributeChange("score", 10, 15)],
+                change_count=1,
+                grouping_values={"region": None},
+            ),
+            RowComparison(
+                row_index=1,
+                key_columns={"id": 2},
+                attribute_changes=[AttributeChange("score", 20, 25)],
+                change_count=1,
+                grouping_values={"region": ""},
+            ),
+        ]
+        result = compute_group_statistics(changes, {}, ["region"])
+        stats = result["overall"][0]
+        rows = stats["rows"]
+        assert rows[0]["value"] == "Total"
+        # Null and Empty are last
+        assert rows[-1]["value"] == "Null"
+        assert rows[-2]["value"] == "Empty"
+
+    def test_violations_by_rule(self) -> None:
+        from apps.runs.services import ValidationViolation, compute_group_statistics
+
+        viols = {
+            "R001": [
+                ValidationViolation(
+                    row_index=0,
+                    rule_id="R001",
+                    rule_name="Test",
+                    key_columns={"id": 1},
+                    details="bad",
+                    violating_column="status",
+                    violating_value="inactive",
+                    rule_logic="status equals 'active'",
+                    grouping_values={"region": "EMEA"},
+                ),
+            ],
+            "R002": [],
+        }
+        result = compute_group_statistics([], viols, ["region"])
+        # R001 has one violation, R002 has zero
+        assert "R001" in result["validation_rules"]
+        assert "R002" in result["validation_rules"]
+        r001 = result["validation_rules"]["R001"][0]
+        assert r001["unique_count"] == 1
+        assert r001["attribute_count"] == 1
+        r002 = result["validation_rules"]["R002"][0]
+        assert r002["unique_count"] == 0
+        assert r002["attribute_count"] == 0
+        assert r002["rows"] == [{"value": "Total", "unique_count": 0, "attribute_count": 0}]
+
+    def test_overall_deduplicates_keys_across_sections(self) -> None:
+        from apps.runs.services import (
+            AttributeChange,
+            RowComparison,
+            ValidationViolation,
+            compute_group_statistics,
+        )
+
+        changes = [
+            RowComparison(
+                row_index=0,
+                key_columns={"id": 1},
+                attribute_changes=[AttributeChange("score", 10, 15)],
+                change_count=1,
+                grouping_values={"region": "EMEA"},
+            ),
+        ]
+        viols = {
+            "R001": [
+                ValidationViolation(
+                    row_index=0,
+                    rule_id="R001",
+                    rule_name="Test",
+                    key_columns={"id": 1},
+                    details="bad",
+                    violating_column="score",
+                    violating_value=15,
+                    rule_logic="score equals 10",
+                    grouping_values={"region": "EMEA"},
+                ),
+            ],
+        }
+        result = compute_group_statistics(changes, viols, ["region"])
+        # Overall should deduplicate: same key_id=1 appears in both, so unique=1
+        overall = result["overall"][0]
+        assert overall["unique_count"] == 1
+        assert overall["attribute_count"] == 2  # 1 change + 1 violation
+
+    def test_multiple_grouping_columns(self) -> None:
+        from apps.runs.services import (
+            AttributeChange,
+            RowComparison,
+            compute_group_statistics,
+        )
+
+        changes = [
+            RowComparison(
+                row_index=0,
+                key_columns={"id": 1},
+                attribute_changes=[AttributeChange("score", 10, 15)],
+                change_count=1,
+                grouping_values={"region": "EMEA", "team": "alpha"},
+            ),
+        ]
+        result = compute_group_statistics(changes, {}, ["region", "team"])
+        assert len(result["overall"]) == 2
+        assert result["overall"][0]["column"] == "region"
+        assert result["overall"][1]["column"] == "team"
+
+    def test_execute_comparison_with_grouping(self, csv_a: Path, csv_b: Path) -> None:
+        result = execute_comparison(
+            path_a=csv_a,
+            path_b=csv_b,
+            target_columns=["score"],
+            key_columns=["id"],
+            grouping_columns=["status"],
+        )
+        # grouping_columns should be passed through
+        assert result.grouping_columns == ["status"]
+        assert result.group_statistics is not None
+        assert "overall" in result.group_statistics
+        assert len(result.group_statistics["overall"]) == 1
+        assert result.group_statistics["overall"][0]["column"] == "status"

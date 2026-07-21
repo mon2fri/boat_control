@@ -701,6 +701,18 @@ table.data td {
   box-sizing: border-box;
 }
 
+.detail-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+  margin-bottom: var(--space);
+}
+.detail-filter-bar > .field {
+  flex: 1 1 180px;
+  min-width: 140px;
+  margin-bottom: 0;
+}
+
 /* Structured validation-rule grouping tree. */
 .group-tree > .group-tree-children,
 .group-tree-children {
@@ -991,4 +1003,50 @@ dl.card dd {
   color: var(--color-ok);
   border-color: var(--color-ok);
   background: rgba(34, 197, 94, 0.08);
+}
+
+.text-green { color: var(--color-ok); }
+.text-red { color: var(--color-danger); }
+.text-bold, .text-green.text-bold { font-weight: 700; }
+.greybox { background: var(--color-surface-raised); padding: 2px 6px; border-radius: 4px; font-family: var(--font-mono); }
+
+/* Group statistics panel */
+.group-stats-panel { margin-top: var(--space); }
+.group-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space);
+  margin-bottom: var(--space);
+}
+.group-stats-card {
+  flex: 1 1 220px;
+  min-width: 200px;
+}
+.group-stats-summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: var(--space-sm, 6px) var(--space);
+}
+.group-stats-col-name {
+  font-family: var(--font-mono);
+}
+.group-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-top: var(--space-sm, 6px);
+}
+.group-stats-table th,
+.group-stats-table td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+.group-stats-table th {
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.group-stats-total td {
+  font-weight: 700;
+  border-top: 2px solid var(--color-border);
 }

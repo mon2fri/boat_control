@@ -298,6 +298,8 @@ export function UploadPage() {
             onSelectedColumnsChange={(columns) => dispatch({ type: "setComparisonColumns", columns })}
             keyColumns={state.keyColumns}
             onKeyColumnsChange={(columns) => dispatch({ type: "setKeyColumns", columns })}
+            groupingColumns={state.groupingColumns}
+            onGroupingColumnsChange={(columns) => dispatch({ type: "setGroupingColumns", columns })}
           />
           <div className="card">
             {state.comparisonColumns.length === 0 && (

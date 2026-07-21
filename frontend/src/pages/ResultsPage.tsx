@@ -9,8 +9,10 @@ import { TableOfContents } from "../features/results/TableOfContents";
 import { ReportName } from "../features/reports/ReportName";
 import { ExportControls } from "../features/reports/ExportControls";
 import { PaginatedDetailSection } from "../features/results/PaginatedDetailSection";
+import { GroupStatisticsPanel } from "../features/results/GroupStatisticsPanel";
 import { clearUploadSession, loadRun } from "../api/endpoints";
 import type { FilterRow, RunRequest } from "../api/domain";
+import { formatFilterRow } from "../features/filters/formatFilterRow";
 import type { WorkflowState } from "../state/WorkflowContext";
 
 /** Keep only fully-specified filter rows for the run request. */
@@ -26,6 +28,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
     filters: completeFilters(state.filters),
     targetColumns: state.targetColumns,
     keyColumns: state.keyColumns,
+    groupingColumns: state.groupingColumns,
     ruleIndexes: state.selectedRuleIndexes,
     confirmFullSet: state.confirmFullSet,
   };
@@ -158,6 +161,14 @@ export function ResultsPage() {
                   with {completeFilters(state.filters).length} filter(s).
                 </p>
                 <OverallSummaryCards summary={state.result.overall} />
+                <p className="field-hint" data-testid="applied-filters-statement">
+                  {state.result.filtersApplied && state.result.filtersApplied.length > 0
+                    ? `Filtering: ${state.result.filtersApplied.map(formatFilterRow).join("; ")}`
+                    : "No filtering rows applied"}
+                </p>
+                {state.result.groupStatistics?.overall && state.result.groupStatistics.overall.length > 0 && (
+                  <GroupStatisticsPanel stats={state.result.groupStatistics.overall} />
+                )}
               </section>
 
               <section id="changes" aria-labelledby="changes-title" className="card" style={{ marginTop: "var(--space)" }}>
@@ -165,12 +176,23 @@ export function ResultsPage() {
                 <p className="section-logic">
                   <code>In Baseline ≠ In Comparison</code> on shared target columns.
                 </p>
+                {state.result.groupStatistics?.attributeChanges && state.result.groupStatistics.attributeChanges.length > 0 && (
+                  <GroupStatisticsPanel stats={state.result.groupStatistics.attributeChanges} />
+                )}
                 <PaginatedDetailSection runId={state.result.id} kind="changed" caption="Attribute change details" keyColumnNames={state.keyColumns} />
               </section>
 
-              {state.result.ruleResults.map((rule) => (
-                <RuleResultSection key={rule.ruleIndex} result={rule} keyColumnNames={state.keyColumns} />
-              ))}
+              {state.result.ruleResults.map((rule) => {
+                const ruleGroupStats = state.result!.groupStatistics?.validationRules?.[rule.ruleIndex];
+                return (
+                  <RuleResultSection
+                    key={rule.ruleIndex}
+                    result={rule}
+                    keyColumnNames={state.keyColumns}
+                    {...(ruleGroupStats ? { groupStats: ruleGroupStats } : {})}
+                  />
+                );
+              })}
 
               <div className="card">
                 <div className="config-inline-row">

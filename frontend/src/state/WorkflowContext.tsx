@@ -15,6 +15,8 @@ export interface WorkflowState {
   targetColumns: string[];
   /** Record-identity columns. Empty array means "not yet chosen"; the backend refuses to run without one. */
   keyColumns: string[];
+  /** Optional subset of comparison columns used for group-level statistics. */
+  groupingColumns: string[];
   selectedRuleIndexes: string[];
   /** User acknowledged running against the full set with no filters. */
   confirmFullSet: boolean;
@@ -31,6 +33,7 @@ const initialState: WorkflowState = {
   filters: [],
   targetColumns: [],
   keyColumns: [],
+  groupingColumns: [],
   selectedRuleIndexes: [],
   confirmFullSet: false,
   result: null,
@@ -42,6 +45,7 @@ type Action =
   | { type: "setHeader"; header: HeaderReport }
   | { type: "setComparisonColumns"; columns: string[] }
   | { type: "removeComparisonColumn"; column: string }
+  | { type: "setGroupingColumns"; columns: string[] }
   | { type: "setFilters"; filters: FilterRow[] }
   | { type: "setTargetColumns"; columns: string[] }
   | { type: "setKeyColumns"; columns: string[] }
@@ -65,6 +69,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         comparisonColumns: cols,
         keyColumns: state.keyColumns.filter((c) => colSet.has(c)),
         targetColumns: state.targetColumns.filter((c) => colSet.has(c)),
+        groupingColumns: state.groupingColumns.filter((c) => colSet.has(c)),
         filters: state.filters.map((f) =>
           colSet.has(f.column) ? f : { ...f, column: "" },
         ),
@@ -78,6 +83,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         comparisonColumns: next,
         keyColumns: state.keyColumns.filter((c) => c !== col),
         targetColumns: state.targetColumns.filter((c) => c !== col),
+        groupingColumns: state.groupingColumns.filter((c) => c !== col),
         filters: state.filters.map((f) =>
           f.column === col ? { ...f, column: "" } : f,
         ),
@@ -89,6 +95,8 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       return { ...state, targetColumns: action.columns };
     case "setKeyColumns":
       return { ...state, keyColumns: action.columns };
+    case "setGroupingColumns":
+      return { ...state, groupingColumns: action.columns };
     case "setSelectedRules":
       return { ...state, selectedRuleIndexes: action.ruleIndexes };
     case "setConfirmFullSet":

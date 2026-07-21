@@ -108,6 +108,7 @@ export const wireLogicSchema = z.object({
   column_name: z.string(),
   operator: z.string(),
   target_value: z.string(),
+  target_values: z.array(z.string()).optional(),
 });
 export type WireLogic = z.infer<typeof wireLogicSchema>;
 
@@ -168,6 +169,30 @@ export const ruleDraftRequestSchema = z.object({
 });
 export type WireRuleDraftRequest = z.infer<typeof ruleDraftRequestSchema>;
 
+// --- Group statistics -----------------------------------------------------
+
+export const wireGroupStatisticsRowSchema = z.object({
+  value: z.union([z.string(), z.number(), z.boolean(), z.null()]),
+  unique_count: z.number().int().nonnegative(),
+  attribute_count: z.number().int().nonnegative(),
+});
+export type WireGroupStatisticsRow = z.infer<typeof wireGroupStatisticsRowSchema>;
+
+export const wireGroupStatisticsSchema = z.object({
+  column: z.string(),
+  unique_count: z.number().int().nonnegative(),
+  attribute_count: z.number().int().nonnegative(),
+  rows: z.array(wireGroupStatisticsRowSchema),
+});
+export type WireGroupStatistics = z.infer<typeof wireGroupStatisticsSchema>;
+
+export const wireGroupStatisticsBundleSchema = z.object({
+  overall: z.array(wireGroupStatisticsSchema),
+  attribute_changes: z.array(wireGroupStatisticsSchema),
+  validation_rules: z.record(z.string(), z.array(wireGroupStatisticsSchema)),
+});
+export type WireGroupStatisticsBundle = z.infer<typeof wireGroupStatisticsBundleSchema>;
+
 // --- Runs ----------------------------------------------------------------
 
 export const wireFilterRowSchema = z.object({
@@ -183,6 +208,7 @@ export const wireRunRequestSchema = z.object({
   comparison_columns: z.array(z.string()).nullable().optional(),
   target_columns: z.array(z.string()).nullable().optional(),
   key_columns: z.array(z.string()).nullable().optional(),
+  grouping_columns: z.array(z.string()).optional(),
   filters: z.array(wireFilterRowSchema).optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
 });
@@ -225,6 +251,7 @@ export const wireDetailPageSchema = z.object({
       violating_value: wireScalarSchema.optional(),
     }),
   ),
+  available_filters: z.record(z.string(), z.array(z.string())).optional(),
 });
 export type WireDetailPage = z.infer<typeof wireDetailPageSchema>;
 
@@ -274,6 +301,8 @@ export const wireRunResultSchema = z.object({
   common_columns: z.array(z.string()),
   target_columns: z.array(z.string()).nullable(),
   filters_applied: z.array(wireFilterRowSchema),
+  grouping_columns: z.array(z.string()).optional(),
+  group_statistics: wireGroupStatisticsBundleSchema.optional(),
 });
 
 export const wireRunDocumentSchema = z.object({

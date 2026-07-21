@@ -30,6 +30,9 @@ class LogicClauseSerializer(serializers.Serializer):  # type: ignore[misc]
         choices=["eq", "neq", "contains", "ncontains", "gt", "lt", "gte", "lte"]
     )
     target_value = serializers.CharField()
+    target_values = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list
+    )
 
 
 class RuleSerializer(serializers.Serializer):  # type: ignore[misc]

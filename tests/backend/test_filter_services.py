@@ -27,17 +27,19 @@ def csv_b(tmp_path: Path) -> Path:
 
 class TestGetColumnValues:
     def test_marks_values_in_one_file(self, csv_a: Path, csv_b: Path) -> None:
+        """Phase 2: values come from comparison file (csv_b) only."""
         result = get_column_values(csv_a, csv_b, "name")
         by_val = {v.value: v for v in result}
-        assert by_val["alice"].in_file_a is True
+        # All values come from csv_b (comparison)
+        assert by_val["alice"].in_file_a is False
         assert by_val["alice"].in_file_b is True
         assert by_val["alice"].display == "alice"
-        assert by_val["bob"].in_file_a is True
-        assert by_val["bob"].in_file_b is False
-        assert by_val["bob"].display == "bob*"
+        # bob is only in csv_a, so it should not appear
+        assert "bob" not in by_val
+        # dave is in csv_b
         assert by_val["dave"].in_file_a is False
         assert by_val["dave"].in_file_b is True
-        assert by_val["dave"].display == "dave*"
+        assert by_val["dave"].display == "dave"
 
 
 class TestPrepareFilters:

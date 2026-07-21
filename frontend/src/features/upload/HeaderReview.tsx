@@ -9,6 +9,8 @@ interface Props {
   onSelectedColumnsChange: (columns: string[]) => void;
   keyColumns?: string[];
   onKeyColumnsChange?: (columns: string[]) => void;
+  groupingColumns?: string[];
+  onGroupingColumnsChange?: (columns: string[]) => void;
 }
 
 /**
@@ -16,7 +18,7 @@ interface Props {
  * therefore eligible for comparison/validation) and which exist in only one
  * file. Users can select which shared columns to include for comparison.
  */
-export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {} }: Props) {
+export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, groupingColumns = [], onGroupingColumnsChange = () => {} }: Props) {
   const hasDifferences = report.file1Only.length > 0 || report.file2Only.length > 0;
 
   const sharedOptions = useMemo(
@@ -116,6 +118,18 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
         selected={keyColumns.filter((column) => selectedColumns.includes(column))}
         onChange={onKeyColumnsChange}
       />
+
+      <div className="card" style={{ marginTop: "var(--space)" }}>
+        <h3 className="card-heading">Grouping Columns</h3>
+        <SearchableMultiSelect
+          label="Select grouping columns"
+          options={sharedOptions}
+          selected={groupingColumns.filter((c) => selectedColumns.includes(c))}
+          onChange={(cols) => onGroupingColumnsChange(cols.filter((c) => selectedColumns.includes(c)))}
+          placeholder="Search columns…"
+          hint="Optional. Pick columns for group-level statistics."
+        />
+      </div>
     </section>
   );
 }

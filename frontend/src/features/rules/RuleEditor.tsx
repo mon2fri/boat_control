@@ -121,16 +121,23 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
       <details className="rule-semantic-help">
         <summary>How rules work — what does this rule check?</summary>
         <p>
-          A rule describes the <strong>required state</strong> for one column
-          (and optionally a set of preconditions). Rows that match the rule are
-          valid; rows that <em>do not</em> match are reported as exceptions.
-          Example: <code>status must equal "active"</code> flags every row whose
-          status is anything other than <code>active</code>.
+          A rule describes the <span className="text-green text-bold">required/expected state</span> for
+          one column (and optionally a set of preconditions).
         </p>
         <p>
-          Conditions narrow the rows the rule applies to (e.g. only check
-          <code> status</code> when <code>region</code> is <code>EMEA</code>);
-          the <em>logic</em> clause is the actual required state.
+          <strong>Rows</strong> that <span className="text-green">match</span> the rule are
+          <span className="text-green"> valid</span>;
+          <strong>Rows</strong> that <span className="text-red">DO NOT match</span> are reported as
+          <span className="text-red"> exceptions</span>.
+        </p>
+        <p>
+          Example: <code className="greybox">status must equal to "active"</code> flags every row whose status is
+          anything other than <code className="greybox">active</code>.
+        </p>
+        <p>
+          <strong>Conditions</strong> narrow the rows the rule applies to (e.g. only check
+          <code className="greybox">status</code> when <code className="greybox">region</code> is <code className="greybox">HBAP</code>);
+          <strong>Logic</strong> clause is the actual required state.
         </p>
       </details>
 
@@ -294,7 +301,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
 
         <div className="filter-row">
           <ColumnField
-            label="Column"
+            label={draft.logic.format === "column" ? "COLUMN in COMPARISON" : "COLUMN in COMPARISON"}
             columns={columns}
             value={draft.logic.column}
             onChange={(column) => patch({ logic: { ...draft.logic, column } })}
@@ -306,23 +313,41 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
           />
           {draft.logic.format === "column" ? (
             <ColumnField
-              label="Compared column"
+              label="BASELINE COLUMN"
               columns={columns}
               value={draft.logic.target}
               onChange={(target) => patch({ logic: { ...draft.logic, target } })}
             />
-          ) : (
+          ) : isNumericOperator(draft.logic.operator) ? (
             <div className="field">
               <label htmlFor="logic-value">Value</label>
               <input
                 id="logic-value"
-                type={isNumericOperator(draft.logic.operator) ? "number" : "text"}
-                step={isNumericOperator(draft.logic.operator) ? "any" : undefined}
+                type="number"
+                step="any"
                 value={draft.logic.target}
-                onChange={(e) => patch({ logic: { ...draft.logic, target: e.target.value } })}
-                placeholder={isNumericOperator(draft.logic.operator) ? "Enter any number" : "Literal value"}
+                onChange={(e) => patch({ logic: { ...draft.logic, target: e.target.value, values: e.target.value ? [e.target.value] : [] } })}
+                placeholder="Enter any number"
               />
             </div>
+          ) : (
+            <SearchableMultiSelect
+              label="Value"
+              options={(columnValues[draft.logic.column] ?? []).map((v) => ({
+                value: v.value,
+                label: v.starred ? `${v.value} *` : v.value,
+                disabled: v.starred,
+              }))}
+              selected={draft.logic.values ?? (draft.logic.target ? [draft.logic.target] : [])}
+              onChange={(values) => {
+                const normalized = [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
+                patch({ logic: { ...draft.logic, values: normalized, target: normalized[0] ?? "" } });
+              }}
+              placeholder={draft.logic.column ? "Search or type values…" : "Pick a column first"}
+              disabled={!draft.logic.column}
+              freeText
+              hint="Multiple values are OR-ed for every operator."
+            />
           )}
         </div>
         <p className="field-hint" data-testid="rule-logic-preview">
@@ -431,10 +456,17 @@ function validateDraft(draft: DraftState, needsJoin: boolean): ValidationResult 
     }
   }
   if (!draft.logic.column.trim()) errors.push("Logic needs a column.");
-  if (!draft.logic.target.trim()) {
-    errors.push(draft.logic.format === "column" ? "Logic needs a compared column." : "Logic needs a value.");
-  } else if (draft.logic.format === "value" && isNumericOperator(draft.logic.operator) && !Number.isFinite(Number(draft.logic.target))) {
-    errors.push("Logic needs a valid number.");
+  const logicValues = draft.logic.values?.filter((v) => v.trim()) ?? (draft.logic.target.trim() ? [draft.logic.target.trim()] : []);
+  if (draft.logic.format === "column") {
+    if (!draft.logic.target.trim()) {
+      errors.push("Logic needs a compared column.");
+    }
+  } else {
+    if (logicValues.length === 0) {
+      errors.push("Logic needs a value.");
+    } else if (isNumericOperator(draft.logic.operator) && !Number.isFinite(Number(logicValues[0]))) {
+      errors.push("Logic needs a valid number.");
+    }
   }
   return { valid: errors.length === 0, errors };
 }
@@ -473,11 +505,15 @@ function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
 function previewLogicDescription(draft: DraftState): string {
   const phrase = OPERATOR_PHRASE[draft.logic.operator] ?? draft.logic.operator.replace(/_/g, " ");
   const col = draft.logic.column.trim() || "<column>";
-  const rhs =
-    draft.logic.format === "column"
-      ? `column ${draft.logic.target.trim() || "<compared column>"}`
-      : `"${draft.logic.target.trim() || "<value>"}"`;
-  return `${col} ${phrase} ${rhs}`;
+  if (draft.logic.format === "column") {
+    const rhs = `column ${draft.logic.target.trim() || "<baseline column>"}`;
+    return `${col} ${phrase} ${rhs}`;
+  }
+  const values = draft.logic.values?.filter((v) => v.trim()) ?? (draft.logic.target.trim() ? [draft.logic.target.trim()] : []);
+  if (values.length === 0) return `${col} ${phrase} "<value>"`;
+  if (values.length === 1) return `${col} ${phrase} "${values[0]}"`;
+  const joined = values.slice(0, -1).map((v) => `"${v}"`).join(" or ") + ` or "${values[values.length - 1]}"`;
+  return `${col} ${phrase} ${joined}`;
 }
 
 const OPERATOR_PHRASE: Record<string, string> = {

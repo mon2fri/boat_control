@@ -44,6 +44,11 @@ def _rules_to_dict(rules_file: RulesFile) -> dict[str, Any]:
                 "column_name": rule.logic.column_name,
                 "operator": rule.logic.operator,
                 "target_value": rule.logic.target_value,
+                **(
+                    {"target_values": list(rule.logic.target_values)}
+                    if rule.logic.target_values
+                    else {}
+                ),
             },
         }
         if rule.condition_relation:

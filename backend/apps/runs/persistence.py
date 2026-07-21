@@ -149,6 +149,8 @@ def save_run(
                 "target_columns": result.target_columns,
                 "key_columns": result.key_columns,
                 "filters_applied": result.filters_applied,
+                "grouping_columns": result.grouping_columns,
+                "group_statistics": result.group_statistics,
             },
         }
 
@@ -235,6 +237,14 @@ def load_run(run_id: str) -> dict[str, Any] | None:
             if file_path.exists():
                 with open(file_path) as f:
                     data: dict[str, Any] = json.load(f)
+                    # Backward compatibility: default missing grouping fields
+                    result = data.get("result", {})
+                    if "grouping_columns" not in result:
+                        result["grouping_columns"] = []
+                    if "group_statistics" not in result:
+                        result["group_statistics"] = None
+                    if "filters_applied" not in result:
+                        result["filters_applied"] = []
                     return data
             return None
     return None

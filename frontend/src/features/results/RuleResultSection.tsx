@@ -1,12 +1,21 @@
-import type { RuleResult } from "../../api/domain";
+import type { GroupStat, RuleResult } from "../../api/domain";
 import { DetailTable } from "./DetailTable";
+import { GroupStatisticsPanel } from "./GroupStatisticsPanel";
 import { sectionId } from "./anchors";
 
 /**
  * One rule's result: heading with its identifier, the rule logic shown under
  * the title, its violation counts, and a virtualized detail table.
  */
-export function RuleResultSection({ result, keyColumnNames = [] }: { result: RuleResult; keyColumnNames?: string[] }) {
+export function RuleResultSection({
+  result,
+  keyColumnNames = [],
+  groupStats,
+}: {
+  result: RuleResult;
+  keyColumnNames?: string[];
+  groupStats?: GroupStat[];
+}) {
   const headingId = `heading-${result.ruleIndex}`;
   return (
     <section id={sectionId(result.ruleIndex)} aria-labelledby={headingId} className="card">
@@ -27,6 +36,9 @@ export function RuleResultSection({ result, keyColumnNames = [] }: { result: Rul
           <span>Attributes with exception</span>
         </div>
       </div>
+      {groupStats && groupStats.length > 0 && (
+        <GroupStatisticsPanel stats={groupStats} />
+      )}
       <DetailTable rows={result.details} caption={`Detail rows for ${result.ruleIndex}`} keyColumnNames={keyColumnNames} emptyMessage="Nil exception detected under current rule." />
     </section>
   );

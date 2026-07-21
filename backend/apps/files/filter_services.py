@@ -49,19 +49,15 @@ def _scan_csv(path: Path) -> pl.LazyFrame:
 
 
 def get_column_values(path_a: Path, path_b: Path, column: str) -> list[ColumnValueInfo]:
-    df_a = _scan_csv(path_a).select(column).collect().drop_nulls()
+    """Read values from the comparison file (path_b) only."""
     df_b = _scan_csv(path_b).select(column).collect().drop_nulls()
 
-    vals_a = set(df_a[column].to_list())
     vals_b = set(df_b[column].to_list())
 
-    all_values = vals_a | vals_b
     result = []
-    for val in sorted(all_values):
-        in_a = val in vals_a
-        in_b = val in vals_b
-        display = val if (in_a and in_b) else f"{val}*"
-        result.append(ColumnValueInfo(value=val, in_file_a=in_a, in_file_b=in_b, display=display))
+    for val in sorted(vals_b):
+        display = str(val)
+        result.append(ColumnValueInfo(value=val, in_file_a=False, in_file_b=True, display=display))
     return result
 
 

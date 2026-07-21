@@ -27,6 +27,7 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
         comparison_columns = request.data.get("comparison_columns")
         target_columns = request.data.get("target_columns")
         key_columns = request.data.get("key_columns")
+        grouping_columns = request.data.get("grouping_columns", [])
         filters = request.data.get("filters", [])
         rule_ids = request.data.get("rule_ids")
 
@@ -65,6 +66,22 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                     status=400,
                 )
 
+        # Validate grouping_columns: each must be a unique member of comparison_columns
+        if grouping_columns:
+            comp_set = set(comparison_columns)
+            dupes = [c for c in grouping_columns if grouping_columns.count(c) > 1]
+            if dupes:
+                return Response(
+                    {"error": f"Duplicate grouping columns: {', '.join(set(dupes))}"},
+                    status=400,
+                )
+            invalid_gc = [c for c in grouping_columns if c not in comp_set]
+            if invalid_gc:
+                return Response(
+                    {"error": f"Invalid grouping columns: {', '.join(invalid_gc)}"},
+                    status=400,
+                )
+
         if not key_columns:
             return Response(
                 {"error": "key_columns is required. Select at least one identifier column."},
@@ -80,6 +97,7 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 key_columns=key_columns,
                 filters=filters,
                 rule_ids=rule_ids,
+                grouping_columns=grouping_columns,
             )
         except Exception as exc:
             logger.warning("execute_comparison failed: %s", exc)

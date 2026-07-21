@@ -146,8 +146,8 @@ export function PreparePage() {
       )}
 
       {prepare.status === "loading" && (
-        <p role="status" aria-live="polite" className="busy-row">
-          <span className="spinner" aria-hidden="true" /> Loading column values…
+        <p role="status" aria-live="polite" className="busy-row alert alert--error">
+          <span className="spinner" aria-hidden="true" /> Loading data, please wait, DO NOT refresh...
         </p>
       )}
       {prepare.status === "error" && (

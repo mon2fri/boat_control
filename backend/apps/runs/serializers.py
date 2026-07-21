@@ -70,3 +70,4 @@ class ExecutionResultSerializer(serializers.Serializer):  # type: ignore[misc]
     common_columns = serializers.ListField(child=serializers.CharField())
     target_columns = serializers.ListField(child=serializers.CharField())
     filters_applied = FilterSerializer(many=True)
+    grouping_columns = serializers.ListField(child=serializers.CharField(), default=list)

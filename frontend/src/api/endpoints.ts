@@ -138,16 +138,27 @@ export function fetchColumnValuesPage(
 export function fetchDetailPage(
   runId: string,
   kind: "changed" | "violation",
-  options: { offset?: number; limit?: number; signal?: AbortSignal } = {},
+  options: {
+    offset?: number;
+    limit?: number;
+    signal?: AbortSignal;
+    filters?: Record<string, string[]>;
+  } = {},
 ): Promise<{
   rows: DetailRow[];
   offset: number;
   total: number;
   hasMore: boolean;
+  availableFilters: Record<string, string[]>;
 }> {
   const params = new URLSearchParams({ section: kind === "changed" ? "changes" : "violations" });
   if (options.offset !== undefined) params.set("offset", String(options.offset));
   if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.filters) {
+    for (const [key, values] of Object.entries(options.filters)) {
+      if (values.length > 0) params.set(key, values.join(","));
+    }
+  }
   return apiRequest(`/runs/${encodeURIComponent(runId)}/details/?${params.toString()}`, {
     schema: wireDetailPageSchema,
     ...(options.signal ? { signal: options.signal } : {}),
@@ -155,6 +166,7 @@ export function fetchDetailPage(
     offset: r.offset,
     total: r.total,
     hasMore: r.has_more,
+    availableFilters: r.available_filters ?? {},
     rows: r.details.map((row) => ({
       rowKey: row.row_key,
       keyColumns: row.key_columns
@@ -295,6 +307,7 @@ export function executeRun(
     filters: FilterRow[];
     targetColumns: string[];
     keyColumns: string[];
+    groupingColumns: string[];
     ruleIndexes: string[];
   },
   signal?: AbortSignal,

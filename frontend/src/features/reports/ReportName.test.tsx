@@ -49,6 +49,7 @@ const renamed: RunResult = {
   },
   ruleResults: [],
   changeDetails: [],
+  filtersApplied: [],
 };
 
 afterEach(() => vi.restoreAllMocks());

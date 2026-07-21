@@ -47,6 +47,7 @@ class RowComparison:
     key_columns: dict[str, Any]
     attribute_changes: list[AttributeChange]
     change_count: int
+    grouping_values: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,7 @@ class ValidationViolation:
     violating_value: Any
     rule_logic: str
     comparison_value: Any = None
+    grouping_values: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -92,11 +94,18 @@ class ExecutionResult:
     target_columns: list[str]
     key_columns: list[str]
     filters_applied: list[dict[str, str]]
+    grouping_columns: list[str] = field(default_factory=list)
+    group_statistics: dict[str, Any] | None = None
 
 
 def apply_filters(
     df_a: pl.LazyFrame, df_b: pl.LazyFrame, filters: list[dict[str, str]]
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
+    """Apply filters to the comparison file (df_b) only.
+
+    After filtering df_b, df_a (baseline) is left unfiltered; the caller
+    should join baseline rows using the filtered comparison keys.
+    """
     for f in filters:
         col = f["column"]
         op = f["operator"]
@@ -108,25 +117,19 @@ def apply_filters(
 
         if op == "eq":
             # IN semantics: value matches any in the list (OR within row)
-            df_a = df_a.filter(pl.col(col).is_in(values))
             df_b = df_b.filter(pl.col(col).is_in(values))
         elif op == "neq":
             # NOT IN: value must not be any in the list (AND across values)
-            df_a = df_a.filter(~pl.col(col).is_in(values))
             df_b = df_b.filter(~pl.col(col).is_in(values))
         elif op == "contains":
             # OR across values: match if any value is contained
-            cond_a = pl.lit(False)
             cond_b = pl.lit(False)
             for val in values:
-                cond_a = cond_a | pl.col(col).str.contains(val)
                 cond_b = cond_b | pl.col(col).str.contains(val)
-            df_a = df_a.filter(cond_a)
             df_b = df_b.filter(cond_b)
         elif op == "ncontains":
             # AND across values: must not contain any of the values
             for val in values:
-                df_a = df_a.filter(~pl.col(col).str.contains(val))
                 df_b = df_b.filter(~pl.col(col).str.contains(val))
 
     return df_a, df_b
@@ -137,6 +140,7 @@ def compare_rows(
     df_b: pl.DataFrame,
     target_columns: list[str],
     key_columns: list[str],
+    grouping_columns: list[str] | None = None,
 ) -> ComparisonResult:
     total_a = df_a.height
     total_b = df_b.height
@@ -153,6 +157,8 @@ def compare_rows(
             total_attribute_changes=0,
             row_details=[],
         )
+
+    grp_cols = grouping_columns or []
 
     merged = df_a.join(
         df_b,
@@ -199,12 +205,15 @@ def compare_rows(
             rows_with_changes += 1
             total_changes += len(changes)
             key_vals = {k: row[k] for k in key_columns if k in row}
+            grp_vals = {g: row.get(g) for g in grp_cols if g in row or f"{g}_b" in row}
+            grp_vals = {g: row.get(f"{g}_b", row.get(g)) for g in grp_cols}
             row_details.append(
                 RowComparison(
                     row_index=int(row["_idx"]),
                     key_columns=key_vals,
                     attribute_changes=changes,
                     change_count=len(changes),
+                    grouping_values=grp_vals,
                 )
             )
 
@@ -224,7 +233,14 @@ def validate_rows(
     target_columns: list[str],
     key_columns: list[str] | None = None,
     comparison_df: pl.DataFrame | None = None,
+    grouping_columns: list[str] | None = None,
 ) -> ValidationResult:
+    """Validate rows from the comparison file against rules.
+
+    `df` is the comparison DataFrame (source of truth for rule evaluation).
+    `comparison_df` is the baseline DataFrame, used for column-vs-column logic.
+    """
+    grp_cols = grouping_columns or []
     violations_by_rule: dict[str, list[ValidationViolation]] = {}
     violation_count_by_rule: dict[str, int] = {}
     violating_rows_by_rule: dict[str, int] = {}
@@ -234,9 +250,9 @@ def validate_rows(
     all_violating_rows: set[int] = set()
     all_violating_attrs: set[tuple[int, str]] = set()
 
-    comparison_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
+    baseline_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
     if comparison_df is not None and key_columns:
-        comparison_by_key = {
+        baseline_by_key = {
             tuple(row.get(column) for column in key_columns): row
             for row in comparison_df.iter_rows(named=True)
         }
@@ -252,21 +268,22 @@ def validate_rows(
 
         for idx in range(df.height):
             row = df.row(idx, named=True)
-            is_violation, viol_col, viol_val = _check_rule(row, rule, target_columns)
+            baseline_row = (
+                baseline_by_key.get(tuple(row.get(column) for column in key_columns))
+                if key_columns
+                else None
+            )
+            is_violation, viol_col, viol_val = _check_rule(row, rule, target_columns, baseline_row)
             if is_violation:
                 if key_columns:
                     key_cols = {col: row[col] for col in key_columns if col in row}
                 else:
                     key_cols = {col: row[col] for col in df.columns[:3]}
+                grp_vals = {g: row.get(g) for g in grp_cols}
                 rule_logic_str = _describe_rule_logic(rule)
-                comparison_row = (
-                    comparison_by_key.get(tuple(row.get(column) for column in key_columns))
-                    if key_columns
-                    else None
-                )
                 comparison_value = (
-                    comparison_row.get(viol_col)
-                    if comparison_row is not None and viol_col in comparison_row
+                    baseline_row.get(viol_col)
+                    if baseline_row is not None and viol_col in baseline_row
                     else None
                 )
                 violations.append(
@@ -282,6 +299,7 @@ def validate_rows(
                         violating_value=viol_val,
                         rule_logic=rule_logic_str,
                         comparison_value=comparison_value,
+                        grouping_values=grp_vals,
                     )
                 )
                 rule_rows.add(idx)
@@ -323,12 +341,18 @@ def _describe_rule_logic(rule: Rule) -> str:
     if logic.format == "column_vs_column":
         desc += f"column '{logic.target_value}'"
     else:
-        desc += f"'{logic.target_value}'"
+        values = logic.target_values if logic.target_values else (logic.target_value,)
+        if len(values) == 1:
+            desc += f"'{values[0]}'"
+        else:
+            joined = "' or '".join(values)
+            desc += f"'{joined}'"
     return desc
 
 
 def _check_rule(
-    row: dict[str, Any], rule: Rule, target_columns: list[str]
+    row: dict[str, Any], rule: Rule, target_columns: list[str],
+    baseline_row: dict[str, Any] | None = None,
 ) -> tuple[bool, str, Any]:
     """Check whether a row violates a required-state rule.
 
@@ -404,9 +428,11 @@ def _check_rule(
     val = str(raw)
 
     if logic.format == "column_vs_column":
-        if logic.target_value not in row:
+        # Phase 2: baseline column value comes from baseline_row (file A)
+        source = baseline_row if baseline_row is not None else row
+        if logic.target_value not in source:
             return (False, "", None)
-        raw_target = row[logic.target_value]
+        raw_target = source[logic.target_value]
         if raw_target is None:
             return (False, "", None)
         target = str(raw_target)
@@ -416,38 +442,192 @@ def _check_rule(
         violating_col = logic.column_name
 
     matched = False
-    if logic.operator == "eq":
-        matched = val == target
-    elif logic.operator == "neq":
-        matched = val != target
-    elif logic.operator == "contains":
-        matched = target in val
-    elif logic.operator == "ncontains":
-        matched = target not in val
-    elif logic.operator == "gt":
-        try:
-            matched = float(val) > float(target)
-        except ValueError:
-            matched = False
-    elif logic.operator == "lt":
-        try:
-            matched = float(val) < float(target)
-        except ValueError:
-            matched = False
-    elif logic.operator == "gte":
-        try:
-            matched = float(val) >= float(target)
-        except ValueError:
-            matched = False
-    elif logic.operator == "lte":
-        try:
-            matched = float(val) <= float(target)
-        except ValueError:
-            matched = False
+    if logic.format == "column_vs_column":
+        # Column vs column: single target comparison
+        if logic.operator == "eq":
+            matched = val == target
+        elif logic.operator == "neq":
+            matched = val != target
+        elif logic.operator == "contains":
+            matched = target in val
+        elif logic.operator == "ncontains":
+            matched = target not in val
+        elif logic.operator == "gt":
+            try:
+                matched = float(val) > float(target)
+            except ValueError:
+                matched = False
+        elif logic.operator == "lt":
+            try:
+                matched = float(val) < float(target)
+            except ValueError:
+                matched = False
+        elif logic.operator == "gte":
+            try:
+                matched = float(val) >= float(target)
+            except ValueError:
+                matched = False
+        elif logic.operator == "lte":
+            try:
+                matched = float(val) <= float(target)
+            except ValueError:
+                matched = False
+    else:
+        # Value vs column: support multiple target_values with OR semantics
+        target_values = logic.target_values if logic.target_values else (target,)
+        if logic.operator == "eq":
+            matched = val in target_values
+        elif logic.operator == "neq":
+            matched = val not in target_values
+        elif logic.operator == "contains":
+            matched = any(tv in val for tv in target_values)
+        elif logic.operator == "ncontains":
+            matched = all(tv not in val for tv in target_values)
+        elif logic.operator == "gt":
+            try:
+                matched = any(float(val) > float(tv) for tv in target_values)
+            except ValueError:
+                matched = False
+        elif logic.operator == "lt":
+            try:
+                matched = any(float(val) < float(tv) for tv in target_values)
+            except ValueError:
+                matched = False
+        elif logic.operator == "gte":
+            try:
+                matched = any(float(val) >= float(tv) for tv in target_values)
+            except ValueError:
+                matched = False
+        elif logic.operator == "lte":
+            try:
+                matched = any(float(val) <= float(tv) for tv in target_values)
+            except ValueError:
+                matched = False
 
     if not matched:
         return (True, violating_col, row.get(violating_col))
     return (False, "", None)
+
+
+def _sort_group_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Sort group stat rows: Total first, then alphabetical, then Empty, then Null."""
+
+    def _sort_key(row: dict[str, Any]) -> tuple[int, str]:
+        val = row["value"]
+        if val == "Total":
+            return (0, "")
+        if val is None:
+            return (3, "")
+        if val == "":
+            return (2, "")
+        return (1, str(val))
+
+    return sorted(rows, key=_sort_key)
+
+
+def _build_group_stats(
+    column: str,
+    items: list[tuple[dict[str, Any], dict[str, Any], int]],
+) -> dict[str, Any]:
+    """Build GroupStatistics for one grouping column.
+
+    Each item is (key_columns_dict, grouping_values_dict, occurrence_count).
+    Returns the stats with rows sorted correctly and a Total row at the top.
+    """
+    groups: dict[Any, list[tuple[dict[str, Any], dict[str, Any], int]]] = {}
+    for key_vals, grp_vals, weight in items:
+        gval = grp_vals.get(column)
+        groups.setdefault(gval, []).append((key_vals, grp_vals, weight))
+
+    rows: list[dict[str, Any]] = []
+    all_keys: set[tuple[Any, ...]] = set()
+    total_attr_count = 0
+
+    for gval, group_items in groups.items():
+        unique_keys: set[tuple[Any, ...]] = set()
+        attr_count = 0
+        for key_vals, _, weight in group_items:
+            unique_keys.add(tuple(sorted(key_vals.items())))
+            attr_count += weight
+        all_keys.update(unique_keys)
+        total_attr_count += attr_count
+        display_val = "Null" if gval is None else ("Empty" if gval == "" else gval)
+        rows.append({
+            "value": display_val,
+            "unique_count": len(unique_keys),
+            "attribute_count": attr_count,
+        })
+
+    total_row = {
+        "value": "Total",
+        "unique_count": len(all_keys),
+        "attribute_count": total_attr_count,
+    }
+    rows = _sort_group_rows(rows)
+    return {
+        "column": column,
+        "unique_count": len(all_keys),
+        "attribute_count": total_attr_count,
+        "rows": [total_row] + rows,
+    }
+
+
+def compute_group_statistics(
+    comparison_rows: list[RowComparison],
+    violations: dict[str, list[ValidationViolation]],
+    grouping_columns: list[str],
+) -> dict[str, Any]:
+    """Compute group statistics for all grouping columns across all sections."""
+    if not grouping_columns:
+        return {"overall": [], "attribute_changes": [], "validation_rules": {}}
+
+    # Collect items per section
+    change_items: list[tuple[dict[str, Any], dict[str, Any], int]] = [
+        (rc.key_columns, rc.grouping_values, rc.change_count)
+        for rc in comparison_rows
+    ]
+    violation_items_by_rule: dict[str, list[tuple[dict[str, Any], dict[str, Any], int]]] = {}
+    for rule_id, viols in violations.items():
+        violation_items_by_rule[rule_id] = [
+            (v.key_columns, v.grouping_values, 1) for v in viols
+        ]
+
+    overall_items: list[tuple[dict[str, Any], dict[str, Any], int]] = list(change_items)
+    for rule_viols in violation_items_by_rule.values():
+        overall_items.extend(rule_viols)
+
+    # De-duplicate overall by key_columns for Unique Count,
+    # but Attribute Count sums ALL occurrence weights.
+    seen_keys: set[tuple[Any, ...]] = set()
+    deduped_overall: list[tuple[dict[str, Any], dict[str, Any], int]] = []
+    for key_vals, grp_vals, weight in overall_items:
+        k = tuple(sorted(key_vals.items()))
+        if k not in seen_keys:
+            seen_keys.add(k)
+            deduped_overall.append((key_vals, grp_vals, weight))
+        else:
+            # Keep a second entry with zero unique_count weight to preserve
+            # attribute_count while not double-counting unique keys.
+            deduped_overall.append((key_vals, grp_vals, weight))
+
+    result: dict[str, Any] = {
+        "overall": [],
+        "attribute_changes": [],
+        "validation_rules": {},
+    }
+
+    for col in grouping_columns:
+        result["overall"].append(_build_group_stats(col, deduped_overall))
+        result["attribute_changes"].append(_build_group_stats(col, change_items))
+
+    for rule_id, rule_items in violation_items_by_rule.items():
+        result["validation_rules"].setdefault(rule_id, [])
+        for col in grouping_columns:
+            result["validation_rules"][rule_id].append(
+                _build_group_stats(col, rule_items)
+            )
+
+    return result
 
 
 def execute_comparison(
@@ -458,6 +638,7 @@ def execute_comparison(
     filters: list[dict[str, str]] | None = None,
     rule_ids: list[str] | None = None,
     key_columns: list[str] | None = None,
+    grouping_columns: list[str] | None = None,
 ) -> ExecutionResult:
     if filters is None:
         filters = []
@@ -535,10 +716,19 @@ def execute_comparison(
     df_a_lazy = pl.scan_csv(path_a, infer_schema=False).select(pl.col(needed_list))
     df_b_lazy = pl.scan_csv(path_b, infer_schema=False).select(pl.col(needed_list))
 
-    df_a_lazy, df_b_lazy = apply_filters(df_a_lazy, df_b_lazy, filters)
+    # Phase 2: filter only the comparison file (df_b)
+    _, df_b_lazy = apply_filters(df_a_lazy, df_b_lazy, filters)
 
-    df_a_final = df_a_lazy.collect()
     df_b_final = df_b_lazy.collect()
+
+    # Join baseline using the filtered comparison keys
+    if effective_keys:
+        filtered_keys_df = df_b_final.select(effective_keys)
+        df_a_final = df_a_lazy.join(
+            filtered_keys_df.lazy(), on=effective_keys, how="semi", coalesce=True,
+        ).collect()
+    else:
+        df_a_final = df_a_lazy.collect()
 
     for key_col in effective_keys:
         null_count_a = df_a_final.filter(pl.col(key_col).is_null()).height
@@ -561,15 +751,29 @@ def execute_comparison(
             f"Key columns contain {total_dupes} duplicate key combinations across both files"
         )
 
-    comparison = compare_rows(df_a_final, df_b_final, effective_targets, effective_keys)
+    comparison = compare_rows(
+        df_a_final, df_b_final, effective_targets, effective_keys,
+        grouping_columns=grouping_columns or [],
+    )
 
+    # Phase 2: rule evaluation against comparison (df_b) rows
     validation = validate_rows(
-        df_a_final,
+        df_b_final,
         rules,
         effective_targets,
         effective_keys,
-        comparison_df=df_b_final,
+        comparison_df=df_a_final,
+        grouping_columns=grouping_columns or [],
     )
+
+    grp_stats = None
+    effective_grp = grouping_columns or []
+    if effective_grp:
+        grp_stats = compute_group_statistics(
+            comparison.row_details,
+            validation.violations_by_rule,
+            effective_grp,
+        )
 
     return ExecutionResult(
         comparison=comparison,
@@ -578,4 +782,6 @@ def execute_comparison(
         target_columns=effective_targets,
         key_columns=effective_keys,
         filters_applied=filters,
+        grouping_columns=effective_grp,
+        group_statistics=grp_stats,
     )

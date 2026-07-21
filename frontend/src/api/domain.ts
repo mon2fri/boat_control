@@ -59,6 +59,8 @@ export interface LogicClause {
   column: string;
   operator: LogicOperator;
   target: string;
+  /** Multiple values for Value-against-column; OR-ed across all operators. */
+  values?: string[];
 }
 
 export interface Rule {
@@ -105,6 +107,8 @@ export interface RunRequest {
    * the backend; the UI guides the user to choose one or more explicitly.
    */
   keyColumns: string[];
+  /** Optional subset of comparison columns used for group-level statistics. */
+  groupingColumns: string[];
   ruleIndexes: string[];
   confirmFullSet: boolean;
 }
@@ -147,6 +151,10 @@ export interface RunResult {
   overall: OverallSummary;
   ruleResults: RuleResult[];
   changeDetails: DetailRow[];
+  /** Group-level statistics per grouping column, per section. */
+  groupStatistics?: GroupStatisticsBundle;
+  /** Persisted filtering rows applied to this run. */
+  filtersApplied?: FilterRow[];
 }
 
 export interface RunSummary {
@@ -208,4 +216,23 @@ export interface SourceFile {
   id: string;
   name: string;
   size: number;
+}
+
+export interface GroupStatRow {
+  value: string | number | boolean | null;
+  uniqueCount: number;
+  attributeCount: number;
+}
+
+export interface GroupStat {
+  column: string;
+  uniqueCount: number;
+  attributeCount: number;
+  rows: GroupStatRow[];
+}
+
+export interface GroupStatisticsBundle {
+  overall: GroupStat[];
+  attributeChanges: GroupStat[];
+  validationRules: Record<string, GroupStat[]>;
 }
