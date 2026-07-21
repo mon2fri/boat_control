@@ -102,8 +102,13 @@ def main() -> int:
     ]
     info(f"Starting Boat Control at http://{host}:{port}/")
     info("Using prebuilt frontend files; npm and Vite are not required.")
-    os.execv(str(python), command)
-    return 0  # Unreachable, retained for type checkers.
+    # ``os.execv`` does not preserve the argument boundaries reliably on
+    # Windows when the interpreter or project path contains spaces.  Keeping
+    # the server as a child process lets ``subprocess`` construct the Windows
+    # command line correctly, while this launcher remains open until the
+    # server stops.
+    completed = subprocess.run(command, cwd=PROJECT_DIR)
+    return completed.returncode
 
 
 if __name__ == "__main__":
