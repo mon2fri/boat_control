@@ -77,7 +77,7 @@ def run(command: Sequence[str]) -> None:
 def main() -> int:
     require_release_files()
     python = deployed_python()
-    host = os.environ.get("BOAT_CONTROL_HOST", "0.0.0.0")
+    host = os.environ.get("BOAT_CONTROL_HOST", "127.0.0.1")
     port = os.environ.get("BOAT_CONTROL_PORT", "8000")
 
     if os.environ.get("BOAT_CONTROL_SKIP_MIGRATIONS") != "1":
