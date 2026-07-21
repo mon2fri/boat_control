@@ -343,7 +343,7 @@ def validate_rule(rule_data: dict[str, Any]) -> RuleValidationResult:
             try:
                 for value in values:
                     float(value)
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 errors.append(
                     f"Condition {index} requires numeric values for {condition.get('operator')}."
                 )

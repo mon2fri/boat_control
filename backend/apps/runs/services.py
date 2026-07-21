@@ -361,12 +361,12 @@ def _check_rule(
                 elif cond.operator == "gt":
                     try:
                         matches.append(float(val) > float(expected))
-                    except TypeError, ValueError:
+                    except (TypeError, ValueError):
                         matches.append(False)
                 elif cond.operator == "lt":
                     try:
                         matches.append(float(val) < float(expected))
-                    except TypeError, ValueError:
+                    except (TypeError, ValueError):
                         matches.append(False)
                 else:
                     matches.append(False)
