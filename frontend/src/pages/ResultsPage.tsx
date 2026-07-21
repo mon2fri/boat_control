@@ -11,6 +11,7 @@ import { ExportControls } from "../features/reports/ExportControls";
 import { PaginatedDetailSection } from "../features/results/PaginatedDetailSection";
 import { GroupStatisticsPanel } from "../features/results/GroupStatisticsPanel";
 import { clearUploadSession, loadRun } from "../api/endpoints";
+import { formatDateTime } from "../utils/format";
 import type { FilterRow, RunRequest } from "../api/domain";
 import { formatFilterRow } from "../features/filters/formatFilterRow";
 import type { WorkflowState } from "../state/WorkflowContext";
@@ -146,7 +147,7 @@ export function ResultsPage() {
                     onRenamed={(result) => dispatch({ type: "setResult", result })}
                   />
                   <span className="field-hint results-run-time">
-                    Ran on {new Date(state.result.createdAt).toLocaleString()}
+                    Ran on {formatDateTime(state.result.createdAt)}
                   </span>
                 </div>
                 <ExportControls runId={state.result.id} reportName={state.result.reportName} />

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { deleteRun, loadRunHistory } from "../api/endpoints";
+import { formatDateTime } from "../utils/format";
 
 /**
  * History of the most recent runs (the backend retains up to ten). Each row
@@ -65,7 +66,7 @@ export function HistoryPage() {
                 <td>
                   {run.file1Name} vs {run.file2Name}
                 </td>
-                <td>{run.createdAt}</td>
+                <td>{formatDateTime(run.createdAt)}</td>
                 <td>
                   <div className="history-actions">
                     <Link

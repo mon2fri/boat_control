@@ -8,6 +8,7 @@ from apps.runs.services import (
     ValidationResult,
 )
 from django.conf import settings
+from django.test.utils import override_settings
 from rest_framework.test import APIClient  # type: ignore[import-untyped]
 
 
@@ -105,7 +106,7 @@ class TestRulesWorkflow:
 
 
 class TestRunsWorkflow:
-    def test_list_and_load(self, api_client: APIClient) -> None:
+    def test_list_and_load(self, api_client: APIClient, tmp_path: Path) -> None:
         comparison = ComparisonResult(
             total_rows_a=10,
             total_rows_b=10,
@@ -131,27 +132,28 @@ class TestRunsWorkflow:
             key_columns=["id"],
             filters_applied=[],
         )
-        meta = save_run(result, "test_a.csv", "test_b.csv")
+        with override_settings(RESULTS_DIR=tmp_path / "results"):
+            meta = save_run(result, "test_a.csv", "test_b.csv")
 
-        response = api_client.get("/api/runs/")
-        assert response.status_code == 200
-        runs = response.json()
-        assert any(r["run_id"] == meta.run_id for r in runs)
+            response = api_client.get("/api/runs/")
+            assert response.status_code == 200
+            runs = response.json()
+            assert any(r["run_id"] == meta.run_id for r in runs)
 
-        response = api_client.get(f"/api/runs/{meta.run_id}/")
-        assert response.status_code == 200
-        assert response.json()["run_id"] == meta.run_id
+            response = api_client.get(f"/api/runs/{meta.run_id}/")
+            assert response.status_code == 200
+            assert response.json()["run_id"] == meta.run_id
 
-        response = api_client.put(
-            f"/api/runs/{meta.run_id}/rename/",
-            {"report_name": "New Name"},
-            format="json",
-        )
-        assert response.status_code == 200
+            response = api_client.put(
+                f"/api/runs/{meta.run_id}/rename/",
+                {"report_name": "New Name"},
+                format="json",
+            )
+            assert response.status_code == 200
 
 
 class TestExportWorkflow:
-    def test_export_by_run_id(self, api_client: APIClient) -> None:
+    def test_export_by_run_id(self, api_client: APIClient, tmp_path: Path) -> None:
         comparison = ComparisonResult(
             total_rows_a=5,
             total_rows_b=5,
@@ -177,20 +179,21 @@ class TestExportWorkflow:
             key_columns=["id"],
             filters_applied=[],
         )
-        meta = save_run(result, "a.csv", "b.csv")
+        with override_settings(RESULTS_DIR=tmp_path / "results"):
+            meta = save_run(result, "a.csv", "b.csv")
 
-        response = api_client.post(
-            "/api/reports/export/",
-            {"run_id": meta.run_id, "format": "html"},
-            format="json",
-        )
-        assert response.status_code == 200
-        assert "text/html" in response["Content-Type"]
+            response = api_client.post(
+                "/api/reports/export/",
+                {"run_id": meta.run_id, "format": "html"},
+                format="json",
+            )
+            assert response.status_code == 200
+            assert "text/html" in response["Content-Type"]
 
-        response = api_client.post(
-            "/api/reports/export/",
-            {"run_id": meta.run_id, "format": "csv"},
-            format="json",
-        )
-        assert response.status_code == 200
-        assert "text/csv" in response["Content-Type"]
+            response = api_client.post(
+                "/api/reports/export/",
+                {"run_id": meta.run_id, "format": "csv"},
+                format="json",
+            )
+            assert response.status_code == 200
+            assert "text/csv" in response["Content-Type"]
