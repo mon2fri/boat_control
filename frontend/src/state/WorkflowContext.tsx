@@ -49,6 +49,7 @@ type Action =
   | { type: "setConfirmFullSet"; confirmed: boolean }
   | { type: "setServerRequiresConfirmation"; requires: boolean }
   | { type: "setResult"; result: RunResult }
+  | { type: "clearResult" }
   | { type: "sessionExpired" }
   | { type: "reset" };
 
@@ -96,6 +97,10 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       return { ...state, serverRequiresConfirmation: action.requires };
     case "setResult":
       return { ...state, result: action.result };
+    case "clearResult":
+      // Drop the most recent run so the user can re-tune filters / rules
+      // and re-run, without losing the rest of the workflow state.
+      return { ...state, result: null, serverRequiresConfirmation: false };
     case "sessionExpired":
       // Keep the flag after clearing sensitive workflow state so UploadPage
       // can explain why the user was returned there.
@@ -112,6 +117,8 @@ interface WorkflowContextValue {
   dispatch: React.Dispatch<Action>;
   /** Convenience to clear the workflow (e.g. on session expiry). */
   reset: () => void;
+  /** Drop the most recent run so the user can re-tune and re-run. */
+  clearResult: () => void;
   /** Mark the session as expired; UI should route to upload. */
   expireSession: () => void;
 }
@@ -121,8 +128,12 @@ const WorkflowContext = createContext<WorkflowContextValue | null>(null);
 export function WorkflowProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const reset = useCallback(() => dispatch({ type: "reset" }), []);
+  const clearResult = useCallback(() => dispatch({ type: "clearResult" }), []);
   const expireSession = useCallback(() => dispatch({ type: "sessionExpired" }), []);
-  const value = useMemo(() => ({ state, dispatch, reset, expireSession }), [state, reset, expireSession]);
+  const value = useMemo(
+    () => ({ state, dispatch, reset, clearResult, expireSession }),
+    [state, reset, clearResult, expireSession],
+  );
   return <WorkflowContext.Provider value={value}>{children}</WorkflowContext.Provider>;
 }
 

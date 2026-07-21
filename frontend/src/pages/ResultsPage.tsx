@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { RequireSession } from "../components/RequireSession";
@@ -9,7 +9,7 @@ import { TableOfContents } from "../features/results/TableOfContents";
 import { ReportName } from "../features/reports/ReportName";
 import { ExportControls } from "../features/reports/ExportControls";
 import { PaginatedDetailSection } from "../features/results/PaginatedDetailSection";
-import { loadRun } from "../api/endpoints";
+import { clearUploadSession, loadRun } from "../api/endpoints";
 import type { FilterRow, RunRequest } from "../api/domain";
 import type { WorkflowState } from "../state/WorkflowContext";
 
@@ -34,8 +34,21 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
 export function ResultsPage() {
   const navigate = useNavigate();
   const { runId } = useParams<{ runId?: string }>();
-  const { state, dispatch } = useWorkflow();
+  const { state, dispatch, reset, clearResult } = useWorkflow();
   const execution = useRunExecution((result) => dispatch({ type: "setResult", result }));
+
+  const handleRunAnother = useCallback(() => {
+    if (state.header) {
+      void clearUploadSession(state.header.sessionId).catch(() => undefined);
+    }
+    reset();
+    void navigate("/");
+  }, [state.header, reset, navigate]);
+
+  const handleEditFiltersOrRules = useCallback(() => {
+    clearResult();
+    void navigate("/prepare");
+  }, [clearResult, navigate]);
 
   // Deep-link refresh: when the URL is /results/<runId> and the in-memory
   // workflow state does not yet hold that result, fetch the persisted run
@@ -161,8 +174,11 @@ export function ResultsPage() {
 
               <div className="card">
                 <div className="config-inline-row">
-                  <button type="button" className="btn btn--primary" onClick={() => void navigate("/prepare")}>
+                  <button type="button" className="btn btn--primary" onClick={handleRunAnother}>
                     Run another report
+                  </button>
+                  <button type="button" className="btn" onClick={handleEditFiltersOrRules}>
+                    Edit filters or rules
                   </button>
                   <button type="button" className="btn" onClick={() => void navigate("/history")}>
                     View run history
