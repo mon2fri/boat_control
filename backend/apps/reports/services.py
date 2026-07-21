@@ -211,8 +211,8 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
                 sections.append(
                     f"<td>{_escape_html(violation.get('violating_column', rule_id))}</td>"
                 )
-                sections.append(f"<td>{_escape_html(violation.get('violating_value', ''))}</td>")
                 sections.append(f"<td>{_escape_html(violation.get('comparison_value', ''))}</td>")
+                sections.append(f"<td>{_escape_html(violation.get('violating_value', ''))}</td>")
                 sections.append("<td>Rule requirement not met</td>")
                 sections.append("</tr>")
             sections.append("</table>")
