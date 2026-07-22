@@ -8,6 +8,8 @@ const wireUpload = {
   session_id: "s1",
   file_a_name: "baseline.csv",
   file_b_name: "candidate.csv",
+  file_a_deduplicated: false,
+  file_b_deduplicated: false,
   inspection: {
     columns_a: ["id", "region", "status", "legacy"],
     columns_b: ["id", "region", "status"],

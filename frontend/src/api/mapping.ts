@@ -103,12 +103,27 @@ export function mapWireLogicOperator(value: string): LogicOperator {
 // --- Inspection & upload -------------------------------------------------
 
 export function mapUploadToHeader(
-  response: { session_id: string; file_a_name: string; file_b_name: string; inspection: { columns_a: string[]; columns_b: string[]; common_columns: string[]; only_in_a: string[]; only_in_b: string[] } },
+  response: {
+    session_id: string;
+    file_a_name: string;
+    file_b_name: string;
+    file_a_deduplicated: boolean;
+    file_b_deduplicated: boolean;
+    inspection: {
+      columns_a: string[];
+      columns_b: string[];
+      common_columns: string[];
+      only_in_a: string[];
+      only_in_b: string[];
+    };
+  },
 ): HeaderReport {
   return {
     sessionId: response.session_id,
     file1Name: response.file_a_name,
     file2Name: response.file_b_name,
+    file1Deduplicated: response.file_a_deduplicated,
+    file2Deduplicated: response.file_b_deduplicated,
     common: response.inspection.common_columns,
     file1Only: response.inspection.only_in_a,
     file2Only: response.inspection.only_in_b,

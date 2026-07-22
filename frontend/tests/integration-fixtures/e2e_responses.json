@@ -3,6 +3,8 @@
     "session_id": "010599d50359",
     "file_a_name": "a.csv",
     "file_b_name": "b.csv",
+    "file_a_deduplicated": false,
+    "file_b_deduplicated": false,
     "inspection": {
       "columns_a": [
         "id",

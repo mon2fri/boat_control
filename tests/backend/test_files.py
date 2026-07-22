@@ -5,6 +5,7 @@ from apps.files.services import (
     HeaderInspectionResult,
     inspect_headers,
     read_csv_headers,
+    reconcile_uploads,
     safe_upload_path,
     store_uploaded_file,
 )
@@ -46,12 +47,78 @@ class TestSafeUploadPath:
 def test_identical_uploads_share_one_content_addressed_file(tmp_path: Path) -> None:
     content = b"id,name\n1,alpha\n"
     with override_settings(UPLOADS_DIR=tmp_path):
-        first = store_uploaded_file(SimpleUploadedFile("first.csv", content))
-        second = store_uploaded_file(SimpleUploadedFile("renamed.csv", content))
+        first_path, first_dedup = store_uploaded_file(SimpleUploadedFile("first.csv", content))
+        second_path, second_dedup = store_uploaded_file(SimpleUploadedFile("renamed.csv", content))
 
-    assert first == second
-    assert first.name.endswith(".csv")
-    assert [path for path in tmp_path.iterdir() if path.suffix == ".csv"] == [first]
+    assert first_path == second_path
+    assert first_path.name.endswith(".csv")
+    assert first_dedup is False
+    assert second_dedup is True
+    assert [path for path in tmp_path.iterdir() if path.suffix == ".csv"] == [first_path]
+
+
+def test_reconcile_uploads_removes_orphans(tmp_path: Path) -> None:
+    """Startup sweep removes upload files that no active session and no
+    saved run reference, while leaving referenced files alone."""
+    import json
+
+    from apps.runs import persistence
+
+    with override_settings(UPLOADS_DIR=tmp_path):
+        # Create an unreferenced (orphan) upload.
+        orphan_path, _ = store_uploaded_file(
+            SimpleUploadedFile("orphan.csv", b"id,name\n1,alpha\n")
+        )
+        # Create an upload that's referenced by a saved run. Use distinct
+        # bytes so it lands as a separate file on disk.
+        referenced_path, _ = store_uploaded_file(
+            SimpleUploadedFile("kept.csv", b"id,name\n2,beta\n")
+        )
+
+        # Build a self-contained results dir on disk so the persistence layer
+        # picks up an index.json + run JSON pointing at referenced_path.
+        results_dir = tmp_path / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+        run_path = results_dir / "r1_kept.json"
+        run_path.write_text(
+            json.dumps(
+                {
+                    "run_id": "r1",
+                    "report_name": "kept",
+                    "file_a_name": "a.csv",
+                    "file_b_name": "b.csv",
+                    "upload_refs": [referenced_path.name],
+                }
+            )
+        )
+        (results_dir / "index.json").write_text(
+            json.dumps(
+                {
+                    "runs": [
+                        {
+                            "run_id": "r1",
+                            "report_name": "kept",
+                            "file_a_name": "a.csv",
+                            "file_b_name": "b.csv",
+                            "created_at": "2026-01-01T00:00:00+00:00",
+                            "file_path": str(run_path),
+                        }
+                    ]
+                }
+            )
+        )
+
+        # Redirect _results_dir() to our tmp dir for the duration of the sweep.
+        original_dir = persistence._results_dir
+        persistence._results_dir = lambda: results_dir  # type: ignore[assignment]
+        try:
+            removed = reconcile_uploads()
+        finally:
+            persistence._results_dir = original_dir  # type: ignore[assignment]
+
+        assert removed == 1
+        assert not orphan_path.exists()
+        assert referenced_path.exists()
 
 
 class TestReadCsvHeaders:

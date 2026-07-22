@@ -7,6 +7,8 @@ const baseReport: HeaderReport = {
   sessionId: "s1",
   file1Name: "baseline.csv",
   file2Name: "candidate.csv",
+  file1Deduplicated: false,
+  file2Deduplicated: false,
   common: ["id", "region", "status"],
   file1Only: ["legacy_code"],
   file2Only: ["new_flag"],
@@ -117,5 +119,38 @@ describe("HeaderReview", () => {
     const searchbox = screen.getByRole("searchbox", { name: "Select grouping columns" });
     expect(searchbox).toBeInTheDocument();
     expect(searchbox).toHaveAttribute("placeholder", expect.stringContaining("1 selected"));
+  });
+
+  it("only lists columns selected in COLUMN FILTER in the Grouping Columns dropdown", () => {
+    // 'status' is in report.common but not in selectedColumns (i.e. excluded by the user).
+    render(
+      <HeaderReview
+        {...defaultProps}
+        selectedColumns={["id", "region"]}
+      />,
+    );
+    const searchbox = screen.getByRole("searchbox", { name: "Select grouping columns" });
+    fireEvent.focus(searchbox);
+    // The two filtered columns are offered.
+    expect(screen.getByRole("option", { name: /region/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /\bid\b/ })).toBeInTheDocument();
+    // 'status' was excluded by COLUMN FILTER and must not appear.
+    expect(screen.queryByRole("option", { name: /\bstatus\b/ })).toBeNull();
+  });
+
+  it("shows the dedup banner when either uploaded file matched an existing one", () => {
+    render(
+      <HeaderReview
+        {...defaultProps}
+        report={{ ...baseReport, file2Deduplicated: true }}
+      />,
+    );
+    // The status node containing "Matched existing file" should appear.
+    expect(screen.getByText(/Matched existing file.*candidate\.csv/)).toBeInTheDocument();
+  });
+
+  it("does not show the dedup banner when neither file was deduplicated", () => {
+    render(<HeaderReview {...defaultProps} />);
+    expect(screen.queryByText(/Matched existing file/)).toBeNull();
   });
 });

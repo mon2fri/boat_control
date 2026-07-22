@@ -49,7 +49,7 @@ class PresetLoadView(APIView):  # type: ignore[misc]
                     status=404,
                 )
 
-            path_a = store_file(preset.file_a)
+            path_a, dedup_a = store_file(preset.file_a)
 
             if preset.file_b is not None:
                 if not preset.file_b.exists():
@@ -61,9 +61,10 @@ class PresetLoadView(APIView):  # type: ignore[misc]
                         },
                         status=404,
                     )
-                path_b = store_file(preset.file_b)
+                path_b, dedup_b = store_file(preset.file_b)
             else:
                 path_b = path_a
+                dedup_b = dedup_a
 
             file_a_name = preset.file_a.name
             file_b_name = (
@@ -80,7 +81,7 @@ class PresetLoadView(APIView):  # type: ignore[misc]
                     {"error": "Source file not found."}, status=404
                 )
 
-            path_a = store_file(file_a_path)
+            path_a, dedup_a = store_file(file_a_path)
             file_a_name = file_a_path.name
 
             if file_b_id:
@@ -93,10 +94,11 @@ class PresetLoadView(APIView):  # type: ignore[misc]
                     return Response(
                         {"error": "Source file not found."}, status=404
                     )
-                path_b = store_file(file_b_path)
+                path_b, dedup_b = store_file(file_b_path)
                 file_b_name = file_b_path.name
             else:
                 path_b = path_a
+                dedup_b = dedup_a
                 file_b_name = file_a_path.name
         else:
             return Response(
@@ -131,6 +133,8 @@ class PresetLoadView(APIView):  # type: ignore[misc]
             "session_id": session.session_id,
             "file_a_name": file_a_name,
             "file_b_name": file_b_name,
+            "file_a_deduplicated": dedup_a,
+            "file_b_deduplicated": dedup_b,
             "inspection": {
                 "columns_a": result.columns_a,
                 "columns_b": result.columns_b,

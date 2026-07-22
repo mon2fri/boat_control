@@ -30,6 +30,8 @@ export const uploadResponseSchema = z.object({
   session_id: z.string().min(1),
   file_a_name: z.string(),
   file_b_name: z.string(),
+  file_a_deduplicated: z.boolean(),
+  file_b_deduplicated: z.boolean(),
   inspection: inspectionSchema,
 });
 export type WireUploadResponse = z.infer<typeof uploadResponseSchema>;

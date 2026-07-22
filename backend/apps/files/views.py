@@ -39,8 +39,8 @@ class FileUploadView(APIView):  # type: ignore[misc]
         if file_b.size and file_b.size > max_size:
             return Response({"error": "file_b exceeds 500 MB limit."}, status=400)
 
-        path_a = store_uploaded_file(file_a)
-        path_b = store_uploaded_file(file_b)
+        path_a, dedup_a = store_uploaded_file(file_a)
+        path_b, dedup_b = store_uploaded_file(file_b)
 
         try:
             result = inspect_headers(
@@ -76,6 +76,8 @@ class FileUploadView(APIView):  # type: ignore[misc]
             "session_id": session.session_id,
             "file_a_name": session.file_a_name,
             "file_b_name": session.file_b_name,
+            "file_a_deduplicated": dedup_a,
+            "file_b_deduplicated": dedup_b,
             "inspection": {
                 "columns_a": result.columns_a,
                 "columns_b": result.columns_b,

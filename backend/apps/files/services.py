@@ -28,8 +28,13 @@ def safe_upload_path(filename: str) -> Path:
     return settings.UPLOADS_DIR / safe_name
 
 
-def store_uploaded_file(uploaded_file: Any) -> Path:
-    """Store an upload once, keyed by its content hash."""
+def store_uploaded_file(uploaded_file: Any) -> tuple[Path, bool]:
+    """Store an upload once, keyed by its content hash.
+
+    Returns ``(path, deduplicated)`` where ``deduplicated`` is True when the
+    digest matched an existing file already on disk and no new bytes were
+    kept.
+    """
     uploads_dir = Path(settings.UPLOADS_DIR)
     uploads_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
@@ -41,8 +46,11 @@ def store_uploaded_file(uploaded_file: Any) -> Path:
     return _finish_content_addressed_store(temporary_path, digest.hexdigest())
 
 
-def store_file(source: Path) -> Path:
-    """Copy a configured remote file into the same deduplicated upload store."""
+def store_file(source: Path) -> tuple[Path, bool]:
+    """Copy a configured remote file into the same deduplicated upload store.
+
+    Returns ``(path, deduplicated)``; see :func:`store_uploaded_file`.
+    """
     uploads_dir = Path(settings.UPLOADS_DIR)
     uploads_dir.mkdir(parents=True, exist_ok=True)
     digest = hashlib.sha256()
@@ -56,13 +64,15 @@ def store_file(source: Path) -> Path:
     return _finish_content_addressed_store(temporary_path, digest.hexdigest())
 
 
-def _finish_content_addressed_store(temporary_path: Path, digest: str) -> Path:
+def _finish_content_addressed_store(
+    temporary_path: Path, digest: str
+) -> tuple[Path, bool]:
     target = Path(settings.UPLOADS_DIR) / f"{digest}.csv"
     if target.exists():
         temporary_path.unlink(missing_ok=True)
-    else:
-        shutil.move(str(temporary_path), str(target))
-    return target
+        return target, True
+    shutil.move(str(temporary_path), str(target))
+    return target, False
 
 
 def _sanitize_filename(name: str) -> str:
@@ -110,3 +120,24 @@ def inspect_headers(path_a: Path, name_a: str, path_b: Path, name_b: str) -> Hea
 def delete_upload(path: Path) -> None:
     if path.exists() and path.resolve().parent == Path(settings.UPLOADS_DIR).resolve():
         path.unlink()
+
+
+def reconcile_uploads() -> int:
+    """Sweep data/uploads/ and remove any file not referenced by an active
+    session or saved run. Returns the count of files removed.
+
+    Designed to be called at application startup; idempotent so it's safe to
+    invoke on every worker boot.
+    """
+    # Imported lazily to avoid a circular import at module-load time: the
+    # sessions module pulls from apps.files.services at the top.
+    from apps.files.sessions import remove_upload_if_unreferenced
+
+    uploads_dir = Path(settings.UPLOADS_DIR)
+    if not uploads_dir.exists():
+        return 0
+    removed = 0
+    for candidate in uploads_dir.glob("*.csv"):
+        if remove_upload_if_unreferenced(candidate):
+            removed += 1
+    return removed

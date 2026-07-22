@@ -681,6 +681,12 @@ def execute_comparison(
     needed_columns.update(effective_targets)
     for f in filters:
         needed_columns.add(f["column"])
+    # Grouping columns must be loaded so per-value breakdowns have data to
+    # bucket on. Without this, _build_group_stats sees None for every value
+    # and emits only ["Total", "Null"].
+    for col in grouping_columns or []:
+        if col in valid_filter_cols:
+            needed_columns.add(col)
 
     rules_file = load_rules()
     if rule_ids is not None:

@@ -7,6 +7,8 @@ const report: HeaderReport = {
   sessionId: "s1",
   file1Name: "a.csv",
   file2Name: "b.csv",
+  file1Deduplicated: false,
+  file2Deduplicated: false,
   common: ["id"],
   file1Only: [],
   file2Only: [],
@@ -20,6 +22,8 @@ describe("useHeaderReport", () => {
       session_id: report.sessionId,
       file_a_name: report.file1Name,
       file_b_name: report.file2Name,
+      file_a_deduplicated: false,
+      file_b_deduplicated: false,
       inspection: {
         columns_a: report.common,
         columns_b: report.common,

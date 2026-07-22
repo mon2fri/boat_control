@@ -20,10 +20,24 @@ interface Props {
  */
 export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, groupingColumns = [], onGroupingColumnsChange = () => {} }: Props) {
   const hasDifferences = report.file1Only.length > 0 || report.file2Only.length > 0;
+  const deduplicatedFiles: string[] = [];
+  if (report.file1Deduplicated) deduplicatedFiles.push(report.file1Name);
+  if (report.file2Deduplicated) deduplicatedFiles.push(report.file2Name);
+  const deduplicatedMessage = deduplicatedFiles.length
+    ? `Matched existing file${deduplicatedFiles.length === 1 ? "" : "s"} on disk: ${deduplicatedFiles.join(", ")}. No new copy was stored.`
+    : null;
 
   const sharedOptions = useMemo(
     () => report.common.map((c) => ({ value: c, label: c })),
     [report.common],
+  );
+
+  // The Grouping Columns dropdown must only offer columns the user picked in
+  // the COLUMN FILTER (selectedColumns) — otherwise it would surface columns
+  // that comparison and validation will ignore.
+  const groupingOptions = useMemo(
+    () => sharedOptions.filter((o) => selectedColumns.includes(o.value)),
+    [sharedOptions, selectedColumns],
   );
 
   const includedSet = useMemo(() => new Set(selectedColumns), [selectedColumns]);
@@ -49,6 +63,12 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
           The files have differing columns: {report.file1Only.length} only in{" "}
           <strong>{report.file1Name}</strong>, {report.file2Only.length} only in{" "}
           <strong>{report.file2Name}</strong>. These are excluded from the run.
+        </p>
+      )}
+
+      {deduplicatedMessage && (
+        <p className="alert alert--info" role="status">
+          {deduplicatedMessage}
         </p>
       )}
 
@@ -127,7 +147,7 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
           </p>
           <SearchableMultiSelect
             label="Select grouping columns"
-            options={sharedOptions}
+            options={groupingOptions}
             selected={groupingColumns.filter((c) => selectedColumns.includes(c))}
             onChange={(cols) => onGroupingColumnsChange(cols.filter((c) => selectedColumns.includes(c)))}
             placeholder="Search columns…"

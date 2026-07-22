@@ -73,7 +73,15 @@ export function reInspect(sessionId: string): Promise<HeaderReport> {
     method: "POST",
     body: { session_id: sessionId },
     schema: inspectResponseSchema,
-  }).then((response) => mapUploadToHeader({ ...response, file_a_name: "", file_b_name: "" }));
+  }).then((response) =>
+    mapUploadToHeader({
+      ...response,
+      file_a_name: "",
+      file_b_name: "",
+      file_a_deduplicated: false,
+      file_b_deduplicated: false,
+    }),
+  );
 }
 
 /** Discard server-side copies of the two uploaded files. Local source files are never touched. */

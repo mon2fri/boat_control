@@ -580,3 +580,16 @@ class TestComputeGroupStatistics:
         assert "overall" in result.group_statistics
         assert len(result.group_statistics["overall"]) == 1
         assert result.group_statistics["overall"][0]["column"] == "status"
+        # Group statistics must break down per distinct grouping value, not
+        # collapse into ["Total", "Null"]. Fixture data has rows with status
+        # "active" and "inactive", so at least one row in `rows` must reflect
+        # those values.
+        overall = result.group_statistics["overall"][0]
+        values = {row["value"] for row in overall["rows"]}
+        assert "Total" in values
+        assert values != {"Total", "Null"}, (
+            "Group statistics did not load grouping-column data — every row "
+            "bucketed under 'Null'. Re-check that needed_columns includes "
+            "grouping_columns in execute_comparison."
+        )
+        assert values - {"Total"}  # at least one real value besides Total

@@ -18,6 +18,10 @@ export interface HeaderReport {
   sessionId: string;
   file1Name: string;
   file2Name: string;
+  /** True when file 1's bytes matched a file already in the upload store. */
+  file1Deduplicated: boolean;
+  /** True when file 2's bytes matched a file already in the upload store. */
+  file2Deduplicated: boolean;
   common: string[];
   file1Only: string[];
   file2Only: string[];
