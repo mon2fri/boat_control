@@ -17,7 +17,8 @@ node_modules/
 frontend/node_modules/
 
 # Frontend build outputs and test reports.
-frontend/dist/
+# Note: frontend/dist/ is intentionally tracked so the prebuilt SPA ships
+# with the repo (see DEPLOYMENT_FILES.md).
 frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
