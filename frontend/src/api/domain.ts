@@ -149,6 +149,8 @@ export interface RuleResult {
   ruleIndex: string;
   ruleName: string;
   logicSummary: string;
+  conditionSummary?: string;
+  conditionGroupingSummary?: string;
   violationRowCount: number;
   violationAttributeCount: number;
   details: DetailRow[];

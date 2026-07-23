@@ -300,7 +300,13 @@ export const wireValidationSchema = z.object({
   violating_attributes_by_rule: z.record(z.string(), z.number().int().nonnegative()).optional(),
   rule_summaries: z.record(
     z.string(),
-    z.object({ name: z.string(), logic: z.string(), hide_comparison: z.boolean().optional() }),
+    z.object({
+      name: z.string(),
+      logic: z.string(),
+      condition: z.string().optional(),
+      condition_grouping: z.string().optional(),
+      hide_comparison: z.boolean().optional(),
+    }),
   ).optional(),
 });
 

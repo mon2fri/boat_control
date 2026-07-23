@@ -400,6 +400,12 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
         logicSummary: humanizeRuleLogic(
           persistedSummary?.logic ?? describeRuleLogicFromViolations(violations, ruleId),
         ),
+        ...(persistedSummary?.condition
+          ? { conditionSummary: persistedSummary.condition }
+          : {}),
+        ...(persistedSummary?.condition_grouping
+          ? { conditionGroupingSummary: persistedSummary.condition_grouping }
+          : {}),
         violationRowCount: perRuleRowCount,
         violationAttributeCount: perRuleAttributeCount,
         details: violations.map((v, i) => mapViolation(v, i)),

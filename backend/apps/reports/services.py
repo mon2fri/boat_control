@@ -314,8 +314,19 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         )
         sections.append(f"<section class='card' id='rule-{_escape_html(rule_id)}'>")
         sections.append(f"<h2>{_escape_html(rule_id)} — {_escape_html(rule_name)}</h2>")
+        if summary.get("condition"):
+            sections.append(
+                "<p class='section-logic'>Condition: "
+                f"<code>{_escape_html(summary['condition'])}</code></p>"
+            )
+        if summary.get("condition_grouping"):
+            sections.append(
+                "<p class='section-logic'>Grouping: "
+                f"<code>{_escape_html(summary['condition_grouping'])}</code></p>"
+            )
         sections.append(
-            f"<p class='section-logic'><code>{_escape_html(_humanize_rule_logic(logic))}</code></p>"
+            "<p class='section-logic'>Expectation: "
+            f"<code>{_escape_html(_humanize_rule_logic(logic))}</code></p>"
         )
         sections.append("<div class='summary-grid'>")
         sections.append(_metric("Rows with exception", row_count))

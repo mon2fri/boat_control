@@ -46,7 +46,12 @@ def sample_result() -> dict:
             "violating_rows_by_rule": {"R001": 1},
             "violating_attributes_by_rule": {"R001": 1},
             "rule_summaries": {
-                "R001": {"name": "Test Rule", "logic": "score lt '20'"},
+                "R001": {
+                    "name": "Test Rule",
+                    "logic": "score lt '20'",
+                    "condition": "Condition 1: region equals 'EMEA'",
+                    "condition_grouping": "Condition 1 AND Condition 2",
+                },
                 "R002": {"name": "No exception", "logic": "score eq '15'"},
             },
         },
@@ -70,6 +75,9 @@ class TestExportHtml:
         assert "Rationale" in result
         assert "R001 — Test Rule" in result
         assert "score less than &#x27;20&#x27;" in result
+        assert "Condition 1: region equals &#x27;EMEA&#x27;" in result
+        assert "Grouping:" in result
+        assert "Expectation:" in result
         assert "R002 — No exception" in result
         assert "Nil exception detected under current rule." in result
 

@@ -262,6 +262,8 @@ def validate_rows(
         rule_summaries[rule.rule_id] = {
             "name": rule.name,
             "logic": _describe_rule_logic(rule),
+            "condition": _describe_rule_conditions(rule),
+            "condition_grouping": _describe_condition_grouping(rule),
             "hide_comparison": rule.hide_comparison,
         }
         violations: list[ValidationViolation] = []
@@ -352,6 +354,64 @@ def _describe_rule_logic(rule: Rule) -> str:
             joined = "' or '".join(values)
             desc += f"'{joined}'"
     return desc
+
+
+def _describe_condition(rule_condition: Any) -> str:
+    operator = {
+        "eq": "equals",
+        "neq": "does not equal",
+        "contains": "contains",
+        "ncontains": "does not contain",
+        "gt": "greater than",
+        "lt": "less than",
+    }.get(rule_condition.operator, rule_condition.operator.replace("_", " "))
+    values = rule_condition.filter_values or (rule_condition.filter_value,)
+    rendered_values = " or ".join(f"'{value}'" for value in values)
+    return f"{rule_condition.column_name} {operator} {rendered_values}"
+
+
+def _describe_rule_conditions(rule: Rule) -> str:
+    if not rule.conditions:
+        return ""
+    return "; ".join(
+        f"Condition {index}: {_describe_condition(condition)}"
+        for index, condition in enumerate(rule.conditions, start=1)
+    )
+
+
+def _grouping_leaf_label(condition_id: str) -> str:
+    if condition_id.startswith("c") and condition_id[1:].isdigit():
+        return f"Condition {int(condition_id[1:]) + 1}"
+    return f"Condition {condition_id}"
+
+
+def _describe_grouping_node(node: GroupingLeaf | GroupingBranch) -> str:
+    if isinstance(node, GroupingLeaf):
+        return _grouping_leaf_label(node.condition_id)
+    joined = f" {node.kind.upper()} ".join(
+        _describe_grouping_node(child) for child in node.children
+    )
+    return f"({joined})"
+
+
+def _describe_condition_grouping(rule: Rule) -> str:
+    if len(rule.conditions) <= 1:
+        return ""
+    if rule.grouping_tree is not None:
+        rendered = _describe_grouping_node(rule.grouping_tree)
+        return rendered[1:-1] if rendered.startswith("(") and rendered.endswith(")") else rendered
+    if rule.grouping and len(rule.grouping) == len(rule.conditions):
+        grouped: dict[str, list[str]] = {}
+        for index, group_id in enumerate(rule.grouping, start=1):
+            grouped.setdefault(group_id, []).append(f"Condition {index}")
+        return " AND ".join(
+            f"({' OR '.join(condition_labels)})" if len(condition_labels) > 1 else condition_labels[0]
+            for condition_labels in grouped.values()
+        )
+    relation = (rule.condition_relation or "and").upper()
+    return f" {relation} ".join(
+        f"Condition {index}" for index in range(1, len(rule.conditions) + 1)
+    )
 
 
 def _check_rule(

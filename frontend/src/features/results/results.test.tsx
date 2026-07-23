@@ -51,8 +51,17 @@ describe("result components", () => {
   });
 
   it("shows the rule logic under the section title", () => {
-    render(<RuleResultSection result={ruleResult} />);
+    render(<RuleResultSection result={{
+      ...ruleResult,
+      conditionSummary: "Condition 1: region equals 'EMEA'; Condition 2: owner equals 'Ops'",
+      conditionGroupingSummary: "Condition 1 AND Condition 2",
+    }} />);
     const section = screen.getByRole("region", { name: /Region present/ });
+    expect(within(section).getByText("Condition:")).toBeInTheDocument();
+    expect(within(section).getByText(/Condition 1: region equals/)).toBeInTheDocument();
+    expect(within(section).getByText("Grouping:")).toBeInTheDocument();
+    expect(within(section).getByText("Condition 1 AND Condition 2")).toBeInTheDocument();
+    expect(within(section).getByText("Expectation:")).toBeInTheDocument();
     expect(within(section).getByText(/region must not equal/)).toBeInTheDocument();
     expect(within(section).getByText("3")).toBeInTheDocument();
   });
