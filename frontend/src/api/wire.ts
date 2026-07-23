@@ -210,7 +210,7 @@ export const wireRunRequestSchema = z.object({
   comparison_columns: z.array(z.string()).nullable().optional(),
   target_columns: z.array(z.string()).nullable().optional(),
   key_columns: z.array(z.string()).nullable().optional(),
-  grouping_columns: z.array(z.string()).optional(),
+  aggregation_columns: z.array(z.string()).optional(),
   filters: z.array(wireFilterRowSchema).optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
 });
@@ -303,7 +303,7 @@ export const wireRunResultSchema = z.object({
   common_columns: z.array(z.string()),
   target_columns: z.array(z.string()).nullable(),
   filters_applied: z.array(wireFilterRowSchema),
-  grouping_columns: z.array(z.string()).optional(),
+  aggregation_columns: z.array(z.string()).optional(),
   group_statistics: wireGroupStatisticsBundleSchema.optional(),
 });
 
@@ -349,6 +349,7 @@ export const wireSettingsSchema = z.object({
   rule_config_path: z.string().min(1),
   rows_and_columns_config_path: z.string().min(1),
   filter_config_path: z.string().min(1),
+  family_config_path: z.string().min(1),
   full_set_confirmation_rows: z.number().int().positive(),
   run_history_path: z.string().min(1),
 });
@@ -379,6 +380,56 @@ export const wireSourceFileSchema = z.object({
 });
 export type WireSourceFile = z.infer<typeof wireSourceFileSchema>;
 export const wireSourceFileListSchema = z.array(wireSourceFileSchema);
+
+// --- Families ------------------------------------------------------------
+
+export const wireValueFamilyOwnerSchema = z.object({
+  kind: z.enum(["column", "column_family"]),
+  name: z.string(),
+});
+export type WireValueFamilyOwner = z.infer<typeof wireValueFamilyOwnerSchema>;
+
+export const wireColumnFamilySchema = z.object({
+  kind: z.literal("column"),
+  name: z.string(),
+  columns: z.array(z.string()),
+});
+export type WireColumnFamily = z.infer<typeof wireColumnFamilySchema>;
+
+export const wireValueFamilySchema = z.object({
+  kind: z.literal("value"),
+  name: z.string(),
+  owner: wireValueFamilyOwnerSchema,
+  values: z.array(z.string()),
+});
+export type WireValueFamily = z.infer<typeof wireValueFamilySchema>;
+
+export const wireFamilySchema = z.discriminatedUnion("kind", [
+  wireColumnFamilySchema,
+  wireValueFamilySchema,
+]);
+export type WireFamily = z.infer<typeof wireFamilySchema>;
+
+export const wireFamilyListSchema = z.array(wireFamilySchema);
+
+export const wireFamilyCreateSchema = z.object({
+  kind: z.enum(["column", "value"]),
+  name: z.string(),
+  columns: z.array(z.string()).optional(),
+  owner: wireValueFamilyOwnerSchema.optional(),
+  values: z.array(z.string()).optional(),
+});
+export type WireFamilyCreate = z.infer<typeof wireFamilyCreateSchema>;
+
+export const wireFamilyUpdateSchema = z.object({
+  kind: z.enum(["column", "value"]),
+  name: z.string().optional(),
+  columns: z.array(z.string()).optional(),
+  owner: wireValueFamilyOwnerSchema.optional(),
+  values: z.array(z.string()).optional(),
+  version: z.number().int().positive(),
+});
+export type WireFamilyUpdate = z.infer<typeof wireFamilyUpdateSchema>;
 
 // --- Error envelope ------------------------------------------------------
 

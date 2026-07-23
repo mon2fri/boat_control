@@ -260,15 +260,22 @@ h3 {
 }
 
 /* Results page header: report name on the left, export buttons on the
-   right, both vertically centered on the same line. */
+   right, both vertically centered on the same line.
+   Sticky at the top so it remains visible while scrolling results. */
 .results-header {
+  position: sticky;
+  top: var(--app-header-height);
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: calc(var(--space) * 1.5);
   flex-wrap: wrap;
-  margin-bottom: var(--space);
+  padding: var(--space) 0;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
 }
+
 .results-title-row {
   display: inline-flex;
   align-items: center;
@@ -280,6 +287,69 @@ h3 {
 }
 .results-header .export-controls {
   margin: 0;
+}
+
+/* Sticky footer action card on results page. It sticks at the viewport bottom
+   as long as the page content extends below, then scrolls away naturally. */
+.result-content .card:last-child {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+  margin-top: calc(var(--space) * 2);
+}
+
+/* Scroll margin so anchor jumps clear the sticky header. */
+#overall,
+#changes,
+[id^="rule-"] {
+  scroll-margin-top: calc(var(--app-header-height) + var(--space) * 3);
+}
+
+/* Table of Contents in AppShell primary navigation on /results. */
+.app-nav__results {
+  border-top: 1px solid var(--color-border);
+  margin-top: var(--space);
+  padding-top: var(--space);
+}
+.app-nav__results .toc-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+  margin: 0 0 var(--space) 0;
+}
+.app-nav__results ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.app-nav__results li {
+  padding: 3px 0;
+}
+.app-nav__results a {
+  color: var(--color-muted);
+  text-decoration: none;
+  font-size: 0.85rem;
+  display: block;
+  padding: 2px 0;
+}
+.app-nav__results a:hover {
+  color: var(--color-accent);
+}
+.app-nav__results .toc__item--active a {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  /* On narrow screens, don't sticky the results footer to preserve space. */
+  .result-content .card:last-child {
+    position: static;
+    border-top: none;
+  }
 }
 
 .config-inline-row {

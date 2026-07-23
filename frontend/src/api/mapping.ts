@@ -7,6 +7,7 @@ import type {
   AppSettings,
   Condition,
   DetailRow,
+  Family,
   FilterOperator,
   FilterRow,
   GroupNode,
@@ -30,6 +31,7 @@ import type {
   WireAttributeChange,
   WireColumnValue,
   WireCondition,
+  WireFamily,
   WireFilterRow,
   WireGroupNode,
   WireGroupStatistics,
@@ -278,7 +280,7 @@ export function mapRunRequestToWire(request: {
   filters: FilterRow[];
   targetColumns: string[];
   keyColumns: string[];
-  groupingColumns: string[];
+  aggregationColumns: string[];
   ruleIndexes: string[];
 }): WireRunRequest {
   return {
@@ -290,7 +292,7 @@ export function mapRunRequestToWire(request: {
     // backend will reject an empty array with a 400; the UI prevents the user
     // from getting there by requiring at least one key column.
     key_columns: [...request.keyColumns],
-    grouping_columns: request.groupingColumns,
+    aggregation_columns: request.aggregationColumns,
     filters: request.filters.filter((f) => f.column && f.values.length > 0).map(mapFilterRowToWire),
     // Always serialize `rule_ids` as an array so the backend can distinguish
     // an explicit empty selection (zero rules) from an omitted/default-all
@@ -512,6 +514,7 @@ export function mapSettings(wire: WireSettings): AppSettings {
     ruleConfigPath: wire.rule_config_path,
     rowsAndColumnsConfigPath: wire.rows_and_columns_config_path,
     filterConfigPath: wire.filter_config_path,
+    familyConfigPath: wire.family_config_path,
     fullSetConfirmationRows: wire.full_set_confirmation_rows,
     runHistoryPath: wire.run_history_path,
   };
@@ -524,9 +527,24 @@ export function mapSettingsToWire(settings: AppSettings): WireSettings {
     rule_config_path: settings.ruleConfigPath,
     rows_and_columns_config_path: settings.rowsAndColumnsConfigPath,
     filter_config_path: settings.filterConfigPath,
+    family_config_path: settings.familyConfigPath,
     full_set_confirmation_rows: settings.fullSetConfirmationRows,
     run_history_path: settings.runHistoryPath,
   };
+}
+
+export function mapFamily(wire: WireFamily): Family {
+  if (wire.kind === "column") {
+    return { kind: "column", name: wire.name, columns: wire.columns };
+  }
+  return { kind: "value", name: wire.name, owner: wire.owner, values: wire.values };
+}
+
+export function mapFamilyToWire(family: Family): WireFamily {
+  if (family.kind === "column") {
+    return { kind: "column", name: family.name, columns: family.columns };
+  }
+  return { kind: "value", name: family.name, owner: family.owner, values: family.values };
 }
 
 export function mapSavedFilter(wire: WireSavedFilter): SavedFilter {

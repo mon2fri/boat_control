@@ -10,6 +10,7 @@ EXPECTED_DEFAULTS = {
     "rule_config_path": "config/rules",
     "rows_and_columns_config_path": "config/rows_and_columns",
     "filter_config_path": "config/filters",
+    "family_config_path": "config/families",
     "full_set_confirmation_rows": 2000,
     "run_history_path": "data/results",
 }

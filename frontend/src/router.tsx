@@ -3,6 +3,7 @@ import { AppShell } from "./components/AppShell";
 import { UploadPage } from "./pages/UploadPage";
 import { PreparePage } from "./pages/PreparePage";
 import { ResultsPage } from "./pages/ResultsPage";
+import { FamiliesPage } from "./pages/FamiliesPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -15,6 +16,7 @@ export const routes: RouteObject[] = [
     children: [
       { index: true, element: <UploadPage /> },
       { path: "prepare", element: <PreparePage /> },
+      { path: "families", element: <FamiliesPage /> },
       { path: "rules", element: <Navigate to="/prepare" replace /> },
       { path: "results", element: <ResultsPage /> },
       // Deep-link route for viewing a persisted run by id. The History page

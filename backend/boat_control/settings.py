@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "apps.settings",
     "apps.saved_filters",
     "apps.configs",
+    "apps.families",
 ]
 
 ROOT_URLCONF = "boat_control.urls"
@@ -89,3 +90,4 @@ RULES_CONFIG_DIR = CONFIG_DIR / "rules"
 ROWS_AND_COLUMNS_CONFIG_DIR = CONFIG_DIR / "rows_and_columns"
 FILTERS_DIR = CONFIG_DIR / "filters"
 FILTERS_CONFIG_DIR = CONFIG_DIR / "filters"
+FAMILY_CONFIG_DIR = CONFIG_DIR / "families"

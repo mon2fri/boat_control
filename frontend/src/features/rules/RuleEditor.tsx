@@ -3,6 +3,7 @@ import type { Condition, GroupNode, LogicClause, LogicOperator, Rule, RuleDraft 
 import { ColumnField } from "../../components/ColumnField";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SearchableMultiSelect, type MultiSelectOption } from "../../components/SearchableMultiSelect";
+import { ValueFamilyAddButton } from "../families/ValueFamilyAddButton";
 import { nextId } from "../../lib/id";
 import { LOGIC_OPERATORS } from "./constants";
 import { GroupingTreeEditor } from "./GroupingTreeEditor";
@@ -202,16 +203,25 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                   />
                 </div>
               ) : (
-                <SearchableMultiSelect
-                  label="Value"
-                  options={valueOptions}
-                  selected={conditionValues(condition)}
-                  onChange={(values) => updateCondition(condition.id, { values, value: values[0] ?? "" })}
-                  placeholder={condition.column ? "Search or type values…" : "Pick a column first"}
-                  disabled={!condition.column}
-                  freeText
-                  hint="Selected values are joined with OR within this condition."
-                />
+                <>
+                  <SearchableMultiSelect
+                    label="Value"
+                    options={valueOptions}
+                    selected={conditionValues(condition)}
+                    onChange={(values) => updateCondition(condition.id, { values, value: values[0] ?? "" })}
+                    placeholder={condition.column ? "Search or type values…" : "Pick a column first"}
+                    disabled={!condition.column}
+                    freeText
+                    hint="Selected values are joined with OR within this condition."
+                  />
+                  {condition.column && (
+                    <ValueFamilyAddButton
+                      column={condition.column}
+                      selectedValues={conditionValues(condition)}
+                      onAddValues={(values) => updateCondition(condition.id, { values, value: values[0] ?? "" })}
+                    />
+                  )}
+                </>
               )}
               <button
                 type="button"
@@ -335,23 +345,35 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
               />
             </div>
           ) : (
-            <SearchableMultiSelect
-              label="Value"
-              options={(columnValues[draft.logic.column] ?? []).map((v) => ({
-                value: v.value,
-                label: v.starred ? `${v.value} *` : v.value,
-                disabled: v.starred,
-              }))}
-              selected={draft.logic.values ?? (draft.logic.target ? [draft.logic.target] : [])}
-              onChange={(values) => {
-                const normalized = [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
-                patch({ logic: { ...draft.logic, values: normalized, target: normalized[0] ?? "" } });
-              }}
-              placeholder={draft.logic.column ? "Search or type values…" : "Pick a column first"}
-              disabled={!draft.logic.column}
-              freeText
-              hint="Multiple values are OR-ed for every operator."
-            />
+            <>
+              <SearchableMultiSelect
+                label="Value"
+                options={(columnValues[draft.logic.column] ?? []).map((v) => ({
+                  value: v.value,
+                  label: v.starred ? `${v.value} *` : v.value,
+                  disabled: v.starred,
+                }))}
+                selected={draft.logic.values ?? (draft.logic.target ? [draft.logic.target] : [])}
+                onChange={(values) => {
+                  const normalized = [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
+                  patch({ logic: { ...draft.logic, values: normalized, target: normalized[0] ?? "" } });
+                }}
+                placeholder={draft.logic.column ? "Search or type values…" : "Pick a column first"}
+                disabled={!draft.logic.column}
+                freeText
+                hint="Multiple values are OR-ed for every operator."
+              />
+              {draft.logic.column && (
+                <ValueFamilyAddButton
+                  column={draft.logic.column}
+                  selectedValues={draft.logic.values ?? (draft.logic.target ? [draft.logic.target] : [])}
+                  onAddValues={(values) => {
+                    const normalized = [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
+                    patch({ logic: { ...draft.logic, values: normalized, target: normalized[0] ?? "" } });
+                  }}
+                />
+              )}
+            </>
           )}
         </div>
         <p className="field-hint" data-testid="rule-logic-preview">

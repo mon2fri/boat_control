@@ -8,6 +8,7 @@ interface DraftSettings {
   ruleConfigPath: string;
   rowsAndColumnsConfigPath: string;
   filterConfigPath: string;
+  familyConfigPath: string;
   fullSetConfirmationRows: string;
   runHistoryPath: string;
 }
@@ -19,6 +20,7 @@ function toDraft(settings: AppSettings): DraftSettings {
     ruleConfigPath: settings.ruleConfigPath,
     rowsAndColumnsConfigPath: settings.rowsAndColumnsConfigPath,
     filterConfigPath: settings.filterConfigPath,
+    familyConfigPath: settings.familyConfigPath,
     fullSetConfirmationRows: String(settings.fullSetConfirmationRows),
     runHistoryPath: settings.runHistoryPath,
   };
@@ -30,6 +32,7 @@ function validate(draft: DraftSettings): string[] {
   if (!draft.ruleConfigPath.trim()) errors.push("Rule Config Path is required.");
   if (!draft.rowsAndColumnsConfigPath.trim()) errors.push("Rows and Columns Config Path is required.");
   if (!draft.filterConfigPath.trim()) errors.push("Filter Config Path is required.");
+  if (!draft.familyConfigPath.trim()) errors.push("Column/Value Family Config Path is required.");
   if (!draft.runHistoryPath.trim()) errors.push("Run history Path is required.");
   const rowLimit = Number(draft.fullSetConfirmationRows);
   if (!Number.isInteger(rowLimit) || rowLimit < 1) {
@@ -95,6 +98,7 @@ export function SettingsPage() {
       ruleConfigPath: draft.ruleConfigPath.trim(),
       rowsAndColumnsConfigPath: draft.rowsAndColumnsConfigPath.trim(),
       filterConfigPath: draft.filterConfigPath.trim(),
+      familyConfigPath: draft.familyConfigPath.trim(),
       fullSetConfirmationRows: Number(draft.fullSetConfirmationRows),
       runHistoryPath: draft.runHistoryPath.trim(),
     });
@@ -114,6 +118,11 @@ export function SettingsPage() {
       key: "rowsAndColumnsConfigPath",
     },
     { id: "filter-config-path", label: "Filter Config Path", key: "filterConfigPath" },
+    {
+      id: "family-config-path",
+      label: "Column/Value Family Config Path",
+      key: "familyConfigPath",
+    },
   ];
 
   return (

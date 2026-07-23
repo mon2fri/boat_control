@@ -112,7 +112,7 @@ export interface RunRequest {
    */
   keyColumns: string[];
   /** Optional subset of comparison columns used for group-level statistics. */
-  groupingColumns: string[];
+  aggregationColumns: string[];
   ruleIndexes: string[];
   confirmFullSet: boolean;
 }
@@ -189,6 +189,7 @@ export interface AppSettings {
   ruleConfigPath: string;
   rowsAndColumnsConfigPath: string;
   filterConfigPath: string;
+  familyConfigPath: string;
   fullSetConfirmationRows: number;
   runHistoryPath: string;
 }
@@ -234,6 +235,26 @@ export interface GroupStat {
   attributeCount: number;
   rows: GroupStatRow[];
 }
+
+export interface ColumnFamily {
+  kind: "column";
+  name: string;
+  columns: string[];
+}
+
+export interface ValueFamilyOwner {
+  kind: "column" | "column_family";
+  name: string;
+}
+
+export interface ValueFamily {
+  kind: "value";
+  name: string;
+  owner: ValueFamilyOwner;
+  values: string[];
+}
+
+export type Family = ColumnFamily | ValueFamily;
 
 export interface GroupStatisticsBundle {
   overall: GroupStat[];

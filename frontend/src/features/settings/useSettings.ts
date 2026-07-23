@@ -11,16 +11,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createConfig,
+  createFamily,
   createSavedFilter,
   deleteConfig,
+  deleteFamily,
   deleteSavedFilter,
   getConfig,
+  getFamily,
   listConfigs,
+  listFamilies,
   listPresetSources,
   listSavedFilters,
   loadSettings,
   saveSettings,
   updateConfig,
+  updateFamily,
   updateSavedFilter,
 } from "../../api/endpoints";
 import type { AppSettings, SavedFilter } from "../../api/domain";
@@ -137,5 +142,54 @@ export function usePresetSources() {
     queryKey: PRESETS_KEY,
     queryFn: () => listPresetSources(),
     retry: false,
+  });
+}
+
+const FAMILIES_KEY = ["families"] as const;
+const FAMILY_KEY = (name: string) => ["families", name] as const;
+
+export function useFamilies() {
+  return useQuery({
+    queryKey: FAMILIES_KEY,
+    queryFn: () => listFamilies(),
+    retry: false,
+  });
+}
+
+export function useFamily(name: string | null) {
+  return useQuery({
+    queryKey: FAMILY_KEY(name ?? ""),
+    queryFn: () => getFamily(name!),
+    enabled: !!name,
+    retry: false,
+  });
+}
+
+export function useCreateFamily() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { kind: "column" | "value"; name: string; columns?: string[]; owner?: { kind: "column" | "column_family"; name: string }; values?: string[] }) =>
+      createFamily(data),
+    onSuccess: () => client.invalidateQueries({ queryKey: FAMILIES_KEY }),
+  });
+}
+
+export function useUpdateFamily() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, data }: { name: string; data: { kind: "column" | "value"; name?: string; columns?: string[]; owner?: { kind: "column" | "column_family"; name: string }; values?: string[]; version: number } }) =>
+      updateFamily(name, data),
+    onSuccess: (_, vars) => {
+      void client.invalidateQueries({ queryKey: FAMILIES_KEY });
+      void client.invalidateQueries({ queryKey: FAMILY_KEY(vars.name) });
+    },
+  });
+}
+
+export function useDeleteFamily() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => deleteFamily(name),
+    onSuccess: () => client.invalidateQueries({ queryKey: FAMILIES_KEY }),
   });
 }

@@ -94,7 +94,7 @@ class ExecutionResult:
     target_columns: list[str]
     key_columns: list[str]
     filters_applied: list[dict[str, str]]
-    grouping_columns: list[str] = field(default_factory=list)
+    aggregation_columns: list[str] = field(default_factory=list)
     group_statistics: dict[str, Any] | None = None
 
 
@@ -140,7 +140,7 @@ def compare_rows(
     df_b: pl.DataFrame,
     target_columns: list[str],
     key_columns: list[str],
-    grouping_columns: list[str] | None = None,
+    aggregation_columns: list[str] | None = None,
 ) -> ComparisonResult:
     total_a = df_a.height
     total_b = df_b.height
@@ -158,7 +158,7 @@ def compare_rows(
             row_details=[],
         )
 
-    grp_cols = grouping_columns or []
+    agg_cols = aggregation_columns or []
 
     merged = df_a.join(
         df_b,
@@ -205,15 +205,15 @@ def compare_rows(
             rows_with_changes += 1
             total_changes += len(changes)
             key_vals = {k: row[k] for k in key_columns if k in row}
-            grp_vals = {g: row.get(g) for g in grp_cols if g in row or f"{g}_b" in row}
-            grp_vals = {g: row.get(f"{g}_b", row.get(g)) for g in grp_cols}
+            agg_vals = {g: row.get(g) for g in agg_cols if g in row or f"{g}_b" in row}
+            agg_vals = {g: row.get(f"{g}_b", row.get(g)) for g in agg_cols}
             row_details.append(
                 RowComparison(
                     row_index=int(row["_idx"]),
                     key_columns=key_vals,
                     attribute_changes=changes,
                     change_count=len(changes),
-                    grouping_values=grp_vals,
+                        grouping_values=agg_vals,
                 )
             )
 
@@ -233,14 +233,14 @@ def validate_rows(
     target_columns: list[str],
     key_columns: list[str] | None = None,
     comparison_df: pl.DataFrame | None = None,
-    grouping_columns: list[str] | None = None,
+    aggregation_columns: list[str] | None = None,
 ) -> ValidationResult:
     """Validate rows from the comparison file against rules.
 
     `df` is the comparison DataFrame (source of truth for rule evaluation).
     `comparison_df` is the baseline DataFrame, used for column-vs-column logic.
     """
-    grp_cols = grouping_columns or []
+    agg_cols = aggregation_columns or []
     violations_by_rule: dict[str, list[ValidationViolation]] = {}
     violation_count_by_rule: dict[str, int] = {}
     violating_rows_by_rule: dict[str, int] = {}
@@ -279,7 +279,7 @@ def validate_rows(
                     key_cols = {col: row[col] for col in key_columns if col in row}
                 else:
                     key_cols = {col: row[col] for col in df.columns[:3]}
-                grp_vals = {g: row.get(g) for g in grp_cols}
+                agg_vals = {g: row.get(g) for g in agg_cols}
                 rule_logic_str = _describe_rule_logic(rule)
                 comparison_value = (
                     baseline_row.get(viol_col)
@@ -299,7 +299,7 @@ def validate_rows(
                         violating_value=viol_val,
                         rule_logic=rule_logic_str,
                         comparison_value=comparison_value,
-                        grouping_values=grp_vals,
+                    grouping_values=agg_vals,
                     )
                 )
                 rule_rows.add(idx)
@@ -575,10 +575,10 @@ def _build_group_stats(
 def compute_group_statistics(
     comparison_rows: list[RowComparison],
     violations: dict[str, list[ValidationViolation]],
-    grouping_columns: list[str],
+    aggregation_columns: list[str],
 ) -> dict[str, Any]:
-    """Compute group statistics for all grouping columns across all sections."""
-    if not grouping_columns:
+    """Compute group statistics for all aggregation columns across all sections."""
+    if not aggregation_columns:
         return {"overall": [], "attribute_changes": [], "validation_rules": {}}
 
     # Collect items per section
@@ -616,13 +616,13 @@ def compute_group_statistics(
         "validation_rules": {},
     }
 
-    for col in grouping_columns:
+    for col in aggregation_columns:
         result["overall"].append(_build_group_stats(col, deduped_overall))
         result["attribute_changes"].append(_build_group_stats(col, change_items))
 
     for rule_id, rule_items in violation_items_by_rule.items():
         result["validation_rules"].setdefault(rule_id, [])
-        for col in grouping_columns:
+        for col in aggregation_columns:
             result["validation_rules"][rule_id].append(
                 _build_group_stats(col, rule_items)
             )
@@ -638,7 +638,7 @@ def execute_comparison(
     filters: list[dict[str, str]] | None = None,
     rule_ids: list[str] | None = None,
     key_columns: list[str] | None = None,
-    grouping_columns: list[str] | None = None,
+    aggregation_columns: list[str] | None = None,
 ) -> ExecutionResult:
     if filters is None:
         filters = []
@@ -681,10 +681,10 @@ def execute_comparison(
     needed_columns.update(effective_targets)
     for f in filters:
         needed_columns.add(f["column"])
-    # Grouping columns must be loaded so per-value breakdowns have data to
+    # Aggregation columns must be loaded so per-value breakdowns have data to
     # bucket on. Without this, _build_group_stats sees None for every value
     # and emits only ["Total", "Null"].
-    for col in grouping_columns or []:
+    for col in aggregation_columns or []:
         if col in valid_filter_cols:
             needed_columns.add(col)
 
@@ -759,7 +759,7 @@ def execute_comparison(
 
     comparison = compare_rows(
         df_a_final, df_b_final, effective_targets, effective_keys,
-        grouping_columns=grouping_columns or [],
+        aggregation_columns=aggregation_columns or [],
     )
 
     # Phase 2: rule evaluation against comparison (df_b) rows
@@ -769,16 +769,16 @@ def execute_comparison(
         effective_targets,
         effective_keys,
         comparison_df=df_a_final,
-        grouping_columns=grouping_columns or [],
+        aggregation_columns=aggregation_columns or [],
     )
 
     grp_stats = None
-    effective_grp = grouping_columns or []
-    if effective_grp:
+    effective_agg = aggregation_columns or []
+    if effective_agg:
         grp_stats = compute_group_statistics(
             comparison.row_details,
             validation.violations_by_rule,
-            effective_grp,
+            effective_agg,
         )
 
     return ExecutionResult(
@@ -788,6 +788,6 @@ def execute_comparison(
         target_columns=effective_targets,
         key_columns=effective_keys,
         filters_applied=filters,
-        grouping_columns=effective_grp,
+        aggregation_columns=effective_agg,
         group_statistics=grp_stats,
     )

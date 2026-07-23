@@ -13,7 +13,7 @@ const request: RunRequest = {
   filters: [],
   targetColumns: [],
   keyColumns: ["id"],
-  groupingColumns: [],
+  aggregationColumns: [],
   ruleIndexes: ["R001"],
   confirmFullSet: true,
 };

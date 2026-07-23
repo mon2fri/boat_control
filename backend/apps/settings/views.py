@@ -13,6 +13,7 @@ def _settings_response(app_settings):  # type: ignore[no-untyped-def]
         "rule_config_path": app_settings.rule_config_path,
         "rows_and_columns_config_path": app_settings.rows_and_columns_config_path,
         "filter_config_path": app_settings.filter_config_path,
+        "family_config_path": app_settings.family_config_path,
         "full_set_confirmation_rows": app_settings.full_set_confirmation_rows,
         "run_history_path": app_settings.run_history_path,
     }

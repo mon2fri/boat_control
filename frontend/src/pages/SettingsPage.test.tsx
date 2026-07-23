@@ -19,6 +19,7 @@ const okSettings = {
   rule_config_path: "config/rules",
   rows_and_columns_config_path: "config/rows_and_columns",
   filter_config_path: "config/filters",
+  family_config_path: "config/families",
   full_set_confirmation_rows: 2000,
   run_history_path: "data/results",
 };
@@ -60,6 +61,7 @@ describe("SettingsPage", () => {
     expect(screen.getByLabelText("Rule Config Path")).toHaveValue("config/rules");
     expect(screen.getByLabelText("Rows and Columns Config Path")).toHaveValue("config/rows_and_columns");
     expect(screen.getByLabelText("Filter Config Path")).toHaveValue("config/filters");
+    expect(screen.getByLabelText("Column/Value Family Config Path")).toHaveValue("config/families");
     expect(screen.getByLabelText("Full set confirmation (Rows)")).toHaveValue(2000);
     expect(screen.getByLabelText("Run history Path")).toHaveValue("data/results");
     vi.unstubAllGlobals();
@@ -89,7 +91,7 @@ describe("SettingsPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("saves all seven settings using the root config wire fields", async () => {
+  it("saves all eight settings using the root config wire fields", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(okSettings))
       .mockResolvedValueOnce(jsonResponse({ ...okSettings, application_name: "My Comparator" }));

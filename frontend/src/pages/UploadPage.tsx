@@ -2,9 +2,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { useHeaderReport } from "../features/upload/useHeaderReport";
-import { usePresetSources } from "../features/settings/useSettings";
+import { useFamilies, usePresetSources } from "../features/settings/useSettings";
 import { clearUploadSession, listSourceFiles } from "../api/endpoints";
 import { HeaderReview } from "../features/upload/HeaderReview";
+import { ConfigManager } from "../features/configs/ConfigManager";
+import { ConfigLoader } from "../features/configs/ConfigLoader";
+import { resolveRowsColumnsConfig, mapWorkflowToRowsColumnsConfig } from "../api/configContent";
 import type { SourceFile } from "../api/domain";
 
 export function UploadPage() {
@@ -20,7 +23,13 @@ export function UploadPage() {
   const [localFile1, setLocalFile1] = useState<File | null>(null);
   const [localFile2, setLocalFile2] = useState<File | null>(null);
   const [filesLoadKey, setFilesLoadKey] = useState(0);
+  const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const lastSessionIdRef = useRef<string | null>(null);
+
+  const familiesQuery = useFamilies();
+  const families = familiesQuery.data ?? [];
+
+  const [configWarnings, setConfigWarnings] = useState<string[]>([]);
 
   const header = useHeaderReport((report) => {
     dispatch({ type: "setHeader", header: report });
@@ -95,6 +104,30 @@ export function UploadPage() {
     setLocalFile1(null);
     setLocalFile2(null);
   }, [state.header, reset, setSourceId, setRemoteFiles, setRemoteFileA, setRemoteFileB]);
+
+  function handleConfigLoad(content: unknown): void {
+    if (!state.header) return;
+    const result = resolveRowsColumnsConfig(content, families, state.header.common);
+    if (result.comparisonColumns.length > 0) {
+      dispatch({ type: "setComparisonColumns", columns: result.comparisonColumns });
+    }
+    if (result.keyColumns.length > 0) {
+      dispatch({ type: "setKeyColumns", columns: result.keyColumns });
+    }
+    if (result.aggregationColumns.length > 0) {
+      dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns });
+    }
+    if (result.filters.length > 0) {
+      dispatch({ type: "setFilters", filters: result.filters });
+    }
+    if (result.targetColumns.length > 0) {
+      dispatch({ type: "setTargetColumns", columns: result.targetColumns });
+    }
+    if (result.warnings.length > 0) {
+      setConfigWarnings(result.warnings.map((w) => w.message));
+      setTimeout(() => setConfigWarnings([]), 10000);
+    }
+  }
 
   return (
     <section aria-labelledby="upload-title">
@@ -298,9 +331,43 @@ export function UploadPage() {
             onSelectedColumnsChange={(columns) => dispatch({ type: "setComparisonColumns", columns })}
             keyColumns={state.keyColumns}
             onKeyColumnsChange={(columns) => dispatch({ type: "setKeyColumns", columns })}
-            groupingColumns={state.groupingColumns}
-            onGroupingColumnsChange={(columns) => dispatch({ type: "setGroupingColumns", columns })}
+            aggregationColumns={state.aggregationColumns}
+            onAggregationColumnsChange={(columns) => dispatch({ type: "setAggregationColumns", columns })}
           />
+          {configWarnings.length > 0 && (
+            <div className="alert alert--warn" role="alert">
+              {configWarnings.map((w, i) => (
+                <p key={i} style={{ margin: 0 }}>{w}</p>
+              ))}
+            </div>
+          )}
+
+          <ConfigManager
+            configType="rows-and-columns"
+            currentContent={mapWorkflowToRowsColumnsConfig(
+              {
+                comparisonColumns: state.comparisonColumns,
+                keyColumns: state.keyColumns,
+                aggregationColumns: state.aggregationColumns,
+                filters: state.filters,
+                targetColumns: state.targetColumns,
+              },
+              families,
+            )}
+            onLoad={(name) => setConfigLoadName(name)}
+            hasUnsavedChanges={state.comparisonColumns.length > 0 || state.keyColumns.length > 0}
+            title="Load config for rows and columns"
+          />
+
+          {configLoadName && (
+            <ConfigLoader
+              configType="rows-and-columns"
+              name={configLoadName}
+              onLoad={handleConfigLoad}
+              onDone={() => setConfigLoadName(null)}
+            />
+          )}
+
           <div className="card">
             {state.comparisonColumns.length === 0 && (
               <p className="alert alert--error" role="alert">

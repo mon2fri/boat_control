@@ -1,12 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RuleEditor } from "./RuleEditor";
 import type { RuleDraft } from "../../api/domain";
+
+function renderWithQuery(node: React.ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+}
 
 function setup(props: Partial<React.ComponentProps<typeof RuleEditor>> = {}) {
   const onSave = vi.fn<(draft: RuleDraft) => void>();
   const onCancel = vi.fn();
-  render(
+  renderWithQuery(
     <RuleEditor
       columns={[]}
       saving={false}

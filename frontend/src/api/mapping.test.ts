@@ -25,7 +25,7 @@ const baseRequest = {
   filters: [],
   targetColumns: [],
   keyColumns: ["id"],
-  groupingColumns: [],
+  aggregationColumns: [],
 };
 
 describe("mapRunRequestToWire", () => {

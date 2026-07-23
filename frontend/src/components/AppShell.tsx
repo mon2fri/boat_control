@@ -1,12 +1,15 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useSessionExpiryRedirect } from "../features/session/useSessionExpiry";
 import { useSettings } from "../features/settings/useSettings";
+import { useWorkflow } from "../state/WorkflowContext";
+import { TableOfContents } from "../features/results/TableOfContents";
 
 const NAV_ITEMS = [
   { to: "/", label: "1. Upload", end: true },
   { to: "/prepare", label: "2. Compare and validate" },
   { to: "/results", label: "3. Results" },
+  { to: "/families", label: "Column/Value Family" },
   { to: "/history", label: "History" },
   { to: "/settings", label: "Settings" },
 ];
@@ -14,12 +17,16 @@ const NAV_ITEMS = [
 /** Persistent application frame: skip link, primary navigation, main region. */
 export function AppShell() {
   useSessionExpiryRedirect();
+  const location = useLocation();
+  const { state } = useWorkflow();
   const settings = useSettings();
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     const saved = localStorage.getItem("boat-control-theme");
     if (saved === "light" || saved === "dark") return saved;
     return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
   });
+
+  const isResultsRoute = location.pathname === "/results" || location.pathname.startsWith("/results/");
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -57,6 +64,11 @@ export function AppShell() {
               </li>
             ))}
           </ol>
+          {isResultsRoute && state.result && (
+            <div className="app-nav__results">
+              <TableOfContents result={state.result} variant="nav" />
+            </div>
+          )}
         </nav>
         <main id="main-content" className="app-main" tabIndex={-1}>
           <Outlet />

@@ -17,6 +17,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "rule_config_path": "config/rules",
     "rows_and_columns_config_path": "config/rows_and_columns",
     "filter_config_path": "config/filters",
+    "family_config_path": "config/families",
     "full_set_confirmation_rows": 2000,
     "run_history_path": "data/results",
 }
@@ -29,6 +30,7 @@ class AppSettings:
     rule_config_path: str = "config/rules"
     rows_and_columns_config_path: str = "config/rows_and_columns"
     filter_config_path: str = "config/filters"
+    family_config_path: str = "config/families"
     full_set_confirmation_rows: int = 2000
     run_history_path: str = "data/results"
 
@@ -77,6 +79,9 @@ def load_settings() -> AppSettings:
         rule_config_path=str(values["rule_config_path"]),
         rows_and_columns_config_path=str(values["rows_and_columns_config_path"]),
         filter_config_path=str(values["filter_config_path"]),
+        family_config_path=str(
+            values.get("family_config_path", DEFAULT_SETTINGS["family_config_path"])
+        ),
         full_set_confirmation_rows=threshold,
         run_history_path=str(values["run_history_path"]),
     )
@@ -102,6 +107,7 @@ def save_settings(app_settings: AppSettings) -> None:
     get_rule_config_dir(app_settings).mkdir(parents=True, exist_ok=True)
     get_rows_and_columns_config_dir(app_settings).mkdir(parents=True, exist_ok=True)
     get_filter_config_dir(app_settings).mkdir(parents=True, exist_ok=True)
+    get_family_config_dir(app_settings).mkdir(parents=True, exist_ok=True)
     get_run_history_dir(app_settings).mkdir(parents=True, exist_ok=True)
 
 
@@ -125,6 +131,7 @@ def update_settings(updates: dict[str, Any]) -> AppSettings:
             "rule_config_path",
             "rows_and_columns_config_path",
             "filter_config_path",
+            "family_config_path",
             "run_history_path",
         ):
             if not str(getattr(current, field_name)).strip():
@@ -172,3 +179,8 @@ def get_saved_filters_dir(app_settings: AppSettings | None = None) -> Path:
 def get_run_history_dir(app_settings: AppSettings | None = None) -> Path:
     current = app_settings or load_settings()
     return _configured_path(current.run_history_path, "RESULTS_DIR", "data/results")
+
+
+def get_family_config_dir(app_settings: AppSettings | None = None) -> Path:
+    current = app_settings or load_settings()
+    return _configured_path(current.family_config_path, "FAMILY_CONFIG_DIR", "config/families")

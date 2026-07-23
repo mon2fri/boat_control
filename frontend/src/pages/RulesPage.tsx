@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RuleEditor } from "../features/rules/RuleEditor";
 import { describeLogic, useCreateRule, useDeleteRule, useRules, useUpdateRule } from "../features/rules/useRules";
+import { useFamilies } from "../features/settings/useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { ConfigManager } from "../features/configs/ConfigManager";
+import { resolveRulesConfig, mapRulesToConfigContent } from "../api/configContent";
+import { deleteRule as deleteRuleApi, createRule as createRuleApi } from "../api/endpoints";
 import type { Rule, RuleDraft } from "../api/domain";
 
 const RULES_KEY = ["rules"] as const;
@@ -36,9 +39,15 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
   const updateRule = useUpdateRule();
   const deleteRule = useDeleteRule();
 
+  const familiesQuery = useFamilies();
+  const families = familiesQuery.data ?? [];
+
   const [editor, setEditor] = useState<EditorState>({ mode: "closed" });
   const [pendingDelete, setPendingDelete] = useState<Rule | null>(null);
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
+  const [loadedConfigData, setLoadedConfigData] = useState<unknown>(null);
+  const [configWarnings, setConfigWarnings] = useState<string[]>([]);
+  const [isApplyingConfig, setIsApplyingConfig] = useState(false);
   const initialized = useRef(false);
   const queryClient = useQueryClient();
 
@@ -51,6 +60,44 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
       dispatch({ type: "setSelectedRules", ruleIndexes: rules.data.map((r) => r.index) });
     }
   }, [rules.data, dispatch]);
+
+  const handleConfigContent = useCallback((content: unknown) => {
+    setLoadedConfigData(content);
+  }, []);
+
+  // Process loaded config content: resolve families, apply rules
+  useEffect(() => {
+    if (!loadedConfigData || families.length === 0) return;
+
+    const availableCols = columns;
+    const { drafts, warnings } = resolveRulesConfig(loadedConfigData, families, availableCols);
+
+    const warningMessages = warnings.map((w) => w.message);
+    if (warningMessages.length > 0) {
+      setConfigWarnings(warningMessages);
+      setTimeout(() => setConfigWarnings([]), 10000);
+    }
+
+    if (drafts.length === 0) {
+      setLoadedConfigData(null);
+      return;
+    }
+
+    setIsApplyingConfig(true);
+
+    const currentRules = queryClient.getQueryData<Rule[]>(RULES_KEY) ?? [];
+
+    Promise.all(currentRules.map((r) => deleteRuleApi(r.index).catch(() => undefined)))
+      .then(() => Promise.all(drafts.map((d) => createRuleApi(d).catch(() => undefined))))
+      .then(() => {
+        void queryClient.invalidateQueries({ queryKey: RULES_KEY });
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        setIsApplyingConfig(false);
+        setLoadedConfigData(null);
+      });
+  }, [loadedConfigData, families, columns, queryClient]);
 
   function toggle(index: string): void {
     const next = selected.includes(index)
@@ -94,16 +141,16 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
           </div>
           <ConfigManager
             configType="rules"
-            currentContent={rules.data ?? []}
+            currentContent={mapRulesToConfigContent(rules.data ?? [], families)}
             onLoad={(name) => setConfigLoadName(name)}
-            disabled={rules.isPending}
+            disabled={rules.isPending || isApplyingConfig}
             hasUnsavedChanges={editor.mode !== "closed"}
             title="Load config for rules"
           />
         </div>
 
         <div className="rules-layout">
-          <div className="rule-select-panel">
+          <div className="card rule-select-panel">
             <h4 className="section-heading" style={{ fontSize: "0.9rem", fontWeight: 600 }}>Select rules for this run</h4>
             {rules.isLoading && <p role="status">Loading rules…</p>}
             {rules.isError && (
@@ -180,7 +227,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
           </div>
         </div>
 
-        <div className="card">
+        <div className="card" style={{ marginTop: "calc(var(--space) * 2)" }}>
           <div className="config-inline-row">
             <button
               type="button"
@@ -207,11 +254,23 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
           <ConfigLoader
             configType="rules"
             name={configLoadName}
-            onLoad={() => {
-              void queryClient.invalidateQueries({ queryKey: RULES_KEY });
-            }}
+            onLoad={handleConfigContent}
             onDone={() => setConfigLoadName(null)}
           />
+        )}
+
+        {isApplyingConfig && (
+          <p role="status" aria-live="polite" className="busy-row">
+            <span className="spinner" aria-hidden="true" /> Applying config…
+          </p>
+        )}
+
+        {configWarnings.length > 0 && (
+          <div className="alert alert--warn" role="alert">
+            {configWarnings.map((w, i) => (
+              <p key={i} style={{ margin: 0 }}>{w}</p>
+            ))}
+          </div>
         )}
 
         <ConfirmDialog
@@ -318,7 +377,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
         </>
       )}
 
-      <div className="card">
+      <div className="card" style={{ marginTop: "calc(var(--space) * 2)" }}>
         <div className="config-inline-row">
           <button
             type="button"
@@ -343,9 +402,9 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
 
       <ConfigManager
         configType="rules"
-        currentContent={rules.data ?? []}
+        currentContent={mapRulesToConfigContent(rules.data ?? [], families)}
         onLoad={(name) => setConfigLoadName(name)}
-        disabled={rules.isPending}
+        disabled={rules.isPending || isApplyingConfig}
         hasUnsavedChanges={editor.mode !== "closed"}
         title="Load config for rules"
       />
@@ -354,11 +413,23 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
         <ConfigLoader
           configType="rules"
           name={configLoadName}
-          onLoad={() => {
-            void queryClient.invalidateQueries({ queryKey: RULES_KEY });
-          }}
+          onLoad={handleConfigContent}
           onDone={() => setConfigLoadName(null)}
         />
+      )}
+
+      {isApplyingConfig && (
+        <p role="status" aria-live="polite" className="busy-row">
+          <span className="spinner" aria-hidden="true" /> Applying config…
+        </p>
+      )}
+
+      {configWarnings.length > 0 && (
+        <div className="alert alert--warn" role="alert">
+          {configWarnings.map((w, i) => (
+            <p key={i} style={{ margin: 0 }}>{w}</p>
+          ))}
+        </div>
       )}
 
       <ConfirmDialog

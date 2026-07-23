@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { HeaderReview } from "./HeaderReview";
 import type { HeaderReport } from "../../api/domain";
+
+function renderWithQuery(node: React.ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+}
 
 const baseReport: HeaderReport = {
   sessionId: "s1",
@@ -22,7 +28,7 @@ const defaultProps = {
 
 describe("HeaderReview", () => {
   it("separates shared and file-specific columns", () => {
-    render(<HeaderReview {...defaultProps} />);
+    renderWithQuery(<HeaderReview {...defaultProps} />);
     const shared = screen.getByRole("list", { name: /Shared/ });
     expect(within(shared).getByText("region")).toBeInTheDocument();
     expect(screen.getByRole("list", { name: /Only in baseline\.csv/ })).toBeInTheDocument();
@@ -30,13 +36,13 @@ describe("HeaderReview", () => {
   });
 
   it("warns when the files have differing columns", () => {
-    render(<HeaderReview {...defaultProps} />);
+    renderWithQuery(<HeaderReview {...defaultProps} />);
     expect(screen.getByRole("alert")).toHaveTextContent(/differing columns/);
   });
 
   it("renders hostile column names as inert text (no HTML injection)", () => {
     const hostile = "<img src=x onerror=alert(1)>";
-    render(
+    renderWithQuery(
       <HeaderReview
         {...defaultProps}
         report={{ ...baseReport, common: [hostile] }}
@@ -50,7 +56,7 @@ describe("HeaderReview", () => {
   });
 
   it("shows Columns Included and Columns Excluded cards", () => {
-    render(
+    renderWithQuery(
       <HeaderReview
         {...defaultProps}
         selectedColumns={["id"]}
@@ -61,7 +67,7 @@ describe("HeaderReview", () => {
   });
 
   it("renders included tags with green styling", () => {
-    render(
+    renderWithQuery(
       <HeaderReview
         {...defaultProps}
         selectedColumns={["id", "region"]}
@@ -73,7 +79,7 @@ describe("HeaderReview", () => {
   });
 
   it("renders excluded tags with red styling", () => {
-    render(
+    renderWithQuery(
       <HeaderReview
         {...defaultProps}
         selectedColumns={["id"]}
@@ -84,52 +90,52 @@ describe("HeaderReview", () => {
     expect(within(excluded).getByText("status")).toHaveClass("tag--excluded");
   });
 
-  it("renders Grouping Columns card after Key columns", () => {
-    render(<HeaderReview {...defaultProps} />);
-    const groupingHeading = screen.getByText("Grouping Columns");
-    expect(groupingHeading).toBeInTheDocument();
-    expect(groupingHeading.textContent).toBe("Grouping Columns");
+  it("renders Aggregation Columns card after Key columns", () => {
+    renderWithQuery(<HeaderReview {...defaultProps} />);
+    const aggregationHeading = screen.getByText("Aggregation Columns");
+    expect(aggregationHeading).toBeInTheDocument();
+    expect(aggregationHeading.textContent).toBe("Aggregation Columns");
     const hint = screen.getByText(/Optional\. Pick columns for group-level statistics/);
     expect(hint).toBeInTheDocument();
   });
 
-  it("fires onGroupingColumnsChange when grouping columns are selected", () => {
-    const onGroupingColumnsChange = vi.fn();
-    render(
+  it("fires onAggregationColumnsChange when aggregation columns are selected", () => {
+    const onAggregationColumnsChange = vi.fn();
+    renderWithQuery(
       <HeaderReview
         {...defaultProps}
-        onGroupingColumnsChange={onGroupingColumnsChange}
+        onAggregationColumnsChange={onAggregationColumnsChange}
       />,
     );
-    const searchbox = screen.getByRole("searchbox", { name: "Select grouping columns" });
+    const searchbox = screen.getByRole("searchbox", { name: "Select aggregation columns" });
     fireEvent.focus(searchbox);
     fireEvent.mouseDown(screen.getByRole("option", { name: /region/ }));
-    expect(onGroupingColumnsChange).toHaveBeenCalledWith(["region"]);
+    expect(onAggregationColumnsChange).toHaveBeenCalledWith(["region"]);
   });
 
-  it("renders grouping column selections from props", () => {
-    render(
+  it("renders aggregation column selections from props", () => {
+    renderWithQuery(
       <HeaderReview
         {...defaultProps}
         selectedColumns={["id", "region"]}
-        groupingColumns={["region"]}
-        onGroupingColumnsChange={vi.fn()}
+        aggregationColumns={["region"]}
+        onAggregationColumnsChange={vi.fn()}
       />,
     );
-    const searchbox = screen.getByRole("searchbox", { name: "Select grouping columns" });
+    const searchbox = screen.getByRole("searchbox", { name: "Select aggregation columns" });
     expect(searchbox).toBeInTheDocument();
     expect(searchbox).toHaveAttribute("placeholder", expect.stringContaining("1 selected"));
   });
 
-  it("only lists columns selected in COLUMN FILTER in the Grouping Columns dropdown", () => {
+  it("only lists columns selected in COLUMN FILTER in the Aggregation Columns dropdown", () => {
     // 'status' is in report.common but not in selectedColumns (i.e. excluded by the user).
-    render(
+    renderWithQuery(
       <HeaderReview
         {...defaultProps}
         selectedColumns={["id", "region"]}
       />,
     );
-    const searchbox = screen.getByRole("searchbox", { name: "Select grouping columns" });
+    const searchbox = screen.getByRole("searchbox", { name: "Select aggregation columns" });
     fireEvent.focus(searchbox);
     // The two filtered columns are offered.
     expect(screen.getByRole("option", { name: /region/ })).toBeInTheDocument();
@@ -139,7 +145,7 @@ describe("HeaderReview", () => {
   });
 
   it("shows the dedup banner when either uploaded file matched an existing one", () => {
-    render(
+    renderWithQuery(
       <HeaderReview
         {...defaultProps}
         report={{ ...baseReport, file2Deduplicated: true }}
@@ -150,7 +156,7 @@ describe("HeaderReview", () => {
   });
 
   it("does not show the dedup banner when neither file was deduplicated", () => {
-    render(<HeaderReview {...defaultProps} />);
+    renderWithQuery(<HeaderReview {...defaultProps} />);
     expect(screen.queryByText(/Matched existing file/)).toBeNull();
   });
 });

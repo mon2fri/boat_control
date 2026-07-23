@@ -11,6 +11,8 @@ import {
   validateTargetsResponseSchema,
   wireColumnValuesPageSchema,
   wireDetailPageSchema,
+  wireFamilyListSchema,
+  wireFamilySchema,
   wirePresetListSchema,
   wireRunDocumentSchema,
   wireRunHistorySchema,
@@ -24,6 +26,7 @@ import {
 } from "./wire";
 import {
   mapColumnValue,
+  mapFamily,
   mapPresetSource,
   mapRunDocumentToResult,
   mapRunMetadata,
@@ -40,6 +43,7 @@ import {
 import type {
   AppSettings,
   DetailRow,
+  Family,
   Rule as DomainRule,
   FilterRow,
   HeaderReport,
@@ -315,7 +319,7 @@ export function executeRun(
     filters: FilterRow[];
     targetColumns: string[];
     keyColumns: string[];
-    groupingColumns: string[];
+    aggregationColumns: string[];
     ruleIndexes: string[];
   },
   signal?: AbortSignal,
@@ -606,6 +610,61 @@ export function updateConfig(
     }),
   });
 }
+
+// --- Family CRUD ---------------------------------------------------------
+
+export function listFamilies(): Promise<Family[]> {
+  return apiRequest("/families/", { schema: wireFamilyListSchema }).then((items) =>
+    items.map(mapFamily),
+  );
+}
+
+export function getFamily(name: string): Promise<Family | null> {
+  return apiRequest(`/families/${encodeURIComponent(name)}/`, {
+    schema: wireFamilySchema,
+  }).then(mapFamily);
+}
+
+export function createFamily(data: {
+  kind: "column" | "value";
+  name: string;
+  columns?: string[];
+  owner?: { kind: "column" | "column_family"; name: string };
+  values?: string[];
+}): Promise<Family> {
+  return apiRequest("/families/", {
+    method: "POST",
+    body: data,
+    schema: wireFamilySchema,
+  }).then(mapFamily);
+}
+
+export function updateFamily(
+  name: string,
+  data: {
+    kind: "column" | "value";
+    name?: string;
+    columns?: string[];
+    owner?: { kind: "column" | "column_family"; name: string };
+    values?: string[];
+    version: number;
+  },
+): Promise<Family> {
+  return apiRequest(`/families/${encodeURIComponent(name)}/`, {
+    method: "PUT",
+    body: data,
+    schema: wireFamilySchema,
+  }).then(mapFamily);
+}
+
+export function deleteFamily(name: string): Promise<void> {
+  return apiRequest(`/families/${encodeURIComponent(name)}/`, {
+    method: "DELETE",
+    schema: z.void(),
+  });
+}
+
+// --- Named configuration files --------------------------------------------
 
 export function deleteConfig(
   configType: "rules" | "filters" | "rows-and-columns",

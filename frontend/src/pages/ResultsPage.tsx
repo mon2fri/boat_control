@@ -5,7 +5,6 @@ import { RequireSession } from "../components/RequireSession";
 import { useRunExecution } from "../features/results/useRunExecution";
 import { OverallSummaryCards } from "../features/results/OverallSummaryCards";
 import { RuleResultSection } from "../features/results/RuleResultSection";
-import { TableOfContents } from "../features/results/TableOfContents";
 import { ReportName } from "../features/reports/ReportName";
 import { ExportControls } from "../features/reports/ExportControls";
 import { PaginatedDetailSection } from "../features/results/PaginatedDetailSection";
@@ -29,7 +28,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
     filters: completeFilters(state.filters),
     targetColumns: state.targetColumns,
     keyColumns: state.keyColumns,
-    groupingColumns: state.groupingColumns,
+    aggregationColumns: state.aggregationColumns,
     ruleIndexes: state.selectedRuleIndexes,
     confirmFullSet: state.confirmFullSet,
   };
@@ -136,10 +135,8 @@ export function ResultsPage() {
 
       {state.result && (
         <>
-          <div className="result-layout">
-            <TableOfContents result={state.result} />
-            <div className="result-content">
-              <div className="results-header">
+          <div className="result-content">
+            <div className="results-header">
                 <div className="results-title-row">
                   <ReportName
                     runId={state.result.id}
@@ -209,7 +206,6 @@ export function ResultsPage() {
                 </div>
               </div>
             </div>
-          </div>
         </>
       )}
     </section>

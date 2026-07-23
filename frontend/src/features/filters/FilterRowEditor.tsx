@@ -3,6 +3,7 @@ import type { FilterOperator, FilterRow } from "../../api/domain";
 import { SearchableSelect, type SelectOption } from "../../components/SearchableSelect";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
 import { FILTER_OPERATORS } from "./constants";
+import { ValueFamilyAddButton } from "../families/ValueFamilyAddButton";
 
 interface Props {
   row: FilterRow;
@@ -85,6 +86,13 @@ export function FilterRowEditor({
             : "Starred (*) values exist in only one file and cannot be chosen."
         }
       />
+      {row.column && (
+        <ValueFamilyAddButton
+          column={row.column}
+          selectedValues={row.values}
+          onAddValues={(values) => onChange({ ...row, values })}
+        />
+      )}
       <button type="button" className="btn btn--danger" onClick={onRemove}>
         Remove
         <span className="visually-hidden"> filter {index + 1}</span>

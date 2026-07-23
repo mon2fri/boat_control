@@ -66,4 +66,22 @@ describe("RulesPage", () => {
     );
     vi.unstubAllGlobals();
   });
+
+  it("wraps rule selection in a card with run action card below", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(rulesList));
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Region present/)).toBeInTheDocument());
+
+    const ruleCard = screen.getByText("Select rules for this run").closest(".card");
+    expect(ruleCard).toBeTruthy();
+
+    const runBtn = screen.getByRole("button", { name: "Run comparison and validation" });
+    const runCard = runBtn.closest(".card");
+    expect(runCard).toBeTruthy();
+    expect(runCard).not.toBe(ruleCard);
+
+    vi.unstubAllGlobals();
+  });
 });

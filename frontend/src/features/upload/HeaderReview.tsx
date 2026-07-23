@@ -1,7 +1,9 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { HeaderReport } from "../../api/domain";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
 import { KeyColumnSelector } from "../keys/KeyColumnSelector";
+import { FamilyEditor } from "../families/FamilyEditor";
+import { useFamilies } from "../settings/useSettings";
 
 interface Props {
   report: HeaderReport;
@@ -9,16 +11,15 @@ interface Props {
   onSelectedColumnsChange: (columns: string[]) => void;
   keyColumns?: string[];
   onKeyColumnsChange?: (columns: string[]) => void;
-  groupingColumns?: string[];
-  onGroupingColumnsChange?: (columns: string[]) => void;
+  aggregationColumns?: string[];
+  onAggregationColumnsChange?: (columns: string[]) => void;
 }
 
-/**
- * Presents the outcome of header inspection: which columns are shared (and
- * therefore eligible for comparison/validation) and which exist in only one
- * file. Users can select which shared columns to include for comparison.
- */
-export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, groupingColumns = [], onGroupingColumnsChange = () => {} }: Props) {
+export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, aggregationColumns = [], onAggregationColumnsChange = () => {} }: Props) {
+  const { data: families } = useFamilies();
+  const [familyEditorOpen, setFamilyEditorOpen] = useState(false);
+  const [loadFamilyWarnings, setLoadFamilyWarnings] = useState<string[]>([]);
+
   const hasDifferences = report.file1Only.length > 0 || report.file2Only.length > 0;
   const deduplicatedFiles: string[] = [];
   if (report.file1Deduplicated) deduplicatedFiles.push(report.file1Name);
@@ -32,10 +33,7 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
     [report.common],
   );
 
-  // The Grouping Columns dropdown must only offer columns the user picked in
-  // the COLUMN FILTER (selectedColumns) — otherwise it would surface columns
-  // that comparison and validation will ignore.
-  const groupingOptions = useMemo(
+  const aggregationOptions = useMemo(
     () => sharedOptions.filter((o) => selectedColumns.includes(o.value)),
     [sharedOptions, selectedColumns],
   );
@@ -49,6 +47,36 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
   const handleFilterChange = useCallback(
     (columns: string[]) => onSelectedColumnsChange(columns),
     [onSelectedColumnsChange],
+  );
+
+  const columnFamilies = useMemo(
+    () => (families ?? []).filter((f) => f.kind === "column"),
+    [families],
+  );
+
+  const handleLoadFamily = useCallback(
+    (familyName: string) => {
+      const family = columnFamilies.find((f) => f.name === familyName);
+      if (!family || family.kind !== "column") return;
+      const available = family.columns.filter((c) => report.common.includes(c));
+      if (available.length === 0) {
+        setLoadFamilyWarnings([`Family "${familyName}" has no available columns for the current upload.`]);
+        return;
+      }
+      const missing = family.columns.filter((c) => !report.common.includes(c));
+      const warnings: string[] = [];
+      if (missing.length > 0) {
+        warnings.push(`Ignored unavailable members: ${missing.join(", ")}`);
+      }
+      const merged = [...selectedColumns, ...available];
+      const unique = [...new Set(merged)];
+      onSelectedColumnsChange(unique);
+      setLoadFamilyWarnings(warnings);
+      if (warnings.length > 0) {
+        setTimeout(() => setLoadFamilyWarnings([]), 8000);
+      }
+    },
+    [columnFamilies, report.common, selectedColumns, onSelectedColumnsChange],
   );
 
   return (
@@ -100,7 +128,55 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
           placeholder="Search shared columns…"
           hint="Pick columns for comparison and validation. Starts with all selected."
         />
+
+        {columnFamilies.length > 0 && (
+          <div className="field" style={{ marginTop: "var(--space)" }}>
+            <label htmlFor="load-family">Load column family</label>
+            <select
+              id="load-family"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) handleLoadFamily(e.target.value);
+              }}
+            >
+              <option value="">-- Select a column family to add --</option>
+              {columnFamilies.map((f) => {
+                const available = f.columns.filter((c) => report.common.includes(c));
+                return (
+                  <option key={f.name} value={f.name} disabled={available.length === 0}>
+                    {f.name}{available.length > 0 ? ` (${available.length} available)` : " (none available)"}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        )}
+
+        <button
+          type="button"
+          className="btn"
+          style={{ marginTop: "var(--space)" }}
+          onClick={() => setFamilyEditorOpen(true)}
+        >
+          Add column family
+        </button>
+
+        {loadFamilyWarnings.length > 0 && (
+          <div className="alert alert--warn" role="alert" style={{ marginTop: "var(--space)" }}>
+            {loadFamilyWarnings.map((w, i) => <p key={i} style={{ margin: 0 }}>{w}</p>)}
+          </div>
+        )}
       </div>
+
+      {familyEditorOpen && (
+        <div style={{ marginTop: "var(--space)" }}>
+          <FamilyEditor
+            kind="column"
+            onClose={() => setFamilyEditorOpen(false)}
+            onSaved={() => setFamilyEditorOpen(false)}
+          />
+        </div>
+      )}
 
       <div className="header-columns" style={{ marginTop: "var(--space)" }}>
         <div className="card header-column-group">
@@ -141,31 +217,31 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
         />
 
         <section className="card">
-          <h3 className="card-heading">Grouping Columns</h3>
+          <h3 className="card-heading">Aggregation Columns</h3>
           <p className="card-hint">
             Optional. Pick columns for group-level statistics.
           </p>
           <SearchableMultiSelect
-            label="Select grouping columns"
-            options={groupingOptions}
-            selected={groupingColumns.filter((c) => selectedColumns.includes(c))}
-            onChange={(cols) => onGroupingColumnsChange(cols.filter((c) => selectedColumns.includes(c)))}
+            label="Select aggregation columns"
+            options={aggregationOptions}
+            selected={aggregationColumns.filter((c) => selectedColumns.includes(c))}
+            onChange={(cols) => onAggregationColumnsChange(cols.filter((c) => selectedColumns.includes(c)))}
             placeholder="Search columns…"
           />
-          {groupingColumns.filter((c) => selectedColumns.includes(c)).length === 0 ? (
+          {aggregationColumns.filter((c) => selectedColumns.includes(c)).length === 0 ? (
             <p className="field-hint" role="status">
-              No grouping columns selected.
+              No aggregation columns selected.
             </p>
           ) : (
-            <ul aria-label="Selected grouping columns" className="chip-list">
-              {groupingColumns.filter((c) => selectedColumns.includes(c)).map((column) => (
+            <ul aria-label="Selected aggregation columns" className="chip-list">
+              {aggregationColumns.filter((c) => selectedColumns.includes(c)).map((column) => (
                 <li key={column}>
                   <span className="tag">{column}</span>
                   <button
                     type="button"
                     className="btn chip-remove"
-                    onClick={() => onGroupingColumnsChange(groupingColumns.filter((item) => item !== column))}
-                    aria-label={`Remove grouping column ${column}`}
+                    onClick={() => onAggregationColumnsChange(aggregationColumns.filter((item) => item !== column))}
+                    aria-label={`Remove aggregation column ${column}`}
                   >
                     ×
                   </button>

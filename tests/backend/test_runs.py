@@ -354,7 +354,7 @@ def load_rules(path: Path) -> RulesFile:
 
 
 class TestComputeGroupStatistics:
-    def test_empty_grouping_columns(self) -> None:
+    def test_empty_aggregation_columns(self) -> None:
         from apps.runs.services import compute_group_statistics
 
         result = compute_group_statistics([], {}, [])
@@ -364,7 +364,7 @@ class TestComputeGroupStatistics:
         from apps.runs.services import compute_group_statistics
 
         result = compute_group_statistics([], {}, ["region"])
-        # With grouping columns specified, stats are produced even with zero data
+        # With aggregation columns specified, stats are produced even with zero data
         assert len(result["overall"]) == 1
         assert result["overall"][0]["column"] == "region"
         assert result["overall"][0]["unique_count"] == 0
@@ -545,7 +545,7 @@ class TestComputeGroupStatistics:
         assert overall["unique_count"] == 1
         assert overall["attribute_count"] == 2  # 1 change + 1 violation
 
-    def test_multiple_grouping_columns(self) -> None:
+    def test_multiple_aggregation_columns(self) -> None:
         from apps.runs.services import (
             AttributeChange,
             RowComparison,
@@ -566,16 +566,16 @@ class TestComputeGroupStatistics:
         assert result["overall"][0]["column"] == "region"
         assert result["overall"][1]["column"] == "team"
 
-    def test_execute_comparison_with_grouping(self, csv_a: Path, csv_b: Path) -> None:
+    def test_execute_comparison_with_aggregation(self, csv_a: Path, csv_b: Path) -> None:
         result = execute_comparison(
             path_a=csv_a,
             path_b=csv_b,
             target_columns=["score"],
             key_columns=["id"],
-            grouping_columns=["status"],
+            aggregation_columns=["status"],
         )
-        # grouping_columns should be passed through
-        assert result.grouping_columns == ["status"]
+        # aggregation_columns should be passed through
+        assert result.aggregation_columns == ["status"]
         assert result.group_statistics is not None
         assert "overall" in result.group_statistics
         assert len(result.group_statistics["overall"]) == 1
@@ -588,8 +588,8 @@ class TestComputeGroupStatistics:
         values = {row["value"] for row in overall["rows"]}
         assert "Total" in values
         assert values != {"Total", "Null"}, (
-            "Group statistics did not load grouping-column data — every row "
+            "Group statistics did not load aggregation-column data — every row "
             "bucketed under 'Null'. Re-check that needed_columns includes "
-            "grouping_columns in execute_comparison."
+            "aggregation_columns in execute_comparison."
         )
         assert values - {"Total"}  # at least one real value besides Total

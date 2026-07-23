@@ -6,6 +6,10 @@ from django.conf import settings
 from django.http import FileResponse, HttpResponseNotFound
 from django.urls import include, path
 
+_family_patterns = ([
+    path("", include("apps.families.urls")),
+], "families")
+
 _api_patterns = [
     path("api/health/", include("apps.health.urls")),
     path("api/files/", include("apps.files.urls")),
@@ -14,6 +18,7 @@ _api_patterns = [
     path("api/reports/", include("apps.reports.urls")),
     path("api/settings/", include("apps.settings.urls")),
     path("api/filters/", include("apps.saved_filters.urls")),
+    path("api/families/", include(_family_patterns)),
     path(
         "api/rows-and-columns/configs/",
         RowsAndColumnsConfigListView.as_view(),

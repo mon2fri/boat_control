@@ -5,14 +5,18 @@ import { FilterBuilder } from "../features/filters/FilterBuilder";
 import { TargetSelector } from "../features/targets/TargetSelector";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
+import { useFamilies } from "../features/settings/useSettings";
 import { prepareFilters, type PrepareResult } from "../api/endpoints";
-import type { FilterRow as FilterRowType } from "../api/domain";
+import { resolveRowsColumnsConfig, mapWorkflowToRowsColumnsConfig } from "../api/configContent";
 import { useSessionExpiryDispatcher } from "../features/session/useSessionExpiry";
 import { RulesPage } from "./RulesPage";
 
 export function PreparePage() {
   const { state, dispatch } = useWorkflow();
   const handleSessionError = useSessionExpiryDispatcher();
+  const familiesQuery = useFamilies();
+  const families = familiesQuery.data ?? [];
+
   const [prepare, setPrepare] = useState<{
     status: "loading" | "ready" | "error";
     data: PrepareResult | null;
@@ -24,13 +28,6 @@ export function PreparePage() {
   const header = state.header;
   const totalRows = (prepare.data?.totalRowsA ?? 0) + (prepare.data?.totalRowsB ?? 0);
   const comparisonColumns = state.comparisonColumns;
-
-  const prepareConfigContent = {
-    filters: state.filters,
-    targetColumns: state.targetColumns,
-    keyColumns: state.keyColumns,
-    comparisonColumns,
-  };
 
   const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0;
 
@@ -59,48 +56,22 @@ export function PreparePage() {
   }
 
   function handleConfigLoad(content: unknown): void {
-    const data = content as {
-      filters?: FilterRowType[];
-      targetColumns?: string[];
-      keyColumns?: string[];
-      comparisonColumns?: string[];
-    } | null;
-    if (!data) return;
+    const result = resolveRowsColumnsConfig(content, families, comparisonColumns);
 
     const warnings: string[] = [];
 
-    if (data.filters) {
-      const validFilters: FilterRowType[] = [];
-      const discardedFilters: string[] = [];
-      for (const row of data.filters) {
-        if (!row.column || comparisonColumns.includes(row.column)) {
-          validFilters.push({ ...row, id: `fl-${validFilters.length}` });
-        } else {
-          discardedFilters.push(row.column);
-        }
-      }
-      if (discardedFilters.length > 0) {
-        warnings.push(`Filters discarded (column not in current selection): ${[...new Set(discardedFilters)].join(", ")}`);
-      }
-      dispatch({ type: "setFilters", filters: validFilters });
+    if (result.filters.length > 0) {
+      dispatch({ type: "setFilters", filters: result.filters });
+    }
+    if (result.targetColumns.length > 0) {
+      dispatch({ type: "setTargetColumns", columns: result.targetColumns });
+    }
+    if (result.keyColumns.length > 0) {
+      dispatch({ type: "setKeyColumns", columns: result.keyColumns });
     }
 
-    if (data.targetColumns) {
-      const valid = data.targetColumns.filter((c) => comparisonColumns.includes(c));
-      const discarded = data.targetColumns.filter((c) => !comparisonColumns.includes(c));
-      if (discarded.length > 0) {
-        warnings.push(`Comparing columns discarded (not in current selection): ${discarded.join(", ")}`);
-      }
-      dispatch({ type: "setTargetColumns", columns: valid });
-    }
-
-    if (data.keyColumns) {
-      const valid = data.keyColumns.filter((c) => comparisonColumns.includes(c));
-      const discarded = data.keyColumns.filter((c) => !comparisonColumns.includes(c));
-      if (discarded.length > 0) {
-        warnings.push(`Identifier columns discarded (not in current selection): ${discarded.join(", ")}`);
-      }
-      dispatch({ type: "setKeyColumns", columns: valid });
+    for (const w of result.warnings) {
+      warnings.push(w.message);
     }
 
     setDiscardWarnings(warnings);
@@ -121,7 +92,16 @@ export function PreparePage() {
         </div>
         <ConfigManager
           configType="rows-and-columns"
-          currentContent={prepareConfigContent}
+          currentContent={mapWorkflowToRowsColumnsConfig(
+            {
+              comparisonColumns,
+              keyColumns: state.keyColumns,
+              aggregationColumns: state.aggregationColumns,
+              filters: state.filters,
+              targetColumns: state.targetColumns,
+            },
+            families,
+          )}
           onLoad={(name) => setConfigLoadName(name)}
           hasUnsavedChanges={hasUnsavedChanges}
           title="Load config for rows and columns"
