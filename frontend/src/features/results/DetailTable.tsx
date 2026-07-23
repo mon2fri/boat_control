@@ -15,6 +15,7 @@ interface StaticProps {
   onReachEnd?: () => void;
   hasMore?: boolean;
   keyColumnNames?: string[];
+  extraColumnNames?: string[];
   emptyMessage?: string;
   /** Optional column filters shown as filterable headers. */
   columnFilters?: ColumnFilter[];
@@ -35,6 +36,7 @@ export function DetailTable({
   onReachEnd,
   hasMore = false,
   keyColumnNames = [],
+  extraColumnNames: configuredExtraColumnNames,
   emptyMessage = "No detail rows.",
   columnFilters = [],
   activeFilters = {},
@@ -78,18 +80,18 @@ export function DetailTable({
     : virtualizer.getTotalSize();
 
   const keyColCount = keyColumnNames.length || 1;
-  const extraColumnNames = [...new Set(rows.flatMap((row) => Object.keys(row.extraValues ?? {})))];
+  const extraColumnNames = configuredExtraColumnNames
+    ?? [...new Set(rows.flatMap((row) => Object.keys(row.extraValues ?? {})))];
   const colWidths: number[] = [];
   for (let i = 0; i < keyColCount; i++) colWidths.push(150);
-  colWidths.push(150, 180, 180, 240);
-  colWidths.splice(colWidths.length - 1, 0, ...extraColumnNames.map(() => 180));
+  colWidths.push(...extraColumnNames.map(() => 180), 150, 180, 180, 240);
   const tableMinWidth = colWidths.reduce((a, b) => a + b, 0);
   const colTemplate = [
     ...Array.from({ length: keyColCount }, () => "minmax(150px, 1fr)"),
+    ...extraColumnNames.map(() => "minmax(180px, 1.2fr)"),
     "minmax(150px, 1fr)",
     "minmax(180px, 1.2fr)",
     "minmax(180px, 1.2fr)",
-    ...extraColumnNames.map(() => "minmax(180px, 1.2fr)"),
     "minmax(240px, 1.6fr)",
   ].join(" ");
 
@@ -113,6 +115,20 @@ export function DetailTable({
       ) : (
         <div role="columnheader">Row</div>
       )}
+      {extraColumnNames.map((name) => {
+        const cf = columnFilters.find((f) => f.key === `extra_${name}`);
+        return cf ? (
+          <FilterableTh
+            key={name}
+            label={name}
+            options={cf.options}
+            selected={activeFilters[cf.key] ?? []}
+            onChange={(vals) => onFilterChange?.(cf.key, vals)}
+          />
+        ) : (
+          <div key={name} role="columnheader">{name}</div>
+        );
+      })}
       {(() => {
         const colFilter = columnFilters.find((f) => f.key === "column");
         return colFilter ? (
@@ -128,7 +144,6 @@ export function DetailTable({
       })()}
       <div role="columnheader">In Baseline</div>
       <div role="columnheader">In Comparison</div>
-      {extraColumnNames.map((name) => <div key={name} role="columnheader">{name}</div>)}
       <div role="columnheader">Rationale</div>
     </>
   );
@@ -187,12 +202,12 @@ export function DetailTable({
                 ) : (
                   <div role="cell">{row.rowKey}</div>
                 )}
-                <div role="cell">{row.column}</div>
-                <div role="cell">{row.file1Value ?? "—"}</div>
-                <div role="cell">{row.file2Value ?? "—"}</div>
                 {extraColumnNames.map((name) => (
                   <div role="cell" key={name}>{row.extraValues?.[name] ?? "—"}</div>
                 ))}
+                <div role="cell">{row.column}</div>
+                <div role="cell">{row.file1Value ?? "—"}</div>
+                <div role="cell">{row.file2Value ?? "—"}</div>
                 <div role="cell">{row.kind === "changed" ? "Values differ" : "Rule requirement not met"}</div>
               </div>
             );
@@ -318,6 +333,9 @@ export function filterDetailRows(
       } else if (key.startsWith("key_")) {
         const colName = key.slice(4);
         cellVal = String(row.keyColumns[colName] ?? "");
+      } else if (key.startsWith("extra_")) {
+        const colName = key.slice(6);
+        cellVal = String(row.extraValues?.[colName] ?? "");
       } else {
         return true;
       }

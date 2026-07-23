@@ -41,6 +41,22 @@ export function RuleResultSection({
       }
       filters.push({ key: `key_${kc}`, label: kc, options: [...vals].sort() });
     }
+    const extraValuesByColumn = new Map<string, Set<string>>();
+    for (const row of result.details) {
+      for (const [column, value] of Object.entries(row.extraValues ?? {})) {
+        if (!extraValuesByColumn.has(column)) {
+          extraValuesByColumn.set(column, new Set());
+        }
+        if (value != null) extraValuesByColumn.get(column)!.add(String(value));
+      }
+    }
+    for (const [column, values] of extraValuesByColumn) {
+      filters.push({
+        key: `extra_${column}`,
+        label: column,
+        options: [...values].sort(),
+      });
+    }
     if (result.details.some((r) => r.column)) {
       const colVals = new Set<string>();
       for (const r of result.details) {

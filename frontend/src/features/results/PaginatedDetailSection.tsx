@@ -34,11 +34,22 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }:
       const options = availableFilters[`key_${kc}`] ?? [];
       filters.push({ key: `key_${kc}`, label: kc, options });
     }
+    for (const [key, options] of Object.entries(availableFilters)) {
+      if (!key.startsWith("extra_")) continue;
+      filters.push({ key, label: key.slice(6), options });
+    }
     if (availableFilters["column"]) {
       filters.push({ key: "column", label: "COLUMN", options: availableFilters["column"] });
     }
     return filters;
   }, [keyColumnNames, availableFilters]);
+
+  const extraColumnNames = useMemo(
+    () => Object.keys(availableFilters)
+      .filter((key) => key.startsWith("extra_"))
+      .map((key) => key.slice(6)),
+    [availableFilters],
+  );
 
   if (loading && rows.length === 0) {
     return (
@@ -67,6 +78,7 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }:
         onReachEnd={loadMore}
         caption={caption}
         {...(keyColumnNames ? { keyColumnNames } : {})}
+        extraColumnNames={extraColumnNames}
         columnFilters={columnFilters}
         activeFilters={filters}
         onFilterChange={handleFilterChange}

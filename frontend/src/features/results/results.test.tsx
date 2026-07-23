@@ -55,6 +55,44 @@ describe("result components", () => {
     expect(within(section).getByText("3")).toBeInTheDocument();
   });
 
+  it("shows and applies filters for rule-selected extra columns", () => {
+    render(
+      <RuleResultSection
+        keyColumnNames={["id"]}
+        result={{
+          ...ruleResult,
+          details: [
+            {
+              rowKey: "1",
+              keyColumns: { id: "1" },
+              column: "status",
+              file1Value: "old",
+              file2Value: "new",
+              extraValues: { region: "EMEA" },
+              kind: "exception",
+            },
+            {
+              rowKey: "2",
+              keyColumns: { id: "2" },
+              column: "status",
+              file1Value: "old",
+              file2Value: "new",
+              extraValues: { region: "APAC" },
+              kind: "exception",
+            },
+          ],
+        }}
+      />,
+    );
+
+    const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
+    expect(headers.slice(0, 3)).toEqual(["id", "region", "Column"]);
+    fireEvent.click(screen.getByRole("button", { name: "Filter region" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "EMEA" }));
+    expect(screen.getByRole("cell", { name: "EMEA" })).toBeInTheDocument();
+    expect(screen.queryByRole("cell", { name: "APAC" })).not.toBeInTheDocument();
+  });
+
   it("builds a table of contents with an anchor per section", () => {
     render(<TableOfContents result={result} />);
     const nav = screen.getByRole("navigation", { name: "Result contents" });
@@ -72,6 +110,7 @@ describe("result components", () => {
   });
 
   it("shows rule-selected extra values as named detail columns", () => {
+    const onFilterChange = vi.fn();
     render(
       <DetailTable
         rows={[{
@@ -85,6 +124,11 @@ describe("result components", () => {
         }]}
         caption="Rule details"
         keyColumnNames={["id"]}
+        columnFilters={[
+          { key: "extra_region", label: "region", options: ["APAC", "EMEA"] },
+          { key: "extra_owner", label: "owner", options: ["Ops"] },
+        ]}
+        onFilterChange={onFilterChange}
       />,
     );
     expect(screen.queryByRole("columnheader", { name: "Value in Comparison" })).not.toBeInTheDocument();
@@ -92,6 +136,11 @@ describe("result components", () => {
     expect(screen.getByRole("columnheader", { name: "owner" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "EMEA" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "Ops" })).toBeInTheDocument();
+    const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
+    expect(headers.slice(0, 4)).toEqual(["id", "region", "owner", "Column"]);
+    fireEvent.click(screen.getByRole("button", { name: "Filter region" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "EMEA" }));
+    expect(onFilterChange).toHaveBeenCalledWith("extra_region", ["EMEA"]);
   });
 
   it("virtualizes large result sets (does not render every row)", () => {

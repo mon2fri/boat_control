@@ -56,7 +56,7 @@ def _flatten_rows(result: dict, section: str) -> list[dict]:
 def _apply_detail_filters(
     rows: list[dict], filters: dict[str, list[str]]
 ) -> list[dict]:
-    """Filter rows by key_<col> and column params (AND across fields, OR within)."""
+    """Filter rows by key, extra, and column params (AND across fields, OR within)."""
     if not filters:
         return rows
     result = rows
@@ -65,12 +65,18 @@ def _apply_detail_filters(
             continue
         value_set = set(values)
         if field == "column":
-            result = [r for r in result if r.get("column") in value_set]
+            result = [r for r in result if str(r.get("column")) in value_set]
         elif field.startswith("key_"):
             col = field[4:]
             result = [
                 r for r in result
-                if r.get("key_columns", {}).get(col) in value_set
+                if str(r.get("key_columns", {}).get(col)) in value_set
+            ]
+        elif field.startswith("extra_"):
+            col = field[6:]
+            result = [
+                r for r in result
+                if str(r.get("extra_values", {}).get(col)) in value_set
             ]
     return result
 
@@ -83,6 +89,12 @@ def _compute_facets(rows: list[dict], key_columns: list[str]) -> dict[str, list[
             val = r.get("key_columns", {}).get(kc)
             if val is not None:
                 facets[f"key_{kc}"].add(str(val))
+        for extra_column, val in r.get("extra_values", {}).items():
+            # Keep the facet even when every value is null so the frontend can
+            # preserve the selected extra column across filtering and pages.
+            facet = facets[f"extra_{extra_column}"]
+            if val is not None:
+                facet.add(str(val))
         col = r.get("column")
         if col is not None:
             facets["column"].add(str(col))
@@ -116,7 +128,7 @@ class RunPaginatedDetailView(APIView):  # type: ignore[misc]
         # Compute facets from complete unfiltered data
         facets = _compute_facets(all_rows, key_columns)
 
-        # Parse filter params: key_<col>=val1,val2, column=val1,val2
+        # Parse filter params: key_<col>, extra_<col>, or column=val1,val2
         detail_filters: dict[str, list[str]] = {}
         for param_key in request.query_params:
             if param_key in ("section", "offset", "limit"):
