@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useConfigs, useCreateConfig, useDeleteConfig } from "../settings/useSettings";
+import { useCallback, useState } from "react";
+import { useConfigs, useCreateConfig, useDeleteConfig, useUpdateConfig } from "../settings/useSettings";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 
 interface ConfigManagerProps {
@@ -26,6 +26,7 @@ export function ConfigManager({
 }: ConfigManagerProps) {
   const configs = useConfigs(configType);
   const create = useCreateConfig(configType);
+  const update = useUpdateConfig(configType);
   const del = useDeleteConfig(configType);
   const [selectedName, setSelectedName] = useState("");
   const [saveName, setSaveName] = useState("");
@@ -34,6 +35,10 @@ export function ConfigManager({
   const [showSavePrompt, setShowSavePrompt] = useState(false);
 
   const heading = title ?? "Load config for rows and columns";
+
+  const selectedVersion = selectedName
+    ? configs.data?.find((c) => c.name === selectedName)?.version ?? null
+    : null;
 
   function handleLoad(name: string): void {
     if (!name) return;
@@ -57,6 +62,11 @@ export function ConfigManager({
       },
     );
   }
+
+  const handleSaveToConfig = useCallback(() => {
+    if (!selectedName || selectedVersion === null) return;
+    update.mutate({ name: selectedName, content: currentContent, version: selectedVersion });
+  }, [selectedName, selectedVersion, currentContent, update]);
 
   return (
     <div className="card">
@@ -92,21 +102,31 @@ export function ConfigManager({
 
             <div className="config-inline-actions">
               {selectedName && (
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={disabled}
-                  onClick={() => {
-                    handleLoad(selectedName);
-                  }}
-                >
-                  Load config
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={disabled}
+                    onClick={() => {
+                      handleLoad(selectedName);
+                    }}
+                  >
+                    Load config
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={disabled || update.isPending}
+                    onClick={handleSaveToConfig}
+                  >
+                    Save to config
+                  </button>
+                </>
               )}
 
               <button
                 type="button"
-                className="btn btn--primary"
+                className="btn"
                 disabled={disabled}
                 onClick={() => setShowSavePrompt(true)}
               >
@@ -126,12 +146,20 @@ export function ConfigManager({
             </div>
           </div>
 
-          {create.isSuccess && <p className="alert alert--success" style={{ marginTop: "var(--space)" }}>Saved.</p>}
+          {create.isSuccess && <p className="alert alert--success" style={{ marginTop: "var(--space)" }}>Saved as new config.</p>}
           {create.isError && (
             <p className="alert alert--error" style={{ marginTop: "var(--space)" }}>
               {create.error?.message?.includes("409") || create.error?.message?.includes("version")
                 ? `Version conflict: "${saveName.trim()}" was modified elsewhere. Reload and retry.`
                 : create.error?.message ?? "Save failed."}
+            </p>
+          )}
+          {update.isSuccess && <p className="alert alert--success" style={{ marginTop: "var(--space)" }}>Saved to config.</p>}
+          {update.isError && (
+            <p className="alert alert--error" style={{ marginTop: "var(--space)" }}>
+              {update.error?.message?.includes("409") || update.error?.message?.includes("version")
+                ? `Version conflict: "${selectedName}" was modified elsewhere. Reload and retry.`
+                : update.error?.message ?? "Save failed."}
             </p>
           )}
         </>

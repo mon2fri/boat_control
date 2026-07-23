@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import type { HeaderReport } from "../../api/domain";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
 import { KeyColumnSelector } from "../keys/KeyColumnSelector";
@@ -13,9 +13,11 @@ interface Props {
   onKeyColumnsChange?: (columns: string[]) => void;
   aggregationColumns?: string[];
   onAggregationColumnsChange?: (columns: string[]) => void;
+  /** Rendered on the same row as the "Column preview" heading. */
+  configManager?: ReactNode;
 }
 
-export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, aggregationColumns = [], onAggregationColumnsChange = () => {} }: Props) {
+export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, aggregationColumns = [], onAggregationColumnsChange = () => {}, configManager }: Props) {
   const { data: families } = useFamilies();
   const [familyEditorOpen, setFamilyEditorOpen] = useState(false);
   const [loadFamilyWarnings, setLoadFamilyWarnings] = useState<string[]>([]);
@@ -81,7 +83,10 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
 
   return (
     <section aria-labelledby="header-review-title">
-      <h3 id="header-review-title" className="section-heading">Column preview</h3>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space)", marginBottom: "var(--space)" }}>
+        <h3 id="header-review-title" className="section-heading" style={{ margin: 0 }}>Column preview</h3>
+        {configManager}
+      </div>
       <p className="section-hint" role="status">
         {report.common.length} shared column{report.common.length === 1 ? "" : "s"}.{" "}
         Comparison and validation run on shared columns only.
@@ -120,37 +125,39 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
 
       <div className="card" style={{ marginTop: "var(--space)" }}>
         <h3 className="card-heading">Column filter</h3>
-        <SearchableMultiSelect
-          label="Select columns to include"
-          options={sharedOptions}
-          selected={selectedColumns}
-          onChange={handleFilterChange}
-          placeholder="Search shared columns…"
-          hint="Pick columns for comparison and validation. Starts with all selected."
-        />
+        <div className="card-grid-2">
+          <SearchableMultiSelect
+            label="Select columns to include"
+            options={sharedOptions}
+            selected={selectedColumns}
+            onChange={handleFilterChange}
+            placeholder="Search shared columns…"
+            hint="Pick columns for comparison and validation. Starts with all selected."
+          />
 
-        {columnFamilies.length > 0 && (
-          <div className="field" style={{ marginTop: "var(--space)" }}>
-            <label htmlFor="load-family">Load column family</label>
-            <select
-              id="load-family"
-              value=""
-              onChange={(e) => {
-                if (e.target.value) handleLoadFamily(e.target.value);
-              }}
-            >
-              <option value="">-- Select a column family to add --</option>
-              {columnFamilies.map((f) => {
-                const available = f.columns.filter((c) => report.common.includes(c));
-                return (
-                  <option key={f.name} value={f.name} disabled={available.length === 0}>
-                    {f.name}{available.length > 0 ? ` (${available.length} available)` : " (none available)"}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-        )}
+          {columnFamilies.length > 0 && (
+            <div className="field">
+              <label htmlFor="load-family">Select column family</label>
+              <select
+                id="load-family"
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) handleLoadFamily(e.target.value);
+                }}
+              >
+                <option value="">-- Select a column family to add --</option>
+                {columnFamilies.map((f) => {
+                  const available = f.columns.filter((c) => report.common.includes(c));
+                  return (
+                    <option key={f.name} value={f.name} disabled={available.length === 0}>
+                      {f.name}{available.length > 0 ? ` (${available.length} available)` : " (none available)"}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          )}
+        </div>
 
         <button
           type="button"

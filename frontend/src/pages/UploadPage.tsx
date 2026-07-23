@@ -333,6 +333,24 @@ export function UploadPage() {
             onKeyColumnsChange={(columns) => dispatch({ type: "setKeyColumns", columns })}
             aggregationColumns={state.aggregationColumns}
             onAggregationColumnsChange={(columns) => dispatch({ type: "setAggregationColumns", columns })}
+            configManager={
+              <ConfigManager
+                configType="rows-and-columns"
+                currentContent={mapWorkflowToRowsColumnsConfig(
+                  {
+                    comparisonColumns: state.comparisonColumns,
+                    keyColumns: state.keyColumns,
+                    aggregationColumns: state.aggregationColumns,
+                    filters: state.filters,
+                    targetColumns: state.targetColumns,
+                  },
+                  families,
+                )}
+                onLoad={(name) => setConfigLoadName(name)}
+                hasUnsavedChanges={state.comparisonColumns.length > 0 || state.keyColumns.length > 0}
+                title="Load config for rows and columns"
+              />
+            }
           />
           {configWarnings.length > 0 && (
             <div className="alert alert--warn" role="alert">
@@ -341,23 +359,6 @@ export function UploadPage() {
               ))}
             </div>
           )}
-
-          <ConfigManager
-            configType="rows-and-columns"
-            currentContent={mapWorkflowToRowsColumnsConfig(
-              {
-                comparisonColumns: state.comparisonColumns,
-                keyColumns: state.keyColumns,
-                aggregationColumns: state.aggregationColumns,
-                filters: state.filters,
-                targetColumns: state.targetColumns,
-              },
-              families,
-            )}
-            onLoad={(name) => setConfigLoadName(name)}
-            hasUnsavedChanges={state.comparisonColumns.length > 0 || state.keyColumns.length > 0}
-            title="Load config for rows and columns"
-          />
 
           {configLoadName && (
             <ConfigLoader

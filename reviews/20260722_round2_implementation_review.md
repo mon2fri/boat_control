@@ -304,3 +304,20 @@
 - ValueFamilyAddButton dropdown lacks styling polish
 - No browser E2E journey test for family → config → run flow
 - Sticky header/footer geometry not tested in jsdom (requires browser verification)
+
+## Post-Phase-8 tweaks
+
+### Changes made
+- **ConfigManager inside HeaderReview**: Moved the "Load config for rows and columns" card into the `HeaderReview` component as a `configManager` prop, rendered in the same flex row as the "Column preview" heading (side-by-side)
+- **Column filter 2-column grid**: "Select columns to include" (`SearchableMultiSelect`) and "Select column family" dropdown are now side-by-side inside a `card-grid-2` layout within the "Column filter" card
+- **Label change**: "Load column family" → "Select column family"
+- **Save to config button**: Added "Save to config" button in `ConfigManager` when a config is selected from the dropdown; calls `updateConfig` (PUT) with the selected config name, current content, and version number
+- **Heading row spacing**: Added `marginBottom: "var(--space)"` to the heading flex row to preserve spacing between "Column preview" and its hint text
+
+### Files changed
+- `frontend/src/features/upload/HeaderReview.tsx` — added `configManager?: ReactNode` prop; heading row wrapped in flex container; column filter + family select in `card-grid-2`
+- `frontend/src/pages/UploadPage.tsx` — `<ConfigManager>` moved into `<HeaderReview>` as `configManager` prop
+- `frontend/src/features/configs/ConfigManager.tsx` — added `useUpdateConfig`; "Save to config" button when a config is selected; update success/error alerts
+
+### Tests
+- `npm --prefix frontend test -- --run` — 240 passed
