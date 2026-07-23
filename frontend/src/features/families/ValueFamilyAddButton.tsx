@@ -16,12 +16,14 @@ export function ValueFamilyAddButton({ column, selectedValues, onAddValues }: Pr
 
   const matchingFamilies = useMemo(() => {
     return columnFamilies.filter((f) => {
-      if (f.owner.kind === "column" && f.owner.name === column) return true;
-      if (f.owner.kind === "column_family") {
-        const cf = (families ?? []).find((x) => x.kind === "column" && x.name === f.owner.name);
-        return cf?.kind === "column" && cf.columns.includes(column);
-      }
-      return false;
+      return f.owners.some((o) => {
+        if (o.kind === "column" && o.name === column) return true;
+        if (o.kind === "column_family") {
+          const cf = (families ?? []).find((x) => x.kind === "column" && x.name === o.name);
+          return cf?.kind === "column" && cf.columns.includes(column);
+        }
+        return false;
+      });
     });
   }, [columnFamilies, column, families]);
 

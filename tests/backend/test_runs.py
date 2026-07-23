@@ -118,6 +118,7 @@ class TestValidateRows:
         violation = result.violations_by_rule["R001"][0]
         assert violation.violating_value == "inactive"
         assert violation.comparison_value == "pending"
+        assert violation.logic_comparison_value == "inactive"
         assert result.rule_summaries["R001"] == {
             "name": "Active Check",
             "logic": "status equals 'active'",

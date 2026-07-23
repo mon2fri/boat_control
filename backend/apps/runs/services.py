@@ -61,6 +61,7 @@ class ValidationViolation:
     violating_value: Any
     rule_logic: str
     comparison_value: Any = None
+    logic_comparison_value: Any = None
     grouping_values: dict[str, Any] = field(default_factory=dict)
 
 
@@ -286,6 +287,7 @@ def validate_rows(
                     if baseline_row is not None and viol_col in baseline_row
                     else None
                 )
+                logic_comparison_value = row.get(rule.logic.column_name)
                 violations.append(
                     ValidationViolation(
                         row_index=idx,
@@ -299,6 +301,7 @@ def validate_rows(
                         violating_value=viol_val,
                         rule_logic=rule_logic_str,
                         comparison_value=comparison_value,
+                        logic_comparison_value=logic_comparison_value,
                     grouping_values=agg_vals,
                     )
                 )

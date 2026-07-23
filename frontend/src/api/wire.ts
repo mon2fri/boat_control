@@ -251,6 +251,7 @@ export const wireDetailPageSchema = z.object({
       file_b_value: wireScalarSchema,
       violating_column: z.string().optional(),
       violating_value: wireScalarSchema.optional(),
+      logic_comparison_value: wireScalarSchema.optional(),
     }),
   ),
   available_filters: z.record(z.string(), z.array(z.string())).optional(),
@@ -277,6 +278,7 @@ export const wireViolationSchema = z.object({
   violating_column: z.string().optional(),
   violating_value: wireScalarSchema.optional(),
   comparison_value: wireScalarSchema.optional(),
+  logic_comparison_value: wireScalarSchema.optional(),
   rule_logic: z.string().optional(),
 });
 export type WireViolation = z.infer<typeof wireViolationSchema>;
@@ -399,7 +401,7 @@ export type WireColumnFamily = z.infer<typeof wireColumnFamilySchema>;
 export const wireValueFamilySchema = z.object({
   kind: z.literal("value"),
   name: z.string(),
-  owner: wireValueFamilyOwnerSchema,
+  owners: z.array(wireValueFamilyOwnerSchema),
   values: z.array(z.string()),
 });
 export type WireValueFamily = z.infer<typeof wireValueFamilySchema>;
@@ -416,7 +418,7 @@ export const wireFamilyCreateSchema = z.object({
   kind: z.enum(["column", "value"]),
   name: z.string(),
   columns: z.array(z.string()).optional(),
-  owner: wireValueFamilyOwnerSchema.optional(),
+  owners: z.array(wireValueFamilyOwnerSchema).optional(),
   values: z.array(z.string()).optional(),
 });
 export type WireFamilyCreate = z.infer<typeof wireFamilyCreateSchema>;
@@ -425,7 +427,7 @@ export const wireFamilyUpdateSchema = z.object({
   kind: z.enum(["column", "value"]),
   name: z.string().optional(),
   columns: z.array(z.string()).optional(),
-  owner: wireValueFamilyOwnerSchema.optional(),
+  owners: z.array(wireValueFamilyOwnerSchema).optional(),
   values: z.array(z.string()).optional(),
   version: z.number().int().positive(),
 });

@@ -168,7 +168,7 @@ export function useFamily(name: string | null) {
 export function useCreateFamily() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (data: { kind: "column" | "value"; name: string; columns?: string[]; owner?: { kind: "column" | "column_family"; name: string }; values?: string[] }) =>
+    mutationFn: (data: { kind: "column" | "value"; name: string; columns?: string[]; owners?: { kind: "column" | "column_family"; name: string }[]; values?: string[] }) =>
       createFamily(data),
     onSuccess: () => client.invalidateQueries({ queryKey: FAMILIES_KEY }),
   });
@@ -177,7 +177,7 @@ export function useCreateFamily() {
 export function useUpdateFamily() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ name, data }: { name: string; data: { kind: "column" | "value"; name?: string; columns?: string[]; owner?: { kind: "column" | "column_family"; name: string }; values?: string[]; version: number } }) =>
+    mutationFn: ({ name, data }: { name: string; data: { kind: "column" | "value"; name?: string; columns?: string[]; owners?: { kind: "column" | "column_family"; name: string }[]; values?: string[]; version: number } }) =>
       updateFamily(name, data),
     onSuccess: (_, vars) => {
       void client.invalidateQueries({ queryKey: FAMILIES_KEY });

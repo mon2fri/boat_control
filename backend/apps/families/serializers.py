@@ -12,7 +12,7 @@ class FamilySerializer(serializers.Serializer):  # type: ignore[misc]
     columns = serializers.ListField(
         child=serializers.CharField(), required=False
     )
-    owner = ValueFamilyOwnerSerializer(required=False)
+    owners = ValueFamilyOwnerSerializer(many=True, required=False)
     values = serializers.ListField(
         child=serializers.CharField(), required=False
     )
@@ -24,7 +24,7 @@ class FamilyCreateSerializer(serializers.Serializer):  # type: ignore[misc]
     columns = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )
-    owner = ValueFamilyOwnerSerializer(required=False)
+    owners = ValueFamilyOwnerSerializer(many=True, required=False)
     values = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )
@@ -36,7 +36,7 @@ class FamilyUpdateSerializer(serializers.Serializer):  # type: ignore[misc]
     columns = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )
-    owner = ValueFamilyOwnerSerializer(required=False)
+    owners = ValueFamilyOwnerSerializer(many=True, required=False)
     values = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )

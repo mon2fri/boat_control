@@ -134,6 +134,8 @@ export interface DetailRow {
   /** When the row is a violation, the server-provided violating column/value. */
   violatingColumn?: string;
   violatingValue?: string | null;
+  /** Value of the rule's Logic column in the comparison row. */
+  logicComparisonValue?: string | null;
   kind: "changed" | "exception";
 }
 
@@ -250,7 +252,7 @@ export interface ValueFamilyOwner {
 export interface ValueFamily {
   kind: "value";
   name: string;
-  owner: ValueFamilyOwner;
+  owners: ValueFamilyOwner[];
   values: string[];
 }
 

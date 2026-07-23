@@ -78,15 +78,18 @@ export function DetailTable({
     : virtualizer.getTotalSize();
 
   const keyColCount = keyColumnNames.length || 1;
+  const showLogicComparisonValue = rows.some((row) => row.kind === "exception");
   const colWidths: number[] = [];
   for (let i = 0; i < keyColCount; i++) colWidths.push(150);
   colWidths.push(150, 180, 180, 240);
+  if (showLogicComparisonValue) colWidths.splice(colWidths.length - 1, 0, 200);
   const tableMinWidth = colWidths.reduce((a, b) => a + b, 0);
   const colTemplate = [
     ...Array.from({ length: keyColCount }, () => "minmax(150px, 1fr)"),
     "minmax(150px, 1fr)",
     "minmax(180px, 1.2fr)",
     "minmax(180px, 1.2fr)",
+    ...(showLogicComparisonValue ? ["minmax(200px, 1.3fr)"] : []),
     "minmax(240px, 1.6fr)",
   ].join(" ");
 
@@ -125,6 +128,7 @@ export function DetailTable({
       })()}
       <div role="columnheader">In Baseline</div>
       <div role="columnheader">In Comparison</div>
+      {showLogicComparisonValue && <div role="columnheader">Value in Comparison</div>}
       <div role="columnheader">Rationale</div>
     </>
   );
@@ -162,6 +166,11 @@ export function DetailTable({
                 className="detail-grid-row"
                 role="row"
                 aria-rowindex={item.index + 2}
+                ref={(node) => {
+                  if (node && node.getBoundingClientRect().height > 0) {
+                    virtualizer.measureElement(node);
+                  }
+                }}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -181,6 +190,9 @@ export function DetailTable({
                 <div role="cell">{row.column}</div>
                 <div role="cell">{row.file1Value ?? "—"}</div>
                 <div role="cell">{row.file2Value ?? "—"}</div>
+                {showLogicComparisonValue && (
+                  <div role="cell">{row.logicComparisonValue ?? "—"}</div>
+                )}
                 <div role="cell">{row.kind === "changed" ? "Values differ" : "Rule requirement not met"}</div>
               </div>
             );

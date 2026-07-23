@@ -39,7 +39,7 @@ def test_create_value_family(tmp_path: Path) -> None:
     payload = {
         "kind": "value",
         "name": "ActiveStates",
-        "owner": {"kind": "column", "name": "status"},
+        "owners": [{"kind": "column", "name": "status"}],
         "values": ["active", "enabled"],
     }
     with override_settings(FAMILY_CONFIG_DIR=families_dir):

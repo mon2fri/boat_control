@@ -140,11 +140,25 @@ uses two equal tracks rather than leaving two empty tracks in the four-column la
 at 2560 px measured a 2250 px aggregation row with two 1121 px cards, and a 2250 px detail region
 with a 2248 px detail grid. Evidence: `screenshots/responsive_fix_wide_fill_2560.png`.
 
+### Adaptive detail-table and Logic-value follow-up
+
+Cell-level horizontal scrolling was removed. Detail cells now wrap when needed and virtual rows are
+measured in the browser; the `.detail-scroll` region is the sole horizontal scroll owner. Rule
+evaluation now persists the comparison-row value of the column selected in Logic as
+`logic_comparison_value`. Saved-run pagination and frontend mapping preserve it as
+`logicComparisonValue`, and rule-exception tables render it under **Value in Comparison**. Change
+tables do not show the rule-specific column.
+
+Chrome checks at 2560, 1280, 640, and 480 px confirmed `overflow-x: visible` on cells. At 2560 px
+the 2248 px grid filled its 2248 px region without overflow. At 1280/640/480 px the grid retained its
+1100 px usable minimum and only the outer region became horizontally scrollable. The new header was
+present at every tested width.
+
 ### Exact results
 
 - Focused: `npm --prefix frontend test -- --run src/features/results/results.test.tsx` — 1 file,
   9 tests passed.
-- Full frontend: `npm --prefix frontend test -- --run` — 32 files, 243 tests passed.
+- Full frontend: `npm --prefix frontend test -- --run` — 32 files, 244 tests passed.
 - The instructed `npx --prefix frontend tsc --noEmit` only printed TypeScript help under the installed
   npm/npx and did not type-check a project. Equivalent project-aware check `cd frontend && npx tsc
   --noEmit` passed with no errors.
@@ -155,8 +169,8 @@ with a 2248 px detail grid. Evidence: `screenshots/responsive_fix_wide_fill_2560
 
 ### Production assets
 
-- `frontend/dist/assets/index-D-85ufaY.css`
-- `frontend/dist/assets/index-Bd-RuXgL.js`
+- `frontend/dist/assets/index-BzDicYZK.css`
+- `frontend/dist/assets/index-CNuHgNAI.js`
 
 ### Replacement screenshots
 

@@ -46,10 +46,12 @@ class ValueFamilyOwner:
 class ValueFamily:
     kind: str = "value"
     name: str = ""
-    owner: ValueFamilyOwner | None = None
+    owners: list[ValueFamilyOwner] | None = None
     values: list[str] | None = None
 
     def __post_init__(self) -> None:
+        if self.owners is None:
+            self.owners = []
         if self.values is None:
             self.values = []
 
@@ -97,19 +99,38 @@ def _validate_record(data: dict[str, Any]) -> dict[str, Any]:
         if "owner" in data:
             del data["owner"]
     elif kind == "value":
-        owner = data.get("owner")
-        if not isinstance(owner, dict):
+        # Accept legacy single "owner" or new "owners" list.
+        raw = data.get("owners", data.get("owner"))
+        owners_list: list[dict[str, str]] = []
+        if isinstance(raw, dict):
+            owners_list = [raw]
+        elif isinstance(raw, list):
+            owners_list = raw
+        if not owners_list:
             raise FamilyNameError(
-                "Value family must have an owner with 'kind' and 'name'."
+                "Value family must have at least one owner with 'kind' and 'name'."
             )
-        if owner.get("kind") not in ("column", "column_family"):
-            raise FamilyNameError(
-                "Value family owner kind must be 'column' or 'column_family'."
-            )
-        if not isinstance(owner.get("name"), str) or not owner["name"].strip():
-            raise FamilyNameError(
-                "Value family owner name must be a non-empty string."
-            )
+        deduped: list[dict[str, str]] = []
+        seen_owners: set[tuple[str, str]] = set()
+        for o in owners_list:
+            if not isinstance(o, dict):
+                raise FamilyNameError(
+                    "Each value family owner must be an object with 'kind' and 'name'."
+                )
+            if o.get("kind") not in ("column", "column_family"):
+                raise FamilyNameError(
+                    "Value family owner kind must be 'column' or 'column_family'."
+                )
+            if not isinstance(o.get("name"), str) or not o["name"].strip():
+                raise FamilyNameError(
+                    "Value family owner name must be a non-empty string."
+                )
+            key = (o["kind"], o["name"])
+            if key not in seen_owners:
+                seen_owners.add(key)
+                deduped.append({"kind": o["kind"], "name": o["name"]})
+        data["owners"] = deduped
+        data.pop("owner", None)
         values = data.get("values")
         if not isinstance(values, list) or len(values) < 1:
             raise FamilyNameError(

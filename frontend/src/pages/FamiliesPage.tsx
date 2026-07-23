@@ -104,7 +104,7 @@ export function FamiliesPage() {
               <div className="family-card-header">
                 <strong>{f.name}</strong>
                 <span className="field-hint">
-                  Owner: {f.owner.kind === "column_family" ? "family:" : ""}{f.owner.name}
+                  Owners: {f.owners.map((o) => o.kind === "column_family" ? `family:${o.name}` : o.name).join(", ")}
                 </span>
               </div>
               <div className="chip-list">

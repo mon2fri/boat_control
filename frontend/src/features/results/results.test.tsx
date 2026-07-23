@@ -71,6 +71,26 @@ describe("result components", () => {
     expect(screen.getByText("No detail rows.")).toBeInTheDocument();
   });
 
+  it("shows the Logic-column comparison value only for rule exception details", () => {
+    render(
+      <DetailTable
+        rows={[{
+          rowKey: "1",
+          keyColumns: { id: "1" },
+          column: "expected_status",
+          file1Value: "active",
+          file2Value: "inactive",
+          logicComparisonValue: "pending",
+          kind: "exception",
+        }]}
+        caption="Rule details"
+        keyColumnNames={["id"]}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: "Value in Comparison" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "pending" })).toBeInTheDocument();
+  });
+
   it("virtualizes large result sets (does not render every row)", () => {
     const many = Array.from({ length: 5000 }, (_, i) => ({
       rowKey: String(i),

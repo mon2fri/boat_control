@@ -346,6 +346,9 @@ export function mapViolation(violation: WireViolation, index: number): DetailRow
     ...(violation.violating_value !== undefined
       ? { violatingValue: displayScalar(violation.violating_value) }
       : {}),
+    ...(violation.logic_comparison_value !== undefined
+      ? { logicComparisonValue: displayScalar(violation.logic_comparison_value) }
+      : {}),
   };
 }
 
@@ -537,14 +540,14 @@ export function mapFamily(wire: WireFamily): Family {
   if (wire.kind === "column") {
     return { kind: "column", name: wire.name, columns: wire.columns };
   }
-  return { kind: "value", name: wire.name, owner: wire.owner, values: wire.values };
+  return { kind: "value", name: wire.name, owners: wire.owners, values: wire.values };
 }
 
 export function mapFamilyToWire(family: Family): WireFamily {
   if (family.kind === "column") {
     return { kind: "column", name: family.name, columns: family.columns };
   }
-  return { kind: "value", name: family.name, owner: family.owner, values: family.values };
+  return { kind: "value", name: family.name, owners: family.owners, values: family.values };
 }
 
 export function mapSavedFilter(wire: WireSavedFilter): SavedFilter {

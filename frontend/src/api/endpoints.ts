@@ -192,6 +192,13 @@ export function fetchDetailPage(
       ...(row.violating_value !== undefined
         ? { violatingValue: row.violating_value === null ? null : String(row.violating_value) }
         : {}),
+      ...(row.logic_comparison_value !== undefined
+        ? {
+            logicComparisonValue: row.logic_comparison_value === null
+              ? null
+              : String(row.logic_comparison_value),
+          }
+        : {}),
     })),
   }));
 }
@@ -629,7 +636,7 @@ export function createFamily(data: {
   kind: "column" | "value";
   name: string;
   columns?: string[];
-  owner?: { kind: "column" | "column_family"; name: string };
+  owners?: { kind: "column" | "column_family"; name: string }[];
   values?: string[];
 }): Promise<Family> {
   return apiRequest("/families/", {
@@ -645,7 +652,7 @@ export function updateFamily(
     kind: "column" | "value";
     name?: string;
     columns?: string[];
-    owner?: { kind: "column" | "column_family"; name: string };
+    owners?: { kind: "column" | "column_family"; name: string }[];
     values?: string[];
     version: number;
   },

@@ -1,6 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Family } from "../../api/domain";
+import { fetchColumnValuesPage } from "../../api/endpoints";
 import { useCreateFamily, useFamilies, useUpdateFamily } from "../settings/useSettings";
+import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
 import { useWorkflow } from "../../state/WorkflowContext";
 
 interface FamilyEditorProps {
@@ -10,17 +12,16 @@ interface FamilyEditorProps {
   onClose: () => void;
   onSaved: () => void;
 }
-
 const FAMILY_NAME_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 
 export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClose, onSaved }: FamilyEditorProps) {
   const { state } = useWorkflow();
+  const sessionId = state.header?.sessionId ?? null;
   const createFamily = useCreateFamily();
   const updateFamily = useUpdateFamily();
   const { data: allFamilies } = useFamilies();
 
   const availableColumns = state.header ? [...state.header.common] : [];
-  const comparisonFileColumns = availableColumns;
 
   const columnFamilies = useMemo(
     () => (allFamilies ?? []).filter((f): f is Family & { kind: "column" } => f.kind === "column"),
@@ -35,28 +36,83 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
   const [columns, setColumns] = useState<string[]>(
     family?.kind === "column" ? family.columns : [],
   );
-  const [ownerKind, setOwnerKind] = useState<"column" | "column_family">(
-    (family?.kind === "value" ? family.owner.kind : preselectedOwner?.kind) ?? "column",
-  );
-  const [ownerName, setOwnerName] = useState(
-    (family?.kind === "value" ? family.owner.name : preselectedOwner?.name) ?? "",
-  );
+
+  const initialOwners = family?.kind === "value" ? family.owners : preselectedOwner ? [{ kind: preselectedOwner.kind, name: preselectedOwner.name }] : [];
+  const [owners, setOwners] = useState<{ kind: "column" | "column_family"; name: string }[]>(initialOwners);
+
   const [values, setValues] = useState<string[]>(
     family?.kind === "value" ? family.values : [],
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [fetchedColumnValues, setFetchedColumnValues] = useState<Record<string, { value: string; starred: boolean }[]>>({});
+  const abortRef = useRef<AbortController | null>(null);
 
-  const availableMembers = useMemo(() => {
-    return availableColumns;
-  }, [availableColumns]);
+  const ownerColumnNames = owners.filter((o) => o.kind === "column").map((o) => o.name);
+
+  // Fetch distinct values from selected owner columns whenever the selection changes.
+  useEffect(() => {
+    if (!sessionId || ownerColumnNames.length === 0) {
+      setFetchedColumnValues({});
+      return;
+    }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let cancelled = false;
+
+    Promise.all(
+      ownerColumnNames.map((col) =>
+        fetchColumnValuesPage(sessionId, col, { limit: 1000, signal: controller.signal })
+          .then((page) => ({ column: col, values: page.values }))
+          .catch(() => null),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      const acc: Record<string, { value: string; starred: boolean }[]> = {};
+      for (const r of results) {
+        if (r) acc[r.column] = r.values;
+      }
+      setFetchedColumnValues(acc);
+    });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [sessionId, ownerColumnNames]);
+
+  const valueOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const result: { value: string; label: string }[] = [];
+    for (const col of ownerColumnNames) {
+      const vals = fetchedColumnValues[col];
+      if (!vals) continue;
+      for (const v of vals) {
+        if (!seen.has(v.value)) {
+          seen.add(v.value);
+          result.push({ value: v.value, label: v.value });
+        }
+      }
+    }
+    return result;
+  }, [fetchedColumnValues, ownerColumnNames]);
 
   const ownerOptions = useMemo(() => {
-    if (ownerKind === "column") {
-      return availableColumns.map((c) => ({ value: c, label: c }));
-    }
-    return (columnFamilies ?? []).map((f) => ({ value: f.name, label: f.name }));
-  }, [ownerKind, availableColumns, columnFamilies]);
+    const colOpts = availableColumns.map((c) => ({ value: c, label: c, group: "column" as const }));
+    const familyOpts = columnFamilies.map((f) => ({ value: f.name, label: f.name, group: "column_family" as const }));
+    return [...colOpts, ...familyOpts];
+  }, [availableColumns, columnFamilies]);
+
+  const ownerSelected = owners.map((o) => o.name);
+
+  const handleOwnerChange = useCallback((names: string[]) => {
+    const selected = names.map((n) => {
+      const opt = ownerOptions.find((o) => o.value === n);
+      return { kind: (opt?.group ?? "column") as "column" | "column_family", name: n };
+    });
+    setOwners(selected);
+  }, [ownerOptions]);
 
   const validate = useCallback((): string | null => {
     if (!name.trim()) return "Name is required.";
@@ -66,11 +122,11 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
     if (kind === "column") {
       if (columns.length < 1) return "At least one column is required.";
     } else {
-      if (!ownerName.trim()) return "Owner is required.";
+      if (owners.length < 1) return "At least one owner is required.";
       if (values.length < 1) return "At least one value is required.";
     }
     return null;
-  }, [name, kind, columns, ownerName, values]);
+  }, [name, kind, columns, owners, values]);
 
   const handleSave = useCallback(async () => {
     const validationError = validate();
@@ -87,7 +143,7 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
           data: {
             kind,
             name: name.trim(),
-            ...(kind === "column" ? { columns } : { owner: { kind: ownerKind, name: ownerName.trim() }, values }),
+            ...(kind === "column" ? { columns } : { owners, values }),
             version: 1,
           },
         });
@@ -95,7 +151,7 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
         await createFamily.mutateAsync({
           kind,
           name: name.trim(),
-          ...(kind === "column" ? { columns } : { owner: { kind: ownerKind, name: ownerName.trim() }, values }),
+          ...(kind === "column" ? { columns } : { owners, values }),
         });
       }
       onSaved();
@@ -105,7 +161,7 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
     } finally {
       setSaving(false);
     }
-  }, [validate, isEditing, family, updateFamily, createFamily, kind, name, columns, ownerKind, ownerName, values, onSaved, onClose]);
+  }, [validate, isEditing, family, updateFamily, createFamily, kind, name, columns, owners, values, onSaved, onClose]);
 
   return (
     <div className="card" role="dialog" aria-label={isEditing ? `Edit ${kind} family` : `Create ${kind} family`}>
@@ -142,67 +198,35 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
       </div>
 
       {kind === "column" && (
-        <div className="field">
-          <label>Columns</label>
-          <div className="multi-select-chips">
-            {availableMembers.map((col) => (
-              <label key={col} className="chip-check">
-                <input
-                  type="checkbox"
-                  checked={columns.includes(col)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setColumns((prev) => [...prev, col]);
-                    } else if (columns.length > 1) {
-                      setColumns((prev) => prev.filter((c) => c !== col));
-                    }
-                  }}
-                />
-                {col}
-              </label>
-            ))}
-          </div>
-          {columns.length === 0 && <span className="field-hint">Select at least one column.</span>}
-        </div>
+        <SearchableMultiSelect
+          label="Columns"
+          options={availableColumns.map((c) => ({ value: c, label: c }))}
+          selected={columns}
+          onChange={(vals) => setColumns(vals)}
+          placeholder="Search columns…"
+        />
       )}
+      {kind === "column" && columns.length === 0 && <span className="field-hint">Select at least one column.</span>}
 
       {kind === "value" && (
         <>
-          <div className="field">
-            <label htmlFor="owner-kind">Owner kind</label>
-            <select
-              id="owner-kind"
-              value={ownerKind}
-              onChange={(e) => setOwnerKind(e.target.value as "column" | "column_family")}
-            >
-              <option value="column">Column</option>
-              <option value="column_family">Column Family</option>
-            </select>
-          </div>
+          <SearchableMultiSelect
+            label="Owner columns"
+            options={ownerOptions}
+            selected={ownerSelected}
+            onChange={handleOwnerChange}
+            placeholder="Search columns or column families…"
+          />
+          {owners.length === 0 && <span className="field-hint">Select at least one owner.</span>}
 
-          <div className="field">
-            <label htmlFor="owner-name">Owner</label>
-            <select
-              id="owner-name"
-              value={ownerName}
-              onChange={(e) => setOwnerName(e.target.value)}
-            >
-              <option value="">Select owner...</option>
-              {ownerOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label>Values</label>
-            <div className="multi-select-chips">
-              {comparisonFileColumns.length > 0 ? (
-                <p className="field-hint">Add string values manually (file values not yet loaded).</p>
-              ) : null}
-            </div>
-            <FamilyValueEditor values={values} onChange={setValues} />
-          </div>
+          <SearchableMultiSelect
+            label="Values"
+            options={valueOptions}
+            selected={values}
+            onChange={setValues}
+            placeholder="Search values or type comma-separated…"
+            freeText
+          />
         </>
       )}
 
@@ -225,50 +249,3 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
   );
 }
 
-function FamilyValueEditor({ values, onChange }: { values: string[]; onChange: (vals: string[]) => void }) {
-  const [input, setInput] = useState("");
-
-  const addValue = useCallback(() => {
-    const trimmed = input.trim();
-    if (trimmed && !values.includes(trimmed)) {
-      onChange([...values, trimmed]);
-    }
-    setInput("");
-  }, [input, values, onChange]);
-
-  return (
-    <div>
-      <div className="field-row">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addValue();
-            }
-          }}
-          placeholder="Type a value and press Enter"
-        />
-        <button type="button" className="btn" onClick={addValue} disabled={!input.trim()}>
-          Add
-        </button>
-      </div>
-      <ul className="chip-list" aria-label="Family values">
-        {values.map((v, i) => (
-          <li key={i}>
-            <span className="tag">{v}</span>
-            <button
-              type="button"
-              className="btn chip-remove"
-              onClick={() => onChange(values.filter((_, idx) => idx !== i))}
-              aria-label={`Remove value ${v}`}
-            >
-              ×
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
