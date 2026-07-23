@@ -56,6 +56,7 @@ def sample_result() -> dict:
             },
         },
         "target_columns": ["score"],
+        "common_columns": ["id", "score", "region"],
         "key_columns": ["id"],
         "filters_applied": [],
     }
@@ -70,6 +71,10 @@ class TestExportHtml:
         assert "Overall result" in result
         assert "Rows with rule exception" in result
         assert "Attribute changes" in result
+        assert "Exception Rule Summary" in result
+        assert "Exception records" in result
+        assert "Comparing columns" in result
+        assert "<span class='tag'>score</span>" in result
         assert "In Baseline" in result
         assert "In Comparison" in result
         assert "Rationale" in result
@@ -80,6 +85,14 @@ class TestExportHtml:
         assert "Expectation:" in result
         assert "R002 — No exception" in result
         assert "Nil exception detected under current rule." in result
+
+        summary_position = result.index("Exception Rule Summary")
+        changes_position = result.index("<h2>Attribute changes</h2>")
+        comparing_position = result.index("Comparing columns")
+        aggregation_position = result.find("Attribute change aggregation")
+        assert summary_position < changes_position < comparing_position
+        if aggregation_position != -1:
+            assert comparing_position < aggregation_position
 
     def test_escapes_html_injection(self, sample_result: dict) -> None:
         xss = "<script>alert('xss')</script>"

@@ -144,6 +144,38 @@ class TestValidateRows:
         violation = result.violations_by_rule["R001"][0]
         assert violation.extra_values == {"region": "South"}
 
+    def test_rule_summary_describes_conditions_and_grouping(self, rules_file: Path) -> None:
+        from dataclasses import replace
+
+        import polars as pl
+        from apps.rules.services import Condition
+
+        rule = replace(
+            load_rules(rules_file).rules[0],
+            conditions=[
+                Condition("region", "eq", "South", ("South",)),
+                Condition("owner", "neq", "Ops", ("Ops",)),
+            ],
+            condition_relation="and",
+        )
+        comparison = pl.DataFrame(
+            {
+                "id": [1],
+                "status": ["inactive"],
+                "region": ["South"],
+                "owner": ["Sales"],
+            }
+        )
+
+        result = validate_rows(comparison, [rule], ["status"], ["id"])
+        summary = result.rule_summaries["R001"]
+
+        assert summary["condition"] == (
+            "Condition 1: region equals 'South'; "
+            "Condition 2: owner does not equal 'Ops'"
+        )
+        assert summary["condition_grouping"] == "Condition 1 AND Condition 2"
+
     def test_column_logic_can_compare_different_columns_in_comparison(
         self, rules_file: Path
     ) -> None:

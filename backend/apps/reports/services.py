@@ -145,6 +145,56 @@ def _render_group_section(title: str, stats: list[dict[str, Any]]) -> str:
     )
 
 
+def _render_exception_rule_summary(validation: dict[str, Any]) -> str:
+    violations_by_rule = validation.get("violations_by_rule") or {}
+    summaries = validation.get("rule_summaries") or {}
+    rule_ids = list(dict.fromkeys([*violations_by_rule, *summaries]))
+    if not rule_ids:
+        return (
+            "<section class='card'><h2>Exception Rule Summary</h2>"
+            "<p>No exception rules were selected.</p></section>"
+        )
+
+    rows = []
+    row_counts = validation.get("violating_rows_by_rule") or {}
+    for rule_id in rule_ids:
+        summary = summaries.get(rule_id) or {}
+        violations = violations_by_rule.get(rule_id) or []
+        sample = violations[0] if violations else {}
+        name = summary.get("name") or sample.get("rule_name") or rule_id
+        count = row_counts.get(rule_id, len(violations))
+        rows.append(
+            "<tr>"
+            f"<td><span class='rule-id'>{_escape_html(rule_id)}</span>"
+            f"{_escape_html(name)}</td>"
+            f"<td class='number-cell'>{_escape_html(count)}</td>"
+            "</tr>"
+        )
+    return (
+        "<section class='card'><h2>Exception Rule Summary</h2>"
+        "<div class='table-scroll'><table class='result-table exception-rule-table'>"
+        "<thead><tr><th>Rule name</th><th>Exception records</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div></section>"
+    )
+
+
+def _render_comparing_columns(result: dict[str, Any]) -> str:
+    columns = result.get("target_columns")
+    if not columns:
+        columns = result.get("common_columns") or []
+    tags = "".join(f"<li><span class='tag'>{_escape_html(column)}</span></li>" for column in columns)
+    if not tags:
+        return (
+            "<div class='comparison-columns'><p class='comparison-columns-label'>"
+            "Comparing columns</p><p class='section-logic'>No comparing columns.</p></div>"
+        )
+    return (
+        "<div class='comparison-columns'><p class='comparison-columns-label'>"
+        "Comparing columns</p><ul class='chip-list' aria-label='Comparing columns'>"
+        f"{tags}</ul></div>"
+    )
+
+
 def export_html(result: dict[str, Any], report_name: str, created_at: str | None = None) -> str:
     comparison = result.get("comparison", {})
     validation = result.get("validation", {})
@@ -180,6 +230,28 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(".metric { border:1px solid #e5eaf0; border-radius:6px; padding:12px; }")
     sections.append(".metric b { display:block; font-size:1.5rem; }")
     sections.append(".metric span { color:#64748b; font-size:.72rem; text-transform:uppercase; }")
+    sections.append(".table-scroll { overflow-x:auto; border:1px solid #dce2ea; border-radius:6px; }")
+    sections.append(".result-table { margin-top:0; border:0; }")
+    sections.append(".result-table th:first-child, .result-table td:first-child { border-left:0; }")
+    sections.append(".result-table th:last-child, .result-table td:last-child { border-right:0; }")
+    sections.append(".result-table tbody tr:last-child td { border-bottom:0; }")
+    sections.append(".exception-rule-table th:last-child { text-align:right; }")
+    sections.append(".number-cell { text-align:right; font-weight:700; font-variant-numeric:tabular-nums; }")
+    sections.append(
+        ".rule-id { display:inline-block; margin-right:8px; padding:2px 7px; "
+        "border:1px solid #dce2ea; border-radius:999px; color:#64748b; "
+        "background:#eef2f6; font-family:ui-monospace,monospace; font-size:.72rem; }"
+    )
+    sections.append(".comparison-columns { margin-bottom:12px; }")
+    sections.append(
+        ".comparison-columns-label { margin:0 0 4px; color:#64748b; font-size:.8rem; "
+        "font-weight:600; text-transform:uppercase; letter-spacing:.03em; }"
+    )
+    sections.append(".chip-list { display:flex; flex-wrap:wrap; gap:8px; list-style:none; margin:0; padding:0; }")
+    sections.append(
+        ".tag { display:inline-block; padding:2px 8px; border:1px solid #dce2ea; "
+        "border-radius:999px; background:#eef2f6; font-size:.75rem; font-weight:500; }"
+    )
     sections.append(".group-stats-panel { margin-top:8px; }")
     sections.append(
         ".group-stats-row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); "
@@ -268,14 +340,17 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(_render_group_section("Aggregation by grouping columns", overall_grp))
     sections.append("</section>")
 
+    sections.append(_render_exception_rule_summary(validation))
+
     sections.append("<section class='card' id='changes'>")
-    attr_changes_grp = grp.get("attribute_changes") or []
-    sections.append(_render_group_section("Attribute change aggregation", attr_changes_grp))
     sections.append("<h2>Attribute changes</h2>")
     sections.append(
         "<p class='section-logic'><code>In Baseline ≠ In Comparison</code> "
         "on shared target columns.</p>"
     )
+    sections.append(_render_comparing_columns(result))
+    attr_changes_grp = grp.get("attribute_changes") or []
+    sections.append(_render_group_section("Attribute change aggregation", attr_changes_grp))
     row_details = comparison.get("row_details") or []
     if row_details:
         sections.append("<table>")
