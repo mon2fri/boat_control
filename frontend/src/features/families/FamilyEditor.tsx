@@ -48,11 +48,10 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
   const [fetchedColumnValues, setFetchedColumnValues] = useState<Record<string, { value: string; starred: boolean }[]>>({});
   const abortRef = useRef<AbortController | null>(null);
 
-  const ownerColumnNames = owners.filter((o) => o.kind === "column").map((o) => o.name);
-
   // Fetch distinct values from selected owner columns whenever the selection changes.
   useEffect(() => {
-    if (!sessionId || ownerColumnNames.length === 0) {
+    const names = owners.filter((o) => o.kind === "column").map((o) => o.name);
+    if (!sessionId || names.length === 0) {
       setFetchedColumnValues({});
       return;
     }
@@ -62,7 +61,7 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
     let cancelled = false;
 
     Promise.all(
-      ownerColumnNames.map((col) =>
+      names.map((col) =>
         fetchColumnValuesPage(sessionId, col, { limit: 1000, signal: controller.signal })
           .then((page) => ({ column: col, values: page.values }))
           .catch(() => null),
@@ -80,12 +79,13 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
       cancelled = true;
       controller.abort();
     };
-  }, [sessionId, ownerColumnNames]);
+  }, [sessionId, owners]);
 
   const valueOptions = useMemo(() => {
+    const names = owners.filter((o) => o.kind === "column").map((o) => o.name);
     const seen = new Set<string>();
     const result: { value: string; label: string }[] = [];
-    for (const col of ownerColumnNames) {
+    for (const col of names) {
       const vals = fetchedColumnValues[col];
       if (!vals) continue;
       for (const v of vals) {
@@ -96,7 +96,7 @@ export function FamilyEditor({ family, kind: forcedKind, preselectedOwner, onClo
       }
     }
     return result;
-  }, [fetchedColumnValues, ownerColumnNames]);
+  }, [fetchedColumnValues, owners]);
 
   const ownerOptions = useMemo(() => {
     const colOpts = availableColumns.map((c) => ({ value: c, label: c, group: "column" as const }));
