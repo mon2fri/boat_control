@@ -145,6 +145,31 @@ class TestExportHtml:
         assert "Unique Count" not in result
         assert "Attribute Count" not in result
 
+    def test_rule_details_include_extras_and_honor_hidden_comparison(
+        self, sample_result: dict
+    ) -> None:
+        violation = sample_result["validation"]["violations_by_rule"]["R001"][0]
+        violation["extra_values"] = {"region": "EMEA", "owner": "Ops"}
+        sample_result["validation"]["rule_summaries"]["R001"]["hide_comparison"] = True
+
+        result = export_html(sample_result, "Rule display options")
+        rule_section = result.split("<section class='card' id='rule-R001'>", 1)[1].split(
+            "</section>", 1
+        )[0]
+
+        assert (
+            "<tr><th>id</th><th>region</th><th>owner</th><th>Rationale</th></tr>"
+            in rule_section
+        )
+        assert "<td>EMEA</td>" in rule_section
+        assert "<td>Ops</td>" in rule_section
+        assert "<th>Column</th>" not in rule_section
+        assert "<th>In Baseline</th>" not in rule_section
+        assert "<th>In Comparison</th>" not in rule_section
+        assert "<td>score</td>" not in rule_section
+        assert "<td>15</td>" not in rule_section
+        assert "<td>10</td>" not in rule_section
+
 
 class TestExportCsv:
     def test_generates_csv(self, sample_result: dict) -> None:

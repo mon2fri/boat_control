@@ -55,14 +55,21 @@ def _metric(label: str, value: Any) -> str:
     )
 
 
-def _detail_header(key_columns: list[str]) -> str:
+def _detail_header(
+    key_columns: list[str],
+    extra_columns: list[str] | None = None,
+    hide_comparison: bool = False,
+) -> str:
     identity = "".join(f"<th>{_escape_html(column)}</th>" for column in key_columns)
     if not identity:
         identity = "<th>Row</th>"
-    return (
-        f"<tr>{identity}<th>Column</th><th>In Baseline</th>"
-        "<th>In Comparison</th><th>Rationale</th></tr>"
+    extras = "".join(f"<th>{_escape_html(column)}</th>" for column in extra_columns or [])
+    comparison = (
+        "<th>Column</th><th>In Baseline</th><th>In Comparison</th>"
+        if not hide_comparison
+        else ""
     )
+    return f"<tr>{identity}{extras}{comparison}<th>Rationale</th></tr>"
 
 
 def _identity_cells(key_columns: list[str], key_values: dict[str, Any], row_index: Any) -> str:
@@ -410,8 +417,22 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         rule_grp = (grp.get("validation_rules") or {}).get(rule_id, [])
         sections.append(_render_group_section("Aggregation by rule grouping columns", rule_grp))
         if violations:
+            extra_columns = list(
+                dict.fromkeys(
+                    column
+                    for violation in violations
+                    for column in (violation.get("extra_values") or {})
+                )
+            )
+            hide_comparison = bool(summary.get("hide_comparison", False))
             sections.append("<table>")
-            sections.append(_detail_header(key_columns))
+            sections.append(
+                _detail_header(
+                    key_columns,
+                    extra_columns=extra_columns,
+                    hide_comparison=hide_comparison,
+                )
+            )
             for violation in violations:
                 sections.append("<tr>")
                 sections.append(
@@ -421,11 +442,19 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
                         violation.get("row_index", ""),
                     )
                 )
-                sections.append(
-                    f"<td>{_escape_html(violation.get('violating_column', rule_id))}</td>"
-                )
-                sections.append(f"<td>{_escape_html(violation.get('comparison_value', ''))}</td>")
-                sections.append(f"<td>{_escape_html(violation.get('violating_value', ''))}</td>")
+                extra_values = violation.get("extra_values") or {}
+                for column in extra_columns:
+                    sections.append(f"<td>{_escape_html(extra_values.get(column, '—'))}</td>")
+                if not hide_comparison:
+                    sections.append(
+                        f"<td>{_escape_html(violation.get('violating_column', rule_id))}</td>"
+                    )
+                    sections.append(
+                        f"<td>{_escape_html(violation.get('comparison_value', ''))}</td>"
+                    )
+                    sections.append(
+                        f"<td>{_escape_html(violation.get('violating_value', ''))}</td>"
+                    )
                 sections.append("<td>Rule requirement not met</td>")
                 sections.append("</tr>")
             sections.append("</table>")

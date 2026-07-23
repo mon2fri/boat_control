@@ -1,36 +1,13 @@
 /**
  * Tests for the export controls. The controls must:
- * - Use the server-supplied filename (never a user-typed one).
+ * - Export HTML from the actual rendered result element.
+ * - Use the server-supplied filename for CSV.
  * - Surface a progress bar while the response streams.
  * - Classify errors as cancelled / server / interrupted.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ExportControls } from "./ExportControls";
-
-function buildExportResponse(body: string, filename: string, contentLength?: number) {
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const enc = new TextEncoder();
-      const data = enc.encode(body);
-      controller.enqueue(data);
-      controller.close();
-    },
-  });
-  const headers: Record<string, string> = {
-    "Content-Type": "text/html",
-    "Content-Disposition": `attachment; filename="${filename}"`,
-  };
-  if (contentLength !== undefined) headers["Content-Length"] = String(contentLength);
-  return {
-    ok: true,
-    status: 200,
-    headers: new Headers(headers),
-    body: stream,
-    text: () => Promise.resolve(body),
-    blob: () => Promise.resolve(new Blob([body])),
-  };
-}
 
 function buildErrorResponse(status: number, body: string) {
   return {
@@ -45,19 +22,39 @@ function buildErrorResponse(status: number, body: string) {
 afterEach(() => vi.restoreAllMocks());
 
 describe("ExportControls", () => {
-  it("uses the server-supplied filename for the saved file", async () => {
+  it("exports HTML from the rendered result element without calling the backend", async () => {
     const anchorMock = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
-    const blobSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    let exportedBlob: Blob | undefined;
+    const blobSpy = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      exportedBlob = blob as Blob;
+      return "blob:test";
+    });
     const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(buildExportResponse("<html/>", "user_report.html")),
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <div data-export-source="result">
+        <h2>Exact result content</h2>
+        <details open><summary>Aggregation</summary><p>EMEA: 12</p></details>
+        <ExportControls runId="run-1" reportName="my_run" />
+      </div>,
     );
-    render(<ExportControls runId="run-1" reportName="my_run" />);
     fireEvent.click(screen.getByRole("button", { name: "Export HTML" }));
     await waitFor(() => expect(screen.getByText(/Saved as/)).toBeInTheDocument());
-    expect(screen.getByText("user_report.html")).toBeInTheDocument();
+    expect(screen.getByText("my_run.html")).toBeInTheDocument();
     expect(anchorMock).toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(exportedBlob).toBeDefined();
+    const exportedText = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(exportedBlob!);
+    });
+    expect(exportedText).toContain("Exact result content");
+    expect(exportedText).toContain("<details open");
+    expect(exportedText).toContain("EMEA: 12");
+    expect(exportedText).not.toContain("Export HTML");
     blobSpy.mockRestore();
     revoke.mockRestore();
     vi.unstubAllGlobals();
@@ -88,7 +85,7 @@ describe("ExportControls", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     render(<ExportControls runId="run-1" reportName="my_run" />);
-    fireEvent.click(screen.getByRole("button", { name: "Export HTML" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
     const cancelBtn = await screen.findByRole("button", { name: "Cancel" });
     fireEvent.click(cancelBtn);
     // Simulate the browser aborting the underlying fetch.

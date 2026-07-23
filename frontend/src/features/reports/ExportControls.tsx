@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { downloadExport, ExportError } from "../../api/endpoints";
+import { exportRenderedHtml } from "./exportRenderedHtml";
 
 interface Props {
   runId: string;
@@ -37,13 +38,24 @@ export function ExportControls({ runId, reportName }: Props) {
     abortRef.current = controller;
     setBusy({ format, received: 0, total: null });
     try {
-      const result = await downloadExport(runId, format, reportName, {
-        signal: controller.signal,
-        onProgress: (received, total) => {
-          setBusy({ format, received, total });
-        },
-      });
-      // Anchor download: server-supplied filename, never a user-typed one.
+      const result = format === "html"
+        ? (() => {
+            const root = document.querySelector("[data-export-source='result']");
+            if (!root) throw new ExportError("Rendered result content is unavailable.", 0);
+            const rendered = exportRenderedHtml(root, reportName);
+            setBusy({
+              format,
+              received: rendered.blob.size,
+              total: rendered.blob.size,
+            });
+            return rendered;
+          })()
+        : await downloadExport(runId, format, reportName, {
+            signal: controller.signal,
+            onProgress: (received, total) => {
+              setBusy({ format, received, total });
+            },
+          });
       const url = URL.createObjectURL(result.blob);
       const a = document.createElement("a");
       a.href = url;
@@ -79,7 +91,7 @@ export function ExportControls({ runId, reportName }: Props) {
     busy && busy.total && busy.total > 0 ? Math.min(100, Math.round((busy.received / busy.total) * 100)) : null;
 
   return (
-    <div className="export-controls" role="group" aria-label="Export result">
+    <div className="export-controls" role="group" aria-label="Export result" data-export-exclude>
       <button type="button" className="btn" onClick={() => void download("html")} disabled={busy !== null}>
         {busy?.format === "html" ? "Generating HTML…" : "Export HTML"}
       </button>
