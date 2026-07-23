@@ -111,6 +111,7 @@ export const wireLogicSchema = z.object({
   operator: z.string(),
   target_value: z.string(),
   target_values: z.array(z.string()).optional(),
+  comparison_mode: z.enum(["comparison_vs_baseline", "comparison_vs_comparison"]).optional(),
 });
 export type WireLogic = z.infer<typeof wireLogicSchema>;
 
@@ -148,6 +149,7 @@ export const wireRuleSchema = z.object({
   grouping: z.array(z.string()).optional(),
   grouping_tree: wireGroupNodeSchema.optional(),
   logic: wireLogicSchema,
+  extra_columns: z.array(z.string()).optional(),
 });
 export type WireRule = z.infer<typeof wireRuleSchema>;
 
@@ -168,6 +170,7 @@ export const ruleDraftRequestSchema = z.object({
   condition_relation: z.enum(["and", "or"]).optional(),
   grouping_tree: wireGroupNodeSchema.optional(),
   logic: wireLogicSchema,
+  extra_columns: z.array(z.string()).optional(),
 });
 export type WireRuleDraftRequest = z.infer<typeof ruleDraftRequestSchema>;
 
@@ -251,7 +254,7 @@ export const wireDetailPageSchema = z.object({
       file_b_value: wireScalarSchema,
       violating_column: z.string().optional(),
       violating_value: wireScalarSchema.optional(),
-      logic_comparison_value: wireScalarSchema.optional(),
+      extra_values: z.record(z.string(), wireScalarSchema).optional(),
     }),
   ),
   available_filters: z.record(z.string(), z.array(z.string())).optional(),
@@ -278,7 +281,7 @@ export const wireViolationSchema = z.object({
   violating_column: z.string().optional(),
   violating_value: wireScalarSchema.optional(),
   comparison_value: wireScalarSchema.optional(),
-  logic_comparison_value: wireScalarSchema.optional(),
+  extra_values: z.record(z.string(), wireScalarSchema).optional(),
   rule_logic: z.string().optional(),
 });
 export type WireViolation = z.infer<typeof wireViolationSchema>;

@@ -52,7 +52,9 @@ class ValidationViolationSerializer(serializers.Serializer):  # type: ignore[mis
     violating_column = serializers.CharField(required=False)
     violating_value = serializers.JSONField(required=False)
     comparison_value = serializers.JSONField(required=False)
-    logic_comparison_value = serializers.JSONField(required=False)
+    extra_values = serializers.DictField(
+        child=serializers.JSONField(), required=False, default=dict
+    )
     rule_logic = serializers.CharField(required=False)
 
 

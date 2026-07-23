@@ -51,9 +51,22 @@ describe("describeLogic", () => {
     );
   });
 
-  it("renders column-vs-column as 'must equal column [other]'", () => {
+  it("renders legacy column-vs-column as same-column Comparison vs Baseline", () => {
     expect(describeLogic(rule({ logic: { id: "l0", format: "column", column: "status", operator: "equals", target: "expected" } }))).toBe(
-      "status must equal column [expected]",
+      "status must equal the same column [status] in Baseline",
+    );
+  });
+
+  it("renders different-column Comparison vs Comparison logic", () => {
+    expect(describeLogic(rule({ logic: {
+      id: "l0",
+      format: "column",
+      column: "status",
+      operator: "equals",
+      target: "expected",
+      columnComparisonMode: "comparison_vs_comparison",
+    } }))).toBe(
+      "status must equal column [expected] in Comparison",
     );
   });
 });

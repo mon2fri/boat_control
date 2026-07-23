@@ -55,6 +55,10 @@ const OPERATOR_PHRASE: Record<string, string> = {
 export function describeLogic(rule: Rule): string {
   const { logic } = rule;
   const phrase = OPERATOR_PHRASE[logic.operator] ?? logic.operator.replace(/_/g, " ");
-  const rhs = logic.format === "column" ? `column [${logic.target}]` : `"${logic.target}"`;
+  const rhs = logic.format === "column"
+    ? (logic.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"
+      ? `the same column [${logic.column}] in Baseline`
+      : `column [${logic.target}] in Comparison`
+    : `"${logic.target}"`;
   return `${logic.column} ${phrase} ${rhs}`;
 }

@@ -9,6 +9,8 @@ rules:
     column_name: status
     operator: eq
     target_value: active
+    comparison_mode: comparison_vs_baseline
+  extra_columns: []
 - rule_id: R057
   name: Low Score
   description: ''
@@ -17,3 +19,7 @@ rules:
     column_name: score
     operator: gt
     target_value: '90'
+    target_values:
+    - '90'
+    comparison_mode: comparison_vs_baseline
+  extra_columns: []

@@ -203,6 +203,9 @@ export function mapLogicToWire(logic: LogicClause) {
     ...(normalizedValues && normalizedValues.length > 0
       ? { target_values: normalizedValues }
       : {}),
+    ...(format === "column_vs_column"
+      ? { comparison_mode: logic.columnComparisonMode ?? "comparison_vs_baseline" }
+      : {}),
   };
 }
 
@@ -216,6 +219,9 @@ export function mapWireLogic(logic: WireLogic, id: string): LogicClause {
     operator: mapWireLogicOperator(logic.operator),
     target: logic.target_value,
     ...(values.length > 0 ? { values } : {}),
+    ...(format === "column"
+      ? { columnComparisonMode: logic.comparison_mode ?? "comparison_vs_baseline" }
+      : {}),
   };
 }
 
@@ -241,6 +247,7 @@ export function mapWireRule(rule: WireRule): Rule {
     conditionGrouping: rule.grouping ? rule.grouping.join(" ") : null,
     groupTree,
     logic,
+    extraColumns: rule.extra_columns ?? [],
   };
 }
 
@@ -269,6 +276,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
     // expression on whitespace (that loses grouping precedence).
     ...(rule.groupTree ? { grouping_tree: mapGroupNodeToWire(rule.groupTree, conditionIds) } : {}),
     logic: mapLogicToWire(rule.logic),
+    extra_columns: rule.extraColumns ?? [],
   };
 }
 
@@ -346,8 +354,12 @@ export function mapViolation(violation: WireViolation, index: number): DetailRow
     ...(violation.violating_value !== undefined
       ? { violatingValue: displayScalar(violation.violating_value) }
       : {}),
-    ...(violation.logic_comparison_value !== undefined
-      ? { logicComparisonValue: displayScalar(violation.logic_comparison_value) }
+    ...(violation.extra_values
+      ? {
+          extraValues: Object.fromEntries(
+            Object.entries(violation.extra_values).map(([key, value]) => [key, displayScalar(value)]),
+          ),
+        }
       : {}),
   };
 }

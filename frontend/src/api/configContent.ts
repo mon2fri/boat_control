@@ -334,6 +334,7 @@ export interface ConfigRuleLogic {
   operator: string;
   target_value: string;
   target_values?: ValueRef[];
+  comparison_mode?: "comparison_vs_baseline" | "comparison_vs_comparison";
 }
 
 /** A single rule within a saved rules config. */
@@ -344,6 +345,7 @@ export interface ConfigRule {
   condition_relation?: "and" | "or";
   grouping_tree?: { kind: "leaf"; conditionId: string } | { kind: "and"; children: unknown[] } | { kind: "or"; children: unknown[] };
   logic: ConfigRuleLogic;
+  extra_columns?: ColumnRef[];
 }
 
 /** Resolve a single config rule condition to domain Condition values. */
@@ -407,7 +409,7 @@ export function resolveConfigRuleLogic(
   logic: ConfigRuleLogic,
   families: Family[],
   availableColumns: string[],
-): { resolved: { column: string; target: string; values?: string[] } | null; warnings: ConfigLoadWarning[] } {
+): { resolved: { column: string; target: string; values?: string[]; comparisonMode?: "comparison_vs_baseline" | "comparison_vs_comparison" } | null; warnings: ConfigLoadWarning[] } {
   const colResult = resolveColumnRef(logic.column_name, families, availableColumns);
   const warnings: ConfigLoadWarning[] = [...colResult.warnings];
 
@@ -416,10 +418,13 @@ export function resolveConfigRuleLogic(
   }
 
   const resolvedValues = resolveValuesRefs(logic.target_values, families, warnings);
-  const resolved: { column: string; target: string; values?: string[] } = {
+  const resolved: { column: string; target: string; values?: string[]; comparisonMode?: "comparison_vs_baseline" | "comparison_vs_comparison" } = {
     column: colResult.resolved[0]!,
     target: resolvedValues.length > 0 ? resolvedValues[0]! : logic.target_value,
   };
+  if (logic.format === "column_vs_column") {
+    resolved.comparisonMode = logic.comparison_mode ?? "comparison_vs_baseline";
+  }
   if (resolvedValues.length > 0) {
     resolved.values = resolvedValues;
   }
@@ -458,6 +463,7 @@ export function resolveConfigRule(
     column: lr.column,
     operator: lr.column === lr.target ? "equals" : rule.logic.operator as LogicOperator,
     target: lr.target,
+    ...(lr.comparisonMode ? { columnComparisonMode: lr.comparisonMode } : {}),
   };
   if (lr.values && lr.values.length > 0) {
     resolvedLogic.values = [...lr.values];
@@ -470,7 +476,17 @@ export function resolveConfigRule(
     conditions: resolvedConditions,
     groupTree: null,
     logic: resolvedLogic,
+    extraColumns: [],
   };
+  if (Array.isArray(rule.extra_columns)) {
+    const extras = new Set<string>();
+    for (const ref of rule.extra_columns) {
+      const extraResult = resolveColumnRef(ref, families, availableColumns);
+      extraResult.resolved.forEach((column) => extras.add(column));
+      warnings.push(...extraResult.warnings);
+    }
+    resolved.extraColumns = [...extras];
+  }
   if (rule.description) resolved.description = rule.description;
   if (rule.condition_relation) {
     resolved.conditionJoin = rule.condition_relation as Rule["conditionJoin"];
@@ -582,6 +598,9 @@ function ruleToConfigRule(rule: Rule, families: Family[]): ConfigRule {
       column_name: conditionColumnToRef(rule.logic.column, families),
       operator: rule.logic.operator,
       target_value: rule.logic.target,
+      ...(rule.logic.format === "column"
+        ? { comparison_mode: rule.logic.columnComparisonMode ?? "comparison_vs_baseline" }
+        : {}),
     },
   };
   const valueRefs = rule.logic.values ? valuesToValueRefs(rule.logic.values, families) : undefined;
@@ -589,6 +608,9 @@ function ruleToConfigRule(rule: Rule, families: Family[]): ConfigRule {
     result.logic.target_values = valueRefs;
   }
   if (rule.description) result.description = rule.description;
+  if (rule.extraColumns && rule.extraColumns.length > 0) {
+    result.extra_columns = rule.extraColumns.map((column) => conditionColumnToRef(column, families));
+  }
   if (rule.conditionJoin && rule.conditionJoin !== "per_grouping") {
     result.condition_relation = rule.conditionJoin as "and" | "or";
   }

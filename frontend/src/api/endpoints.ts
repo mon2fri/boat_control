@@ -192,11 +192,14 @@ export function fetchDetailPage(
       ...(row.violating_value !== undefined
         ? { violatingValue: row.violating_value === null ? null : String(row.violating_value) }
         : {}),
-      ...(row.logic_comparison_value !== undefined
+      ...(row.extra_values
         ? {
-            logicComparisonValue: row.logic_comparison_value === null
-              ? null
-              : String(row.logic_comparison_value),
+            extraValues: Object.fromEntries(
+              Object.entries(row.extra_values).map(([key, value]) => [
+                key,
+                value === null ? null : String(value),
+              ]),
+            ),
           }
         : {}),
     })),

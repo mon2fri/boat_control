@@ -72,6 +72,7 @@ class LogicClause:
     operator: str
     target_value: str
     target_values: tuple[str, ...] = ()
+    comparison_mode: str = "comparison_vs_baseline"
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,7 @@ class Rule:
     grouping: list[str] | None
     grouping_tree: GroupingNode | None
     logic: LogicClause
+    extra_columns: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -229,6 +231,7 @@ def load_rules(path: Path | None = None) -> RulesFile:
             operator=logic_data["operator"],
             target_value=logic_data["target_value"],
             target_values=target_values,
+            comparison_mode=logic_data.get("comparison_mode", "comparison_vs_baseline"),
         )
         rules.append(
             Rule(
@@ -240,6 +243,7 @@ def load_rules(path: Path | None = None) -> RulesFile:
                 grouping=r.get("grouping"),
                 grouping_tree=_parse_grouping_tree(r.get("grouping_tree")),
                 logic=logic,
+                extra_columns=tuple(str(c) for c in r.get("extra_columns", [])),
             )
         )
 
@@ -277,7 +281,9 @@ def save_rules(rules_file: RulesFile, path: Path | None = None) -> None:
                     if rule.logic.target_values
                     else {}
                 ),
+                "comparison_mode": rule.logic.comparison_mode,
             },
+            "extra_columns": list(rule.extra_columns),
         }
         if rule.conditions:
             rule_data["conditions"] = [
@@ -332,6 +338,12 @@ def validate_rule(rule_data: dict[str, Any]) -> RuleValidationResult:
             )
         if "target_value" not in logic:
             errors.append("Logic target_value is required.")
+        comparison_mode = logic.get("comparison_mode", "comparison_vs_baseline")
+        if comparison_mode not in {
+            "comparison_vs_baseline",
+            "comparison_vs_comparison",
+        }:
+            errors.append("Invalid logic comparison_mode.")
 
     conditions = rule_data.get("conditions", [])
     if (
@@ -398,6 +410,7 @@ def create_rule(rules_file: RulesFile, rule_data: dict[str, Any]) -> tuple[Rules
         operator=logic_data["operator"],
         target_value=logic_data["target_value"],
         target_values=target_values,
+        comparison_mode=logic_data.get("comparison_mode", "comparison_vs_baseline"),
     )
 
     rule = Rule(
@@ -409,6 +422,7 @@ def create_rule(rules_file: RulesFile, rule_data: dict[str, Any]) -> tuple[Rules
         grouping=rule_data.get("grouping"),
         grouping_tree=_parse_grouping_tree(rule_data.get("grouping_tree")),
         logic=logic,
+        extra_columns=tuple(str(c) for c in rule_data.get("extra_columns", [])),
     )
 
     new_rules = list(rules_file.rules) + [rule]
@@ -439,6 +453,7 @@ def update_rule(rules_file: RulesFile, rule_id: str, rule_data: dict[str, Any]) 
                 operator=logic_data["operator"],
                 target_value=logic_data["target_value"],
                 target_values=target_values,
+                comparison_mode=logic_data.get("comparison_mode", "comparison_vs_baseline"),
             )
             updated_rules.append(
                 Rule(
@@ -450,6 +465,7 @@ def update_rule(rules_file: RulesFile, rule_id: str, rule_data: dict[str, Any]) 
                     grouping=rule_data.get("grouping"),
                     grouping_tree=_parse_grouping_tree(rule_data.get("grouping_tree")),
                     logic=logic,
+                    extra_columns=tuple(str(c) for c in rule_data.get("extra_columns", [])),
                 )
             )
         else:

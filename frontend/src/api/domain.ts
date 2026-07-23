@@ -65,6 +65,8 @@ export interface LogicClause {
   target: string;
   /** Multiple values for Value-against-column; OR-ed across all operators. */
   values?: string[];
+  /** Source of the right-hand column for Column-against-Column logic. */
+  columnComparisonMode?: "comparison_vs_baseline" | "comparison_vs_comparison";
 }
 
 export interface Rule {
@@ -87,6 +89,8 @@ export interface Rule {
    */
   groupTree: GroupNode | null;
   logic: LogicClause;
+  /** Comparison-file columns included in this rule's exception details. */
+  extraColumns?: string[];
 }
 
 /**
@@ -134,8 +138,8 @@ export interface DetailRow {
   /** When the row is a violation, the server-provided violating column/value. */
   violatingColumn?: string;
   violatingValue?: string | null;
-  /** Value of the rule's Logic column in the comparison row. */
-  logicComparisonValue?: string | null;
+  /** Rule-selected comparison-file values keyed by their column names. */
+  extraValues?: Record<string, string | null>;
   kind: "changed" | "exception";
 }
 

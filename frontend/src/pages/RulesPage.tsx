@@ -23,6 +23,7 @@ function getRuleReferencedColumns(rule: Rule): string[] {
   }
   if (rule.logic.column) cols.add(rule.logic.column);
   if (rule.logic.format === "column" && rule.logic.target) cols.add(rule.logic.target);
+  for (const column of rule.extraColumns ?? []) cols.add(column);
   return [...cols];
 }
 

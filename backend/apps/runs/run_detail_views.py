@@ -47,7 +47,7 @@ def _flatten_rows(result: dict, section: str) -> list[dict]:
                     "file_b_value": v.get("violating_value"),
                     "violating_column": v.get("violating_column", ""),
                     "violating_value": v.get("violating_value"),
-                    "logic_comparison_value": v.get("logic_comparison_value"),
+                    "extra_values": v.get("extra_values", {}),
                 }
             )
     return rows

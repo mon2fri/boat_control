@@ -33,6 +33,7 @@ interface DraftState {
   conditionGrouping: string;
   groupTree: GroupNode | null;
   logic: LogicClause;
+  extraColumns: string[];
 }
 
 function initialDraft(rule?: Rule): DraftState {
@@ -45,6 +46,7 @@ function initialDraft(rule?: Rule): DraftState {
       conditionGrouping: rule.conditionGrouping ?? "",
       groupTree: rule.groupTree,
       logic: rule.logic,
+      extraColumns: rule.extraColumns ?? [],
     };
   }
   return {
@@ -55,6 +57,7 @@ function initialDraft(rule?: Rule): DraftState {
     conditionGrouping: "",
     groupTree: null,
     logic: { id: nextId("logic"), format: "value", column: "", operator: "equals", target: "" },
+    extraColumns: [],
   };
 }
 
@@ -307,18 +310,71 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
               type="radio"
               name="logic-format"
               checked={draft.logic.format === "column"}
-              onChange={() => patch({ logic: { ...draft.logic, format: "column", target: "" } })}
+              onChange={() => patch({
+                logic: {
+                  ...draft.logic,
+                  format: "column",
+                  target: draft.logic.column,
+                  columnComparisonMode: "comparison_vs_baseline",
+                },
+              })}
             />{" "}
             Column against column
           </label>
         </div>
+
+        {draft.logic.format === "column" && (
+          <div className="mode-toggle" role="radiogroup" aria-label="Column comparison source">
+            <label>
+              <input
+                type="radio"
+                name="column-comparison-mode"
+                checked={(draft.logic.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"}
+                onChange={() => patch({
+                  logic: {
+                    ...draft.logic,
+                    columnComparisonMode: "comparison_vs_baseline",
+                    target: draft.logic.column,
+                  },
+                })}
+              />{" "}
+              Same column: Comparison vs Baseline
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="column-comparison-mode"
+                checked={draft.logic.columnComparisonMode === "comparison_vs_comparison"}
+                onChange={() => patch({
+                  logic: {
+                    ...draft.logic,
+                    columnComparisonMode: "comparison_vs_comparison",
+                    target: "",
+                  },
+                })}
+              />{" "}
+              Different columns: Comparison vs Comparison
+            </label>
+          </div>
+        )}
 
         <div className="filter-row">
           <ColumnField
             label={draft.logic.format === "column" ? "COLUMN in COMPARISON" : "COLUMN in COMPARISON"}
             columns={columns}
             value={draft.logic.column}
-            onChange={(column) => patch({ logic: { ...draft.logic, column } })}
+            onChange={(column) => patch({
+              logic: {
+                ...draft.logic,
+                column,
+                ...(
+                  draft.logic.format === "column"
+                  && (draft.logic.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"
+                    ? { target: column }
+                    : {}
+                ),
+              },
+            })}
           />
           <OperatorSelect
             label="Operator"
@@ -326,12 +382,18 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
             onChange={(operator) => patch({ logic: { ...draft.logic, operator } })}
           />
           {draft.logic.format === "column" ? (
-            <ColumnField
-              label="BASELINE COLUMN"
-              columns={columns}
-              value={draft.logic.target}
-              onChange={(target) => patch({ logic: { ...draft.logic, target } })}
-            />
+            draft.logic.columnComparisonMode === "comparison_vs_comparison" ? (
+              <ColumnField
+                label="SECOND COLUMN in COMPARISON"
+                columns={columns}
+                value={draft.logic.target}
+                onChange={(target) => patch({ logic: { ...draft.logic, target } })}
+              />
+            ) : (
+              <p className="field-hint">
+                Compared with the same <strong>{draft.logic.column || "selected"}</strong> column in Baseline.
+              </p>
+            )
           ) : isNumericOperator(draft.logic.operator) ? (
             <div className="field">
               <label htmlFor="logic-value">Value</label>
@@ -380,6 +442,18 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
           <span className="visually-hidden">Rule description: </span>
           <code>{logicPreview}</code>
         </p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Extra columns to display (optional)</legend>
+        <SearchableMultiSelect
+          label="Extra columns to display"
+          options={columns.map((column) => ({ value: column, label: column }))}
+          selected={draft.extraColumns}
+          onChange={(extraColumns) => patch({ extraColumns })}
+          placeholder="Search selected columns…"
+          hint="Selected comparison columns appear in this rule's exception detail table."
+        />
       </fieldset>
 
       {submitted && !validation.valid && (
@@ -508,6 +582,10 @@ function collectConditionIdsFromTree(node: GroupNode): Set<string> {
 }
 
 function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
+  const logic = draft.logic.format === "column"
+    && (draft.logic.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"
+      ? { ...draft.logic, target: draft.logic.column, columnComparisonMode: "comparison_vs_baseline" as const }
+      : draft.logic;
   return {
     ...(rule ? { index: rule.index } : {}),
     name: draft.name.trim(),
@@ -523,7 +601,8 @@ function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
     // split on whitespace; it is preserved as-is for old payloads only.
     conditionGrouping: null,
     groupTree: draft.groupTree,
-    logic: draft.logic,
+    logic,
+    extraColumns: draft.extraColumns,
   };
 }
 
@@ -532,7 +611,9 @@ function previewLogicDescription(draft: DraftState): string {
   const phrase = OPERATOR_PHRASE[draft.logic.operator] ?? draft.logic.operator.replace(/_/g, " ");
   const col = draft.logic.column.trim() || "<column>";
   if (draft.logic.format === "column") {
-    const rhs = `column ${draft.logic.target.trim() || "<baseline column>"}`;
+    const rhs = (draft.logic.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"
+      ? `the same ${col} column in Baseline`
+      : `column ${draft.logic.target.trim() || "<comparison column>"} in Comparison`;
     return `${col} ${phrase} ${rhs}`;
   }
   const values = draft.logic.values?.filter((v) => v.trim()) ?? (draft.logic.target.trim() ? [draft.logic.target.trim()] : []);

@@ -61,7 +61,7 @@ class ValidationViolation:
     violating_value: Any
     rule_logic: str
     comparison_value: Any = None
-    logic_comparison_value: Any = None
+    extra_values: dict[str, Any] = field(default_factory=dict)
     grouping_values: dict[str, Any] = field(default_factory=dict)
 
 
@@ -287,7 +287,7 @@ def validate_rows(
                     if baseline_row is not None and viol_col in baseline_row
                     else None
                 )
-                logic_comparison_value = row.get(rule.logic.column_name)
+                extra_values = {column: row.get(column) for column in rule.extra_columns}
                 violations.append(
                     ValidationViolation(
                         row_index=idx,
@@ -301,7 +301,7 @@ def validate_rows(
                         violating_value=viol_val,
                         rule_logic=rule_logic_str,
                         comparison_value=comparison_value,
-                        logic_comparison_value=logic_comparison_value,
+                        extra_values=extra_values,
                     grouping_values=agg_vals,
                     )
                 )
@@ -431,15 +431,18 @@ def _check_rule(
     val = str(raw)
 
     if logic.format == "column_vs_column":
-        # Phase 2: baseline column value comes from baseline_row (file A)
-        source = baseline_row if baseline_row is not None else row
+        source = (
+            row
+            if logic.comparison_mode == "comparison_vs_comparison"
+            else baseline_row if baseline_row is not None else row
+        )
         if logic.target_value not in source:
             return (False, "", None)
         raw_target = source[logic.target_value]
         if raw_target is None:
             return (False, "", None)
         target = str(raw_target)
-        violating_col = logic.target_value
+        violating_col = logic.column_name
     else:
         target = logic.target_value
         violating_col = logic.column_name
@@ -716,6 +719,13 @@ def execute_comparison(
         for cond in rule.conditions:
             if cond.column_name in valid_filter_cols:
                 needed_columns.add(cond.column_name)
+        invalid_extras = [column for column in rule.extra_columns if column not in valid_filter_cols]
+        if invalid_extras:
+            raise ValueError(
+                f"Rule '{rule.rule_id}' references unknown extra columns: "
+                f"{', '.join(invalid_extras)}"
+            )
+        needed_columns.update(rule.extra_columns)
 
     if not needed_columns:
         raise ValueError("No columns to process")

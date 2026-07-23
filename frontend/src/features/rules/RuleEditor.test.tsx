@@ -39,16 +39,21 @@ describe("RuleEditor", () => {
     const logicColumn = screen.getByRole("searchbox", { name: "COLUMN in COMPARISON" });
     fireEvent.focus(logicColumn);
     fireEvent.change(logicColumn, { target: { value: "region" } });
-    fireEvent.mouseDown(screen.getByRole("option", { name: "region" }));
+    fireEvent.mouseDown(screen.getByRole("option", { name: /region/ }));
     const valueSearch = screen.getByRole("searchbox", { name: "Value" });
     fireEvent.focus(valueSearch);
     fireEvent.change(valueSearch, { target: { value: "EMEA" } });
     fireEvent.keyDown(valueSearch, { key: "Enter" });
+    const extraColumns = screen.getByRole("searchbox", { name: "Extra columns to display" });
+    fireEvent.focus(extraColumns);
+    fireEvent.change(extraColumns, { target: { value: "region" } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: /region/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).toHaveBeenCalledTimes(1);
     const draft = onSave.mock.calls[0]![0];
     expect(draft.name).toBe("Region set");
     expect(draft.logic).toMatchObject({ format: "value", column: "region" });
+    expect(draft.extraColumns).toEqual(["region"]);
   });
 
   it("requires a join once there is more than one condition", () => {
@@ -146,7 +151,10 @@ describe("RuleEditor", () => {
   it("switches to the column-against-column format", () => {
     setup({ columns: ["col_a"] });
     fireEvent.click(screen.getByRole("radio", { name: /Column against column/ }));
-    expect(screen.getByRole("searchbox", { name: "BASELINE COLUMN" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Same column: Comparison vs Baseline/ })).toBeChecked();
+    expect(screen.queryByRole("searchbox", { name: "SECOND COLUMN in COMPARISON" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /Different columns: Comparison vs Comparison/ }));
+    expect(screen.getByRole("searchbox", { name: "SECOND COLUMN in COMPARISON" })).toBeInTheDocument();
   });
 
   it("guards unsaved changes on cancel", () => {

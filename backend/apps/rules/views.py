@@ -49,7 +49,9 @@ def _rules_to_dict(rules_file: RulesFile) -> dict[str, Any]:
                     if rule.logic.target_values
                     else {}
                 ),
+                "comparison_mode": rule.logic.comparison_mode,
             },
+            "extra_columns": list(rule.extra_columns),
         }
         if rule.condition_relation:
             rule_dict["condition_relation"] = rule.condition_relation
@@ -105,7 +107,9 @@ class RuleDetailView(APIView):  # type: ignore[misc]
                         "column_name": rule.logic.column_name,
                         "operator": rule.logic.operator,
                         "target_value": rule.logic.target_value,
+                        "comparison_mode": rule.logic.comparison_mode,
                     },
+                    "extra_columns": list(rule.extra_columns),
                 }
                 if rule.condition_relation:
                     data["condition_relation"] = rule.condition_relation

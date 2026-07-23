@@ -33,6 +33,11 @@ class LogicClauseSerializer(serializers.Serializer):  # type: ignore[misc]
     target_values = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )
+    comparison_mode = serializers.ChoiceField(
+        choices=["comparison_vs_baseline", "comparison_vs_comparison"],
+        required=False,
+        default="comparison_vs_baseline",
+    )
 
 
 class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -45,6 +50,9 @@ class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
     grouping = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
     grouping_tree = serializers.JSONField(required=False, allow_null=True)
     logic = LogicClauseSerializer()
+    extra_columns = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list
+    )
 
 
 class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -58,6 +66,9 @@ class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     grouping = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
     grouping_tree = serializers.JSONField(required=False, allow_null=True)
     logic = LogicClauseSerializer()
+    extra_columns = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list
+    )
 
 
 class RulesListResponseSerializer(serializers.Serializer):  # type: ignore[misc]

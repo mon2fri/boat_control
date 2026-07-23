@@ -140,37 +140,58 @@ uses two equal tracks rather than leaving two empty tracks in the four-column la
 at 2560 px measured a 2250 px aggregation row with two 1121 px cards, and a 2250 px detail region
 with a 2248 px detail grid. Evidence: `screenshots/responsive_fix_wide_fill_2560.png`.
 
-### Adaptive detail-table and Logic-value follow-up
+### Adaptive detail-table and configurable extra-column follow-up
 
 Cell-level horizontal scrolling was removed. Detail cells now wrap when needed and virtual rows are
-measured in the browser; the `.detail-scroll` region is the sole horizontal scroll owner. Rule
-evaluation now persists the comparison-row value of the column selected in Logic as
-`logic_comparison_value`. Saved-run pagination and frontend mapping preserve it as
-`logicComparisonValue`, and rule-exception tables render it under **Value in Comparison**. Change
-tables do not show the rule-specific column.
+measured in the browser; the `.detail-scroll` region is the sole horizontal scroll owner. The fixed
+**Value in Comparison** column was removed. Rule configuration now contains an optional
+**Extra columns to display** searchable checkbox selector populated from the columns selected on
+Page 1. Rules persist those names as `extra_columns`; execution captures their comparison-row values
+as `extra_values`; and rule-exception tables render each selected name as its own column. Change
+tables do not show rule-specific extra columns.
 
 Chrome checks at 2560, 1280, 640, and 480 px confirmed `overflow-x: visible` on cells. At 2560 px
 the 2248 px grid filled its 2248 px region without overflow. At 1280/640/480 px the grid retained its
 1100 px usable minimum and only the outer region became horizontally scrollable. The new header was
 present at every tested width.
 
+### Column-against-column source follow-up
+
+Column-against-column rules now expose two explicit editor modes:
+
+- **Same column: Comparison vs Baseline** compares the selected comparison column with the
+  same-named baseline column. This is the backward-compatible default.
+- **Different columns: Comparison vs Comparison** exposes a second searchable comparison-column
+  selector and evaluates both operands from the comparison row.
+
+The selected mode persists as `comparison_mode` through saved rules and config import/export.
+Execution uses the appropriate row source, while unknown referenced columns remain rejected before
+CSV evaluation.
+
+### Extra-column request-boundary correction
+
+The editor and domain mapper produced `extra_columns`, but `ruleDraftRequestSchema` did not declare
+the field. Zod therefore stripped it immediately before rule POST/PUT requests, leaving persisted
+rules and violation `extra_values` empty. The outbound schema now preserves the array, with a
+regression test that maps a rule and parses the actual request boundary.
+
 ### Exact results
 
 - Focused: `npm --prefix frontend test -- --run src/features/results/results.test.tsx` — 1 file,
   9 tests passed.
-- Full frontend: `npm --prefix frontend test -- --run` — 32 files, 244 tests passed.
+- Full frontend: `npm --prefix frontend test -- --run` — 32 files, 246 tests passed.
 - The instructed `npx --prefix frontend tsc --noEmit` only printed TypeScript help under the installed
   npm/npx and did not type-check a project. Equivalent project-aware check `cd frontend && npx tsc
   --noEmit` passed with no errors.
 - `npm --prefix frontend run build` — passed (227 modules transformed); Vite emitted only its existing
   chunk-size advisory.
-- `uv run pytest -q` — 186 passed.
+- `uv run pytest -q` — 188 passed.
 - `git diff --check` — passed with no output.
 
 ### Production assets
 
 - `frontend/dist/assets/index-BzDicYZK.css`
-- `frontend/dist/assets/index-CNuHgNAI.js`
+- `frontend/dist/assets/index-DRu65p_z.js`
 
 ### Replacement screenshots
 

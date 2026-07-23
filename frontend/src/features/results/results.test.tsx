@@ -71,7 +71,7 @@ describe("result components", () => {
     expect(screen.getByText("No detail rows.")).toBeInTheDocument();
   });
 
-  it("shows the Logic-column comparison value only for rule exception details", () => {
+  it("shows rule-selected extra values as named detail columns", () => {
     render(
       <DetailTable
         rows={[{
@@ -80,15 +80,18 @@ describe("result components", () => {
           column: "expected_status",
           file1Value: "active",
           file2Value: "inactive",
-          logicComparisonValue: "pending",
+          extraValues: { region: "EMEA", owner: "Ops" },
           kind: "exception",
         }]}
         caption="Rule details"
         keyColumnNames={["id"]}
       />,
     );
-    expect(screen.getByRole("columnheader", { name: "Value in Comparison" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "pending" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Value in Comparison" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "region" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "owner" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "EMEA" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "Ops" })).toBeInTheDocument();
   });
 
   it("virtualizes large result sets (does not render every row)", () => {

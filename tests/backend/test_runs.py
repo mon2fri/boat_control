@@ -118,11 +118,65 @@ class TestValidateRows:
         violation = result.violations_by_rule["R001"][0]
         assert violation.violating_value == "inactive"
         assert violation.comparison_value == "pending"
-        assert violation.logic_comparison_value == "inactive"
         assert result.rule_summaries["R001"] == {
             "name": "Active Check",
             "logic": "status equals 'active'",
         }
+
+    def test_rule_violation_includes_selected_extra_columns(self, rules_file: Path) -> None:
+        from dataclasses import replace
+
+        import polars as pl
+
+        baseline = pl.DataFrame({"id": [1], "status": ["active"], "region": ["North"]})
+        comparison = pl.DataFrame({"id": [1], "status": ["inactive"], "region": ["South"]})
+        rule = replace(load_rules(rules_file).rules[0], extra_columns=("region",))
+        result = validate_rows(
+            comparison,
+            [rule],
+            ["status"],
+            ["id"],
+            comparison_df=baseline,
+        )
+        violation = result.violations_by_rule["R001"][0]
+        assert violation.extra_values == {"region": "South"}
+
+    def test_column_logic_can_compare_different_columns_in_comparison(
+        self, rules_file: Path
+    ) -> None:
+        from dataclasses import replace
+
+        import polars as pl
+
+        comparison = pl.DataFrame(
+            {"id": [1, 2], "actual": ["A", "A"], "expected": ["A", "B"]}
+        )
+        baseline = pl.DataFrame(
+            {"id": [1, 2], "actual": ["X", "X"], "expected": ["Y", "Y"]}
+        )
+        base_rule = load_rules(rules_file).rules[0]
+        rule = replace(
+            base_rule,
+            logic=replace(
+                base_rule.logic,
+                format="column_vs_column",
+                column_name="actual",
+                operator="eq",
+                target_value="expected",
+                comparison_mode="comparison_vs_comparison",
+            ),
+        )
+        result = validate_rows(
+            comparison,
+            [rule],
+            ["actual", "expected"],
+            ["id"],
+            comparison_df=baseline,
+        )
+        violations = result.violations_by_rule["R001"]
+        assert [violation.key_columns["id"] for violation in violations] == [2]
+        assert violations[0].violating_column == "actual"
+        assert violations[0].violating_value == "A"
 
     def test_grouping_tree_and(self, csv_a: Path, tmp_path: Path) -> None:
         from apps.rules.services import GroupingBranch, GroupingLeaf, Rule

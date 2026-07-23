@@ -17,6 +17,7 @@ import {
   mapWireFilterRow,
   mapWireRule,
 } from "./mapping";
+import { ruleDraftRequestSchema } from "./wire";
 import { wireRunRequestSchema } from "./wire";
 
 const baseRequest = {
@@ -217,5 +218,19 @@ describe("rule condition mapping", () => {
     });
     expect(rule.conditionJoin).toBe("per_grouping");
     expect(mapRuleToWireDraft(rule)).not.toHaveProperty("condition_relation");
+  });
+
+  it("preserves extra display columns through the outbound request schema", () => {
+    const mapped = mapRuleToWireDraft({
+      name: "Show context",
+      conditions: [],
+      conditionJoin: null,
+      conditionGrouping: null,
+      groupTree: null,
+      logic: { id: "l0", format: "value", column: "status", operator: "equals", target: "active" },
+      extraColumns: ["region", "owner"],
+    });
+    const request = ruleDraftRequestSchema.parse(mapped);
+    expect(request.extra_columns).toEqual(["region", "owner"]);
   });
 });

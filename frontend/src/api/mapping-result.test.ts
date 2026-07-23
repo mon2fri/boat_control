@@ -36,7 +36,7 @@ function doc(overrides: Partial<WireRunDocument["result"]["validation"]> = {}): 
               violating_column: "status",
               violating_value: "inactive",
               comparison_value: "active",
-              logic_comparison_value: "inactive",
+              extra_values: { region: "EMEA" },
               rule_logic: "status must equal \"active\"",
             },
             {
@@ -132,7 +132,7 @@ describe("mapRunDocumentToResult", () => {
     expect(detail.column).toBe("status");
     expect(detail.violatingColumn).toBe("status");
     expect(detail.violatingValue).toBe("inactive");
-    expect(detail.logicComparisonValue).toBe("inactive");
+    expect(detail.extraValues).toEqual({ region: "EMEA" });
     expect(detail.file1Value).toBe("active");
     expect(detail.file2Value).toBe("inactive");
   });
