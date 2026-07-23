@@ -140,7 +140,7 @@ SCHEMA = {
     "export": {
         "request": {
             "run_id": "string",
-            "format": "string (html|csv)",
+            "format": "string (html|excel)",
         },
         "response": "binary (file download)",
     },

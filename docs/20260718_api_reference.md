@@ -262,11 +262,11 @@ Or with inline data:
 {
   "result_data": {...},
   "report_name": "My Report",
-  "format": "csv"
+  "format": "excel"
 }
 ```
 
-**Formats:** `html`, `csv`
+**Formats:** `html`, `excel`
 
 ---
 

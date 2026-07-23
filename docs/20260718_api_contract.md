@@ -375,7 +375,7 @@ POST /api/reports/export/
 
 **Response 200:** File download with `Content-Disposition: attachment`.
 
-**Formats:** `html`, `csv`
+**Formats:** `html`, `excel`
 
 ---
 

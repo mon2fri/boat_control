@@ -364,7 +364,7 @@ def main() -> int:
     load_resp = load_run(client, run_id)
     rename_resp = rename(client, run_id, "renamed_e2e_report")
     export_html = export(client, run_id, "html")
-    export_csv = export(client, run_id, "csv")
+    export_excel = export(client, run_id, "excel")
 
     bundle = {
         "upload": upload_resp,
@@ -377,7 +377,7 @@ def main() -> int:
         "load_run": load_resp,
         "rename": rename_resp,
         "export_html": export_html,
-        "export_csv": export_csv,
+        "export_excel": export_excel,
         "settings": load_settings(client),
         "saved_filters": list_saved_filters(client),
         "preset_sources": list_preset_sources(client),

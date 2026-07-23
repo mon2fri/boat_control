@@ -401,7 +401,7 @@ export class ExportError extends Error {
  */
 export async function downloadExport(
   runId: string,
-  format: "html" | "csv",
+  format: "html" | "excel",
   fallbackName = "export",
   options: {
     onProgress?: (received: number, total: number | null) => void;

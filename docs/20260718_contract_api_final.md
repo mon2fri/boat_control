@@ -766,10 +766,10 @@ Exports a run to HTML or CSV.
 ```
 
 **Response 200:** File download.
-- `Content-Type`: `text/html` or `text/csv`
+- `Content-Type`: `text/html` or `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
 - `Content-Disposition`: `attachment; filename="<report_name>.<ext>"`
 
-**Formats:** `html`, `csv`
+**Formats:** `html`, `excel`
 
 **Notes:**
 - Complete exports (no silent truncation)

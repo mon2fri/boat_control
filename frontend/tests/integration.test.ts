@@ -77,7 +77,7 @@ interface Bundle {
   };
   preset_sources: { status: number; body: unknown };
   export_html: { content_type: string; content_disposition: string; size: number; starts_with: string };
-  export_csv: { content_type: string; content_disposition: string; size: number; starts_with: string };
+  export_excel: { content_type: string; content_disposition: string; size: number; starts_with: string };
 }
 
 function loadBundle(): Bundle {
@@ -168,12 +168,12 @@ describe("real-backend integration: client understands the live Django contract"
     expect(bundle.rename.run_id).toBe(bundle.execute.run_id ?? (bundle.execute as { run_id: string }).run_id);
   });
 
-  it("export: HTML and CSV are returned with the right content-type and disposition", () => {
+  it("export: HTML and Excel are returned with the right content-type and disposition", () => {
     expect(bundle.export_html.content_type).toMatch(/text\/html/);
     expect(bundle.export_html.content_disposition).toMatch(/attachment/);
     expect(bundle.export_html.starts_with).toMatch(/<!doctype|<html/i);
-    expect(bundle.export_csv.content_type).toMatch(/text\/csv/);
-    expect(bundle.export_csv.content_disposition).toMatch(/attachment/);
+    expect(bundle.export_excel.content_type).toMatch(/spreadsheetml/);
+    expect(bundle.export_excel.content_disposition).toMatch(/attachment/);
   });
 
   it("grouped rule: create + read + update + read round-trip preserves all three conditions", () => {

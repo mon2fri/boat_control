@@ -5,7 +5,7 @@ from rest_framework.request import Request
 from rest_framework.views import APIView
 
 from apps.reports.serializers import ExportRequestSerializer
-from apps.reports.services import export_csv, export_html
+from apps.reports.services import export_excel, export_html
 from apps.runs.persistence import load_run
 
 
@@ -39,8 +39,14 @@ class ExportView(APIView):  # type: ignore[misc]
             response = HttpResponse(content, content_type="text/html")
             response["Content-Disposition"] = f'attachment; filename="{report_name}.html"'
         else:
-            content = export_csv(result_data, report_name)
-            response = HttpResponse(content, content_type="text/csv")
-            response["Content-Disposition"] = f'attachment; filename="{report_name}.csv"'
+            try:
+                content = export_excel(result_data, report_name)
+            except ValueError as error:
+                return HttpResponse(str(error), status=400, content_type="text/plain")
+            response = HttpResponse(
+                content,
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            response["Content-Disposition"] = f'attachment; filename="{report_name}.xlsx"'
 
         return response

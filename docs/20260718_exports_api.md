@@ -22,7 +22,7 @@ Or with inline result data:
     "validation": {...}
   },
   "report_name": "My Report",
-  "format": "csv"
+  "format": "excel"
 }
 ```
 

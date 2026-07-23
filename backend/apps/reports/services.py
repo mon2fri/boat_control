@@ -6,6 +6,10 @@ import io
 from datetime import datetime
 from typing import Any
 
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+
 _FILTER_OP_LABELS: dict[str, str] = {
     "equals": "equals",
     "not_equals": "not equal to",
@@ -15,6 +19,8 @@ _FILTER_OP_LABELS: dict[str, str] = {
     "neq": "not equal to",
     "ncontains": "does not contain",
 }
+_EXCEL_MAX_ROWS = 1_048_576
+_EXCEL_MAX_COLUMNS = 16_384
 
 
 def _escape_html(value: Any) -> str:
@@ -65,9 +71,7 @@ def _detail_header(
         identity = "<th>Row</th>"
     extras = "".join(f"<th>{_escape_html(column)}</th>" for column in extra_columns or [])
     comparison = (
-        "<th>Column</th><th>In Baseline</th><th>In Comparison</th>"
-        if not hide_comparison
-        else ""
+        "<th>Column</th><th>In Baseline</th><th>In Comparison</th>" if not hide_comparison else ""
     )
     return f"<tr>{identity}{extras}{comparison}</tr>"
 
@@ -120,7 +124,9 @@ def _group_stat_card(stat: dict[str, Any]) -> str:
     )
 
 
-def _distribute_evenly(items: list[dict[str, Any]], max_per_row: int = 4) -> list[list[dict[str, Any]]]:
+def _distribute_evenly(
+    items: list[dict[str, Any]], max_per_row: int = 4
+) -> list[list[dict[str, Any]]]:
     """Mirror the result page's balanced aggregation-card row layout."""
     if not items:
         return []
@@ -147,8 +153,7 @@ def _render_group_section(title: str, stats: list[dict[str, Any]]) -> str:
             f"<div class='group-stats-row group-stats-row--{min(len(row), 4)}'>{cards}</div>"
         )
     return (
-        f"<div class='group-stats-panel' aria-label='{_escape_html(title)}'>"
-        f"{''.join(rows)}</div>"
+        f"<div class='group-stats-panel' aria-label='{_escape_html(title)}'>{''.join(rows)}</div>"
     )
 
 
@@ -189,7 +194,9 @@ def _render_comparing_columns(result: dict[str, Any]) -> str:
     columns = result.get("target_columns")
     if not columns:
         columns = result.get("common_columns") or []
-    tags = "".join(f"<li><span class='tag'>{_escape_html(column)}</span></li>" for column in columns)
+    tags = "".join(
+        f"<li><span class='tag'>{_escape_html(column)}</span></li>" for column in columns
+    )
     if not tags:
         return (
             "<div class='comparison-columns'><p class='comparison-columns-label'>"
@@ -237,13 +244,17 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(".metric { border:1px solid #e5eaf0; border-radius:6px; padding:12px; }")
     sections.append(".metric b { display:block; font-size:1.5rem; }")
     sections.append(".metric span { color:#64748b; font-size:.72rem; text-transform:uppercase; }")
-    sections.append(".table-scroll { overflow-x:auto; border:1px solid #dce2ea; border-radius:6px; }")
+    sections.append(
+        ".table-scroll { overflow-x:auto; border:1px solid #dce2ea; border-radius:6px; }"
+    )
     sections.append(".result-table { margin-top:0; border:0; }")
     sections.append(".result-table th:first-child, .result-table td:first-child { border-left:0; }")
     sections.append(".result-table th:last-child, .result-table td:last-child { border-right:0; }")
     sections.append(".result-table tbody tr:last-child td { border-bottom:0; }")
     sections.append(".exception-rule-table th:last-child { text-align:right; }")
-    sections.append(".number-cell { text-align:right; font-weight:700; font-variant-numeric:tabular-nums; }")
+    sections.append(
+        ".number-cell { text-align:right; font-weight:700; font-variant-numeric:tabular-nums; }"
+    )
     sections.append(
         ".rule-id { display:inline-block; margin-right:8px; padding:2px 7px; "
         "border:1px solid #dce2ea; border-radius:999px; color:#64748b; "
@@ -254,7 +265,10 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         ".comparison-columns-label { margin:0 0 4px; color:#64748b; font-size:.8rem; "
         "font-weight:600; text-transform:uppercase; letter-spacing:.03em; }"
     )
-    sections.append(".chip-list { display:flex; flex-wrap:wrap; gap:8px; list-style:none; margin:0; padding:0; }")
+    sections.append(
+        ".chip-list { display:flex; flex-wrap:wrap; gap:8px; "
+        "list-style:none; margin:0; padding:0; }"
+    )
     sections.append(
         ".tag { display:inline-block; padding:2px 8px; border:1px solid #dce2ea; "
         "border-radius:999px; background:#eef2f6; font-size:.75rem; font-weight:500; }"
@@ -519,6 +533,245 @@ def export_csv(result: dict[str, Any], report_name: str) -> str:
                 )
 
     return output.getvalue()
+
+
+def export_excel(result: dict[str, Any], report_name: str) -> bytes:
+    """Build the multi-sheet result workbook used by the Excel export."""
+    workbook = Workbook()
+    overall = workbook.active
+    overall.title = "Overall"
+    comparison = result.get("comparison") or {}
+    validation = result.get("validation") or {}
+    group_statistics = result.get("group_statistics") or {}
+
+    overall.append(["Overall Results"])
+    overall.append(["Report name", _excel_value(report_name)])
+    overall.append(
+        ["Records loaded", comparison.get("total_rows_a", 0) + comparison.get("total_rows_b", 0)]
+    )
+    overall.append(
+        [
+            "Exception records",
+            validation.get("distinct_violating_rows", validation.get("total_violations", 0)),
+        ]
+    )
+    overall.append(
+        [
+            "Attributes with exception",
+            validation.get("distinct_violating_attributes", validation.get("total_violations", 0)),
+        ]
+    )
+    overall.append(["Rows changed", comparison.get("rows_with_changes", 0)])
+    overall.append(["Attributes changed", comparison.get("total_attribute_changes", 0)])
+    overall.append([])
+    overall.append(["Filtering information"])
+    filters = result.get("filters_applied") or []
+    if filters:
+        for filter_row in filters:
+            overall.append([_excel_value(_format_filter_row(filter_row))])
+    else:
+        overall.append(["No filtering applied"])
+
+    aggregation_start_row = overall.max_row + 2
+    aggregation_bottom_row = aggregation_start_row
+    overall_aggregations = group_statistics.get("overall") or []
+    if overall_aggregations and 2 + (len(overall_aggregations) - 1) * 3 > _EXCEL_MAX_COLUMNS:
+        raise ValueError("Overall aggregations exceed Excel's 16,384-column worksheet limit.")
+    for index, stat in enumerate(overall_aggregations):
+        start_column = 1 + index * 3
+        overall.cell(
+            aggregation_start_row,
+            start_column,
+            f"Aggregation: {stat.get('column', '?')}",
+        )
+        overall.cell(aggregation_start_row + 1, start_column, "Value")
+        overall.cell(aggregation_start_row + 1, start_column + 1, "Exception records")
+        for row_offset, stat_row in enumerate(stat.get("rows", []), start=2):
+            overall.cell(
+                aggregation_start_row + row_offset,
+                start_column,
+                _excel_value(stat_row.get("value", "")),
+            )
+            overall.cell(
+                aggregation_start_row + row_offset,
+                start_column + 1,
+                stat_row.get("unique_count", 0),
+            )
+            aggregation_bottom_row = max(
+                aggregation_bottom_row,
+                aggregation_start_row + row_offset,
+            )
+
+    next_row = aggregation_bottom_row + 2
+    overall.cell(next_row, 1, "Exception Rule Summary")
+    next_row += 1
+    overall.cell(next_row, 1, "Rule name")
+    overall.cell(next_row, 2, "Exception records")
+    summaries = validation.get("rule_summaries") or {}
+    violations_by_rule = validation.get("violations_by_rule") or {}
+    rule_ids = list(dict.fromkeys([*violations_by_rule, *summaries]))
+    row_counts = validation.get("violating_rows_by_rule") or {}
+    for rule_id in rule_ids:
+        next_row += 1
+        violations = violations_by_rule.get(rule_id) or []
+        sample = violations[0] if violations else {}
+        summary = summaries.get(rule_id) or {}
+        rule_name = summary.get("name") or sample.get("rule_name") or rule_id
+        overall.cell(next_row, 1, _excel_value(rule_name))
+        overall.cell(next_row, 2, row_counts.get(rule_id, len(violations)))
+
+    changes_sheet = workbook.create_sheet("Attribute Changes")
+    changes_sheet["A1"] = "Attribute Changes"
+    comparing_columns = result.get("target_columns") or result.get("common_columns") or []
+    changes_sheet["A2"] = "Comparing columns"
+    changes_sheet["B2"] = _excel_value(", ".join(str(column) for column in comparing_columns))
+    change_headers = [
+        *(result.get("key_columns") or ["Row"]),
+        "Column",
+        "In Baseline",
+        "In Comparison",
+    ]
+    change_count = sum(
+        len(detail.get("attribute_changes") or []) for detail in comparison.get("row_details") or []
+    )
+    if change_count + 4 > _EXCEL_MAX_ROWS:
+        raise ValueError("Attribute Changes exceeds Excel's 1,048,576-row worksheet limit.")
+    _append_row(changes_sheet, 4, change_headers)
+    change_row = 5
+    key_columns = list(result.get("key_columns") or [])
+    for detail in comparison.get("row_details") or []:
+        identity = _excel_identity(
+            key_columns, detail.get("key_columns") or {}, detail.get("row_index", "")
+        )
+        for change in detail.get("attribute_changes") or []:
+            _append_row(
+                changes_sheet,
+                change_row,
+                [
+                    *identity,
+                    change.get("column", ""),
+                    change.get("file_a_value", ""),
+                    change.get("file_b_value", ""),
+                ],
+            )
+            change_row += 1
+
+    for rule_id in rule_ids:
+        violations = violations_by_rule.get(rule_id) or []
+        summary = summaries.get(rule_id) or {}
+        sample = violations[0] if violations else {}
+        rule_name = summary.get("name") or sample.get("rule_name") or rule_id
+        sheet = workbook.create_sheet(_safe_sheet_name(rule_id, workbook.sheetnames))
+        sheet["A1"] = _excel_value(f"{rule_id} - {rule_name}")
+        sheet["A2"] = "Condition:"
+        sheet["B2"] = _excel_value(summary.get("condition", ""))
+        sheet["A3"] = "Grouping:"
+        sheet["B3"] = _excel_value(summary.get("condition_grouping", ""))
+        expectation = summary.get("logic") or sample.get("rule_logic") or ""
+        sheet["A4"] = "Expectation:"
+        sheet["B4"] = _excel_value(_humanize_rule_logic(expectation))
+
+        extra_columns = list(
+            dict.fromkeys(
+                column
+                for violation in violations
+                for column in (violation.get("extra_values") or {})
+            )
+        )
+        hide_comparison = bool(summary.get("hide_comparison", False))
+        if len(violations) + 7 > _EXCEL_MAX_ROWS:
+            raise ValueError(f"Rule {rule_id} exceeds Excel's 1,048,576-row worksheet limit.")
+        headers = [*(key_columns or ["Row"]), *extra_columns]
+        if not hide_comparison:
+            headers.extend(["Column", "In Baseline", "In Comparison"])
+        _append_row(sheet, 7, headers)
+        row_number = 8
+        for violation in violations:
+            values = _excel_identity(
+                key_columns,
+                violation.get("key_columns") or {},
+                violation.get("row_index", ""),
+            )
+            extra_values = violation.get("extra_values") or {}
+            values.extend(extra_values.get(column, "—") for column in extra_columns)
+            if not hide_comparison:
+                values.extend(
+                    [
+                        violation.get("violating_column", rule_id),
+                        violation.get("comparison_value", ""),
+                        violation.get("violating_value", ""),
+                    ]
+                )
+            _append_row(sheet, row_number, values)
+            row_number += 1
+
+    for sheet in workbook.worksheets:
+        _style_excel_sheet(sheet)
+
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def _append_row(sheet: Any, row: int, values: list[Any]) -> None:
+    for column, value in enumerate(values, start=1):
+        sheet.cell(row, column, _excel_value(value))
+
+
+def _excel_identity(key_columns: list[str], values: dict[str, Any], row_index: Any) -> list[Any]:
+    if not key_columns:
+        return [row_index]
+    return [values.get(column, "—") for column in key_columns]
+
+
+def _excel_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _sanitize_csv_value(value)
+    return value
+
+
+def _safe_sheet_name(name: str, existing: list[str]) -> str:
+    cleaned = "".join("_" if char in r"[]:*?/\\" else char for char in name)[:31] or "Rule"
+    candidate = cleaned
+    index = 2
+    while candidate in existing:
+        suffix = f"_{index}"
+        candidate = f"{cleaned[: 31 - len(suffix)]}{suffix}"
+        index += 1
+    return candidate
+
+
+def _style_excel_sheet(sheet: Any) -> None:
+    header_fill = PatternFill("solid", fgColor="DCE6F1")
+    for row in sheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            if cell.row == 1:
+                cell.font = Font(bold=True, size=14)
+            if isinstance(cell.value, str) and (
+                cell.value
+                in {
+                    "Value",
+                    "Exception records",
+                    "Rule name",
+                    "Column",
+                    "In Baseline",
+                    "In Comparison",
+                    "Condition:",
+                    "Grouping:",
+                    "Expectation:",
+                }
+                or cell.value in {"Filtering information", "Exception Rule Summary"}
+                or "aggregation:" in cell.value
+            ):
+                cell.font = Font(bold=True)
+                cell.fill = header_fill
+    for column_cells in sheet.columns:
+        max_length = max((len(str(cell.value or "")) for cell in column_cells), default=0)
+        sheet.column_dimensions[get_column_letter(column_cells[0].column)].width = min(
+            max(max_length + 2, 12), 50
+        )
+    sheet.freeze_panes = "A2"
 
 
 def _write_summary_row(writer: Any, metric: str, value: Any) -> None:

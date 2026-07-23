@@ -350,7 +350,7 @@ export const wireExportRequestSchema = z.object({
   run_id: z.string().optional(),
   result_data: wireRunResultSchema.optional(),
   report_name: z.string().optional(),
-  format: z.enum(["html", "csv"]),
+  format: z.enum(["html", "excel"]),
 });
 export type WireExportRequest = z.infer<typeof wireExportRequestSchema>;
 

@@ -192,8 +192,8 @@ class TestExportWorkflow:
 
             response = api_client.post(
                 "/api/reports/export/",
-                {"run_id": meta.run_id, "format": "csv"},
+                {"run_id": meta.run_id, "format": "excel"},
                 format="json",
             )
             assert response.status_code == 200
-            assert "text/csv" in response["Content-Type"]
+            assert "spreadsheetml" in response["Content-Type"]

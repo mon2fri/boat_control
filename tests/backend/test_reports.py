@@ -1,6 +1,9 @@
+from io import BytesIO
+
 import pytest
-from apps.reports.services import export_csv, export_html
+from apps.reports.services import export_excel, export_html
 from django.test import TestCase
+from openpyxl import load_workbook
 from rest_framework.test import APIClient  # type: ignore[import-untyped]
 
 
@@ -157,10 +160,7 @@ class TestExportHtml:
             "</section>", 1
         )[0]
 
-        assert (
-            "<tr><th>id</th><th>region</th><th>owner</th></tr>"
-            in rule_section
-        )
+        assert "<tr><th>id</th><th>region</th><th>owner</th></tr>" in rule_section
         assert "<td>EMEA</td>" in rule_section
         assert "<td>Ops</td>" in rule_section
         assert "<th>Column</th>" not in rule_section
@@ -171,18 +171,115 @@ class TestExportHtml:
         assert "<td>10</td>" not in rule_section
 
 
-class TestExportCsv:
-    def test_generates_csv(self, sample_result: dict) -> None:
-        result = export_csv(sample_result, "Test Report")
-        assert "Section,Metric,Value" in result
-        assert "100" in result
+class TestExportExcel:
+    def test_generates_required_workbook_layout(self, sample_result: dict) -> None:
+        sample_result["group_statistics"] = {
+            "overall": [
+                {
+                    "column": "region",
+                    "unique_count": 1,
+                    "attribute_count": 1,
+                    "rows": [{"value": "EMEA", "unique_count": 1, "attribute_count": 1}],
+                },
+                {
+                    "column": "owner",
+                    "unique_count": 1,
+                    "attribute_count": 1,
+                    "rows": [{"value": "Ops", "unique_count": 1, "attribute_count": 1}],
+                },
+            ],
+            "attribute_changes": [
+                {
+                    "column": "should_not_export",
+                    "unique_count": 1,
+                    "attribute_count": 1,
+                    "rows": [],
+                }
+            ],
+            "validation_rules": {
+                "R001": [
+                    {
+                        "column": "also_not_exported",
+                        "unique_count": 1,
+                        "attribute_count": 1,
+                        "rows": [],
+                    }
+                ]
+            },
+        }
+        workbook = load_workbook(BytesIO(export_excel(sample_result, "Test Report")))
+
+        assert workbook.sheetnames == ["Overall", "Attribute Changes", "R001", "R002"]
+        overall = workbook["Overall"]
+        assert overall["A1"].value == "Overall Results"
+        assert any(cell.value == "Filtering information" for row in overall for cell in row)
+        assert any(cell.value == "Exception Rule Summary" for row in overall for cell in row)
+        assert any(cell.value == "Aggregation: region" for row in overall for cell in row)
+        assert any(cell.value == "Aggregation: owner" for row in overall for cell in row)
+        assert overall["A12"].value == "Aggregation: region"
+        assert overall["D12"].value == "Aggregation: owner"
+        assert not any(
+            cell.value == "Aggregation: should_not_export" for row in overall for cell in row
+        )
+        assert not any(
+            cell.value == "Aggregation: also_not_exported" for row in overall for cell in row
+        )
+
+        changes = workbook["Attribute Changes"]
+        assert changes["A1"].value == "Attribute Changes"
+        assert changes["A2"].value == "Comparing columns"
+        assert changes["B2"].value == "score"
+        assert [changes.cell(4, column).value for column in range(1, 5)] == [
+            "id",
+            "Column",
+            "In Baseline",
+            "In Comparison",
+        ]
+
+        rule = workbook["R001"]
+        assert rule["A1"].value == "R001 - Test Rule"
+        assert rule["A2"].value == "Condition:"
+        assert rule["B2"].value == "Condition 1: region equals 'EMEA'"
+        assert rule["A3"].value == "Grouping:"
+        assert rule["B3"].value == "Condition 1 AND Condition 2"
+        assert rule["A4"].value == "Expectation:"
+        assert rule["B4"].value == "score less than '20'"
+        assert rule["A5"].value is None
+        assert rule["A6"].value is None
+        assert [rule.cell(7, column).value for column in range(1, 5)] == [
+            "id",
+            "Column",
+            "In Baseline",
+            "In Comparison",
+        ]
 
     def test_prevents_formula_injection(self, sample_result: dict) -> None:
-        formula = "=SUM(A1:A10)"
-        changes = sample_result["comparison"]["row_details"][0]["attribute_changes"]
-        changes[0]["file_a_value"] = formula
-        result = export_csv(sample_result, "Test")
-        assert "'=SUM(A1:A10)" in result
+        sample_result["comparison"]["row_details"][0]["attribute_changes"][0]["file_a_value"] = (
+            "=SUM(A1:A10)"
+        )
+        workbook = load_workbook(BytesIO(export_excel(sample_result, "Test")))
+        assert workbook["Attribute Changes"]["C5"].value == "'=SUM(A1:A10)"
+
+    def test_rule_sheet_honors_extra_and_hidden_comparison_columns(
+        self, sample_result: dict
+    ) -> None:
+        violation = sample_result["validation"]["violations_by_rule"]["R001"][0]
+        violation["extra_values"] = {"region": "EMEA", "owner": "Ops"}
+        sample_result["validation"]["rule_summaries"]["R001"]["hide_comparison"] = True
+
+        workbook = load_workbook(BytesIO(export_excel(sample_result, "Test")))
+        rule = workbook["R001"]
+
+        assert [rule.cell(7, column).value for column in range(1, 4)] == [
+            "id",
+            "region",
+            "owner",
+        ]
+        assert [rule.cell(8, column).value for column in range(1, 4)] == [
+            "456",
+            "EMEA",
+            "Ops",
+        ]
 
 
 class TestExportEndpoint(TestCase):

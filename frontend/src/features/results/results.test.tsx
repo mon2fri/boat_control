@@ -221,6 +221,35 @@ describe("result components", () => {
     expect(bodyRows.length).toBeLessThan(200);
   });
 
+  it("materializes the complete row set only while preparing an HTML export", async () => {
+    const allRows = Array.from({ length: 250 }, (_, index) => ({
+      rowKey: String(index),
+      keyColumns: { id: String(index) },
+      column: "status",
+      file1Value: "old",
+      file2Value: "new",
+      kind: "changed" as const,
+    }));
+    render(
+      <DetailTable
+        rows={allRows.slice(0, 200)}
+        exportRows={allRows}
+        caption="Complete export"
+        keyColumnNames={["id"]}
+      />,
+    );
+
+    expect(document.querySelectorAll(".detail-grid-body > .detail-grid-row").length).toBeLessThan(200);
+    document.dispatchEvent(new Event("prepare-result-export"));
+    await waitFor(() =>
+      expect(document.querySelectorAll(".detail-grid-body > .detail-grid-row")).toHaveLength(250),
+    );
+    document.dispatchEvent(new Event("cleanup-result-export"));
+    await waitFor(() =>
+      expect(document.querySelectorAll(".detail-grid-body > .detail-grid-row").length).toBeLessThan(200),
+    );
+  });
+
   it("caps tables above ten data rows while leaving shorter tables natural", () => {
     const rows = Array.from({ length: 11 }, (_, i) => ({
       rowKey: String(i),

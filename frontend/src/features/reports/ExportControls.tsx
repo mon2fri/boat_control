@@ -8,7 +8,7 @@ interface Props {
 }
 
 interface DownloadState {
-  format: "html" | "csv";
+  format: "html" | "excel";
   received: number;
   total: number | null;
 }
@@ -31,7 +31,7 @@ export function ExportControls({ runId, reportName }: Props) {
   const [success, setSuccess] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  async function download(format: "html" | "csv"): Promise<void> {
+  async function download(format: "html" | "excel"): Promise<void> {
     setError(null);
     setSuccess(null);
     const controller = new AbortController();
@@ -39,7 +39,9 @@ export function ExportControls({ runId, reportName }: Props) {
     setBusy({ format, received: 0, total: null });
     try {
       const result = format === "html"
-        ? (() => {
+        ? await (async () => {
+            document.dispatchEvent(new Event("prepare-result-export"));
+            await nextPaint();
             const root = document.querySelector("[data-export-source='result']");
             if (!root) throw new ExportError("Rendered result content is unavailable.", 0);
             const rendered = exportRenderedHtml(root, reportName);
@@ -78,6 +80,7 @@ export function ExportControls({ runId, reportName }: Props) {
         setError("Export failed for an unknown reason.");
       }
     } finally {
+      document.dispatchEvent(new Event("cleanup-result-export"));
       abortRef.current = null;
       setBusy(null);
     }
@@ -95,8 +98,8 @@ export function ExportControls({ runId, reportName }: Props) {
       <button type="button" className="btn" onClick={() => void download("html")} disabled={busy !== null}>
         {busy?.format === "html" ? "Generating HTML…" : "Export HTML"}
       </button>
-      <button type="button" className="btn" onClick={() => void download("csv")} disabled={busy !== null}>
-        {busy?.format === "csv" ? "Generating CSV…" : "Export CSV"}
+      <button type="button" className="btn" onClick={() => void download("excel")} disabled={busy !== null}>
+        {busy?.format === "excel" ? "Generating Excel…" : "Export Excel"}
       </button>
 
       {busy && (
@@ -128,6 +131,12 @@ export function ExportControls({ runId, reportName }: Props) {
       )}
     </div>
   );
+}
+
+function nextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 }
 
 function formatBytes(n: number): string {

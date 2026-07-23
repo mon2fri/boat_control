@@ -267,7 +267,7 @@
         "required": ["run_id", "format"],
         "properties": {
           "run_id": {"type": "string"},
-          "format": {"type": "string", "enum": ["html", "csv"]}
+          "format": {"type": "string", "enum": ["html", "excel"]}
         }
       },
       "response_200": {

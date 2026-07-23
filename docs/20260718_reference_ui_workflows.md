@@ -146,6 +146,6 @@ The overall summary shows the five required counts:
 
 ### Export
 
-- **Export HTML** and **Export CSV** are same-origin download links (`/api/runs/{id}/export/`),
+- **Export HTML** and **Export Excel** are same-origin downloads,
   driven by anchor navigation with the `download` attribute — no scripted fetch, no external host.
 - Escaping and spreadsheet-formula-injection mitigation are performed by the backend exporter.

@@ -51,7 +51,7 @@ requirements.
 | History | 10 entries | Oldest entries pruned |
 | Rule list | All rules (unbounded) | No cap |
 | Export HTML | No truncation | Complete output |
-| Export CSV | No truncation | Complete output |
+| Export Excel | No truncation | Complete output |
 
 ## 3. Complete server-side result data
 
@@ -115,7 +115,7 @@ Generate two CSV files with:
 | Peak server memory | `resource.getrusage(RUSAGE_SELF).ru_maxrss` before and after |
 | Result size | JSON serialized size of complete result |
 | Detail page latency | Time to fetch first page of details |
-| Export time | Time to generate complete HTML and CSV exports |
+| Export time | Time to generate complete HTML and Excel exports |
 
 ### 5.4 Machine reporting
 

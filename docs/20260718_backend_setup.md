@@ -39,7 +39,7 @@ backend/
     ├── files/           # CSV upload and header inspection
     ├── rules/           # Validation rule configuration
     ├── runs/            # Comparison run execution and persistence
-    └── reports/         # HTML and CSV export
+    └── reports/         # HTML and Excel export
 ```
 
 ## Configuration

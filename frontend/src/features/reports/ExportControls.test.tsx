@@ -75,7 +75,7 @@ describe("ExportControls", () => {
       vi.fn().mockResolvedValue(buildErrorResponse(500, JSON.stringify({ error: "Export too large" }))),
     );
     render(<ExportControls runId="run-1" reportName="my_run" />);
-    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export Excel" }));
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(/Export failed: Export too large/),
     );
@@ -94,7 +94,7 @@ describe("ExportControls", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
     render(<ExportControls runId="run-1" reportName="my_run" />);
-    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export Excel" }));
     const cancelBtn = await screen.findByRole("button", { name: "Cancel" });
     fireEvent.click(cancelBtn);
     // Simulate the browser aborting the underlying fetch.

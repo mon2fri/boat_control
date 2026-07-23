@@ -189,7 +189,13 @@ export function ResultsPage() {
                 {state.result.groupStatistics?.attributeChanges && state.result.groupStatistics.attributeChanges.length > 0 && (
                   <GroupStatisticsPanel stats={state.result.groupStatistics.attributeChanges} />
                 )}
-                <PaginatedDetailSection runId={state.result.id} kind="changed" caption="Attribute change details" keyColumnNames={state.keyColumns} />
+                <PaginatedDetailSection
+                  runId={state.result.id}
+                  kind="changed"
+                  caption="Attribute change details"
+                  keyColumnNames={state.keyColumns}
+                  exportRows={state.result.changeDetails}
+                />
               </section>
 
               {state.result.ruleResults.map((rule) => {

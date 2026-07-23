@@ -636,11 +636,11 @@
     "size": 1420,
     "starts_with": "<!DOCTYPE html>\n<html><head>\n<title>renamed_e2e_report</title>\n<style>\nbody { fo"
   },
-  "export_csv": {
-    "content_type": "text/csv",
-    "content_disposition": "attachment; filename=\"renamed_e2e_report.csv\"",
-    "size": 513,
-    "starts_with": "Section,Metric,Value\r\nSummary,Total Rows A,3\r\nSummary,Total Rows B,3\r\nSummary,Ro"
+  "export_excel": {
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "content_disposition": "attachment; filename=\"renamed_e2e_report.xlsx\"",
+    "size": 8000,
+    "starts_with": "PK"
   },
   "settings": {
     "application_name": "Boat Control",

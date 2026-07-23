@@ -1,5 +1,6 @@
 import { useMemo, useState, useCallback } from "react";
-import { DetailTable } from "./DetailTable";
+import { DetailTable, filterDetailRows } from "./DetailTable";
+import type { DetailRow } from "../../api/domain";
 import { usePaginatedDetails } from "./usePaginatedDetails";
 
 interface Props {
@@ -7,9 +8,10 @@ interface Props {
   kind: "changed" | "violation";
   caption: string;
   keyColumnNames?: string[];
+  exportRows?: DetailRow[];
 }
 
-export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }: Props) {
+export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames, exportRows }: Props) {
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const {
     rows, total, hasMore, loading, loadingMore, error, isEmpty, loadMore,
@@ -73,6 +75,7 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames }:
     <>
       <DetailTable
         rows={rows}
+        exportRows={exportRows ? filterDetailRows(exportRows, filters) : rows}
         total={total}
         hasMore={hasMore}
         onReachEnd={loadMore}

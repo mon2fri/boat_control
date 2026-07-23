@@ -10,6 +10,8 @@ interface ColumnFilter {
 
 interface StaticProps {
   rows: DetailRow[];
+  /** Complete rows used only while producing a rendered HTML export. */
+  exportRows?: DetailRow[];
   caption: string;
   total?: number;
   onReachEnd?: () => void;
@@ -32,6 +34,7 @@ const VISIBLE_DATA_ROWS = 10;
 
 export function DetailTable({
   rows,
+  exportRows,
   caption,
   total,
   onReachEnd,
@@ -45,6 +48,19 @@ export function DetailTable({
   onFilterChange,
 }: StaticProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [exportMode, setExportMode] = useState(false);
+  const renderedRows = exportMode ? (exportRows ?? rows) : rows;
+
+  useEffect(() => {
+    const prepare = () => setExportMode(true);
+    const cleanup = () => setExportMode(false);
+    document.addEventListener("prepare-result-export", prepare);
+    document.addEventListener("cleanup-result-export", cleanup);
+    return () => {
+      document.removeEventListener("prepare-result-export", prepare);
+      document.removeEventListener("cleanup-result-export", cleanup);
+    };
+  }, []);
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
@@ -68,13 +84,13 @@ export function DetailTable({
     onReachEnd();
   }, [rows.length, hasMore, onReachEnd, virtualizer]);
 
-  if (rows.length === 0) {
+  if (renderedRows.length === 0) {
     return <p role="status">{emptyMessage}</p>;
   }
 
-  const virtualized = rows.length > VISIBLE_DATA_ROWS;
+  const virtualized = !exportMode && renderedRows.length > VISIBLE_DATA_ROWS;
   const items = !virtualized
-    ? rows.map((_, index) => ({ key: index, index, start: index * ROW_HEIGHT }))
+    ? renderedRows.map((_, index) => ({ key: index, index, start: index * ROW_HEIGHT }))
     : virtualizer.getVirtualItems();
   // The virtualizer only owns rows that are loaded. Using the server-side total here
   // creates a scrollable but unrenderable tail, which appears as blank table cells.
@@ -82,7 +98,7 @@ export function DetailTable({
 
   const keyColCount = keyColumnNames.length || 1;
   const extraColumnNames = configuredExtraColumnNames
-    ?? [...new Set(rows.flatMap((row) => Object.keys(row.extraValues ?? {})))];
+    ?? [...new Set(renderedRows.flatMap((row) => Object.keys(row.extraValues ?? {})))];
   const colWidths: number[] = [];
   for (let i = 0; i < keyColCount; i++) colWidths.push(150);
   colWidths.push(...extraColumnNames.map(() => 180));
@@ -176,7 +192,7 @@ export function DetailTable({
           style={virtualized ? { position: "relative", height: `${renderedTotal}px` } : undefined}
         >
           {items.map((item) => {
-            const row = rows[item.index];
+            const row = renderedRows[item.index];
             if (!row) return null;
             return (
               <div

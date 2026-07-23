@@ -187,7 +187,7 @@ export type RuleDraft = Omit<Rule, "index"> & { index?: string };
 
 export interface ExportRequest {
   runId: string;
-  format: "html" | "csv";
+  format: "html" | "excel";
 }
 
 /**
