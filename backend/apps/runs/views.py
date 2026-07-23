@@ -99,7 +99,7 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 key_columns=key_columns,
                 filters=filters,
                 rule_ids=rule_ids,
-                grouping_columns=aggregation_columns,
+                aggregation_columns=aggregation_columns,
             )
         except Exception as exc:
             logger.warning("execute_comparison failed: %s", exc)

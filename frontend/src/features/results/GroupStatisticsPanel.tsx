@@ -22,13 +22,17 @@ export function GroupStatisticsPanel({ stats }: Props) {
   return (
     <div className="group-stats-panel">
       {rows.map((row, ri) => (
-        <div key={ri} className="group-stats-row">
+        <div
+          key={ri}
+          className={`group-stats-row group-stats-row--${Math.min(row.length, 4)}`}
+        >
           {row.map((stat) => (
             <details key={stat.column} className="card group-stats-card">
               <summary className="group-stats-summary">
                 <span className="group-stats-col-name">{stat.column}</span>
-                {" — "}
-                Unique: {stat.uniqueCount} | Attribute: {stat.attributeCount}
+                <span className="group-stats-counts">
+                  Unique: {stat.uniqueCount} | Attribute: {stat.attributeCount}
+                </span>
               </summary>
               <div
                 className="group-stats-scroll"

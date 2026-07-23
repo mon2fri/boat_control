@@ -1,0 +1,7 @@
+kind: column
+name: Test
+columns:
+- name
+- status
+values: []
+_version: 1

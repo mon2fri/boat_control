@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { OverallSummaryCards } from "./OverallSummaryCards";
 import { RuleResultSection } from "./RuleResultSection";
 import { TableOfContents } from "./TableOfContents";
 import { DetailTable } from "./DetailTable";
+import { GroupStatisticsPanel } from "./GroupStatisticsPanel";
 import type { RunResult, RuleResult } from "../../api/domain";
 
 const ruleResult: RuleResult = {
@@ -80,7 +81,7 @@ describe("result components", () => {
       kind: "changed" as const,
     }));
     render(<DetailTable rows={many} caption="Large" />);
-    const bodyRows = document.querySelectorAll(".detail-table tbody tr");
+    const bodyRows = document.querySelectorAll(".detail-grid-body > .detail-grid-row");
     // Only a small window is materialized, never all 5,000 rows.
     expect(bodyRows.length).toBeLessThan(200);
   });
@@ -100,5 +101,90 @@ describe("result components", () => {
     rerender(<DetailTable rows={rows} caption="Long" />);
     expect(screen.getByRole("region", { name: "Long" })).toHaveClass("detail-scroll--capped");
     expect(screen.getByRole("columnheader", { name: "Column" })).toBeInTheDocument();
+  });
+
+  it("uses one ordered column contract for headers and every rendered detail row", () => {
+    const rows = ["first", "middle", "last"].map((value, index) => ({
+      rowKey: String(index),
+      keyColumns: { id: `${value}-id`, name: `${value}-name` },
+      column: `${value}-column`,
+      file1Value: `${value}-baseline`,
+      file2Value: `${value}-comparison`,
+      kind: "changed" as const,
+    }));
+    render(<DetailTable rows={rows} caption="Geometry" keyColumnNames={["id", "name"]} />);
+
+    const table = screen.getByRole("table");
+    expect(table).toHaveStyle({ minWidth: "1050px" });
+    const header = within(table).getAllByRole("row")[0]!;
+    expect(header.style.gridTemplateColumns).toContain("minmax(150px, 1fr)");
+    expect(within(header).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "id", "name", "Column", "In Baseline", "In Comparison", "Rationale",
+    ]);
+    for (const [index, row] of within(table).getAllByRole("row").slice(1).entries()) {
+      const sourceRow = rows[index]!;
+      const cells = within(row).getAllByRole("cell");
+      expect(cells).toHaveLength(6);
+      expect(cells.slice(0, 5).map((cell) => cell.textContent)).toEqual([
+        `${sourceRow.keyColumns.id}`,
+        `${sourceRow.keyColumns.name}`,
+        sourceRow.column,
+        sourceRow.file1Value,
+        sourceRow.file2Value,
+      ]);
+    }
+    expect(screen.getByText("first-baseline")).toBeVisible();
+    expect(screen.getByText("middle-comparison")).toBeVisible();
+    expect(screen.getByText("last-column")).toBeVisible();
+  });
+
+  it("keeps filter interaction and incremental loading on the scroll region", async () => {
+    const onFilterChange = vi.fn();
+    const onReachEnd = vi.fn();
+    const rows = Array.from({ length: 12 }, (_, index) => ({
+      rowKey: String(index),
+      keyColumns: { id: `id-${index}` },
+      column: index % 2 ? "status" : "score",
+      file1Value: `before-${index}`,
+      file2Value: `after-${index}`,
+      kind: "changed" as const,
+    }));
+    render(
+      <DetailTable
+        rows={rows}
+        total={100}
+        caption="Filtered details"
+        keyColumnNames={["id"]}
+        columnFilters={[{ key: "column", label: "Column", options: ["score", "status"] }]}
+        onFilterChange={onFilterChange}
+        onReachEnd={onReachEnd}
+        hasMore
+      />,
+    );
+
+    const region = screen.getByRole("region", { name: "Filtered details" });
+    expect(region).toHaveClass("detail-scroll--capped");
+    expect(region).toHaveAttribute("aria-rowcount", "100");
+    fireEvent.click(screen.getByRole("button", { name: "Filter Column" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "status" }));
+    expect(onFilterChange).toHaveBeenCalledWith("column", ["status"]);
+    Object.defineProperties(region, {
+      scrollHeight: { configurable: true, value: 504 },
+      clientHeight: { configurable: true, value: 420 },
+    });
+    fireEvent.scroll(region, { target: { scrollTop: 420, scrollLeft: 300 } });
+    await waitFor(() => expect(onReachEnd).toHaveBeenCalledTimes(1));
+  });
+
+  it("applies row-scoped equal-height classes to aggregation cards", () => {
+    render(<GroupStatisticsPanel stats={[
+      { column: "short", uniqueCount: 1, attributeCount: 1, rows: [] },
+      { column: "a very long aggregation column name", uniqueCount: 2, attributeCount: 3, rows: [] },
+    ]} />);
+    const panel = document.querySelector(".group-stats-panel");
+    expect(panel?.querySelectorAll(".group-stats-row")).toHaveLength(1);
+    expect(panel?.querySelector(".group-stats-row")).toHaveClass("group-stats-row--2");
+    expect(panel?.querySelectorAll(".group-stats-card")).toHaveLength(2);
+    expect(panel?.querySelectorAll(".group-stats-summary")).toHaveLength(2);
   });
 });

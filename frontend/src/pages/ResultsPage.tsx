@@ -135,8 +135,8 @@ export function ResultsPage() {
 
       {state.result && (
         <>
-          <div className="result-content">
-            <div className="results-header">
+          <div className="result-content results-layer-content">
+            <div className="results-header results-layer-header">
                 <div className="results-title-row">
                   <ReportName
                     runId={state.result.id}
@@ -192,7 +192,7 @@ export function ResultsPage() {
                 );
               })}
 
-              <div className="card">
+              <div className="card results-actions results-layer-actions">
                 <div className="config-inline-row">
                   <button type="button" className="btn btn--primary" onClick={handleRunAnother}>
                     Run another report

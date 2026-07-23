@@ -147,5 +147,8 @@ describe("critical user journey: upload → prepare → rules → run → result
     );
     expect(screen.getByText("220")).toBeInTheDocument();
     expect(screen.getByText("baseline_vs_candidate")).toBeInTheDocument();
+    expect(document.querySelector(".result-content.results-layer-content")).toBeInTheDocument();
+    expect(document.querySelector(".results-header.results-layer-header")).toBeInTheDocument();
+    expect(document.querySelector(".results-actions.results-layer-actions")).toBeInTheDocument();
   });
 });

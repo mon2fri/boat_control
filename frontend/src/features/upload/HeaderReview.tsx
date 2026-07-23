@@ -83,14 +83,16 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
 
   return (
     <section aria-labelledby="header-review-title">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space)", marginBottom: "var(--space)" }}>
-        <h3 id="header-review-title" className="section-heading" style={{ margin: 0 }}>Column preview</h3>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space)" }}>
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <h3 id="header-review-title" className="section-heading" style={{ margin: 0 }}>Column preview</h3>
+          <p className="section-hint" role="status" style={{ marginTop: "var(--space)" }}>
+            {report.common.length} shared column{report.common.length === 1 ? "" : "s"}.{" "}
+            Comparison and validation run on shared columns only.
+          </p>
+        </div>
         {configManager}
       </div>
-      <p className="section-hint" role="status">
-        {report.common.length} shared column{report.common.length === 1 ? "" : "s"}.{" "}
-        Comparison and validation run on shared columns only.
-      </p>
       {hasDifferences && (
         <p className="alert alert--warn" role="alert">
           The files have differing columns: {report.file1Only.length} only in{" "}

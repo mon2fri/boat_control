@@ -1,0 +1,15 @@
+comparisonColumns:
+- kind: column_family
+  name: Test
+- id
+- region
+- score
+keyColumns:
+- id
+- name
+aggregationColumns:
+- status
+- region
+filters: []
+targetColumns: []
+_version: 2

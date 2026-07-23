@@ -24,7 +24,7 @@ interface StaticProps {
   onFilterChange?: (key: string, values: string[]) => void;
 }
 
-const ROW_HEIGHT = 34;
+const ROW_HEIGHT = 42;
 const LOAD_MORE_THRESHOLD = 50;
 const VISIBLE_DATA_ROWS = 10;
 
@@ -47,6 +47,7 @@ export function DetailTable({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
+    initialRect: { width: 0, height: VISIBLE_DATA_ROWS * ROW_HEIGHT },
     overscan: 20,
   });
 
@@ -67,8 +68,66 @@ export function DetailTable({
     return <p role="status">{emptyMessage}</p>;
   }
 
-  const items = virtualizer.getVirtualItems();
-  const renderedTotal = Math.max(virtualizer.getTotalSize(), (total ?? rows.length) * ROW_HEIGHT);
+  const items = rows.length <= VISIBLE_DATA_ROWS
+    ? rows.map((_, index) => ({ key: index, index, start: index * ROW_HEIGHT }))
+    : virtualizer.getVirtualItems();
+  // The virtualizer only owns rows that are loaded. Using the server-side total here
+  // creates a scrollable but unrenderable tail, which appears as blank table cells.
+  const renderedTotal = rows.length <= VISIBLE_DATA_ROWS
+    ? rows.length * ROW_HEIGHT
+    : virtualizer.getTotalSize();
+
+  const keyColCount = keyColumnNames.length || 1;
+  const colWidths: number[] = [];
+  for (let i = 0; i < keyColCount; i++) colWidths.push(150);
+  colWidths.push(150, 180, 180, 240);
+  const tableMinWidth = colWidths.reduce((a, b) => a + b, 0);
+  const colTemplate = [
+    ...Array.from({ length: keyColCount }, () => "minmax(150px, 1fr)"),
+    "minmax(150px, 1fr)",
+    "minmax(180px, 1.2fr)",
+    "minmax(180px, 1.2fr)",
+    "minmax(240px, 1.6fr)",
+  ].join(" ");
+
+  const headerCells = (
+    <>
+      {keyColumnNames.length > 0 ? (
+        keyColumnNames.map((name) => {
+          const cf = columnFilters.find((f) => f.key === `key_${name}`);
+          return cf ? (
+            <FilterableTh
+              key={name}
+              label={name}
+              options={cf.options}
+              selected={activeFilters[cf.key] ?? []}
+              onChange={(vals) => onFilterChange?.(cf.key, vals)}
+            />
+          ) : (
+            <div key={name} role="columnheader">{name}</div>
+          );
+        })
+      ) : (
+        <div role="columnheader">Row</div>
+      )}
+      {(() => {
+        const colFilter = columnFilters.find((f) => f.key === "column");
+        return colFilter ? (
+          <FilterableTh
+            label="Column"
+            options={colFilter.options}
+            selected={activeFilters[colFilter.key] ?? []}
+            onChange={(vals) => onFilterChange?.(colFilter.key, vals)}
+          />
+        ) : (
+          <div role="columnheader">Column</div>
+        );
+      })()}
+      <div role="columnheader">In Baseline</div>
+      <div role="columnheader">In Comparison</div>
+      <div role="columnheader">Rationale</div>
+    </>
+  );
 
   return (
     <div
@@ -76,74 +135,58 @@ export function DetailTable({
       className={`detail-scroll${rows.length > VISIBLE_DATA_ROWS ? " detail-scroll--capped" : ""}`}
       role="region"
       aria-label={caption}
+      aria-rowcount={total ?? rows.length}
       tabIndex={0}
+      onScroll={(event) => {
+        if (!onReachEnd || !hasMore || lastTriggeredRef.current === rows.length) return;
+        const target = event.currentTarget;
+        if (target.scrollHeight - target.scrollTop - target.clientHeight > ROW_HEIGHT * 2) return;
+        lastTriggeredRef.current = rows.length;
+        onReachEnd();
+      }}
     >
-      <table className="data detail-table">
-        <caption className="visually-hidden">{caption}</caption>
-        <thead>
-          <tr>
-            {keyColumnNames.length > 0 ? (
-              keyColumnNames.map((name) => {
-                const cf = columnFilters.find((f) => f.key === `key_${name}`);
-                return cf ? (
-                  <FilterableTh
-                    key={name}
-                    label={name}
-                    options={cf.options}
-                    selected={activeFilters[cf.key] ?? []}
-                    onChange={(vals) => onFilterChange?.(cf.key, vals)}
-                  />
-                ) : (
-                  <th key={name} scope="col">{name}</th>
-                );
-              })
-            ) : (
-              <th scope="col">Row</th>
-            )}
-            {(() => {
-              const colFilter = columnFilters.find((f) => f.key === "column");
-              return colFilter ? (
-                <FilterableTh
-                  label="Column"
-                  options={colFilter.options}
-                  selected={activeFilters[colFilter.key] ?? []}
-                  onChange={(vals) => onFilterChange?.(colFilter.key, vals)}
-                />
-              ) : (
-                <th scope="col">Column</th>
-              );
-            })()}
-            <th scope="col">In Baseline</th>
-            <th scope="col">In Comparison</th>
-            <th scope="col">Rationale</th>
-          </tr>
-        </thead>
-        <tbody style={{ height: `${renderedTotal}px` }}>
+      <div className="detail-grid" role="table" style={{ minWidth: tableMinWidth }}>
+        <div className="detail-grid-header results-layer-table-header" role="rowgroup">
+          <div className="detail-grid-row" role="row" style={{ gridTemplateColumns: colTemplate }}>
+            {headerCells}
+          </div>
+        </div>
+        <div className="detail-grid-body" role="rowgroup" style={{ position: "relative", height: `${renderedTotal}px` }}>
           {items.map((item) => {
             const row = rows[item.index];
             if (!row) return null;
             return (
-              <tr
+              <div
                 key={item.key}
                 data-index={item.index}
-                style={{ transform: `translateY(${item.start}px)` }}
+                className="detail-grid-row"
+                role="row"
+                aria-rowindex={item.index + 2}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  gridTemplateColumns: colTemplate,
+                  transform: `translateY(${item.start}px)`,
+                }}
               >
                 {keyColumnNames.length > 0 ? (
                   keyColumnNames.map((name) => (
-                    <td key={name}>{row.keyColumns[name] ?? "—"}</td>
+                    <div role="cell" key={name}>{row.keyColumns[name] ?? "—"}</div>
                   ))
                 ) : (
-                  <td>{row.rowKey}</td>
+                  <div role="cell">{row.rowKey}</div>
                 )}
-                <td>{row.column}</td>
-                <td>{row.file1Value ?? "—"}</td>
-                <td>{row.file2Value ?? "—"}</td>
-                <td>{row.kind === "changed" ? "Values differ" : "Rule requirement not met"}</td>
-              </tr>
+                <div role="cell">{row.column}</div>
+                <div role="cell">{row.file1Value ?? "—"}</div>
+                <div role="cell">{row.file2Value ?? "—"}</div>
+                <div role="cell">{row.kind === "changed" ? "Values differ" : "Rule requirement not met"}</div>
+              </div>
             );
           })}
-        </tbody>
-      </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -163,7 +206,7 @@ function FilterableTh({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const ref = useRef<HTMLTableCellElement>(null);
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -194,7 +237,7 @@ function FilterableTh({
   const hasActive = selected.length > 0;
 
   return (
-    <th scope="col" className="filterable-th" ref={ref}>
+    <div className="filterable-th" ref={ref} role="columnheader">
       <span>{label}</span>
       <button
         type="button"
@@ -243,7 +286,7 @@ function FilterableTh({
           )}
         </div>
       )}
-    </th>
+    </div>
   );
 }
 
