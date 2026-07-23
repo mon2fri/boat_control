@@ -3,7 +3,18 @@ from __future__ import annotations
 import csv
 import html
 import io
+from datetime import datetime
 from typing import Any
+
+_FILTER_OP_LABELS: dict[str, str] = {
+    "equals": "equals",
+    "not_equals": "not equal to",
+    "contains": "contains",
+    "not_contains": "does not contain",
+    "eq": "equals",
+    "neq": "not equal to",
+    "ncontains": "does not contain",
+}
 
 
 def _escape_html(value: Any) -> str:
@@ -62,6 +73,55 @@ def _identity_cells(key_columns: list[str], key_values: dict[str, Any], row_inde
     return f"<td>{_escape_html(row_index)}</td>"
 
 
+def _format_filter_row(f: dict[str, Any]) -> str:
+    op = _FILTER_OP_LABELS.get(f.get("operator", ""), f.get("operator", ""))
+    vals = f.get("filter_values") or []
+    if not vals and f.get("filter_value"):
+        vals = [f["filter_value"]]
+    quoted = " or ".join(f"'{v}'" for v in vals)
+    return f"{f.get('column', '?')} {op} {quoted}"
+
+
+def _format_created_at(iso_str: str | None) -> str:
+    if not iso_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%b %d, %Y %H:%M:%S")
+    except (ValueError, TypeError):
+        return iso_str
+
+
+def _group_stat_card(stat: dict[str, Any]) -> str:
+    col = _escape_html(stat.get("column", "?"))
+    unique = _escape_html(stat.get("unique_count", 0))
+    attr = _escape_html(stat.get("attribute_count", 0))
+    rows_html = ""
+    for r in stat.get("rows", []):
+        val = _escape_html(r.get("value", ""))
+        ru = _escape_html(r.get("unique_count", 0))
+        ra = _escape_html(r.get("attribute_count", 0))
+        rows_html += f"<tr><td>{val}</td><td>{ru}</td><td>{ra}</td></tr>"
+    return (
+        f"<details open class='card'>"
+        f"<summary style='cursor:pointer;font-weight:600;'>{col}"
+        f" <span style='color:#64748b;font-weight:400;font-size:.85rem;'>"
+        f"Unique: {unique} | Attribute: {attr}</span></summary>"
+        f"<table style='margin-top:8px;'>"
+        f"<thead><tr><th>Value</th><th>Unique Count</th><th>Attribute Count</th></tr></thead>"
+        f"<tbody>{rows_html}</tbody>"
+        f"</table>"
+        f"</details>"
+    )
+
+
+def _render_group_section(title: str, stats: list[dict[str, Any]]) -> str:
+    if not stats:
+        return ""
+    cards = "".join(_group_stat_card(s) for s in stats)
+    return f"<section class='card'><h2>{_escape_html(title)}</h2>{cards}</section>"
+
+
 def export_html(result: dict[str, Any], report_name: str, created_at: str | None = None) -> str:
     comparison = result.get("comparison", {})
     validation = result.get("validation", {})
@@ -114,8 +174,9 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
 
     sections.append("<div class='report-header'>")
     sections.append(f"<h1>{_escape_html(report_name)}</h1>")
-    if created_at:
-        sections.append(f"<span class='run-time'>Ran on {_escape_html(created_at)}</span>")
+    formatted_time = _format_created_at(created_at)
+    if formatted_time:
+        sections.append(f"<span class='run-time'>Ran on {_escape_html(formatted_time)}</span>")
     sections.append("</div>")
 
     sections.append("<section class='card' id='overall'>")
@@ -132,9 +193,13 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     )
     targets = result.get("target_columns") or []
     filters = result.get("filters_applied") or []
+    filter_text = (
+        "; ".join(_format_filter_row(f) for f in filters) if filters else "No filtering applied"
+    )
     sections.append(
         "<p class='section-logic'>"
-        f"Comparison across {len(targets)} target columns with {len(filters)} filter(s)."
+        f"Comparison across {len(targets)} target columns."
+        f"<br>Filtering: {_escape_html(filter_text)}"
         "</p>"
     )
     sections.append("<div class='summary-grid'>")
@@ -143,9 +208,16 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(_metric("Attributes with rule exception", violation_attrs))
     sections.append(_metric("Rows changed", changes))
     sections.append(_metric("Attributes changed", attr_changes))
-    sections.append("</div></section>")
+    sections.append("</div>")
+
+    grp = result.get("group_statistics") or {}
+    overall_grp = grp.get("overall") or []
+    sections.append(_render_group_section("Aggregation by grouping columns", overall_grp))
+    sections.append("</section>")
 
     sections.append("<section class='card' id='changes'>")
+    attr_changes_grp = grp.get("attribute_changes") or []
+    sections.append(_render_group_section("Attribute change aggregation", attr_changes_grp))
     sections.append("<h2>Attribute changes</h2>")
     sections.append(
         "<p class='section-logic'><code>In Baseline ≠ In Comparison</code> "
@@ -196,6 +268,8 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         sections.append(_metric("Rows with exception", row_count))
         sections.append(_metric("Attributes with exception", attribute_count))
         sections.append("</div>")
+        rule_grp = (grp.get("validation_rules") or {}).get(rule_id, [])
+        sections.append(_render_group_section("Aggregation by rule grouping columns", rule_grp))
         if violations:
             sections.append("<table>")
             sections.append(_detail_header(key_columns))
