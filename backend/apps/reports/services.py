@@ -95,31 +95,54 @@ def _format_created_at(iso_str: str | None) -> str:
 def _group_stat_card(stat: dict[str, Any]) -> str:
     col = _escape_html(stat.get("column", "?"))
     unique = _escape_html(stat.get("unique_count", 0))
-    attr = _escape_html(stat.get("attribute_count", 0))
     rows_html = ""
     for r in stat.get("rows", []):
         val = _escape_html(r.get("value", ""))
         ru = _escape_html(r.get("unique_count", 0))
-        ra = _escape_html(r.get("attribute_count", 0))
-        rows_html += f"<tr><td>{val}</td><td>{ru}</td><td>{ra}</td></tr>"
+        rows_html += f"<tr><td>{val}</td><td>{ru}</td></tr>"
     return (
-        f"<details open class='card'>"
-        f"<summary style='cursor:pointer;font-weight:600;'>{col}"
-        f" <span style='color:#64748b;font-weight:400;font-size:.85rem;'>"
-        f"Unique: {unique} | Attribute: {attr}</span></summary>"
-        f"<table style='margin-top:8px;'>"
-        f"<thead><tr><th>Value</th><th>Unique Count</th><th>Attribute Count</th></tr></thead>"
+        f"<details class='group-stats-card'>"
+        f"<summary class='group-stats-summary'>"
+        f"<span class='group-stats-column'>{col}</span>"
+        f"<span class='group-stats-count'>Exception records: {unique}</span></summary>"
+        f"<div class='group-stats-scroll'><table class='group-stats-table'>"
+        f"<thead><tr><th>Value</th><th>Exception records</th></tr></thead>"
         f"<tbody>{rows_html}</tbody>"
-        f"</table>"
+        f"</table></div>"
         f"</details>"
     )
+
+
+def _distribute_evenly(items: list[dict[str, Any]], max_per_row: int = 4) -> list[list[dict[str, Any]]]:
+    """Mirror the result page's balanced aggregation-card row layout."""
+    if not items:
+        return []
+    if len(items) <= max_per_row:
+        return [items]
+    row_count = (len(items) + max_per_row - 1) // max_per_row
+    base_size, remainder = divmod(len(items), row_count)
+    rows: list[list[dict[str, Any]]] = []
+    offset = 0
+    for index in range(row_count):
+        size = base_size + (1 if index < remainder else 0)
+        rows.append(items[offset : offset + size])
+        offset += size
+    return rows
 
 
 def _render_group_section(title: str, stats: list[dict[str, Any]]) -> str:
     if not stats:
         return ""
-    cards = "".join(_group_stat_card(s) for s in stats)
-    return f"<section class='card'><h2>{_escape_html(title)}</h2>{cards}</section>"
+    rows = []
+    for row in _distribute_evenly(stats):
+        cards = "".join(_group_stat_card(stat) for stat in row)
+        rows.append(
+            f"<div class='group-stats-row group-stats-row--{min(len(row), 4)}'>{cards}</div>"
+        )
+    return (
+        f"<div class='group-stats-panel' aria-label='{_escape_html(title)}'>"
+        f"{''.join(rows)}</div>"
+    )
 
 
 def export_html(result: dict[str, Any], report_name: str, created_at: str | None = None) -> str:
@@ -157,6 +180,26 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(".metric { border:1px solid #e5eaf0; border-radius:6px; padding:12px; }")
     sections.append(".metric b { display:block; font-size:1.5rem; }")
     sections.append(".metric span { color:#64748b; font-size:.72rem; text-transform:uppercase; }")
+    sections.append(".group-stats-panel { margin-top:8px; }")
+    sections.append(
+        ".group-stats-row { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); "
+        "gap:8px; margin-bottom:8px; align-items:stretch; }"
+    )
+    sections.append(".group-stats-row--1 { grid-template-columns:minmax(0,1fr); }")
+    sections.append(".group-stats-row--2 { grid-template-columns:repeat(2,minmax(0,1fr)); }")
+    sections.append(".group-stats-row--3 { grid-template-columns:repeat(3,minmax(0,1fr)); }")
+    sections.append(
+        ".group-stats-card { display:flex; flex-direction:column; min-width:0; "
+        "background:#fff; border:1px solid #dce2ea; border-radius:8px; padding:16px; }"
+    )
+    sections.append(".group-stats-summary { cursor:pointer; font-weight:600; }")
+    sections.append(".group-stats-column { display:block; font-family:ui-monospace,monospace; }")
+    sections.append(
+        ".group-stats-count { display:block; margin-top:2px; color:#64748b; "
+        "font-size:.85rem; font-weight:400; }"
+    )
+    sections.append(".group-stats-scroll { max-height:192px; overflow-y:auto; }")
+    sections.append(".group-stats-table { margin-top:8px; }")
     sections.append(
         "table { border-collapse:collapse; width:100%; margin-top:12px; font-size:.85rem; }"
     )
@@ -168,7 +211,17 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         "th { background:#eef2f6; color:#64748b; font-size:.72rem; text-transform:uppercase; }"
     )
     sections.append("code { white-space:pre-wrap; }")
-    sections.append("@media (max-width:800px) { .summary-grid { grid-template-columns:1fr 1fr; } }")
+    sections.append(
+        "@media (max-width:900px) { .group-stats-row { grid-template-columns:"
+        "repeat(3,minmax(0,1fr)); } .group-stats-row--1 { grid-template-columns:1fr; } "
+        ".group-stats-row--2 { grid-template-columns:repeat(2,minmax(0,1fr)); } }"
+    )
+    sections.append(
+        "@media (max-width:680px) { .summary-grid { grid-template-columns:1fr 1fr; } "
+        ".group-stats-row { grid-template-columns:repeat(2,minmax(0,1fr)); } "
+        ".group-stats-row--1 { grid-template-columns:1fr; } }"
+    )
+    sections.append("@media (max-width:520px) { .group-stats-row { grid-template-columns:1fr; } }")
     sections.append("</style>")
     sections.append("</head><body><main>")
 

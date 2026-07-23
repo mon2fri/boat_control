@@ -91,6 +91,39 @@ class TestExportHtml:
         result = export_html(sample_result, "Full table")
         assert result.count("<td>Values differ</td>") == 15
 
+    def test_aggregation_cards_match_result_page_layout_and_start_collapsed(
+        self, sample_result: dict
+    ) -> None:
+        sample_result["group_statistics"] = {
+            "overall": [
+                {
+                    "column": f"group_{index}",
+                    "unique_count": index + 1,
+                    "attribute_count": 99,
+                    "rows": [
+                        {
+                            "value": "Total",
+                            "unique_count": index + 1,
+                            "attribute_count": 99,
+                        }
+                    ],
+                }
+                for index in range(5)
+            ],
+            "attribute_changes": [],
+            "validation_rules": {},
+        }
+
+        result = export_html(sample_result, "Aggregation layout")
+
+        assert result.count("<details class='group-stats-card'>") == 5
+        assert "<details open" not in result
+        assert "group-stats-row--3" in result
+        assert "group-stats-row--2" in result
+        assert "Exception records: 1" in result
+        assert "Unique Count" not in result
+        assert "Attribute Count" not in result
+
 
 class TestExportCsv:
     def test_generates_csv(self, sample_result: dict) -> None:
