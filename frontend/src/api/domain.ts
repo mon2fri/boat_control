@@ -164,6 +164,8 @@ export interface RunResult {
   overall: OverallSummary;
   ruleResults: RuleResult[];
   changeDetails: DetailRow[];
+  /** Effective columns compared for attribute changes in this run. */
+  comparisonColumns?: string[];
   /** Group-level statistics per grouping column, per section. */
   groupStatistics?: GroupStatisticsBundle;
   /** Persisted filtering rows applied to this run. */

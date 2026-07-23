@@ -427,6 +427,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
     overall,
     ruleResults,
     changeDetails,
+    comparisonColumns: result.target_columns ?? result.common_columns,
     ...(result.group_statistics
       ? { groupStatistics: mapGroupStatisticsBundle(result.group_statistics) }
       : {}),

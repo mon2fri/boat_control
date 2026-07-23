@@ -5,6 +5,8 @@ import { RuleResultSection } from "./RuleResultSection";
 import { TableOfContents } from "./TableOfContents";
 import { DetailTable } from "./DetailTable";
 import { GroupStatisticsPanel } from "./GroupStatisticsPanel";
+import { ExceptionRuleSummary } from "./ExceptionRuleSummary";
+import { ComparisonColumnList } from "./ComparisonColumnList";
 import type { RunResult, RuleResult } from "../../api/domain";
 
 const ruleResult: RuleResult = {
@@ -128,6 +130,28 @@ describe("result components", () => {
     const nav = screen.getByRole("navigation", { name: "Result contents" });
     expect(within(nav).getByRole("link", { name: "Overall result" })).toHaveAttribute("href", "#overall");
     expect(within(nav).getByRole("link", { name: /R001/ })).toHaveAttribute("href", "#rule-R001");
+  });
+
+  it("summarizes exception records by rule name", () => {
+    render(<ExceptionRuleSummary rules={[
+      ruleResult,
+      { ...ruleResult, ruleIndex: "R002", ruleName: "Owner present", violationRowCount: 1250 },
+    ]} />);
+    const region = screen.getByRole("region", { name: "Exception Rule Summary" });
+    expect(within(region).getByRole("columnheader", { name: "Rule name" })).toBeInTheDocument();
+    expect(within(region).getByRole("columnheader", { name: "Exception records" })).toBeInTheDocument();
+    expect(within(region).getByRole("cell", { name: /Region present/ })).toBeInTheDocument();
+    expect(within(region).getByRole("cell", { name: "1,250" })).toBeInTheDocument();
+  });
+
+  it("lists every comparing column", () => {
+    render(<ComparisonColumnList columns={["status", "score", "updated_at"]} />);
+    const list = screen.getByRole("list", { name: "Comparing columns" });
+    expect(within(list).getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "status",
+      "score",
+      "updated_at",
+    ]);
   });
 
   it("renders a detail table header and an empty state", () => {
@@ -288,5 +312,8 @@ describe("result components", () => {
     expect(panel?.querySelector(".group-stats-row")).toHaveClass("group-stats-row--2");
     expect(panel?.querySelectorAll(".group-stats-card")).toHaveLength(2);
     expect(panel?.querySelectorAll(".group-stats-summary")).toHaveLength(2);
+    expect(screen.getByText("Exception records: 1")).toBeInTheDocument();
+    expect(screen.queryByText(/Unique:/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Attribute Count" })).not.toBeInTheDocument();
   });
 });

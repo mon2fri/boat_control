@@ -31,7 +31,7 @@ export function GroupStatisticsPanel({ stats }: Props) {
               <summary className="group-stats-summary">
                 <span className="group-stats-col-name">{stat.column}</span>
                 <span className="group-stats-counts">
-                  Unique: {stat.uniqueCount} | Attribute: {stat.attributeCount}
+                  Exception records: {stat.uniqueCount}
                 </span>
               </summary>
               <div
@@ -42,8 +42,7 @@ export function GroupStatisticsPanel({ stats }: Props) {
                   <thead>
                     <tr>
                       <th>Value</th>
-                      <th>Unique Count</th>
-                      <th>Attribute Count</th>
+                      <th>Exception records</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -51,7 +50,6 @@ export function GroupStatisticsPanel({ stats }: Props) {
                       <tr key={String(row.value)} className={row.value === "Total" ? "group-stats-total" : ""}>
                         <td>{row.value === "Total" ? <strong>Total</strong> : String(row.value)}</td>
                         <td>{row.uniqueCount}</td>
-                        <td>{row.attributeCount}</td>
                       </tr>
                     ))}
                   </tbody>

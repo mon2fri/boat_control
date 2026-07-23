@@ -696,6 +696,56 @@ table.data td {
   border-bottom: 1px solid var(--color-border);
 }
 
+.exception-rule-summary-scroll {
+  max-width: 100%;
+}
+
+.exception-rule-summary-table {
+  min-width: 480px;
+}
+
+.exception-rule-summary-table .detail-grid-row {
+  grid-template-columns: minmax(280px, 1fr) minmax(170px, 220px);
+}
+
+.exception-rule-summary-table .detail-grid-body .detail-grid-row:nth-child(even) > * {
+  background: color-mix(in srgb, var(--color-surface-raised) 45%, var(--color-surface));
+}
+
+.exception-rule-summary-table .detail-grid-body .detail-grid-row:hover > * {
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+}
+
+.exception-rule-summary-table [role="cell"]:first-child {
+  display: flex;
+  align-items: center;
+  gap: var(--space);
+}
+
+.exception-rule-id {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-muted);
+  background: var(--color-surface-raised);
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  font-weight: 600;
+}
+
+.exception-record-count {
+  color: var(--color-text);
+  font-size: .95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.exception-rule-summary-table [role="columnheader"]:last-child {
+  text-align: right;
+}
+
 [role="combobox"] {
   position: relative;
 }
@@ -1046,6 +1096,21 @@ table.data td {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+
+.comparison-columns {
+  margin-bottom: calc(var(--space) * 1.5);
+}
+
+.comparison-columns__label {
+  margin: 0 0 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.comparison-columns .chip-list {
+  margin-top: 0;
 }
 .chip-remove {
   padding: 0 6px;

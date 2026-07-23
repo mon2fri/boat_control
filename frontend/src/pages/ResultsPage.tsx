@@ -9,6 +9,8 @@ import { ReportName } from "../features/reports/ReportName";
 import { ExportControls } from "../features/reports/ExportControls";
 import { PaginatedDetailSection } from "../features/results/PaginatedDetailSection";
 import { GroupStatisticsPanel } from "../features/results/GroupStatisticsPanel";
+import { ExceptionRuleSummary } from "../features/results/ExceptionRuleSummary";
+import { ComparisonColumnList } from "../features/results/ComparisonColumnList";
 import { clearUploadSession, loadRun } from "../api/endpoints";
 import { formatDateTime } from "../utils/format";
 import type { FilterRow, RunRequest } from "../api/domain";
@@ -169,11 +171,21 @@ export function ResultsPage() {
                 )}
               </section>
 
+              <ExceptionRuleSummary rules={state.result.ruleResults} />
+
               <section id="changes" aria-labelledby="changes-title" className="card" style={{ marginTop: "var(--space)" }}>
                 <h3 id="changes-title">Attribute changes</h3>
                 <p className="section-logic">
                   <code>In Baseline ≠ In Comparison</code> on shared target columns.
                 </p>
+                <ComparisonColumnList
+                  columns={
+                    state.result.comparisonColumns
+                    ?? (state.targetColumns.length > 0
+                      ? state.targetColumns
+                      : state.header?.common ?? [])
+                  }
+                />
                 {state.result.groupStatistics?.attributeChanges && state.result.groupStatistics.attributeChanges.length > 0 && (
                   <GroupStatisticsPanel stats={state.result.groupStatistics.attributeChanges} />
                 )}
