@@ -20,7 +20,7 @@ Please change the parent <Route path="${R}"> to <Route path="${R==="/"?"*":`${R}
             })));
           }
         }
-
+        
         if (${P}.value === undefined) {
           if (${Z} in input) {
             newResult[${Z}] = undefined;
@@ -28,7 +28,7 @@ Please change the parent <Route path="${R}"> to <Route path="${R==="/"?"*":`${R}
         } else {
           newResult[${Z}] = ${P}.value;
         }
-
+        
       `):z?S.write(`
         if (${P}.issues.length) {
           payload.issues = payload.issues.concat(${P}.issues.map(iss => ({
@@ -36,7 +36,7 @@ Please change the parent <Route path="${R}"> to <Route path="${R==="/"?"*":`${R}
             path: iss.path ? [${Z}, ...iss.path] : [${Z}]
           })));
         }
-
+        
         if (${P}.value === undefined) {
           if (${Z} in input) {
             newResult[${Z}] = undefined;
@@ -44,7 +44,7 @@ Please change the parent <Route path="${R}"> to <Route path="${R==="/"?"*":`${R}
         } else {
           newResult[${Z}] = ${P}.value;
         }
-
+        
       `):S.write(`
         const ${P}_present = ${Z} in input;
         if (${P}.issues.length) {
