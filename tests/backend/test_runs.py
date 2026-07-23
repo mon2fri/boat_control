@@ -121,6 +121,7 @@ class TestValidateRows:
         assert result.rule_summaries["R001"] == {
             "name": "Active Check",
             "logic": "status equals 'active'",
+            "hide_comparison": False,
         }
 
     def test_rule_violation_includes_selected_extra_columns(self, rules_file: Path) -> None:

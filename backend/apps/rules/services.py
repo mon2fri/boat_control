@@ -100,6 +100,7 @@ class Rule:
     grouping_tree: GroupingNode | None
     logic: LogicClause
     extra_columns: tuple[str, ...] = ()
+    hide_comparison: bool = False
 
 
 @dataclass(frozen=True)
@@ -244,6 +245,7 @@ def load_rules(path: Path | None = None) -> RulesFile:
                 grouping_tree=_parse_grouping_tree(r.get("grouping_tree")),
                 logic=logic,
                 extra_columns=tuple(str(c) for c in r.get("extra_columns", [])),
+                hide_comparison=bool(r.get("hide_comparison", False)),
             )
         )
 
@@ -284,6 +286,7 @@ def save_rules(rules_file: RulesFile, path: Path | None = None) -> None:
                 "comparison_mode": rule.logic.comparison_mode,
             },
             "extra_columns": list(rule.extra_columns),
+            "hide_comparison": rule.hide_comparison,
         }
         if rule.conditions:
             rule_data["conditions"] = [
@@ -423,6 +426,7 @@ def create_rule(rules_file: RulesFile, rule_data: dict[str, Any]) -> tuple[Rules
         grouping_tree=_parse_grouping_tree(rule_data.get("grouping_tree")),
         logic=logic,
         extra_columns=tuple(str(c) for c in rule_data.get("extra_columns", [])),
+        hide_comparison=bool(rule_data.get("hide_comparison", False)),
     )
 
     new_rules = list(rules_file.rules) + [rule]
@@ -466,6 +470,7 @@ def update_rule(rules_file: RulesFile, rule_id: str, rule_data: dict[str, Any]) 
                     grouping_tree=_parse_grouping_tree(rule_data.get("grouping_tree")),
                     logic=logic,
                     extra_columns=tuple(str(c) for c in rule_data.get("extra_columns", [])),
+                    hide_comparison=bool(rule_data.get("hide_comparison", False)),
                 )
             )
         else:

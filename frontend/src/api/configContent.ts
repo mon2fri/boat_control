@@ -346,6 +346,7 @@ export interface ConfigRule {
   grouping_tree?: { kind: "leaf"; conditionId: string } | { kind: "and"; children: unknown[] } | { kind: "or"; children: unknown[] };
   logic: ConfigRuleLogic;
   extra_columns?: ColumnRef[];
+  hide_comparison?: boolean;
 }
 
 /** Resolve a single config rule condition to domain Condition values. */
@@ -477,6 +478,7 @@ export function resolveConfigRule(
     groupTree: null,
     logic: resolvedLogic,
     extraColumns: [],
+    hideComparison: rule.hide_comparison ?? false,
   };
   if (Array.isArray(rule.extra_columns)) {
     const extras = new Set<string>();
@@ -611,6 +613,7 @@ function ruleToConfigRule(rule: Rule, families: Family[]): ConfigRule {
   if (rule.extraColumns && rule.extraColumns.length > 0) {
     result.extra_columns = rule.extraColumns.map((column) => conditionColumnToRef(column, families));
   }
+  if (rule.hideComparison) result.hide_comparison = true;
   if (rule.conditionJoin && rule.conditionJoin !== "per_grouping") {
     result.condition_relation = rule.conditionJoin as "and" | "or";
   }

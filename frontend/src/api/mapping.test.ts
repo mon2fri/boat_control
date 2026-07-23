@@ -229,8 +229,10 @@ describe("rule condition mapping", () => {
       groupTree: null,
       logic: { id: "l0", format: "value", column: "status", operator: "equals", target: "active" },
       extraColumns: ["region", "owner"],
+      hideComparison: true,
     });
     const request = ruleDraftRequestSchema.parse(mapped);
     expect(request.extra_columns).toEqual(["region", "owner"]);
+    expect(request.hide_comparison).toBe(true);
   });
 });

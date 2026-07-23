@@ -248,6 +248,7 @@ export function mapWireRule(rule: WireRule): Rule {
     groupTree,
     logic,
     extraColumns: rule.extra_columns ?? [],
+    hideComparison: rule.hide_comparison ?? false,
   };
 }
 
@@ -277,6 +278,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
     ...(rule.groupTree ? { grouping_tree: mapGroupNodeToWire(rule.groupTree, conditionIds) } : {}),
     logic: mapLogicToWire(rule.logic),
     extra_columns: rule.extraColumns ?? [],
+    hide_comparison: rule.hideComparison ?? false,
   };
 }
 
@@ -401,6 +403,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
         violationRowCount: perRuleRowCount,
         violationAttributeCount: perRuleAttributeCount,
         details: violations.map((v, i) => mapViolation(v, i)),
+        hideComparison: persistedSummary?.hide_comparison ?? false,
       };
     },
   );

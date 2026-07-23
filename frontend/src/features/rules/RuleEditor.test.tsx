@@ -48,12 +48,14 @@ describe("RuleEditor", () => {
     fireEvent.focus(extraColumns);
     fireEvent.change(extraColumns, { target: { value: "region" } });
     fireEvent.mouseDown(screen.getByRole("option", { name: /region/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /Hide comparison/ }));
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).toHaveBeenCalledTimes(1);
     const draft = onSave.mock.calls[0]![0];
     expect(draft.name).toBe("Region set");
     expect(draft.logic).toMatchObject({ format: "value", column: "region" });
     expect(draft.extraColumns).toEqual(["region"]);
+    expect(draft.hideComparison).toBe(true);
   });
 
   it("requires a join once there is more than one condition", () => {

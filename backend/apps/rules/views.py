@@ -52,6 +52,7 @@ def _rules_to_dict(rules_file: RulesFile) -> dict[str, Any]:
                 "comparison_mode": rule.logic.comparison_mode,
             },
             "extra_columns": list(rule.extra_columns),
+            "hide_comparison": rule.hide_comparison,
         }
         if rule.condition_relation:
             rule_dict["condition_relation"] = rule.condition_relation
@@ -110,6 +111,7 @@ class RuleDetailView(APIView):  # type: ignore[misc]
                         "comparison_mode": rule.logic.comparison_mode,
                     },
                     "extra_columns": list(rule.extra_columns),
+                    "hide_comparison": rule.hide_comparison,
                 }
                 if rule.condition_relation:
                     data["condition_relation"] = rule.condition_relation

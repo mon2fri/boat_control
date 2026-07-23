@@ -93,6 +93,36 @@ describe("result components", () => {
     expect(screen.queryByRole("cell", { name: "APAC" })).not.toBeInTheDocument();
   });
 
+  it("hides comparison columns for rules configured to hide comparison", () => {
+    render(
+      <RuleResultSection
+        keyColumnNames={["id"]}
+        result={{
+          ...ruleResult,
+          hideComparison: true,
+          details: [{
+            rowKey: "1",
+            keyColumns: { id: "1" },
+            column: "status",
+            file1Value: "old",
+            file2Value: "new",
+            extraValues: { region: "EMEA" },
+            kind: "exception",
+          }],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "id" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "region" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Rationale" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Column" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "In Baseline" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "In Comparison" })).not.toBeInTheDocument();
+    expect(screen.queryByText("old")).not.toBeInTheDocument();
+    expect(screen.queryByText("new")).not.toBeInTheDocument();
+  });
+
   it("builds a table of contents with an anchor per section", () => {
     render(<TableOfContents result={result} />);
     const nav = screen.getByRole("navigation", { name: "Result contents" });

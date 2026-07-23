@@ -53,6 +53,7 @@ class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
     extra_columns = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )
+    hide_comparison = serializers.BooleanField(required=False, default=False)
 
 
 class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -69,6 +70,7 @@ class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     extra_columns = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )
+    hide_comparison = serializers.BooleanField(required=False, default=False)
 
 
 class RulesListResponseSerializer(serializers.Serializer):  # type: ignore[misc]

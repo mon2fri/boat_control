@@ -91,6 +91,8 @@ export interface Rule {
   logic: LogicClause;
   /** Comparison-file columns included in this rule's exception details. */
   extraColumns?: string[];
+  /** Hide the standard comparison columns in this rule's exception details. */
+  hideComparison?: boolean;
 }
 
 /**
@@ -150,6 +152,7 @@ export interface RuleResult {
   violationRowCount: number;
   violationAttributeCount: number;
   details: DetailRow[];
+  hideComparison?: boolean;
 }
 
 export interface RunResult {

@@ -57,7 +57,7 @@ export function RuleResultSection({
         options: [...values].sort(),
       });
     }
-    if (result.details.some((r) => r.column)) {
+    if (!result.hideComparison && result.details.some((r) => r.column)) {
       const colVals = new Set<string>();
       for (const r of result.details) {
         if (r.column) colVals.add(r.column);
@@ -65,7 +65,7 @@ export function RuleResultSection({
       filters.push({ key: "column", label: "COLUMN", options: [...colVals].sort() });
     }
     return filters;
-  }, [result.details, keyColumnNames]);
+  }, [result.details, result.hideComparison, keyColumnNames]);
 
   const filteredRows = useMemo(
     () => filterDetailRows(result.details, activeFilters),
@@ -104,6 +104,7 @@ export function RuleResultSection({
         columnFilters={columnFilters}
         activeFilters={activeFilters}
         onFilterChange={handleFilterChange}
+        hideComparison={result.hideComparison ?? false}
       />
     </section>
   );

@@ -16,6 +16,7 @@ interface StaticProps {
   hasMore?: boolean;
   keyColumnNames?: string[];
   extraColumnNames?: string[];
+  hideComparison?: boolean;
   emptyMessage?: string;
   /** Optional column filters shown as filterable headers. */
   columnFilters?: ColumnFilter[];
@@ -37,6 +38,7 @@ export function DetailTable({
   hasMore = false,
   keyColumnNames = [],
   extraColumnNames: configuredExtraColumnNames,
+  hideComparison = false,
   emptyMessage = "No detail rows.",
   columnFilters = [],
   activeFilters = {},
@@ -84,14 +86,16 @@ export function DetailTable({
     ?? [...new Set(rows.flatMap((row) => Object.keys(row.extraValues ?? {})))];
   const colWidths: number[] = [];
   for (let i = 0; i < keyColCount; i++) colWidths.push(150);
-  colWidths.push(...extraColumnNames.map(() => 180), 150, 180, 180, 240);
+  colWidths.push(...extraColumnNames.map(() => 180));
+  if (!hideComparison) colWidths.push(150, 180, 180);
+  colWidths.push(240);
   const tableMinWidth = colWidths.reduce((a, b) => a + b, 0);
   const colTemplate = [
     ...Array.from({ length: keyColCount }, () => "minmax(150px, 1fr)"),
     ...extraColumnNames.map(() => "minmax(180px, 1.2fr)"),
-    "minmax(150px, 1fr)",
-    "minmax(180px, 1.2fr)",
-    "minmax(180px, 1.2fr)",
+    ...(!hideComparison
+      ? ["minmax(150px, 1fr)", "minmax(180px, 1.2fr)", "minmax(180px, 1.2fr)"]
+      : []),
     "minmax(240px, 1.6fr)",
   ].join(" ");
 
@@ -129,7 +133,7 @@ export function DetailTable({
           <div key={name} role="columnheader">{name}</div>
         );
       })}
-      {(() => {
+      {!hideComparison && (() => {
         const colFilter = columnFilters.find((f) => f.key === "column");
         return colFilter ? (
           <FilterableTh
@@ -142,8 +146,8 @@ export function DetailTable({
           <div role="columnheader">Column</div>
         );
       })()}
-      <div role="columnheader">In Baseline</div>
-      <div role="columnheader">In Comparison</div>
+      {!hideComparison && <div role="columnheader">In Baseline</div>}
+      {!hideComparison && <div role="columnheader">In Comparison</div>}
       <div role="columnheader">Rationale</div>
     </>
   );
@@ -205,9 +209,9 @@ export function DetailTable({
                 {extraColumnNames.map((name) => (
                   <div role="cell" key={name}>{row.extraValues?.[name] ?? "—"}</div>
                 ))}
-                <div role="cell">{row.column}</div>
-                <div role="cell">{row.file1Value ?? "—"}</div>
-                <div role="cell">{row.file2Value ?? "—"}</div>
+                {!hideComparison && <div role="cell">{row.column}</div>}
+                {!hideComparison && <div role="cell">{row.file1Value ?? "—"}</div>}
+                {!hideComparison && <div role="cell">{row.file2Value ?? "—"}</div>}
                 <div role="cell">{row.kind === "changed" ? "Values differ" : "Rule requirement not met"}</div>
               </div>
             );

@@ -84,7 +84,7 @@ class ValidationResult:
     violation_count_by_rule: dict[str, int]
     violating_rows_by_rule: dict[str, int]
     violating_attributes_by_rule: dict[str, int]
-    rule_summaries: dict[str, dict[str, str]] = field(default_factory=dict)
+    rule_summaries: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -246,7 +246,7 @@ def validate_rows(
     violation_count_by_rule: dict[str, int] = {}
     violating_rows_by_rule: dict[str, int] = {}
     violating_attributes_by_rule: dict[str, int] = {}
-    rule_summaries: dict[str, dict[str, str]] = {}
+    rule_summaries: dict[str, dict[str, Any]] = {}
 
     all_violating_rows: set[int] = set()
     all_violating_attrs: set[tuple[int, str]] = set()
@@ -262,6 +262,7 @@ def validate_rows(
         rule_summaries[rule.rule_id] = {
             "name": rule.name,
             "logic": _describe_rule_logic(rule),
+            "hide_comparison": rule.hide_comparison,
         }
         violations: list[ValidationViolation] = []
         rule_rows: set[int] = set()

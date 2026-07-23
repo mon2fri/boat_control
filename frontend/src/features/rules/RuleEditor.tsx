@@ -34,6 +34,7 @@ interface DraftState {
   groupTree: GroupNode | null;
   logic: LogicClause;
   extraColumns: string[];
+  hideComparison: boolean;
 }
 
 function initialDraft(rule?: Rule): DraftState {
@@ -47,6 +48,7 @@ function initialDraft(rule?: Rule): DraftState {
       groupTree: rule.groupTree,
       logic: rule.logic,
       extraColumns: rule.extraColumns ?? [],
+      hideComparison: rule.hideComparison ?? false,
     };
   }
   return {
@@ -58,6 +60,7 @@ function initialDraft(rule?: Rule): DraftState {
     groupTree: null,
     logic: { id: nextId("logic"), format: "value", column: "", operator: "equals", target: "" },
     extraColumns: [],
+    hideComparison: false,
   };
 }
 
@@ -456,6 +459,18 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
         />
       </fieldset>
 
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={draft.hideComparison}
+          onChange={(event) => patch({ hideComparison: event.target.checked })}
+        />
+        <span>
+          Hide comparison
+          <small>Hide Column, In Baseline, and In Comparison in this rule’s detail table.</small>
+        </span>
+      </label>
+
       {submitted && !validation.valid && (
         <ul className="alert alert--error" aria-live="polite">
           {validation.errors.map((message) => (
@@ -603,6 +618,7 @@ function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
     groupTree: draft.groupTree,
     logic,
     extraColumns: draft.extraColumns,
+    hideComparison: draft.hideComparison,
   };
 }
 

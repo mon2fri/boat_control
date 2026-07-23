@@ -150,13 +150,17 @@ class TestDeleteRule:
 class TestSaveAndLoadRules:
     def test_round_trip(self, rules_path: Path, sample_rule_data: dict) -> None:
         rules_file = RulesFile(version=1, rules=[], next_index=1)
-        new_file, _ = create_rule(rules_file, sample_rule_data)
+        new_file, _ = create_rule(
+            rules_file,
+            {**sample_rule_data, "hide_comparison": True},
+        )
         save_rules(new_file, rules_path)
 
         loaded = load_rules(rules_path)
         assert loaded.version == 1
         assert len(loaded.rules) == 1
         assert loaded.rules[0].name == "Test Rule"
+        assert loaded.rules[0].hide_comparison is True
 
     def test_load_nonexistent_returns_empty(self, tmp_path: Path) -> None:
         loaded = load_rules(tmp_path / "nonexistent.yaml")
