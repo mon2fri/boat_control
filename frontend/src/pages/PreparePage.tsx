@@ -103,6 +103,7 @@ export function PreparePage() {
             families,
           )}
           onLoad={(name) => setConfigLoadName(name)}
+          disabled={prepare.status === "loading"}
           hasUnsavedChanges={hasUnsavedChanges}
           title="Load config for rows and columns"
         />
@@ -146,6 +147,7 @@ export function PreparePage() {
 
       <TargetSelector
         columns={comparisonColumns}
+        families={families}
         selected={state.targetColumns}
         onChange={(columns) => dispatch({ type: "setTargetColumns", columns })}
       />

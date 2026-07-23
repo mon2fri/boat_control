@@ -1,10 +1,13 @@
 import { useMemo } from "react";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { withColumnFamilies } from "../families/familyOptions";
+import type { Family } from "../../api/domain";
 
 interface Props {
   columns: string[];
   selected: string[];
   onChange: (columns: string[]) => void;
+  families?: Family[];
 }
 
 /**
@@ -12,10 +15,10 @@ interface Props {
  * limited to the comparison columns. An empty selection means "compare all
  * comparison columns".
  */
-export function TargetSelector({ columns, selected, onChange }: Props) {
+export function TargetSelector({ columns, selected, onChange, families = [] }: Props) {
   const available = useMemo(
-    () => columns.map((c) => ({ value: c, label: c })),
-    [columns],
+    () => withColumnFamilies(columns, families),
+    [columns, families],
   );
 
   function removeColumn(column: string): void {

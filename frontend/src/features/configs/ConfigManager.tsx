@@ -33,6 +33,7 @@ export function ConfigManager({
   const [pendingLoadName, setPendingLoadName] = useState<string | null>(null);
   const [pendingDeleteName, setPendingDeleteName] = useState<string | null>(null);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [showSaveToConfigConfirm, setShowSaveToConfigConfirm] = useState(false);
 
   const heading = title ?? "Load config for rows and columns";
 
@@ -65,6 +66,7 @@ export function ConfigManager({
 
   const handleSaveToConfig = useCallback(() => {
     if (!selectedName || selectedVersion === null) return;
+    setShowSaveToConfigConfirm(false);
     update.mutate({ name: selectedName, content: currentContent, version: selectedVersion });
   }, [selectedName, selectedVersion, currentContent, update]);
 
@@ -105,7 +107,7 @@ export function ConfigManager({
                 <>
                   <button
                     type="button"
-                    className="btn"
+                    className="btn btn--primary"
                     disabled={disabled}
                     onClick={() => {
                       handleLoad(selectedName);
@@ -115,9 +117,9 @@ export function ConfigManager({
                   </button>
                   <button
                     type="button"
-                    className="btn btn--primary"
+                    className="btn"
                     disabled={disabled || update.isPending}
-                    onClick={handleSaveToConfig}
+                    onClick={() => setShowSaveToConfigConfirm(true)}
                   >
                     Save to config
                   </button>
@@ -186,6 +188,18 @@ export function ConfigManager({
             autoFocus
           />
         </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        title="Save to config?"
+        open={showSaveToConfigConfirm}
+        confirmLabel="Save"
+        onCancel={() => setShowSaveToConfigConfirm(false)}
+        onConfirm={handleSaveToConfig}
+      >
+        <p>
+          Replace the saved content of <strong>{selectedName}</strong> with the current configuration?
+        </p>
       </ConfirmDialog>
 
       {/* Load config with unsaved changes */}

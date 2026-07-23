@@ -4,6 +4,7 @@ import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
 import { KeyColumnSelector } from "../keys/KeyColumnSelector";
 import { FamilyEditor } from "../families/FamilyEditor";
 import { useFamilies } from "../settings/useSettings";
+import { withColumnFamilies } from "../families/familyOptions";
 
 interface Props {
   report: HeaderReport;
@@ -20,7 +21,6 @@ interface Props {
 export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, aggregationColumns = [], onAggregationColumnsChange = () => {}, configManager }: Props) {
   const { data: families } = useFamilies();
   const [familyEditorOpen, setFamilyEditorOpen] = useState(false);
-  const [loadFamilyWarnings, setLoadFamilyWarnings] = useState<string[]>([]);
 
   const hasDifferences = report.file1Only.length > 0 || report.file2Only.length > 0;
   const deduplicatedFiles: string[] = [];
@@ -31,13 +31,13 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
     : null;
 
   const sharedOptions = useMemo(
-    () => report.common.map((c) => ({ value: c, label: c })),
-    [report.common],
+    () => withColumnFamilies(report.common, families ?? []),
+    [report.common, families],
   );
 
   const aggregationOptions = useMemo(
-    () => sharedOptions.filter((o) => selectedColumns.includes(o.value)),
-    [sharedOptions, selectedColumns],
+    () => withColumnFamilies(selectedColumns, families ?? []),
+    [selectedColumns, families],
   );
 
   const includedSet = useMemo(() => new Set(selectedColumns), [selectedColumns]);
@@ -51,47 +51,17 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
     [onSelectedColumnsChange],
   );
 
-  const columnFamilies = useMemo(
-    () => (families ?? []).filter((f) => f.kind === "column"),
-    [families],
-  );
-
-  const handleLoadFamily = useCallback(
-    (familyName: string) => {
-      const family = columnFamilies.find((f) => f.name === familyName);
-      if (!family || family.kind !== "column") return;
-      const available = family.columns.filter((c) => report.common.includes(c));
-      if (available.length === 0) {
-        setLoadFamilyWarnings([`Family "${familyName}" has no available columns for the current upload.`]);
-        return;
-      }
-      const missing = family.columns.filter((c) => !report.common.includes(c));
-      const warnings: string[] = [];
-      if (missing.length > 0) {
-        warnings.push(`Ignored unavailable members: ${missing.join(", ")}`);
-      }
-      const merged = [...selectedColumns, ...available];
-      const unique = [...new Set(merged)];
-      onSelectedColumnsChange(unique);
-      setLoadFamilyWarnings(warnings);
-      if (warnings.length > 0) {
-        setTimeout(() => setLoadFamilyWarnings([]), 8000);
-      }
-    },
-    [columnFamilies, report.common, selectedColumns, onSelectedColumnsChange],
-  );
-
   return (
     <section aria-labelledby="header-review-title">
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space)" }}>
-        <div style={{ display: "flex", flexDirection: "column" }}>
+      <div className="config-layout">
+        <div>
           <h3 id="header-review-title" className="section-heading" style={{ margin: 0 }}>Column preview</h3>
           <p className="section-hint" role="status" style={{ marginTop: "var(--space)" }}>
             {report.common.length} shared column{report.common.length === 1 ? "" : "s"}.{" "}
             Comparison and validation run on shared columns only.
           </p>
         </div>
-        {configManager}
+        {configManager && <div>{configManager}</div>}
       </div>
       {hasDifferences && (
         <p className="alert alert--warn" role="alert">
@@ -137,28 +107,6 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
             hint="Pick columns for comparison and validation. Starts with all selected."
           />
 
-          {columnFamilies.length > 0 && (
-            <div className="field">
-              <label htmlFor="load-family">Select column family</label>
-              <select
-                id="load-family"
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) handleLoadFamily(e.target.value);
-                }}
-              >
-                <option value="">-- Select a column family to add --</option>
-                {columnFamilies.map((f) => {
-                  const available = f.columns.filter((c) => report.common.includes(c));
-                  return (
-                    <option key={f.name} value={f.name} disabled={available.length === 0}>
-                      {f.name}{available.length > 0 ? ` (${available.length} available)` : " (none available)"}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
-          )}
         </div>
 
         <button
@@ -170,11 +118,6 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
           Add column family
         </button>
 
-        {loadFamilyWarnings.length > 0 && (
-          <div className="alert alert--warn" role="alert" style={{ marginTop: "var(--space)" }}>
-            {loadFamilyWarnings.map((w, i) => <p key={i} style={{ margin: 0 }}>{w}</p>)}
-          </div>
-        )}
       </div>
 
       {familyEditorOpen && (
@@ -221,6 +164,7 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
       <div className="card-grid-2" style={{ marginTop: "var(--space)" }}>
         <KeyColumnSelector
           columns={selectedColumns}
+          families={families ?? []}
           selected={keyColumns.filter((column) => selectedColumns.includes(column))}
           onChange={onKeyColumnsChange}
         />

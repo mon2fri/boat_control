@@ -69,7 +69,7 @@ def _detail_header(
         if not hide_comparison
         else ""
     )
-    return f"<tr>{identity}{extras}{comparison}<th>Rationale</th></tr>"
+    return f"<tr>{identity}{extras}{comparison}</tr>"
 
 
 def _identity_cells(key_columns: list[str], key_values: dict[str, Any], row_index: Any) -> str:
@@ -370,7 +370,6 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
                 sections.append(f"<td>{_escape_html(change.get('column', ''))}</td>")
                 sections.append(f"<td>{_escape_html(change.get('file_a_value', ''))}</td>")
                 sections.append(f"<td>{_escape_html(change.get('file_b_value', ''))}</td>")
-                sections.append("<td>Values differ</td>")
                 sections.append("</tr>")
         sections.append("</table>")
     else:
@@ -455,7 +454,6 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
                     sections.append(
                         f"<td>{_escape_html(violation.get('violating_value', ''))}</td>"
                     )
-                sections.append("<td>Rule requirement not met</td>")
                 sections.append("</tr>")
             sections.append("</table>")
         else:

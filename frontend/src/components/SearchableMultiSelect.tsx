@@ -4,6 +4,8 @@ export interface MultiSelectOption {
   value: string;
   label: string;
   disabled?: boolean;
+  /** Real values selected when this option represents a family. */
+  values?: string[];
 }
 
 interface Props {
@@ -48,28 +50,37 @@ export function SearchableMultiSelect({
     return options.filter((o) => o.label.toLowerCase().includes(q));
   }, [options, query]);
 
-  const allVisibleSelected = filtered.length > 0 && filtered.every((o) => selectedSet.has(o.value));
+  const optionValues = useCallback((option: MultiSelectOption) => option.values ?? [option.value], []);
+  const optionSelected = useCallback(
+    (option: MultiSelectOption) => optionValues(option).every((value) => selectedSet.has(value)),
+    [optionValues, selectedSet],
+  );
+  const allVisibleSelected = filtered.length > 0 && filtered.every(optionSelected);
 
   const toggle = useCallback(
-    (value: string) => {
-      const next = selectedSet.has(value)
-        ? selected.filter((v) => v !== value)
-        : [...selected, value];
+    (option: MultiSelectOption) => {
+      const values = optionValues(option);
+      const valuesSet = new Set(values);
+      const next = optionSelected(option)
+        ? selected.filter((value) => !valuesSet.has(value))
+        : [...new Set([...selected, ...values])];
       onChange(next);
     },
-    [selected, selectedSet, onChange],
+    [selected, optionValues, optionSelected, onChange],
   );
 
   const toggleAll = useCallback(() => {
     if (allVisibleSelected) {
-      const visibleValues = new Set(filtered.map((o) => o.value));
+      const visibleValues = new Set(filtered.flatMap(optionValues));
       onChange(selected.filter((v) => !visibleValues.has(v)));
     } else {
       const merged = new Set(selected);
-      for (const o of filtered) merged.add(o.value);
+      for (const o of filtered) {
+        for (const value of optionValues(o)) merged.add(value);
+      }
       onChange([...merged]);
     }
-  }, [allVisibleSelected, filtered, selected, onChange]);
+  }, [allVisibleSelected, filtered, selected, onChange, optionValues]);
 
   const addCommaSeparated = useCallback((text = query) => {
     const names = text
@@ -80,7 +91,7 @@ export function SearchableMultiSelect({
 
     const matchingValues = options
       .filter((option) => names.includes(option.label.toLowerCase()))
-      .map((option) => option.value);
+      .flatMap(optionValues);
     const customValues = freeText
       ? text.split(",").map((name) => name.trim()).filter((name) =>
           name.length > 0 && !options.some((option) => option.label.toLowerCase() === name.toLowerCase()),
@@ -91,7 +102,7 @@ export function SearchableMultiSelect({
       onChange([...new Set([...selected, ...nextValues])]);
     }
     setQuery("");
-  }, [options, onChange, query, selected, freeText]);
+  }, [options, onChange, query, selected, freeText, optionValues]);
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void {
     if (event.key === "Escape") {
@@ -171,7 +182,7 @@ export function SearchableMultiSelect({
               </li>
             )}
             {filtered.map((option) => {
-              const isChecked = selectedSet.has(option.value);
+              const isChecked = optionSelected(option);
               return (
                 <li
                   key={option.value}
@@ -186,7 +197,7 @@ export function SearchableMultiSelect({
                   onMouseDown={(e) => {
                     e.preventDefault();
                     window.clearTimeout(blurTimer.current);
-                    if (!option.disabled) toggle(option.value);
+                    if (!option.disabled) toggle(option);
                   }}
                 >
                   <span className="multi-check">{isChecked ? "☑" : "☐"}</span>

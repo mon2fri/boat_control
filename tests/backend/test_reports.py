@@ -77,7 +77,7 @@ class TestExportHtml:
         assert "<span class='tag'>score</span>" in result
         assert "In Baseline" in result
         assert "In Comparison" in result
-        assert "Rationale" in result
+        assert "Rationale" not in result
         assert "R001 — Test Rule" in result
         assert "score less than &#x27;20&#x27;" in result
         assert "Condition 1: region equals &#x27;EMEA&#x27;" in result
@@ -110,7 +110,7 @@ class TestExportHtml:
             for index in range(15)
         ]
         result = export_html(sample_result, "Full table")
-        assert result.count("<td>Values differ</td>") == 15
+        assert result.count("<td>score_") == 15
 
     def test_aggregation_cards_match_result_page_layout_and_start_collapsed(
         self, sample_result: dict
@@ -158,7 +158,7 @@ class TestExportHtml:
         )[0]
 
         assert (
-            "<tr><th>id</th><th>region</th><th>owner</th><th>Rationale</th></tr>"
+            "<tr><th>id</th><th>region</th><th>owner</th></tr>"
             in rule_section
         )
         assert "<td>EMEA</td>" in rule_section

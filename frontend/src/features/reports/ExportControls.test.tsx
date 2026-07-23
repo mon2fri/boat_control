@@ -34,6 +34,12 @@ describe("ExportControls", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(
       <div data-export-source="result">
+        <div className="results-header">
+          <div className="report-name">
+            <button>my_run</button>
+            <button className="pencil">✎</button>
+          </div>
+        </div>
         <h2>Exact result content</h2>
         <details open><summary>Aggregation</summary><p>EMEA: 12</p></details>
         <ExportControls runId="run-1" reportName="my_run" />
@@ -55,6 +61,9 @@ describe("ExportControls", () => {
     expect(exportedText).toContain("<details open");
     expect(exportedText).toContain("EMEA: 12");
     expect(exportedText).not.toContain("Export HTML");
+    expect(exportedText).toContain("export-report-header");
+    expect(exportedText).toContain("export-report-name");
+    expect(exportedText).not.toContain("✎");
     blobSpy.mockRestore();
     revoke.mockRestore();
     vi.unstubAllGlobals();

@@ -126,7 +126,7 @@ describe("result components", () => {
 
     expect(screen.getByRole("columnheader", { name: "id" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "region" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Rationale" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Rationale" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Column" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "In Baseline" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "In Comparison" })).not.toBeInTheDocument();
@@ -166,7 +166,7 @@ describe("result components", () => {
   it("renders a detail table header and an empty state", () => {
     const { rerender } = render(<DetailTable rows={result.changeDetails} caption="Changes" />);
     expect(screen.getByRole("columnheader", { name: "Column" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Rationale" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Rationale" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Kind" })).not.toBeInTheDocument();
     rerender(<DetailTable rows={[]} caption="Changes" />);
     expect(screen.getByText("No detail rows.")).toBeInTheDocument();
@@ -238,6 +238,22 @@ describe("result components", () => {
     expect(screen.getByRole("columnheader", { name: "Column" })).toBeInTheDocument();
   });
 
+  it("lets wrapped cells expand row height in non-virtualized detail tables", () => {
+    render(<DetailTable rows={[{
+      rowKey: "1",
+      keyColumns: { id: "a very long identifier that wraps onto another line" },
+      column: "status",
+      file1Value: "a long baseline value that needs multiple lines",
+      file2Value: "a long comparison value that also needs multiple lines",
+      kind: "changed",
+    }]} caption="Adaptive rows" keyColumnNames={["id"]} />);
+
+    const dataRow = within(screen.getByRole("table")).getAllByRole("row")[1]!;
+    expect(dataRow).not.toHaveStyle({ position: "absolute" });
+    expect(dataRow.style.transform).toBe("");
+    expect(document.querySelector(".detail-grid-body")).not.toHaveAttribute("style");
+  });
+
   it("uses one ordered column contract for headers and every rendered detail row", () => {
     const rows = ["first", "middle", "last"].map((value, index) => ({
       rowKey: String(index),
@@ -250,16 +266,16 @@ describe("result components", () => {
     render(<DetailTable rows={rows} caption="Geometry" keyColumnNames={["id", "name"]} />);
 
     const table = screen.getByRole("table");
-    expect(table).toHaveStyle({ minWidth: "1050px" });
+    expect(table).toHaveStyle({ minWidth: "810px" });
     const header = within(table).getAllByRole("row")[0]!;
     expect(header.style.gridTemplateColumns).toContain("minmax(150px, 1fr)");
     expect(within(header).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
-      "id", "name", "Column", "In Baseline", "In Comparison", "Rationale",
+      "id", "name", "Column", "In Baseline", "In Comparison",
     ]);
     for (const [index, row] of within(table).getAllByRole("row").slice(1).entries()) {
       const sourceRow = rows[index]!;
       const cells = within(row).getAllByRole("cell");
-      expect(cells).toHaveLength(6);
+      expect(cells).toHaveLength(5);
       expect(cells.slice(0, 5).map((cell) => cell.textContent)).toEqual([
         `${sourceRow.keyColumns.id}`,
         `${sourceRow.keyColumns.name}`,

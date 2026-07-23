@@ -9,6 +9,8 @@
  */
 import { useId, useMemo } from "react";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { withColumnFamilies } from "../families/familyOptions";
+import type { Family } from "../../api/domain";
 
 interface Props {
   columns: string[];
@@ -22,6 +24,7 @@ interface Props {
   onChange: (columns: string[]) => void;
   onValidate?: () => void;
   validating?: boolean;
+  families?: Family[];
 }
 
 export function KeyColumnSelector({
@@ -31,12 +34,13 @@ export function KeyColumnSelector({
   onChange,
   onValidate,
   validating,
+  families = [],
 }: Props) {
   const headingId = useId();
   const helpId = useId();
   const statusId = useId();
 
-  const available = useMemo(() => columns.map((c) => ({ value: c, label: c })), [columns]);
+  const available = useMemo(() => withColumnFamilies(columns, families), [columns, families]);
 
   const hasSelection = selected.length > 0;
   const hasInvalid = (validation?.invalid.length ?? 0) > 0;

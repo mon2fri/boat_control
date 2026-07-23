@@ -13,8 +13,9 @@ export function exportRenderedHtml(
 ): RenderedHtmlExport {
   const clone = root.cloneNode(true) as HTMLElement;
   clone.querySelectorAll("[data-export-exclude]").forEach((element) => element.remove());
+  normalizeReportHeader(clone, reportName);
 
-  const css = collectDocumentCss();
+  const css = `${collectDocumentCss()}\n${EXPORT_ONLY_CSS}`;
   const serializedResult = new XMLSerializer().serializeToString(clone);
   const theme = document.documentElement.dataset.theme;
   const title = escapeHtml(reportName);
@@ -36,6 +37,27 @@ export function exportRenderedHtml(
     blob: new Blob([html], { type: "text/html;charset=utf-8" }),
     filename: `${safeFilename(reportName)}.html`,
   };
+}
+
+const EXPORT_ONLY_CSS = `
+.export-report-header {
+  top: 0 !important;
+}
+.export-report-name {
+  margin: 0 !important;
+}
+`;
+
+function normalizeReportHeader(clone: HTMLElement, reportName: string): void {
+  const header = clone.querySelector(".results-header");
+  header?.classList.add("export-report-header");
+
+  const reportNameContainer = clone.querySelector(".report-name, .report-name-edit");
+  if (!reportNameContainer) return;
+  const heading = document.createElement("h1");
+  heading.className = "section-heading export-report-name";
+  heading.textContent = reportName;
+  reportNameContainer.replaceWith(heading);
 }
 
 function collectDocumentCss(): string {

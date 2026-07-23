@@ -3,7 +3,8 @@ import type { FilterOperator, FilterRow } from "../../api/domain";
 import { SearchableSelect, type SelectOption } from "../../components/SearchableSelect";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
 import { FILTER_OPERATORS } from "./constants";
-import { ValueFamilyAddButton } from "../families/ValueFamilyAddButton";
+import { useFamilies } from "../settings/useSettings";
+import { valueFamilyOptions } from "../families/familyOptions";
 
 interface Props {
   row: FilterRow;
@@ -33,6 +34,7 @@ export function FilterRowEditor({
   onChange,
   onRemove,
 }: Props) {
+  const { data: families = [] } = useFamilies();
   const columnOptions = useMemo<SelectOption[]>(
     () => columns.map((c) => ({ value: c, label: c })),
     [columns],
@@ -40,12 +42,15 @@ export function FilterRowEditor({
 
   const valueOptions = useMemo(
     () =>
-      (columnValues[row.column] ?? []).map((v) => ({
-        value: v.value,
-        label: v.starred ? `${v.value} *` : v.value,
-        disabled: v.starred,
-      })),
-    [columnValues, row.column],
+      [
+        ...valueFamilyOptions(row.column, families),
+        ...(columnValues[row.column] ?? []).map((v) => ({
+          value: v.value,
+          label: v.starred ? `${v.value} *` : v.value,
+          disabled: v.starred,
+        })),
+      ],
+    [columnValues, row.column, families],
   );
 
   const operatorId = `filter-op-${index}`;
@@ -86,13 +91,6 @@ export function FilterRowEditor({
             : "Starred (*) values exist in only one file and cannot be chosen."
         }
       />
-      {row.column && (
-        <ValueFamilyAddButton
-          column={row.column}
-          selectedValues={row.values}
-          onAddValues={(values) => onChange({ ...row, values })}
-        />
-      )}
       <button type="button" className="btn btn--danger" onClick={onRemove}>
         Remove
         <span className="visually-hidden"> filter {index + 1}</span>

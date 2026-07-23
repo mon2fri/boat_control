@@ -3,7 +3,8 @@ import type { Condition, GroupNode, LogicClause, LogicOperator, Rule, RuleDraft 
 import { ColumnField } from "../../components/ColumnField";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { SearchableMultiSelect, type MultiSelectOption } from "../../components/SearchableMultiSelect";
-import { ValueFamilyAddButton } from "../families/ValueFamilyAddButton";
+import { useFamilies } from "../settings/useSettings";
+import { valueFamilyOptions, withColumnFamilies } from "../families/familyOptions";
 import { nextId } from "../../lib/id";
 import { LOGIC_OPERATORS } from "./constants";
 import { GroupingTreeEditor } from "./GroupingTreeEditor";
@@ -84,6 +85,7 @@ function isNumericOperator(operator: LogicOperator): boolean {
  * Guards against discarding unsaved edits.
  */
 export function RuleEditor({ rule, columns, columnValues = {}, saving, error, onSave, onCancel }: Props) {
+  const { data: families = [] } = useFamilies();
   const [draft, setDraft] = useState<DraftState>(() => initialDraft(rule));
   const [pristine] = useState<DraftState>(() => initialDraft(rule));
   const [confirmCancel, setConfirmCancel] = useState(false);
@@ -174,11 +176,14 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
           <p className="field-hint">No conditions — the rule always evaluates its logic.</p>
         )}
         {draft.conditions.map((condition, index) => {
-          const valueOptions: MultiSelectOption[] = (columnValues[condition.column] ?? []).map((v) => ({
-            value: v.value,
-            label: v.starred ? `${v.value} *` : v.value,
-            disabled: v.starred,
-          }));
+          const valueOptions: MultiSelectOption[] = [
+            ...valueFamilyOptions(condition.column, families),
+            ...(columnValues[condition.column] ?? []).map((v) => ({
+              value: v.value,
+              label: v.starred ? `${v.value} *` : v.value,
+              disabled: v.starred,
+            })),
+          ];
           return (
             <div key={condition.id} className="filter-row" role="group" aria-label={`Condition ${index + 1}`}>
               <ColumnField
@@ -209,8 +214,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                   />
                 </div>
               ) : (
-                <>
-                  <SearchableMultiSelect
+                <SearchableMultiSelect
                     label="Value"
                     options={valueOptions}
                     selected={conditionValues(condition)}
@@ -220,14 +224,6 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                     freeText
                     hint="Selected values are joined with OR within this condition."
                   />
-                  {condition.column && (
-                    <ValueFamilyAddButton
-                      column={condition.column}
-                      selectedValues={conditionValues(condition)}
-                      onAddValues={(values) => updateCondition(condition.id, { values, value: values[0] ?? "" })}
-                    />
-                  )}
-                </>
               )}
               <button
                 type="button"
@@ -413,11 +409,14 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
             <>
               <SearchableMultiSelect
                 label="Value"
-                options={(columnValues[draft.logic.column] ?? []).map((v) => ({
-                  value: v.value,
-                  label: v.starred ? `${v.value} *` : v.value,
-                  disabled: v.starred,
-                }))}
+                options={[
+                  ...valueFamilyOptions(draft.logic.column, families),
+                  ...(columnValues[draft.logic.column] ?? []).map((v) => ({
+                    value: v.value,
+                    label: v.starred ? `${v.value} *` : v.value,
+                    disabled: v.starred,
+                  })),
+                ]}
                 selected={draft.logic.values ?? (draft.logic.target ? [draft.logic.target] : [])}
                 onChange={(values) => {
                   const normalized = [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
@@ -428,16 +427,6 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                 freeText
                 hint="Multiple values are OR-ed for every operator."
               />
-              {draft.logic.column && (
-                <ValueFamilyAddButton
-                  column={draft.logic.column}
-                  selectedValues={draft.logic.values ?? (draft.logic.target ? [draft.logic.target] : [])}
-                  onAddValues={(values) => {
-                    const normalized = [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
-                    patch({ logic: { ...draft.logic, values: normalized, target: normalized[0] ?? "" } });
-                  }}
-                />
-              )}
             </>
           )}
         </div>
@@ -451,7 +440,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
         <legend>Extra columns to display (optional)</legend>
         <SearchableMultiSelect
           label="Extra columns to display"
-          options={columns.map((column) => ({ value: column, label: column }))}
+          options={withColumnFamilies(columns, families)}
           selected={draft.extraColumns}
           onChange={(extraColumns) => patch({ extraColumns })}
           placeholder="Search selected columns…"
@@ -466,8 +455,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
           onChange={(event) => patch({ hideComparison: event.target.checked })}
         />
         <span>
-          Hide comparison
-          <small>Hide Column, In Baseline, and In Comparison in this rule’s detail table.</small>
+          Hide comparison columns
         </span>
       </label>
 
