@@ -92,6 +92,50 @@ class TestSaveAndLoadRun:
         runs = list_runs()
         assert len(runs) >= 2
 
+    def test_persists_nested_aggregation_and_comparison_sections(
+        self, mock_result: ExecutionResult, tmp_path: Path
+    ) -> None:
+        from dataclasses import replace
+
+        results_dir = tmp_path / "results"
+        with override_settings(RESULTS_DIR=str(results_dir)):
+            result = replace(
+                mock_result,
+                nested_aggregation_enabled=True,
+                comparison_sections=[
+                    {"id": "s1", "name": "Region", "columns": ["region"]},
+                ],
+            )
+            meta = save_run(result, "a.csv", "b.csv")
+            data = load_run(meta.run_id)
+            assert data is not None
+            assert data["result"]["nested_aggregation_enabled"] is True
+            assert data["result"]["comparison_sections"] == [
+                {"id": "s1", "name": "Region", "columns": ["region"]},
+            ]
+
+    def test_backward_compat_loads_old_document_without_new_fields(
+        self, mock_result: ExecutionResult, tmp_path: Path
+    ) -> None:
+        import json
+
+        results_dir = tmp_path / "results"
+        with override_settings(RESULTS_DIR=str(results_dir)):
+            meta = save_run(mock_result, "a.csv", "b.csv")
+            # File is saved as {run_id}_{report_name}.json
+            path = results_dir / f"{meta.run_id}_a_vs_b.json"
+            with open(path) as f:
+                doc = json.load(f)
+            doc["result"].pop("nested_aggregation_enabled", None)
+            doc["result"].pop("comparison_sections", None)
+            with open(path, "w") as f:
+                json.dump(doc, f)
+
+            data = load_run(meta.run_id)
+            assert data is not None
+            assert data["result"]["nested_aggregation_enabled"] is False
+            assert data["result"]["comparison_sections"] == []
+
 
 class TestRenameRun:
     def test_rename_updates_name(self, mock_result: ExecutionResult) -> None:

@@ -48,12 +48,30 @@ export interface RowsColumnsConfigContent {
   aggregationColumns?: ColumnRef[];
   filters?: ConfigFilterRow[];
   targetColumns?: ColumnRef[];
+  /** When true, aggregation columns form an ordered hierarchy shown as a tree. */
+  nestedAggregationEnabled?: boolean;
+  /** User-defined comparison sections, each with a name and column set. */
+  comparisonSections?: ComparisonSectionContent[];
+}
+
+/** A user-defined comparison section within a saved config. */
+export interface ComparisonSectionContent {
+  id: string;
+  name: string;
+  columns: ColumnRef[];
 }
 
 /** Warning emitted during config loading. */
 export interface ConfigLoadWarning {
   type: "missing_family" | "zero_member_family" | "partial_family" | "excluded_column";
   message: string;
+}
+
+/** A resolved comparison section with concrete column names. */
+export interface ResolvedComparisonSection {
+  id: string;
+  name: string;
+  columns: string[];
 }
 
 /** Resolved config load result with warnings. */
@@ -63,6 +81,8 @@ export interface ConfigLoadResult {
   aggregationColumns: string[];
   filters: FilterRow[];
   targetColumns: string[];
+  nestedAggregationEnabled: boolean;
+  comparisonSections: ResolvedComparisonSection[];
   warnings: ConfigLoadWarning[];
 }
 
@@ -204,9 +224,11 @@ export function resolveRowsColumnsConfig(
   const aggregationColumns: string[] = [];
   const filters: FilterRow[] = [];
   const targetColumns: string[] = [];
+  let nestedAggregationEnabled = false;
+  const comparisonSections: ResolvedComparisonSection[] = [];
 
   if (!data) {
-    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], filters: [], targetColumns: [], warnings };
+    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], filters: [], targetColumns: [], nestedAggregationEnabled, comparisonSections: [], warnings };
   }
 
   if (Array.isArray(data.comparisonColumns)) {
@@ -251,7 +273,24 @@ export function resolveRowsColumnsConfig(
     }
   }
 
-  return { comparisonColumns, keyColumns, aggregationColumns, filters, targetColumns, warnings };
+  nestedAggregationEnabled = data.nestedAggregationEnabled === true;
+
+  if (Array.isArray(data.comparisonSections)) {
+    for (const section of data.comparisonSections) {
+      if (!section.name || !Array.isArray(section.columns)) continue;
+      const resolvedCols: string[] = [];
+      for (const ref of section.columns) {
+        const { resolved, warnings: w } = resolveColumnRef(ref, families, availableColumns);
+        resolvedCols.push(...resolved);
+        warnings.push(...w);
+      }
+      if (resolvedCols.length > 0) {
+        comparisonSections.push({ id: section.id, name: section.name, columns: resolvedCols });
+      }
+    }
+  }
+
+  return { comparisonColumns, keyColumns, aggregationColumns, filters, targetColumns, nestedAggregationEnabled, comparisonSections, warnings };
 }
 
 /**
@@ -299,20 +338,29 @@ export function mapWorkflowToRowsColumnsConfig(
     aggregationColumns: string[];
     filters: FilterRow[];
     targetColumns: string[];
+    nestedAggregationEnabled?: boolean;
+    comparisonSections?: { id: string; name: string; columns: string[] }[];
   },
   families: Family[],
 ): RowsColumnsConfigContent {
-  return {
+  const result: RowsColumnsConfigContent = {
     comparisonColumns: columnsToRefs(state.comparisonColumns, families),
-    keyColumns: columnsToRefs(state.keyColumns, families),
-    aggregationColumns: columnsToRefs(state.aggregationColumns, families),
+    keyColumns: state.keyColumns.map((c) => ({ kind: "column" as const, name: c })),
+    aggregationColumns: state.aggregationColumns.map((c) => ({ kind: "column" as const, name: c })),
     filters: state.filters.map((f) => ({
       column: columnToRef(f.column, families),
       operator: f.operator,
       filter_values: f.values,
     })),
     targetColumns: columnsToRefs(state.targetColumns, families),
+    nestedAggregationEnabled: state.nestedAggregationEnabled ?? false,
+    comparisonSections: (state.comparisonSections ?? []).map((s) => ({
+      id: s.id,
+      name: s.name,
+      columns: s.columns.map((c) => ({ kind: "column" as const, name: c })),
+    })),
   };
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -611,7 +659,7 @@ function ruleToConfigRule(rule: Rule, families: Family[]): ConfigRule {
   }
   if (rule.description) result.description = rule.description;
   if (rule.extraColumns && rule.extraColumns.length > 0) {
-    result.extra_columns = rule.extraColumns.map((column) => conditionColumnToRef(column, families));
+    result.extra_columns = rule.extraColumns.map((column) => ({ kind: "column" as const, name: column }));
   }
   if (rule.hideComparison) result.hide_comparison = true;
   if (rule.conditionJoin && rule.conditionJoin !== "per_grouping") {

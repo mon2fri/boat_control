@@ -108,21 +108,13 @@ export function UploadPage() {
   function handleConfigLoad(content: unknown): void {
     if (!state.header) return;
     const result = resolveRowsColumnsConfig(content, families, state.header.common);
-    if (result.comparisonColumns.length > 0) {
-      dispatch({ type: "setComparisonColumns", columns: result.comparisonColumns });
-    }
-    if (result.keyColumns.length > 0) {
-      dispatch({ type: "setKeyColumns", columns: result.keyColumns });
-    }
-    if (result.aggregationColumns.length > 0) {
-      dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns });
-    }
-    if (result.filters.length > 0) {
-      dispatch({ type: "setFilters", filters: result.filters });
-    }
-    if (result.targetColumns.length > 0) {
-      dispatch({ type: "setTargetColumns", columns: result.targetColumns });
-    }
+    dispatch({ type: "setComparisonColumns", columns: result.comparisonColumns });
+    dispatch({ type: "setKeyColumns", columns: result.keyColumns });
+    dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns });
+    dispatch({ type: "setFilters", filters: result.filters });
+    dispatch({ type: "setTargetColumns", columns: result.targetColumns });
+    dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
+    dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
     if (result.warnings.length > 0) {
       setConfigWarnings(result.warnings.map((w) => w.message));
       setTimeout(() => setConfigWarnings([]), 10000);
@@ -333,6 +325,8 @@ export function UploadPage() {
             onKeyColumnsChange={(columns) => dispatch({ type: "setKeyColumns", columns })}
             aggregationColumns={state.aggregationColumns}
             onAggregationColumnsChange={(columns) => dispatch({ type: "setAggregationColumns", columns })}
+            nestedAggregationEnabled={state.nestedAggregationEnabled}
+            onNestedAggregationEnabledChange={(enabled) => dispatch({ type: "setNestedAggregationEnabled", enabled })}
             configManager={
               <ConfigManager
                 configType="rows-and-columns"
@@ -343,6 +337,8 @@ export function UploadPage() {
                     aggregationColumns: state.aggregationColumns,
                     filters: state.filters,
                     targetColumns: state.targetColumns,
+                    nestedAggregationEnabled: state.nestedAggregationEnabled,
+                    comparisonSections: state.comparisonSections,
                   },
                   families,
                 )}

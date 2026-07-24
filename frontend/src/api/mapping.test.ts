@@ -88,6 +88,80 @@ describe("mapRunRequestToWire", () => {
     expect(body.key_columns).not.toBeNull();
     expect("key_columns" in body).toBe(true);
   });
+
+  it("omits comparison_sections when empty", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      ruleIndexes: [],
+      comparisonSections: [],
+    });
+    expect(body.comparison_sections).toBeUndefined();
+  });
+
+  it("omits comparison_sections when undefined", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      ruleIndexes: [],
+    });
+    expect(body.comparison_sections).toBeUndefined();
+  });
+
+  it("serializes comparison sections", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      comparisonColumns: ["region", "status", "owner"],
+      ruleIndexes: [],
+      comparisonSections: [
+        { id: "s1", name: "Region", columns: ["region"] },
+        { id: "s2", name: "Ownership", columns: ["status", "owner"] },
+      ],
+    });
+    expect(body.comparison_sections).toEqual([
+      { id: "s1", name: "Region", columns: ["region"] },
+      { id: "s2", name: "Ownership", columns: ["status", "owner"] },
+    ]);
+  });
+
+  it("returns fresh arrays for comparison section columns", () => {
+    const sections = [{ id: "s1", name: "Demo", columns: ["x"] }];
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      ruleIndexes: [],
+      comparisonSections: sections,
+    });
+    expect(body.comparison_sections![0]!.columns).not.toBe(sections[0]!.columns);
+  });
+
+  it("produces a body the wire schema accepts with comparison_sections", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      ruleIndexes: [],
+      comparisonSections: [
+        { id: "s1", name: "Region", columns: ["region"] },
+      ],
+    });
+    expect(() => wireRunRequestSchema.parse(body)).not.toThrow();
+  });
+
+  it("serializes nested_aggregation_enabled when true", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      ruleIndexes: [],
+      nestedAggregationEnabled: true,
+    });
+    expect(body.nested_aggregation_enabled).toBe(true);
+    expect(() => wireRunRequestSchema.parse(body)).not.toThrow();
+  });
+
+  it("does not set nested_aggregation_enabled when omitted", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      ruleIndexes: [],
+    });
+    // Should be false (not undefined) to keep the wire contract explicit and
+    // let the backend default to nested-off without ambiguity.
+    expect(body.nested_aggregation_enabled).toBe(false);
+  });
 });
 
 describe("filter row mapping", () => {

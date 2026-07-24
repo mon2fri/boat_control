@@ -58,4 +58,13 @@ describe("apiRequest", () => {
     });
     vi.unstubAllGlobals();
   });
+
+  it("parses a 204 empty body as undefined", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, status: 204, text: () => Promise.resolve("") }),
+    );
+    await expect(apiRequest("/delete-me/", { schema: z.void() })).resolves.toBeUndefined();
+    vi.unstubAllGlobals();
+  });
 });

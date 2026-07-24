@@ -5,6 +5,7 @@ import { KeyColumnSelector } from "../keys/KeyColumnSelector";
 import { FamilyEditor } from "../families/FamilyEditor";
 import { useFamilies } from "../settings/useSettings";
 import { withColumnFamilies } from "../families/familyOptions";
+import { AggregationColumnList } from "./AggregationColumnList";
 
 interface Props {
   report: HeaderReport;
@@ -14,11 +15,13 @@ interface Props {
   onKeyColumnsChange?: (columns: string[]) => void;
   aggregationColumns?: string[];
   onAggregationColumnsChange?: (columns: string[]) => void;
+  nestedAggregationEnabled?: boolean;
+  onNestedAggregationEnabledChange?: (enabled: boolean) => void;
   /** Rendered on the same row as the "Column preview" heading. */
   configManager?: ReactNode;
 }
 
-export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, aggregationColumns = [], onAggregationColumnsChange = () => {}, configManager }: Props) {
+export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, aggregationColumns = [], onAggregationColumnsChange = () => {}, nestedAggregationEnabled = false, onNestedAggregationEnabledChange = () => {}, configManager }: Props) {
   const { data: families } = useFamilies();
   const [familyEditorOpen, setFamilyEditorOpen] = useState(false);
 
@@ -174,6 +177,14 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
           <p className="card-hint">
             Optional. Pick columns for group-level statistics.
           </p>
+          <label className="checkbox-label" style={{ marginBottom: "var(--space)" }}>
+            <input
+              type="checkbox"
+              checked={nestedAggregationEnabled}
+              onChange={(e) => onNestedAggregationEnabledChange(e.target.checked)}
+            />
+            Enable nested aggregation
+          </label>
           <SearchableMultiSelect
             label="Select aggregation columns"
             options={aggregationOptions}
@@ -186,21 +197,10 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
               No aggregation columns selected.
             </p>
           ) : (
-            <ul aria-label="Selected aggregation columns" className="chip-list">
-              {aggregationColumns.filter((c) => selectedColumns.includes(c)).map((column) => (
-                <li key={column}>
-                  <span className="tag">{column}</span>
-                  <button
-                    type="button"
-                    className="btn chip-remove"
-                    onClick={() => onAggregationColumnsChange(aggregationColumns.filter((item) => item !== column))}
-                    aria-label={`Remove aggregation column ${column}`}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <AggregationColumnList
+              columns={aggregationColumns.filter((c) => selectedColumns.includes(c))}
+              onChange={(cols) => onAggregationColumnsChange(cols)}
+            />
           )}
         </section>
       </div>

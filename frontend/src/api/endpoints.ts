@@ -5,6 +5,7 @@ import {
   prepareResponseSchema,
   ruleDraftRequestSchema,
   ruleMutationResponseSchema,
+  replaceRulesResponseSchema,
   rulesListResponseSchema,
   uploadResponseSchema,
   validateFilterResponseSchema,
@@ -155,6 +156,7 @@ export function fetchDetailPage(
     limit?: number;
     signal?: AbortSignal;
     filters?: Record<string, string[]>;
+    sectionColumns?: string[] | undefined;
   } = {},
 ): Promise<{
   rows: DetailRow[];
@@ -166,6 +168,9 @@ export function fetchDetailPage(
   const params = new URLSearchParams({ section: kind === "changed" ? "changes" : "violations" });
   if (options.offset !== undefined) params.set("offset", String(options.offset));
   if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.sectionColumns && options.sectionColumns.length > 0) {
+    params.set("columns", options.sectionColumns.join(","));
+  }
   if (options.filters) {
     for (const [key, values] of Object.entries(options.filters)) {
       if (values.length > 0) params.set(key, values.join(","));
@@ -196,6 +201,16 @@ export function fetchDetailPage(
         ? {
             extraValues: Object.fromEntries(
               Object.entries(row.extra_values).map(([key, value]) => [
+                key,
+                value === null ? null : String(value),
+              ]),
+            ),
+          }
+        : {}),
+      ...(row.grouping_values
+        ? {
+            aggregationValues: Object.fromEntries(
+              Object.entries(row.grouping_values).map(([key, value]) => [
                 key,
                 value === null ? null : String(value),
               ]),
@@ -320,7 +335,20 @@ export function deleteRule(index: string): Promise<{ ruleId: string; message: st
   }).then((r) => ({ ruleId: r.rule_id, message: r.message }));
 }
 
+export function replaceRules(
+  drafts: Array<Omit<DomainRule, "index"> & { index?: string }>,
+): Promise<{ message: string; ruleCount: number; nextIndex: number }> {
+  const body = { rules: drafts.map(mapRuleToWireDraft) };
+  return apiRequest("/rules/replace/", {
+    method: "POST",
+    body,
+    schema: replaceRulesResponseSchema,
+  }).then((r) => ({ message: r.message, ruleCount: r.rule_count, nextIndex: r.next_index }));
+}
+
 // --- Runs ------------------------------------------------------------------
+
+import type { ComparisonSection } from "./domain";
 
 export function executeRun(
   request: {
@@ -330,6 +358,8 @@ export function executeRun(
     targetColumns: string[];
     keyColumns: string[];
     aggregationColumns: string[];
+    nestedAggregationEnabled?: boolean;
+    comparisonSections?: ComparisonSection[] | undefined;
     ruleIndexes: string[];
   },
   signal?: AbortSignal,
@@ -583,7 +613,7 @@ export function getConfig(
   configType: "rules" | "filters" | "rows-and-columns",
   name: string,
 ): Promise<{ name: string; version: number; content: unknown }> {
-  return apiRequest(`/${configType}/configs/${name}/`, {
+  return apiRequest(`/${configType}/configs/${encodeURIComponent(name)}/`, {
     schema: z.object({
       name: z.string(),
       version: z.number(),
@@ -610,7 +640,7 @@ export function updateConfig(
   content: unknown,
   version: number,
 ): Promise<{ name: string; version: number; content: unknown }> {
-  return apiRequest(`/${configType}/configs/${name}/`, {
+  return apiRequest(`/${configType}/configs/${encodeURIComponent(name)}/`, {
     method: "PUT",
     body: { content, version },
     schema: z.object({
@@ -680,7 +710,7 @@ export function deleteConfig(
   configType: "rules" | "filters" | "rows-and-columns",
   name: string,
 ): Promise<void> {
-  return apiRequest(`/${configType}/configs/${name}/`, {
+  return apiRequest(`/${configType}/configs/${encodeURIComponent(name)}/`, {
     method: "DELETE",
     schema: z.void(),
   });

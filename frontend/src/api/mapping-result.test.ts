@@ -8,7 +8,23 @@ import { describe, expect, it } from "vitest";
 import { mapRunDocumentToResult } from "./mapping";
 import type { WireRunDocument } from "./wire";
 
-function doc(overrides: Partial<WireRunDocument["result"]["validation"]> = {}): WireRunDocument {
+type DocOverrides = Partial<
+  WireRunDocument["result"]["validation"] & {
+    nested_aggregation_enabled: boolean;
+    comparison_sections: { id: string; name: string; columns: string[] }[];
+    aggregation_columns: string[];
+    key_columns: string[];
+  }
+>;
+
+function doc(overrides: DocOverrides = {}): WireRunDocument {
+  const {
+    nested_aggregation_enabled,
+    comparison_sections,
+    aggregation_columns,
+    key_columns,
+    ...validationOverrides
+  } = overrides as any;
   return {
     run_id: "run-1",
     report_name: "a_vs_b",
@@ -56,11 +72,15 @@ function doc(overrides: Partial<WireRunDocument["result"]["validation"]> = {}): 
         distinct_violating_attributes: 2,
         violating_rows_by_rule: { R001: 2 },
         violating_attributes_by_rule: { R001: 2 },
-        ...overrides,
+        ...validationOverrides,
       },
       common_columns: ["id"],
       target_columns: ["status"],
       filters_applied: [],
+      ...(nested_aggregation_enabled !== undefined ? { nested_aggregation_enabled } : {}),
+      ...(comparison_sections !== undefined ? { comparison_sections } : {}),
+      ...(aggregation_columns !== undefined ? { aggregation_columns } : {}),
+      ...(key_columns !== undefined ? { key_columns } : {}),
     },
   };
 }
@@ -159,5 +179,44 @@ describe("mapRunDocumentToResult", () => {
     }));
     expect(result.ruleResults[0]!.ruleName).toBe("Low score");
     expect(result.ruleResults[0]!.logicSummary).toBe("score less than '70'");
+  });
+
+  it("reads nested_aggregation_enabled from wire", () => {
+    const result = mapRunDocumentToResult(doc({
+      nested_aggregation_enabled: true,
+    }));
+    expect(result.nestedAggregationEnabled).toBe(true);
+  });
+
+  it("reads comparison_sections from wire", () => {
+    const result = mapRunDocumentToResult(doc({
+      comparison_sections: [
+        { id: "s1", name: "Region", columns: ["region"] },
+        { id: "s2", name: "Type", columns: ["type", "owner"] },
+      ],
+    }));
+    expect(result.comparisonSections).toEqual([
+      { id: "s1", name: "Region", columns: ["region"] },
+      { id: "s2", name: "Type", columns: ["type", "owner"] },
+    ]);
+  });
+
+  it("defaults comparison_sections when absent from wire", () => {
+    const result = mapRunDocumentToResult(doc({}));
+    expect(result.comparisonSections).toBeUndefined();
+  });
+
+  it("reads aggregation_columns from wire when present", () => {
+    const result = mapRunDocumentToResult(doc({
+      aggregation_columns: ["status", "region"],
+    }));
+    expect(result.aggregationColumns).toEqual(["status", "region"]);
+  });
+
+  it("reads key_columns from wire when present", () => {
+    const result = mapRunDocumentToResult(doc({
+      key_columns: ["id", "region"],
+    }));
+    expect(result.keyColumns).toEqual(["id", "region"]);
   });
 });

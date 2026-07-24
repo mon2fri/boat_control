@@ -96,3 +96,51 @@ class TestRowsAndColumnsConfigsAPI:
 
             listed = api_client.get("/api/rows-and-columns/configs/")
             assert len(listed.json()) == 1
+
+
+class TestConfigDeletionAPI:
+    def test_delete_rules_config_returns_204(
+        self, api_client: APIClient, tmp_rules_dir: Path
+    ) -> None:
+        with override_settings(RULES_CONFIG_DIR=tmp_rules_dir):
+            api_client.post(
+                "/api/rules/configs/",
+                {"name": "to-delete", "content": {"version": 1, "rules": []}},
+                format="json",
+            )
+            resp = api_client.delete("/api/rules/configs/to-delete/")
+            assert resp.status_code == 204
+
+            list_resp = api_client.get("/api/rules/configs/")
+            assert len(list_resp.json()) == 0
+
+    def test_delete_nonexistent_config_returns_404(
+        self, api_client: APIClient, tmp_rules_dir: Path
+    ) -> None:
+        with override_settings(RULES_CONFIG_DIR=tmp_rules_dir):
+            resp = api_client.delete("/api/rules/configs/ghost/")
+            assert resp.status_code == 404
+
+    def test_delete_filters_config_returns_204(
+        self, api_client: APIClient, tmp_filters_dir: Path
+    ) -> None:
+        with override_settings(FILTERS_CONFIG_DIR=tmp_filters_dir):
+            api_client.post(
+                "/api/filters/configs/",
+                {"name": "to-delete", "content": {"rows": []}},
+                format="json",
+            )
+            resp = api_client.delete("/api/filters/configs/to-delete/")
+            assert resp.status_code == 204
+
+    def test_delete_rows_and_columns_config_returns_204(
+        self, api_client: APIClient, tmp_rows_and_columns_dir: Path
+    ) -> None:
+        with override_settings(ROWS_AND_COLUMNS_CONFIG_DIR=tmp_rows_and_columns_dir):
+            api_client.post(
+                "/api/rows-and-columns/configs/",
+                {"name": "to-delete", "content": {"keyColumns": ["id"]}},
+                format="json",
+            )
+            resp = api_client.delete("/api/rows-and-columns/configs/to-delete/")
+            assert resp.status_code == 204

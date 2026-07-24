@@ -159,4 +159,80 @@ describe("HeaderReview", () => {
     renderWithQuery(<HeaderReview {...defaultProps} />);
     expect(screen.queryByText(/Matched existing file/)).toBeNull();
   });
+
+  it("renders the nested aggregation checkbox unchecked by default", () => {
+    renderWithQuery(<HeaderReview {...defaultProps} />);
+    const checkbox = screen.getByRole("checkbox", { name: /Enable nested aggregation/ });
+    expect(checkbox).toBeInTheDocument();
+    expect(checkbox).not.toBeChecked();
+  });
+
+  it("reflects nestedAggregationEnabled=true via the checkbox", () => {
+    renderWithQuery(
+      <HeaderReview
+        {...defaultProps}
+        nestedAggregationEnabled
+        onNestedAggregationEnabledChange={vi.fn()}
+      />,
+    );
+    const checkbox = screen.getByRole("checkbox", { name: /Enable nested aggregation/ });
+    expect(checkbox).toBeChecked();
+  });
+
+  it("fires onNestedAggregationEnabledChange when the checkbox is toggled", () => {
+    const onNestedAggregationEnabledChange = vi.fn();
+    renderWithQuery(
+      <HeaderReview
+        {...defaultProps}
+        onNestedAggregationEnabledChange={onNestedAggregationEnabledChange}
+      />,
+    );
+    const checkbox = screen.getByRole("checkbox", { name: /Enable nested aggregation/ });
+    fireEvent.click(checkbox);
+    expect(onNestedAggregationEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it("shows drag handles for aggregation columns when nested is enabled", () => {
+    renderWithQuery(
+      <HeaderReview
+        {...defaultProps}
+        aggregationColumns={["region", "status"]}
+        nestedAggregationEnabled
+        onNestedAggregationEnabledChange={vi.fn()}
+        onAggregationColumnsChange={vi.fn()}
+      />,
+    );
+    const handles = screen.getAllByRole("button", { name: /Drag to reorder/ });
+    expect(handles.length).toBe(2);
+    expect(handles[0]).toHaveAccessibleName("Drag to reorder region");
+    expect(handles[1]).toHaveAccessibleName("Drag to reorder status");
+  });
+
+  it("removes an aggregation column via the remove button", () => {
+    const onAggregationColumnsChange = vi.fn();
+    renderWithQuery(
+      <HeaderReview
+        {...defaultProps}
+        aggregationColumns={["region", "status"]}
+        nestedAggregationEnabled
+        onNestedAggregationEnabledChange={vi.fn()}
+        onAggregationColumnsChange={onAggregationColumnsChange}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Remove aggregation column region/ }));
+    expect(onAggregationColumnsChange).toHaveBeenCalledWith(["status"]);
+  });
+
+  it("shows the ordered hierarchy hint when nested aggregation is enabled", () => {
+    renderWithQuery(
+      <HeaderReview
+        {...defaultProps}
+        aggregationColumns={["region", "status"]}
+        nestedAggregationEnabled
+        onNestedAggregationEnabledChange={vi.fn()}
+        onAggregationColumnsChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Ordered hierarchy/)).toBeInTheDocument();
+  });
 });

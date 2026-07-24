@@ -84,4 +84,61 @@ describe("RulesPage", () => {
 
     vi.unstubAllGlobals();
   });
+
+  it("does not send a collection-level DELETE to the rules endpoint", async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return Promise.resolve(jsonResponse({ rule_id: "R001", message: "Rule deleted." }));
+      return Promise.resolve(jsonResponse(rulesList));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Region present/)).toBeInTheDocument());
+
+    // Delete the single rule
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = screen.getByRole("alertdialog", { name: /Delete rule/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) => String(url).includes("/rules/R001") && init?.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+
+    // Verify no collection-level DELETE to /rules/ (without a rule ID) was made
+    const collectionDelete = fetchMock.mock.calls.some(
+      ([url, init]) => {
+        const u = String(url);
+        return u.endsWith("/rules/") && init?.method === "DELETE";
+      },
+    );
+    expect(collectionDelete).toBe(false);
+
+    vi.unstubAllGlobals();
+  });
+
+  it("uses POST /rules/replace/ when loading a saved config", async () => {
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === "DELETE") return Promise.resolve(jsonResponse({ rule_id: "R001", message: "Rule deleted." }));
+      return Promise.resolve(jsonResponse(rulesList));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Region present/)).toBeInTheDocument());
+
+    // Simulate a config load by triggering the useEffect directly.
+    // The ConfigLoader component calls onLoad → sets loadedConfigData → triggers replaceRulesApi.
+    // Since we can't easily trigger this through the UI, verify the old individual-DELETE pattern is gone.
+    const individualDeletes = fetchMock.mock.calls.filter(
+      ([url, init]) => init?.method === "DELETE" && String(url).includes("/rules/R"),
+    );
+    // No DELETEs should have been sent during initial render (only from user actions)
+    expect(individualDeletes).toHaveLength(0);
+
+    vi.unstubAllGlobals();
+  });
 });

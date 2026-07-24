@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.rules.serializers import (
+    ReplaceRulesSerializer,
     RuleSerializer,
 )
 from apps.rules.services import (
@@ -16,6 +17,7 @@ from apps.rules.services import (
     create_rule,
     delete_rule,
     load_rules,
+    replace_rules,
     save_rules,
     update_rule,
 )
@@ -143,3 +145,31 @@ class RuleDetailView(APIView):  # type: ignore[misc]
                 return Response({"rule_id": rule_id, "message": "Rule deleted."})
             except ValueError as e:
                 return Response({"error": str(e)}, status=404)
+
+
+class ReplaceRulesView(APIView):  # type: ignore[misc]
+    """Replace the entire rule collection atomically.
+
+    Accepts a list of rule drafts. All current rules are removed and new
+    rules are assigned sequential IDs starting at R001. If validation fails
+    for any draft the existing rules are left untouched.
+    """
+
+    def post(self, request: Request) -> Response:
+        serializer = ReplaceRulesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        with _rules_lock:
+            try:
+                rule_drafts = serializer.validated_data["rules"]
+                new_file = replace_rules(rule_drafts)
+                return Response(
+                    {
+                        "message": "Rules replaced.",
+                        "rule_count": len(new_file.rules),
+                        "next_index": new_file.next_index,
+                    },
+                    status=200,
+                )
+            except ValueError as e:
+                return Response({"error": str(e)}, status=400)

@@ -164,6 +164,12 @@ export const ruleMutationResponseSchema = z.object({
   message: z.string(),
 });
 
+export const replaceRulesResponseSchema = z.object({
+  message: z.string(),
+  rule_count: z.number(),
+  next_index: z.number(),
+});
+
 export const ruleDraftRequestSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
@@ -216,6 +222,12 @@ export const wireRunRequestSchema = z.object({
   target_columns: z.array(z.string()).nullable().optional(),
   key_columns: z.array(z.string()).nullable().optional(),
   aggregation_columns: z.array(z.string()).optional(),
+  nested_aggregation_enabled: z.boolean().optional(),
+  comparison_sections: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    columns: z.array(z.string()),
+  })).optional(),
   filters: z.array(wireFilterRowSchema).optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
 });
@@ -233,6 +245,7 @@ export const wireRowDetailSchema = z.object({
   key_columns: z.record(z.string(), wireScalarSchema),
   attribute_changes: z.array(wireAttributeChangeSchema),
   change_count: z.number().int().nonnegative(),
+  grouping_values: z.record(z.string(), wireScalarSchema).optional(),
 });
 export type WireRowDetail = z.infer<typeof wireRowDetailSchema>;
 
@@ -257,6 +270,7 @@ export const wireDetailPageSchema = z.object({
       violating_column: z.string().optional(),
       violating_value: wireScalarSchema.optional(),
       extra_values: z.record(z.string(), wireScalarSchema).optional(),
+      grouping_values: z.record(z.string(), wireScalarSchema).optional(),
     }),
   ),
   available_filters: z.record(z.string(), z.array(z.string())).optional(),
@@ -285,6 +299,7 @@ export const wireViolationSchema = z.object({
   comparison_value: wireScalarSchema.optional(),
   extra_values: z.record(z.string(), wireScalarSchema).optional(),
   rule_logic: z.string().optional(),
+  grouping_values: z.record(z.string(), wireScalarSchema).optional(),
 });
 export type WireViolation = z.infer<typeof wireViolationSchema>;
 
@@ -315,9 +330,16 @@ export const wireRunResultSchema = z.object({
   validation: wireValidationSchema,
   common_columns: z.array(z.string()),
   target_columns: z.array(z.string()).nullable(),
+  key_columns: z.array(z.string()).optional(),
   filters_applied: z.array(wireFilterRowSchema),
   aggregation_columns: z.array(z.string()).optional(),
   group_statistics: wireGroupStatisticsBundleSchema.optional(),
+  nested_aggregation_enabled: z.boolean().optional(),
+  comparison_sections: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    columns: z.array(z.string()),
+  })).optional(),
 });
 
 export const wireRunDocumentSchema = z.object({

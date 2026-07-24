@@ -9,6 +9,7 @@ import { ReportName } from "../features/reports/ReportName";
 import { ExportControls } from "../features/reports/ExportControls";
 import { PaginatedDetailSection } from "../features/results/PaginatedDetailSection";
 import { GroupStatisticsPanel } from "../features/results/GroupStatisticsPanel";
+import { NestedAggregationPanel } from "../features/results/NestedAggregationPanel";
 import { ExceptionRuleSummary } from "../features/results/ExceptionRuleSummary";
 import { ComparisonColumnList } from "../features/results/ComparisonColumnList";
 import { clearUploadSession, loadRun } from "../api/endpoints";
@@ -24,7 +25,7 @@ function completeFilters(filters: FilterRow[]): FilterRow[] {
 
 function buildRunRequest(state: WorkflowState): RunRequest | null {
   if (!state.header) return null;
-  return {
+  const request: RunRequest = {
     sessionId: state.header.sessionId,
     comparisonColumns: state.comparisonColumns,
     filters: completeFilters(state.filters),
@@ -34,6 +35,13 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
     ruleIndexes: state.selectedRuleIndexes,
     confirmFullSet: state.confirmFullSet,
   };
+  if (state.nestedAggregationEnabled) {
+    request.nestedAggregationEnabled = true;
+  }
+  if (state.comparisonSections.length > 0) {
+    request.comparisonSections = state.comparisonSections;
+  }
+  return request;
 }
 
 export function ResultsPage() {
@@ -66,7 +74,15 @@ export function ResultsPage() {
     loadRun(runId)
       .then((result) => {
         if (cancelled) return;
+        // Restore the configuration that produced this run so subsequent
+        // renders (e.g. nested aggregation tree) match the persisted state.
         dispatch({ type: "setResult", result });
+        // Always restore nested-aggregation flag (including false).
+        dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled ?? false });
+        // Always restore aggregation columns (including empty array).
+        dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns ?? [] });
+        // Always restore key columns (including empty array).
+        dispatch({ type: "setKeyColumns", columns: result.keyColumns ?? [] });
       })
       .catch(() => {
         // Surface a quiet failure by leaving the result empty; the page's
@@ -136,96 +152,187 @@ export function ResultsPage() {
       )}
 
       {state.result && (
-        <>
-          <div className="result-content results-layer-content" data-export-source="result">
-            <div className="results-header results-layer-header">
-                <div className="results-title-row">
-                  <ReportName
-                    runId={state.result.id}
-                    name={state.result.reportName}
-                    onRenamed={(result) => dispatch({ type: "setResult", result })}
-                  />
-                  <span className="field-hint results-run-time">
-                    Ran on {formatDateTime(state.result.createdAt)}
-                  </span>
-                </div>
-                <ExportControls runId={state.result.id} reportName={state.result.reportName} />
-              </div>
-              <section id="overall" aria-labelledby="overall-title" className="card">
-                <h3 id="overall-title">Overall result</h3>
-                <p className="section-logic">
-                  Comparison across{" "}
-                  {state.targetColumns.length === 0
-                    ? "all common columns"
-                    : `${state.targetColumns.length} target columns`}{" "}
-                  with {completeFilters(state.filters).length} filter(s).
-                </p>
-                <OverallSummaryCards summary={state.result.overall} />
-                <p className="field-hint" data-testid="applied-filters-statement">
-                  {state.result.filtersApplied && state.result.filtersApplied.length > 0
-                    ? `Filtering: ${state.result.filtersApplied.map(formatFilterRow).join("; ")}`
-                    : "No filtering rows applied"}
-                </p>
-                {state.result.groupStatistics?.overall && state.result.groupStatistics.overall.length > 0 && (
-                  <GroupStatisticsPanel stats={state.result.groupStatistics.overall} />
-                )}
-              </section>
-
-              <ExceptionRuleSummary rules={state.result.ruleResults} />
-
-              <section id="changes" aria-labelledby="changes-title" className="card" style={{ marginTop: "var(--space)" }}>
-                <h3 id="changes-title">Attribute changes</h3>
-                <p className="section-logic">
-                  <code>In Baseline ≠ In Comparison</code> on shared target columns.
-                </p>
-                <ComparisonColumnList
-                  columns={
-                    state.result.comparisonColumns
-                    ?? (state.targetColumns.length > 0
-                      ? state.targetColumns
-                      : state.header?.common ?? [])
-                  }
-                />
-                {state.result.groupStatistics?.attributeChanges && state.result.groupStatistics.attributeChanges.length > 0 && (
-                  <GroupStatisticsPanel stats={state.result.groupStatistics.attributeChanges} />
-                )}
-                <PaginatedDetailSection
-                  runId={state.result.id}
-                  kind="changed"
-                  caption="Attribute change details"
-                  keyColumnNames={state.keyColumns}
-                  exportRows={state.result.changeDetails}
-                />
-              </section>
-
-              {state.result.ruleResults.map((rule) => {
-                const ruleGroupStats = state.result!.groupStatistics?.validationRules?.[rule.ruleIndex];
-                return (
-                  <RuleResultSection
-                    key={rule.ruleIndex}
-                    result={rule}
-                    keyColumnNames={state.keyColumns}
-                    {...(ruleGroupStats ? { groupStats: ruleGroupStats } : {})}
-                  />
-                );
-              })}
-
-              <div className="card results-actions results-layer-actions" data-export-exclude>
-                <div className="config-inline-row">
-                  <button type="button" className="btn btn--primary" onClick={handleRunAnother}>
-                    Run another report
-                  </button>
-                  <button type="button" className="btn" onClick={handleEditFiltersOrRules}>
-                    Edit filters or rules
-                  </button>
-                  <button type="button" className="btn" onClick={() => void navigate("/history")}>
-                    View run history
-                  </button>
-                </div>
-              </div>
-            </div>
-        </>
+        <ResultView
+          result={state.result}
+          targetColumns={state.targetColumns}
+          filters={state.filters}
+          keyColumns={state.keyColumns}
+          aggregationColumns={state.aggregationColumns}
+          nestedAggregationEnabled={state.nestedAggregationEnabled}
+          commonColumns={state.header?.common ?? []}
+          onRunAnother={handleRunAnother}
+          onEditFilters={handleEditFiltersOrRules}
+          onViewHistory={() => void navigate("/history")}
+          onRename={(result) => dispatch({ type: "setResult", result })}
+        />
       )}
     </section>
+  );
+}
+
+interface ResultViewProps {
+  result: NonNullable<ReturnType<typeof useWorkflow>["state"]["result"]>;
+  targetColumns: string[];
+  filters: FilterRow[];
+  keyColumns: string[];
+  aggregationColumns: string[];
+  nestedAggregationEnabled: boolean;
+  commonColumns: string[];
+  onRunAnother: () => void;
+  onEditFilters: () => void;
+  onViewHistory: () => void;
+  onRename: (result: NonNullable<ReturnType<typeof useWorkflow>["state"]["result"]>) => void;
+}
+
+function ResultView({
+  result,
+  targetColumns,
+  filters,
+  keyColumns,
+  aggregationColumns,
+  nestedAggregationEnabled,
+  commonColumns,
+  onRunAnother,
+  onEditFilters,
+  onViewHistory,
+  onRename,
+}: ResultViewProps) {
+  return (
+    <div className="result-content results-layer-content" data-export-source="result">
+      <div className="results-header results-layer-header">
+        <div className="results-title-row">
+          <ReportName
+            runId={result.id}
+            name={result.reportName}
+            onRenamed={onRename}
+          />
+          <span className="field-hint results-run-time">
+            Ran on {formatDateTime(result.createdAt)}
+          </span>
+        </div>
+        <ExportControls runId={result.id} reportName={result.reportName} />
+      </div>
+      <section id="overall" aria-labelledby="overall-title" className="card">
+        <h3 id="overall-title">Overall result</h3>
+        <p className="section-logic">
+          Comparison across{" "}
+          {targetColumns.length === 0
+            ? "all common columns"
+            : `${targetColumns.length} target columns`}{" "}
+          with {completeFilters(filters).length} filter(s).
+        </p>
+        <OverallSummaryCards summary={result.overall} />
+        <p className="field-hint" data-testid="applied-filters-statement">
+          {result.filtersApplied && result.filtersApplied.length > 0
+            ? `Filtering: ${result.filtersApplied.map(formatFilterRow).join("; ")}`
+            : "No filtering rows applied"}
+        </p>
+        {nestedAggregationEnabled && aggregationColumns.length > 0 ? (
+          <NestedAggregationPanel
+            details={result.changeDetails}
+            aggregationColumns={aggregationColumns}
+            keyColumnNames={keyColumns}
+          />
+        ) : result.groupStatistics?.overall && result.groupStatistics.overall.length > 0 ? (
+          <GroupStatisticsPanel stats={result.groupStatistics.overall} />
+        ) : null}
+      </section>
+
+      <ExceptionRuleSummary rules={result.ruleResults} />
+
+      {result.comparisonSections && result.comparisonSections.length > 0
+        ? result.comparisonSections.map((section) => {
+            const sectionChanges = result.changeDetails.filter(
+              (d) => section.columns.includes(d.column),
+            );
+            return (
+              <section
+                key={section.id}
+                id={`changes-${section.id}`}
+                aria-labelledby={`changes-title-${section.id}`}
+                className="card"
+                style={{ marginTop: "var(--space)" }}
+              >
+                <h3 id={`changes-title-${section.id}`}>{section.name}</h3>
+                <p className="section-logic">
+                  <code>In Baseline ≠ In Comparison</code> — {section.columns.length} column
+                  {section.columns.length !== 1 ? "s" : ""}
+                </p>
+                <ComparisonColumnList columns={section.columns} />
+                {nestedAggregationEnabled && aggregationColumns.length > 0 && sectionChanges.length > 0 ? (
+                  <NestedAggregationPanel
+                    details={sectionChanges}
+                    aggregationColumns={aggregationColumns}
+                    keyColumnNames={keyColumns}
+                  />
+                ) : null}
+                <PaginatedDetailSection
+                  runId={result.id}
+                  kind="changed"
+                  caption={`Attribute changes — ${section.name}`}
+                  keyColumnNames={keyColumns}
+                  exportRows={sectionChanges}
+                  sectionColumns={section.columns}
+                />
+              </section>
+            );
+          })
+        : (
+          <section id="changes" aria-labelledby="changes-title" className="card" style={{ marginTop: "var(--space)" }}>
+            <h3 id="changes-title">Attribute changes</h3>
+            <p className="section-logic">
+              <code>In Baseline ≠ In Comparison</code> on shared target columns.
+            </p>
+            <ComparisonColumnList
+              columns={
+                result.comparisonColumns
+                ?? (targetColumns.length > 0 ? targetColumns : commonColumns)
+              }
+            />
+            {nestedAggregationEnabled && aggregationColumns.length > 0 ? (
+              <NestedAggregationPanel
+                details={result.changeDetails}
+                aggregationColumns={aggregationColumns}
+                keyColumnNames={keyColumns}
+              />
+            ) : result.groupStatistics?.attributeChanges && result.groupStatistics.attributeChanges.length > 0 ? (
+              <GroupStatisticsPanel stats={result.groupStatistics.attributeChanges} />
+            ) : null}
+            <PaginatedDetailSection
+              runId={result.id}
+              kind="changed"
+              caption="Attribute change details"
+              keyColumnNames={keyColumns}
+              exportRows={result.changeDetails}
+            />
+          </section>
+        )}
+
+      {result.ruleResults.map((rule) => {
+        const ruleGroupStats = result.groupStatistics?.validationRules?.[rule.ruleIndex];
+        return (
+          <RuleResultSection
+            key={rule.ruleIndex}
+            result={rule}
+            keyColumnNames={keyColumns}
+            {...(ruleGroupStats ? { groupStats: ruleGroupStats } : {})}
+          />
+        );
+      })}
+
+      <div className="card results-actions results-layer-actions" data-export-exclude>
+        <div className="config-inline-row">
+          <button type="button" className="btn btn--primary" onClick={onRunAnother}>
+            Run another report
+          </button>
+          <button type="button" className="btn" onClick={onEditFilters}>
+            Edit filters or rules
+          </button>
+          <button type="button" className="btn" onClick={onViewHistory}>
+            View run history
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

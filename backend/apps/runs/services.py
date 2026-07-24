@@ -96,6 +96,8 @@ class ExecutionResult:
     key_columns: list[str]
     filters_applied: list[dict[str, str]]
     aggregation_columns: list[str] = field(default_factory=list)
+    nested_aggregation_enabled: bool = False
+    comparison_sections: list[dict[str, Any]] = field(default_factory=list)
     group_statistics: dict[str, Any] | None = None
 
 
@@ -706,6 +708,8 @@ def execute_comparison(
     rule_ids: list[str] | None = None,
     key_columns: list[str] | None = None,
     aggregation_columns: list[str] | None = None,
+    nested_aggregation_enabled: bool = False,
+    comparison_sections: list[dict[str, Any]] | None = None,
 ) -> ExecutionResult:
     if filters is None:
         filters = []
@@ -863,5 +867,7 @@ def execute_comparison(
         key_columns=effective_keys,
         filters_applied=filters,
         aggregation_columns=effective_agg,
+        nested_aggregation_enabled=nested_aggregation_enabled,
+        comparison_sections=comparison_sections or [],
         group_statistics=grp_stats,
     )

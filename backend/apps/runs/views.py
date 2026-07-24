@@ -30,6 +30,7 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
         aggregation_columns = request.data.get(
             "aggregation_columns", request.data.get("grouping_columns", [])
         )
+        comparison_sections = request.data.get("comparison_sections", [])
         filters = request.data.get("filters", [])
         rule_ids = request.data.get("rule_ids")
 
@@ -91,6 +92,16 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
             )
 
         try:
+            # Nested aggregation is read independently of comparison sections:
+            # a user can opt into the tree view without defining any sections.
+            nested_agg_enabled = bool(request.data.get("nested_aggregation_enabled", False))
+            if isinstance(comparison_sections, list) and len(comparison_sections) > 0:
+                comparison_sections = [
+                    {"id": s.get("id", ""), "name": s.get("name", ""), "columns": s.get("columns", [])}
+                    for s in comparison_sections
+                ]
+            else:
+                comparison_sections = []
             result = execute_comparison(
                 path_a=path_a,
                 path_b=path_b,
@@ -100,6 +111,8 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 filters=filters,
                 rule_ids=rule_ids,
                 aggregation_columns=aggregation_columns,
+                nested_aggregation_enabled=nested_agg_enabled,
+                comparison_sections=comparison_sections,
             )
         except Exception as exc:
             logger.warning("execute_comparison failed: %s", exc)
