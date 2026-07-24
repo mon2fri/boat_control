@@ -16,6 +16,20 @@ function makeDetail(id: string, overrides: Partial<DetailRow> = {}): DetailRow {
   };
 }
 
+/**
+ * Groups are collapsed by default, so any test that inspects the inner record
+ * list has to open at least one group toggle first. This helper finds the
+ * first group button whose label contains the given substring and clicks it.
+ */
+function expandGroup(label: string): HTMLElement {
+  const btn = screen
+    .getAllByRole("button")
+    .find((b) => b.textContent?.includes(label));
+  if (!btn) throw new Error(`Group toggle containing "${label}" not found`);
+  fireEvent.click(btn);
+  return btn as HTMLElement;
+}
+
 describe("NestedAggregationPanel", () => {
   it("renders nothing when details are empty", () => {
     const { container } = render(
@@ -40,7 +54,7 @@ describe("NestedAggregationPanel", () => {
     expect(buttons.some((b) => b.textContent?.includes("inactive"))).toBe(true);
   });
 
-  it("expands group nodes to show child records", () => {
+  it("collapses group nodes by default, then expands them on click", () => {
     render(
       <NestedAggregationPanel
         details={[
@@ -54,8 +68,16 @@ describe("NestedAggregationPanel", () => {
     const buttons = screen.getAllByRole("button");
     const groupBtn = buttons.find((b) => b.textContent?.includes("active"))!;
     expect(groupBtn).toBeDefined();
-    // Initial state: expanded (depth 0) — children should be visible
-    expect(screen.getByText(/1 attribute changed/)).toBeInTheDocument();
+    // Initial state: collapsed — the record's detail is hidden via the `hidden`
+    // attribute, so it is rendered into the DOM but not visible.
+    const recordText = screen.getByText(/1 attribute changed/);
+    expect(recordText.closest("[hidden]")).toBeInTheDocument();
+    // Click to expand
+    fireEvent.click(groupBtn);
+    expect(recordText.closest("[hidden]")).not.toBeInTheDocument();
+    // Click again to collapse
+    fireEvent.click(groupBtn);
+    expect(recordText.closest("[hidden]")).toBeInTheDocument();
   });
 
   it("expands record nodes to show Column/Old/New table", () => {
@@ -74,6 +96,7 @@ describe("NestedAggregationPanel", () => {
       />,
     );
 
+    expandGroup("active");
     const recordBtn = screen.getByText(/1 attribute changed/).closest("button")!;
     fireEvent.click(recordBtn);
 
@@ -101,6 +124,7 @@ describe("NestedAggregationPanel", () => {
       />,
     );
 
+    expandGroup("active");
     const recordBtn = screen.getByText(/1 attribute changed/).closest("button")!;
     fireEvent.click(recordBtn);
 
@@ -132,6 +156,7 @@ describe("NestedAggregationPanel", () => {
       />,
     );
 
+    expandGroup("active");
     expect(screen.getByText(/2 changes/)).toBeInTheDocument();
   });
 
@@ -147,6 +172,9 @@ describe("NestedAggregationPanel", () => {
       />,
     );
 
+    // First expand the top-level "active" group, then the EMEA/APAC groups
+    expandGroup("active");
+    expandGroup("EMEA");
     expect(screen.getByText("EMEA")).toBeInTheDocument();
     expect(screen.getByText("APAC")).toBeInTheDocument();
   });
@@ -183,8 +211,18 @@ describe("NestedAggregationPanel", () => {
         keyColumnNames={["id"]}
       />,
     );
+    // Both classes are always present in the DOM, but the record's detail is
+    // hidden until its parent group is expanded.
+    expect(document.querySelector(".nested-agg-group")).toBeInTheDocument();
+    const record = document.querySelector(".nested-agg-record");
+    expect(record).toBeInTheDocument();
+    expect(record?.querySelector("[hidden]")).toBeInTheDocument();
+    expandGroup("active");
+    // After expanding the parent group, the group-level children container is
+    // no longer hidden (records still start collapsed individually).
     expect(document.querySelector(".nested-agg-group")).toBeInTheDocument();
     expect(document.querySelector(".nested-agg-record")).toBeInTheDocument();
+    expect(document.querySelector(".nested-agg-children")).not.toHaveAttribute("hidden");
   });
 
   it("renders expand/collapse buttons with aria-expanded attribute", () => {
@@ -216,7 +254,7 @@ describe("NestedAggregationPanel", () => {
     }
   });
 
-  it("renders nested-agg-children container for expanded group nodes", () => {
+  it("renders nested-agg-children container with the `hidden` attribute when collapsed", () => {
     render(
       <NestedAggregationPanel
         details={[makeDetail("1", { aggregationValues: { status: "active" } })]}
@@ -224,10 +262,18 @@ describe("NestedAggregationPanel", () => {
         keyColumnNames={["id"]}
       />,
     );
-    // Depth-0 groups start expanded
-    const children = document.querySelector(".nested-agg-children");
-    expect(children).toBeInTheDocument();
-    expect(children?.tagName).toBe("UL");
+    // The children UL is always rendered so the export's static DOM has the
+    // structure to toggle. Visibility is controlled by the `hidden` attribute.
+    const childrenBefore = document.querySelector(".nested-agg-children");
+    expect(childrenBefore).toBeInTheDocument();
+    expect(childrenBefore?.tagName).toBe("UL");
+    expect(childrenBefore?.hasAttribute("hidden")).toBe(true);
+    // Click the group toggle to expand
+    const groupBtn = screen.getAllByRole("button").find((b) => b.textContent?.includes("active"))!;
+    fireEvent.click(groupBtn);
+    const childrenAfter = document.querySelector(".nested-agg-children");
+    expect(childrenAfter).toBeInTheDocument();
+    expect(childrenAfter?.hasAttribute("hidden")).toBe(false);
   });
 
   it("applies nested-agg-count class to count spans", () => {
@@ -258,6 +304,7 @@ describe("NestedAggregationPanel", () => {
         keyColumnNames={["id"]}
       />,
     );
+    expandGroup("active");
     const recordBtn = screen.getByText(/1 attribute changed/).closest("button")!;
     fireEvent.click(recordBtn);
 
@@ -276,6 +323,7 @@ describe("NestedAggregationPanel", () => {
         keyColumnNames={["id"]}
       />,
     );
+    expandGroup("active");
     const recordBtn = screen.getByText(/1 attribute changed/).closest("button")!;
     expect(recordBtn.tagName).toBe("BUTTON");
     // Initially collapsed (recordExpanded is false)
@@ -298,6 +346,7 @@ describe("NestedAggregationPanel", () => {
         keyColumnNames={["id"]}
       />,
     );
+    expandGroup("active");
     // Only the changed row should appear
     expect(screen.getByText(/1 attribute changed/)).toBeInTheDocument();
     expect(screen.queryByText("Iris")).not.toBeInTheDocument();
@@ -331,6 +380,7 @@ describe("NestedAggregationPanel", () => {
         keyColumnNames={["id"]}
       />,
     );
+    expandGroup("active");
     // Only the one changed attribute should be counted
     expect(screen.getByText(/1 attribute changed/)).toBeInTheDocument();
   });
@@ -341,6 +391,7 @@ describe("NestedAggregationPanel", () => {
       makeDetail("1", { kind: "changed", column: "name", file1Value: "Alice", file2Value: "Bob" }),
       makeDetail("1", { kind: "changed", column: "score", file1Value: "100", file2Value: "95" }),
     ];
+
     render(
       <NestedAggregationPanel
         details={details}
@@ -348,6 +399,7 @@ describe("NestedAggregationPanel", () => {
         keyColumnNames={["id"]}
       />,
     );
+    expandGroup("active");
     expect(screen.getByText(/2 attributes changed/)).toBeInTheDocument();
   });
 
@@ -363,6 +415,7 @@ describe("NestedAggregationPanel", () => {
         keyColumnNames={["id"]}
       />,
     );
+    expandGroup("active");
     // The exception row with different values should still be excluded
     expect(screen.queryByText("old")).not.toBeInTheDocument();
     expect(screen.getByText(/1 attribute changed/)).toBeInTheDocument();

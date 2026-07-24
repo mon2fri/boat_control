@@ -356,18 +356,60 @@ describe("result components", () => {
     await waitFor(() => expect(onReachEnd).toHaveBeenCalledTimes(1));
   });
 
-  it("applies row-scoped equal-height classes to aggregation cards", () => {
+  it("renders each grouping column as a collapsible tree-style row", () => {
     render(<GroupStatisticsPanel stats={[
       { column: "short", uniqueCount: 1, attributeCount: 1, rows: [] },
       { column: "a very long aggregation column name", uniqueCount: 2, attributeCount: 3, rows: [] },
     ]} />);
     const panel = document.querySelector(".group-stats-panel");
+    // Two items fall into a single 2-column row.
     expect(panel?.querySelectorAll(".group-stats-row")).toHaveLength(1);
-    expect(panel?.querySelector(".group-stats-row")).toHaveClass("group-stats-row--2");
-    expect(panel?.querySelectorAll(".group-stats-card")).toHaveLength(2);
-    expect(panel?.querySelectorAll(".group-stats-summary")).toHaveLength(2);
-    expect(screen.getByText("Exception records: 1")).toBeInTheDocument();
-    expect(screen.queryByText(/Unique:/)).not.toBeInTheDocument();
+    const row = panel?.querySelector(".group-stats-row");
+    expect(row).toHaveClass("group-stats-row--2");
+    expect(panel?.querySelectorAll(".group-stat-item")).toHaveLength(2);
+    expect(panel?.querySelectorAll(".group-stat-toggle")).toHaveLength(2);
+    // Header line uses the new "column (Exception records: N)" format.
+    expect(screen.getByText(/Exception records: 1/)).toBeInTheDocument();
+    expect(screen.getByText(/Exception records: 2/)).toBeInTheDocument();
+    // Tables are hidden until the toggle is opened.
+    expect(screen.queryByRole("columnheader", { name: "Value" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Attribute Count" })).not.toBeInTheDocument();
+  });
+
+  it("distributes more than 5 stats across evenly sized rows", () => {
+    const stats = Array.from({ length: 7 }, (_, i) => ({
+      column: `col_${i}`,
+      uniqueCount: i + 1,
+      attributeCount: i + 1,
+      rows: [],
+    }));
+    render(<GroupStatisticsPanel stats={stats} />);
+    const panel = document.querySelector(".group-stats-panel");
+    const rows = panel?.querySelectorAll(".group-stats-row");
+    // 7 items must split into 4 + 3 (never 5 + 2) so each row stays close to
+    // the same width.
+    expect(rows).toHaveLength(2);
+    const firstRow = rows![0]!;
+    const secondRow = rows![1]!;
+    expect(firstRow).toHaveClass("group-stats-row--4");
+    expect(firstRow.querySelectorAll(".group-stat-item")).toHaveLength(4);
+    expect(secondRow).toHaveClass("group-stats-row--3");
+    expect(secondRow.querySelectorAll(".group-stat-item")).toHaveLength(3);
+  });
+
+  it("keeps 5-or-fewer stats in a single row sized to the count", () => {
+    const stats = Array.from({ length: 5 }, (_, i) => ({
+      column: `col_${i}`,
+      uniqueCount: i + 1,
+      attributeCount: i + 1,
+      rows: [],
+    }));
+    render(<GroupStatisticsPanel stats={stats} />);
+    const panel = document.querySelector(".group-stats-panel");
+    const rows = panel?.querySelectorAll(".group-stats-row");
+    expect(rows).toHaveLength(1);
+    const onlyRow = rows![0]!;
+    expect(onlyRow).toHaveClass("group-stats-row--5");
+    expect(onlyRow.querySelectorAll(".group-stat-item")).toHaveLength(5);
   });
 });

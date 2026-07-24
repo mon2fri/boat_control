@@ -8,8 +8,18 @@ interface Props {
   keyColumnNames?: string[];
 }
 
+/**
+ * Single node in the nested aggregation tree.
+ *
+ * Default state is fully collapsed — both groups and records start closed.
+ *
+ * The full subtree is always rendered into the DOM so that the exported HTML
+ * has a complete structure for the inline script to toggle. Visibility is
+ * controlled by the `hidden` HTML attribute, which gives the browser's
+ * native `display: none` for free and matches what the export JS toggles.
+ */
 function TreeNode({ node }: { node: NestedAggNode }) {
-  const [expanded, setExpanded] = useState(node.kind === "group" && node.depth === 0);
+  const [expanded, setExpanded] = useState(false);
   const [recordExpanded, setRecordExpanded] = useState(false);
 
   if (node.kind === "record") {
@@ -20,6 +30,7 @@ function TreeNode({ node }: { node: NestedAggNode }) {
           className="nested-agg-toggle"
           onClick={() => setRecordExpanded((v) => !v)}
           aria-expanded={recordExpanded}
+          data-agg-toggle="record"
         >
           <span className="nested-agg-toggle-icon" aria-hidden="true">
             {recordExpanded ? "▼" : "▶"}
@@ -28,28 +39,26 @@ function TreeNode({ node }: { node: NestedAggNode }) {
             {node.label} — {node.changeCount} attribute{node.changeCount !== 1 ? "s" : ""} changed
           </span>
         </button>
-        {recordExpanded && (
-          <div className="nested-agg-record-detail">
-            <table className="nested-agg-table">
-              <thead>
-                <tr>
-                  <th>Column</th>
-                  <th>Old</th>
-                  <th>New</th>
+        <div className="nested-agg-record-detail" data-agg-detail="record" hidden={!recordExpanded}>
+          <table className="nested-agg-table">
+            <thead>
+              <tr>
+                <th>Column</th>
+                <th>Old</th>
+                <th>New</th>
+              </tr>
+            </thead>
+            <tbody>
+              {node.attributes.map((attr, i) => (
+                <tr key={i}>
+                  <td>{attr.column}</td>
+                  <td>{displayValue(attr.old)}</td>
+                  <td>{displayValue(attr.new)}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {node.attributes.map((attr, i) => (
-                  <tr key={i}>
-                    <td>{attr.column}</td>
-                    <td>{displayValue(attr.old)}</td>
-                    <td>{displayValue(attr.new)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+              ))}
+            </tbody>
+          </table>
+        </div>
       </li>
     );
   }
@@ -61,6 +70,7 @@ function TreeNode({ node }: { node: NestedAggNode }) {
         className="nested-agg-toggle"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
+        data-agg-toggle="group"
       >
         <span className="nested-agg-toggle-icon" aria-hidden="true">
           {expanded ? "▼" : "▶"}
@@ -70,7 +80,11 @@ function TreeNode({ node }: { node: NestedAggNode }) {
           <span className="nested-agg-count">({node.children.length} sub-node{node.children.length !== 1 ? "s" : ""}, {node.aggregatedCount} change{node.aggregatedCount !== 1 ? "s" : ""})</span>
         </span>
       </button>
-      {expanded && <ul className="nested-agg-children">{node.children.map((child, i) => <TreeNode key={i} node={child} />)}</ul>}
+      <ul className="nested-agg-children" data-agg-detail="group" hidden={!expanded}>
+        {node.children.map((child, i) => (
+          <TreeNode key={i} node={child} />
+        ))}
+      </ul>
     </li>
   );
 }
@@ -89,7 +103,9 @@ export function NestedAggregationPanel({ details, aggregationColumns, keyColumnN
   return (
     <div className="nested-agg-panel">
       <ul className="nested-agg-tree">
-        {tree.map((node, i) => <TreeNode key={i} node={node} />)}
+        {tree.map((node, i) => (
+          <TreeNode key={i} node={node} />
+        ))}
       </ul>
     </div>
   );
