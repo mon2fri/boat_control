@@ -75,7 +75,7 @@ export async function apiRequest<TResponse>(
   });
 
   const raw = await response.text();
-  const parsedJson: unknown = raw.length ? safeJsonParse(raw) : null;
+  const parsedJson: unknown = raw.length ? safeJsonParse(raw) : undefined;
 
   if (!response.ok) {
     const message =

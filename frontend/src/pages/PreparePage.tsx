@@ -3,6 +3,7 @@ import { useWorkflow } from "../state/WorkflowContext";
 import { RequireSession } from "../components/RequireSession";
 import { FilterBuilder } from "../features/filters/FilterBuilder";
 import { TargetSelector } from "../features/targets/TargetSelector";
+import { ComparisonSectionEditor } from "../features/targets/ComparisonSectionEditor";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { useFamilies } from "../features/settings/useSettings";
@@ -60,15 +61,12 @@ export function PreparePage() {
 
     const warnings: string[] = [];
 
-    if (result.filters.length > 0) {
-      dispatch({ type: "setFilters", filters: result.filters });
-    }
-    if (result.targetColumns.length > 0) {
-      dispatch({ type: "setTargetColumns", columns: result.targetColumns });
-    }
-    if (result.keyColumns.length > 0) {
-      dispatch({ type: "setKeyColumns", columns: result.keyColumns });
-    }
+    dispatch({ type: "setFilters", filters: result.filters });
+    dispatch({ type: "setTargetColumns", columns: result.targetColumns });
+    dispatch({ type: "setKeyColumns", columns: result.keyColumns });
+    dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns });
+    dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
+    dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
 
     for (const w of result.warnings) {
       warnings.push(w.message);
@@ -99,6 +97,8 @@ export function PreparePage() {
               aggregationColumns: state.aggregationColumns,
               filters: state.filters,
               targetColumns: state.targetColumns,
+              nestedAggregationEnabled: state.nestedAggregationEnabled,
+              comparisonSections: state.comparisonSections,
             },
             families,
           )}
@@ -150,6 +150,13 @@ export function PreparePage() {
         families={families}
         selected={state.targetColumns}
         onChange={(columns) => dispatch({ type: "setTargetColumns", columns })}
+      />
+
+      <ComparisonSectionEditor
+        sections={state.comparisonSections}
+        onChange={(sections) => dispatch({ type: "setComparisonSections", sections })}
+        availableColumns={comparisonColumns}
+        families={families}
       />
 
       <RulesPage embedded columnValues={prepare.data?.columnValues ?? {}} />

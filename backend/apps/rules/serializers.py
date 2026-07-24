@@ -76,3 +76,7 @@ class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
 class RulesListResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     version = serializers.IntegerField()
     rules = RuleResponseSerializer(many=True)
+
+
+class ReplaceRulesSerializer(serializers.Serializer):  # type: ignore[misc]
+    rules = RuleSerializer(many=True)

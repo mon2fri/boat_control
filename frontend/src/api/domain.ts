@@ -119,6 +119,10 @@ export interface RunRequest {
   keyColumns: string[];
   /** Optional subset of comparison columns used for group-level statistics. */
   aggregationColumns: string[];
+  /** Optional subset of comparison columns used for nested aggregation. */
+  nestedAggregationEnabled?: boolean;
+  /** User-defined comparison sections for per-section attribute change views. */
+  comparisonSections?: ComparisonSection[] | undefined;
   ruleIndexes: string[];
   confirmFullSet: boolean;
 }
@@ -142,6 +146,8 @@ export interface DetailRow {
   violatingValue?: string | null;
   /** Rule-selected comparison-file values keyed by their column names. */
   extraValues?: Record<string, string | null>;
+  /** Values of the aggregation columns for this row's record. */
+  aggregationValues?: Record<string, string | null>;
   kind: "changed" | "exception";
 }
 
@@ -172,6 +178,14 @@ export interface RunResult {
   groupStatistics?: GroupStatisticsBundle;
   /** Persisted filtering rows applied to this run. */
   filtersApplied?: FilterRow[];
+  /** Whether nested aggregation was enabled for this run. */
+  nestedAggregationEnabled?: boolean;
+  /** User-defined comparison sections persisted with this run. */
+  comparisonSections?: ComparisonSection[];
+  /** Aggregation columns used for this run; persisted so reloads restore the tree. */
+  aggregationColumns?: string[];
+  /** Key columns used for this run; persisted so reloads restore the rows. */
+  keyColumns?: string[];
 }
 
 export interface RunSummary {
@@ -268,6 +282,36 @@ export interface ValueFamily {
 }
 
 export type Family = ColumnFamily | ValueFamily;
+
+/**
+ * A node in the nested aggregation tree.
+ * - `group`: intermediate level grouping by an aggregation column value.
+ * - `record`: leaf node representing a unique record.
+ */
+export type NestedAggNode =
+  | {
+      kind: "group";
+      label: string;
+      column: string;
+      depth: number;
+      children: NestedAggNode[];
+      aggregatedCount: number;
+    }
+  | {
+      kind: "record";
+      label: string;
+      rowKey: string;
+      keyColumns: Record<string, string | null>;
+      changeCount: number;
+      attributes: { column: string; old: string | null; new: string | null }[];
+    };
+
+/** A user-defined section for comparing a subset of columns. */
+export interface ComparisonSection {
+  id: string;
+  name: string;
+  columns: string[];
+}
 
 export interface GroupStatisticsBundle {
   overall: GroupStat[];

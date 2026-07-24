@@ -96,4 +96,14 @@ describe("usePaginatedDetails", () => {
     expect(result.current.isEmpty).toBe(true);
     vi.unstubAllGlobals();
   });
+
+  it("forwards sectionColumns to the run details endpoint", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(json(pageWith([], 0, 0, false)));
+    vi.stubGlobal("fetch", fetchMock);
+    renderHook(() => usePaginatedDetails("run-1", "changed", {}, ["region", "status"]));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = String(fetchMock.mock.calls[0]![0]);
+    expect(url).toContain("columns=region%2Cstatus");
+    vi.unstubAllGlobals();
+  });
 });

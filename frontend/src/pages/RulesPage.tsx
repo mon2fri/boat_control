@@ -9,7 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { resolveRulesConfig, mapRulesToConfigContent } from "../api/configContent";
-import { deleteRule as deleteRuleApi, createRule as createRuleApi } from "../api/endpoints";
+import { replaceRules as replaceRulesApi } from "../api/endpoints";
 import type { Rule, RuleDraft } from "../api/domain";
 
 const RULES_KEY = ["rules"] as const;
@@ -48,6 +48,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const [loadedConfigData, setLoadedConfigData] = useState<unknown>(null);
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
+  const [configError, setConfigError] = useState<string | null>(null);
   const [isApplyingConfig, setIsApplyingConfig] = useState(false);
   const initialized = useRef(false);
   const queryClient = useQueryClient();
@@ -79,21 +80,19 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
       setTimeout(() => setConfigWarnings([]), 10000);
     }
 
-    if (drafts.length === 0) {
-      setLoadedConfigData(null);
-      return;
-    }
-
     setIsApplyingConfig(true);
+    setConfigError(null);
 
-    const currentRules = queryClient.getQueryData<Rule[]>(RULES_KEY) ?? [];
-
-    Promise.all(currentRules.map((r) => deleteRuleApi(r.index).catch(() => undefined)))
-      .then(() => Promise.all(drafts.map((d) => createRuleApi(d).catch(() => undefined))))
+    // Replace all rules atomically. This resets IDs to R001...Rxxx.
+    // Even an empty drafts array is sent to clear all rules and reset next_index.
+    replaceRulesApi(drafts)
       .then(() => {
         void queryClient.invalidateQueries({ queryKey: RULES_KEY });
       })
-      .catch(() => undefined)
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : "Failed to apply rule configuration.";
+        setConfigError(message);
+      })
       .finally(() => {
         setIsApplyingConfig(false);
         setLoadedConfigData(null);
@@ -272,6 +271,12 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
               <p key={i} style={{ margin: 0 }}>{w}</p>
             ))}
           </div>
+        )}
+
+        {configError && (
+          <p className="alert alert--error" role="alert">
+            {configError}
+          </p>
         )}
 
         <ConfirmDialog

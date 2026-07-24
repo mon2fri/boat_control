@@ -683,3 +683,58 @@ class TestComputeGroupStatistics:
             "aggregation_columns in execute_comparison."
         )
         assert values - {"Total"}  # at least one real value besides Total
+
+
+class TestExecuteComparisonNestedAggregation:
+    def test_nested_aggregation_disabled_without_comparison_sections(
+        self, csv_a: Path, csv_b: Path
+    ) -> None:
+        # Nested aggregation must NOT be silently turned off by the absence of
+        # comparison_sections. The two settings are independent.
+        result = execute_comparison(
+            path_a=csv_a,
+            path_b=csv_b,
+            target_columns=["score"],
+            key_columns=["id"],
+            aggregation_columns=["status"],
+            nested_aggregation_enabled=True,
+            comparison_sections=None,
+        )
+        assert result.nested_aggregation_enabled is True
+
+    def test_nested_aggregation_enabled_independent_of_sections(
+        self, csv_a: Path, csv_b: Path
+    ) -> None:
+        result = execute_comparison(
+            path_a=csv_a,
+            path_b=csv_b,
+            target_columns=["score"],
+            key_columns=["id"],
+            aggregation_columns=["status"],
+            nested_aggregation_enabled=True,
+            comparison_sections=[
+                {"id": "s1", "name": "Demo", "columns": ["score"]},
+            ],
+        )
+        assert result.nested_aggregation_enabled is True
+        assert result.comparison_sections == [
+            {"id": "s1", "name": "Demo", "columns": ["score"]},
+        ]
+
+    def test_comparison_sections_round_trip_through_execute(
+        self, csv_a: Path, csv_b: Path
+    ) -> None:
+        result = execute_comparison(
+            path_a=csv_a,
+            path_b=csv_b,
+            target_columns=["score", "status"],
+            key_columns=["id"],
+            comparison_sections=[
+                {"id": "s1", "name": "Region", "columns": ["score"]},
+                {"id": "s2", "name": "Type", "columns": ["status"]},
+            ],
+        )
+        assert result.comparison_sections == [
+            {"id": "s1", "name": "Region", "columns": ["score"]},
+            {"id": "s2", "name": "Type", "columns": ["status"]},
+        ]

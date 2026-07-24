@@ -19,12 +19,14 @@ def _flatten_rows(result: dict, section: str) -> list[dict]:
         rows = []
         for r in raw_rows:
             key_cols = r.get("key_columns", {})
+            grouping_vals = r.get("grouping_values", {})
             for change in r.get("attribute_changes", []):
                 rows.append(
                     {
                         "row_key": ",".join(f"{k}={v}" for k, v in key_cols.items())
                         or str(r.get("row_index", "")),
                         "key_columns": key_cols,
+                        "grouping_values": grouping_vals,
                         "column": change["column"],
                         "file_a_value": change.get("file_a_value"),
                         "file_b_value": change.get("file_b_value"),
@@ -42,6 +44,7 @@ def _flatten_rows(result: dict, section: str) -> list[dict]:
                     "row_key": ",".join(f"{k}={kv}" for k, kv in key_cols.items())
                     or str(v.get("row_index", "")),
                     "key_columns": key_cols,
+                    "grouping_values": v.get("grouping_values", {}),
                     "column": v.get("violating_column", ""),
                     "file_a_value": v.get("comparison_value"),
                     "file_b_value": v.get("violating_value"),
@@ -131,14 +134,31 @@ class RunPaginatedDetailView(APIView):  # type: ignore[misc]
         # Parse filter params: key_<col>, extra_<col>, or column=val1,val2
         detail_filters: dict[str, list[str]] = {}
         for param_key in request.query_params:
-            if param_key in ("section", "offset", "limit"):
+            if param_key in ("section", "offset", "limit", "columns"):
                 continue
             raw = request.query_params.get(param_key, "")
             values = [v.strip() for v in raw.split(",") if v.strip()]
             if values:
                 detail_filters[param_key] = values
 
+        # Optional column-filter: when a named comparison section is rendered
+        # it asks for rows whose `column` is one of its configured columns.
+        # Without this filter, every section's table would show rows from
+        # every other section.
+        section_columns_raw = request.query_params.get("columns", "")
+        section_columns = [
+            c.strip() for c in section_columns_raw.split(",") if c.strip()
+        ]
+
         filtered_rows = _apply_detail_filters(all_rows, detail_filters)
+        if section_columns:
+            section_set = set(section_columns)
+            filtered_rows = [r for r in filtered_rows if str(r.get("column")) in section_set]
+        # Make the user-visible column facet reflect the section's columns
+        # so the column filter chips don't offer columns that aren't in
+        # this section at all.
+        if section_columns and "column" in facets:
+            facets["column"] = sorted(set(facets["column"]) & set(section_columns))
 
         total = len(filtered_rows)
         start = offset

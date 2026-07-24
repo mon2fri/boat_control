@@ -495,3 +495,64 @@ def delete_rule(rules_file: RulesFile, rule_id: str) -> RulesFile:
         rules=new_rules,
         next_index=rules_file.next_index,
     )
+
+
+def replace_rules(
+    rule_drafts: list[dict[str, Any]], path: Path | None = None
+) -> RulesFile:
+    """Replace the entire rule collection with validated drafts.
+
+    Validates every draft first. On validation failure the existing rule
+    file is left untouched. On success the new rules are assigned sequential
+    IDs starting at R001 and written atomically.
+
+    Returns the new RulesFile. Raises ValueError on any validation error.
+    """
+    target = path or get_rules_file()
+
+    rules: list[Rule] = []
+    for index, draft in enumerate(rule_drafts, start=1):
+        validation = validate_rule(draft)
+        if not validation.valid:
+            raise ValueError(
+                f"Rule {index} invalid: {'; '.join(validation.errors)}"
+            )
+
+        conditions = [_make_condition(c) for c in draft.get("conditions", [])]
+        logic_data = draft["logic"]
+        target_values = tuple(logic_data.get("target_values", []))
+        logic = LogicClause(
+            format=logic_data["format"],
+            column_name=logic_data["column_name"],
+            operator=logic_data["operator"],
+            target_value=logic_data["target_value"],
+            target_values=target_values,
+            comparison_mode=logic_data.get(
+                "comparison_mode", "comparison_vs_baseline"
+            ),
+        )
+
+        rules.append(
+            Rule(
+                rule_id=_format_rule_id(index),
+                name=draft["name"],
+                description=draft.get("description", ""),
+                conditions=conditions,
+                condition_relation=draft.get("condition_relation"),
+                grouping=draft.get("grouping"),
+                grouping_tree=_parse_grouping_tree(draft.get("grouping_tree")),
+                logic=logic,
+                extra_columns=tuple(
+                    str(c) for c in draft.get("extra_columns", [])
+                ),
+                hide_comparison=bool(draft.get("hide_comparison", False)),
+            )
+        )
+
+    new_file = RulesFile(
+        version=1,
+        rules=rules,
+        next_index=len(rules) + 1,
+    )
+    save_rules(new_file, target)
+    return new_file

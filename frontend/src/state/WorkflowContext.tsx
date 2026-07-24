@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from "react";
-import type { FilterRow, HeaderReport, RunResult } from "../api/domain";
+import type { ComparisonSection, FilterRow, HeaderReport, RunResult } from "../api/domain";
 
 /**
  * Cross-page workflow state. The server issues a `sessionId` on upload and
@@ -17,6 +17,10 @@ export interface WorkflowState {
   keyColumns: string[];
   /** Optional subset of comparison columns used for group-level statistics. */
   aggregationColumns: string[];
+  /** When true, aggregation columns form an ordered hierarchy shown as an expandable tree. */
+  nestedAggregationEnabled: boolean;
+  /** User-defined comparison sections for attribute comparing configuration. */
+  comparisonSections: ComparisonSection[];
   selectedRuleIndexes: string[];
   /** User acknowledged running against the full set with no filters. */
   confirmFullSet: boolean;
@@ -34,6 +38,8 @@ const initialState: WorkflowState = {
   targetColumns: [],
   keyColumns: [],
   aggregationColumns: [],
+  nestedAggregationEnabled: false,
+  comparisonSections: [],
   selectedRuleIndexes: [],
   confirmFullSet: false,
   result: null,
@@ -46,6 +52,8 @@ type Action =
   | { type: "setComparisonColumns"; columns: string[] }
   | { type: "removeComparisonColumn"; column: string }
   | { type: "setAggregationColumns"; columns: string[] }
+  | { type: "setNestedAggregationEnabled"; enabled: boolean }
+  | { type: "setComparisonSections"; sections: ComparisonSection[] }
   | { type: "setFilters"; filters: FilterRow[] }
   | { type: "setTargetColumns"; columns: string[] }
   | { type: "setKeyColumns"; columns: string[] }
@@ -70,6 +78,9 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         keyColumns: state.keyColumns.filter((c) => colSet.has(c)),
         targetColumns: state.targetColumns.filter((c) => colSet.has(c)),
         aggregationColumns: state.aggregationColumns.filter((c) => colSet.has(c)),
+        comparisonSections: state.comparisonSections
+          .map((s) => ({ ...s, columns: s.columns.filter((c) => colSet.has(c)) }))
+          .filter((s) => s.columns.length > 0),
         filters: state.filters.map((f) =>
           colSet.has(f.column) ? f : { ...f, column: "" },
         ),
@@ -84,6 +95,9 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         keyColumns: state.keyColumns.filter((c) => c !== col),
         targetColumns: state.targetColumns.filter((c) => c !== col),
         aggregationColumns: state.aggregationColumns.filter((c) => c !== col),
+        comparisonSections: state.comparisonSections
+          .map((s) => ({ ...s, columns: s.columns.filter((c) => c !== col) }))
+          .filter((s) => s.columns.length > 0),
         filters: state.filters.map((f) =>
           f.column === col ? { ...f, column: "" } : f,
         ),
@@ -97,6 +111,15 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       return { ...state, keyColumns: action.columns };
     case "setAggregationColumns":
       return { ...state, aggregationColumns: action.columns };
+    case "setNestedAggregationEnabled":
+      return { ...state, nestedAggregationEnabled: action.enabled };
+    case "setComparisonSections":
+      return {
+        ...state,
+        comparisonSections: action.sections.filter(
+          (s) => s.name.trim().length > 0 && s.columns.length > 0,
+        ),
+      };
     case "setSelectedRules":
       return { ...state, selectedRuleIndexes: action.ruleIndexes };
     case "setConfirmFullSet":

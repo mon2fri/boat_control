@@ -6,8 +6,8 @@
   --color-border-light: #1e2737;
   --color-text: #e2e6ed;
   --color-muted: #7e8a9e;
-  --color-accent: #2979ff;
-  --color-accent-hover: #1565c0;
+  --color-accent: #EE3524;
+  --color-accent-hover: #d92e20;
   --color-accent-contrast: #ffffff;
   --color-danger: #ef4444;
   --color-warn: #f59e0b;
@@ -28,15 +28,15 @@
 }
 
 :root[data-theme="light"] {
-  --color-bg: #f6f8fb;
-  --color-surface: #ffffff;
-  --color-surface-raised: #eef2f7;
-  --color-border: #cbd5e1;
-  --color-border-light: #e2e8f0;
-  --color-text: #172033;
-  --color-muted: #536174;
-  --color-accent: #1769e0;
-  --color-accent-hover: #0f55bb;
+  --color-bg: #FFFFFF;
+  --color-surface: #FFFFFF;
+  --color-surface-raised: #F5F5F5;
+  --color-border: #9FA1A4;
+  --color-border-light: #E0E0E0;
+  --color-text: #231F20;
+  --color-muted: #666666;
+  --color-accent: #EE3524;
+  --color-accent-hover: #d92e20;
   --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.1);
   --shadow-elevated: 0 4px 12px rgba(15, 23, 42, 0.16);
 }
@@ -996,6 +996,159 @@ table.data td {
   color: #a7f3d0;
 }
 
+/* --- Nested aggregation tree ------------------------------------------------ */
+
+.nested-agg-panel {
+  margin-top: var(--space);
+}
+
+.nested-agg-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nested-agg-item {
+  position: relative;
+  padding: 2px 0;
+}
+
+.nested-agg-children {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 calc(var(--space) * 3);
+}
+
+.nested-agg-group.depth-0 {
+  padding-left: 0;
+}
+
+.nested-agg-children > .nested-agg-item::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--space) * -1.5);
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-border);
+}
+
+.nested-agg-children > .nested-agg-item:last-child::before {
+  bottom: 50%;
+}
+
+.nested-agg-children > .nested-agg-item::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--space) * -1.5);
+  top: 50%;
+  width: calc(var(--space) * 1.5);
+  height: 1px;
+  background: var(--color-border);
+}
+
+.nested-agg-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space);
+  min-height: 36px;
+  min-width: 36px;
+  padding: 4px var(--space);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  text-align: left;
+  word-break: break-word;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.nested-agg-toggle:hover {
+  background: var(--color-surface-raised);
+}
+
+.nested-agg-toggle:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(41, 121, 255, 0.2);
+}
+
+.nested-agg-toggle-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+  font-size: 0.7rem;
+  color: var(--color-muted);
+  user-select: none;
+}
+
+.nested-agg-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.nested-agg-count {
+  color: var(--color-muted);
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.nested-agg-record > .nested-agg-toggle {
+  width: 100%;
+}
+
+.nested-agg-record-detail {
+  padding: var(--space) 0 var(--space) calc(var(--space) * 3);
+}
+
+.nested-agg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.nested-agg-table th,
+.nested-agg-table td {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border-light);
+  text-align: left;
+  vertical-align: top;
+}
+
+.nested-agg-table th {
+  background: var(--color-surface-raised);
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.nested-agg-table td {
+  background: var(--color-surface);
+  overflow-wrap: anywhere;
+}
+
+.nested-agg-record-detail {
+  overflow-x: auto;
+}
+
+@media (max-width: 600px) {
+  .nested-agg-children {
+    padding-left: calc(var(--space) * 2);
+  }
+
+  .nested-agg-record-detail {
+    padding-left: calc(var(--space) * 2);
+  }
+}
+
 .report-name {
   display: inline-flex;
   align-items: center;
@@ -1096,6 +1249,35 @@ table.data td {
   display: inline-flex;
   align-items: center;
   gap: 2px;
+}
+
+/* Screen-reader only — visually hidden but announced by assistive tech */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Drag handle for sortable aggregation columns */
+.drag-handle {
+  cursor: grab;
+  font-size: 1.1em;
+  line-height: 1;
+  color: var(--color-text-secondary, #666);
+}
+.drag-handle:active {
+  cursor: grabbing;
+}
+.drag-handle:focus-visible {
+  outline: 2px solid var(--color-focus, #1976d2);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .comparison-columns {

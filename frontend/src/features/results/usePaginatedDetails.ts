@@ -23,6 +23,7 @@ export function usePaginatedDetails(
   runId: string,
   kind: "changed" | "violation",
   filters: Record<string, string[]> = {},
+  sectionColumns?: string[],
 ) {
   const [pages, setPages] = useState<PageResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +36,8 @@ export function usePaginatedDetails(
   const abortRef = useRef<AbortController | null>(null);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
+  const sectionColumnsRef = useRef(sectionColumns);
+  sectionColumnsRef.current = sectionColumns;
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -65,6 +68,7 @@ export function usePaginatedDetails(
       limit: PAGE_SIZE,
       signal: controller.signal,
       filters,
+      sectionColumns: sectionColumnsRef.current,
     })
       .then((page) => {
         totalRef.current = page.total;
@@ -80,7 +84,7 @@ export function usePaginatedDetails(
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [runId, kind, reset, JSON.stringify(filters)]);
+  }, [runId, kind, reset, JSON.stringify(filters), sectionColumns ? sectionColumns.join("|") : ""]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadMore = useCallback(() => {
@@ -95,6 +99,7 @@ export function usePaginatedDetails(
       limit: PAGE_SIZE,
       signal: controller.signal,
       filters: filtersRef.current,
+      sectionColumns: sectionColumnsRef.current,
     })
       .then((page) => {
         totalRef.current = page.total;

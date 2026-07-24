@@ -9,6 +9,8 @@ const baseState: WorkflowState = {
   targetColumns: [],
   keyColumns: [],
   aggregationColumns: [],
+  nestedAggregationEnabled: false,
+  comparisonSections: [],
   selectedRuleIndexes: [],
   confirmFullSet: false,
   result: null,

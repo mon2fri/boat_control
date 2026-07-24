@@ -164,6 +164,11 @@ export function ConfigManager({
                 : update.error?.message ?? "Save failed."}
             </p>
           )}
+          {del.isError && (
+            <p className="alert alert--error" style={{ marginTop: "var(--space)" }}>
+              {del.error?.message ?? "Delete failed."}
+            </p>
+          )}
         </>
       )}
 
@@ -235,6 +240,9 @@ export function ConfigManager({
             del.mutate(pendingDeleteName, {
               onSuccess: () => {
                 setSelectedName("");
+                setPendingDeleteName(null);
+              },
+              onError: () => {
                 setPendingDeleteName(null);
               },
             });

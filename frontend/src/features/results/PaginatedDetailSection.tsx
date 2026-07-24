@@ -9,14 +9,20 @@ interface Props {
   caption: string;
   keyColumnNames?: string[];
   exportRows?: DetailRow[];
+  /**
+   * When set, the paginated detail fetch is filtered to these columns so each
+   * named section's table only shows its own rows. When omitted, every
+   * change/violation row for the run is fetched.
+   */
+  sectionColumns?: string[];
 }
 
-export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames, exportRows }: Props) {
+export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames, exportRows, sectionColumns }: Props) {
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const {
     rows, total, hasMore, loading, loadingMore, error, isEmpty, loadMore,
     availableFilters,
-  } = usePaginatedDetails(runId, kind, filters);
+  } = usePaginatedDetails(runId, kind, filters, sectionColumns);
 
   const handleFilterChange = useCallback((key: string, values: string[]) => {
     setFilters((prev) => {
@@ -53,6 +59,17 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames, e
     [availableFilters],
   );
 
+  // When sectionColumns is supplied, also restrict the column-filter chips to
+  // that section. After the section filter is applied, every remaining row's
+  // column is one of these, so unrelated columns would never be selectable.
+  const filteredExportRows = useMemo(() => {
+    if (!exportRows) return rows;
+    const sliced = filterDetailRows(exportRows, filters);
+    if (!sectionColumns || sectionColumns.length === 0) return sliced;
+    const set = new Set(sectionColumns);
+    return sliced.filter((row) => set.has(row.column));
+  }, [exportRows, filters, rows, sectionColumns]);
+
   if (loading && rows.length === 0) {
     return (
       <p role="status" aria-live="polite" className="busy-row">
@@ -75,7 +92,7 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames, e
     <>
       <DetailTable
         rows={rows}
-        exportRows={exportRows ? filterDetailRows(exportRows, filters) : rows}
+        exportRows={filteredExportRows}
         total={total}
         hasMore={hasMore}
         onReachEnd={loadMore}

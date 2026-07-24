@@ -1,6 +1,8 @@
 from pathlib import Path
 
 import pytest
+from django.test.utils import override_settings
+from rest_framework.test import APIClient
 from apps.rules.services import (
     GroupingBranch,
     GroupingLeaf,
@@ -12,6 +14,7 @@ from apps.rules.services import (
     create_rule,
     delete_rule,
     load_rules,
+    replace_rules,
     save_rules,
     update_rule,
     validate_rule,
@@ -21,6 +24,16 @@ from apps.rules.services import (
 @pytest.fixture
 def rules_path(tmp_path: Path) -> Path:
     return tmp_path / "rules.yaml"
+
+
+@pytest.fixture
+def api_client() -> APIClient:
+    return APIClient()
+
+
+@pytest.fixture
+def tmp_rules_dir(tmp_path: Path) -> Path:
+    return tmp_path / "rules_configs"
 
 
 @pytest.fixture
@@ -391,3 +404,199 @@ class TestMultiValueConditions:
         condition = load_rules(rules_path).rules[0].conditions[0]
         assert condition.filter_values == ("-2.5", "10")
         assert condition.filter_value == "-2.5"
+
+
+def _make_draft(name: str = "Test Rule") -> dict:
+    return {
+        "name": name,
+        "logic": {
+            "format": "value_vs_column",
+            "column_name": "status",
+            "operator": "eq",
+            "target_value": "active",
+        },
+    }
+
+
+class TestReplaceRules:
+    def test_replace_empty_collection(self, rules_path: Path) -> None:
+        result = replace_rules([], rules_path)
+        assert result.rules == []
+        assert result.next_index == 1
+
+    def test_replace_assigns_ids_from_r001(self, rules_path: Path) -> None:
+        drafts = [_make_draft("First"), _make_draft("Second"), _make_draft("Third")]
+        result = replace_rules(drafts, rules_path)
+        assert [r.rule_id for r in result.rules] == ["R001", "R002", "R003"]
+        assert result.next_index == 4
+
+    def test_replace_clears_existing_rules(self, rules_path: Path) -> None:
+        existing = RulesFile(version=1, rules=[], next_index=5)
+        new_file, _ = create_rule(existing, _make_draft("Old"))
+        save_rules(new_file, rules_path)
+
+        loaded_before = load_rules(rules_path)
+        assert len(loaded_before.rules) == 1
+        assert loaded_before.next_index == 6
+
+        result = replace_rules([_make_draft("New")], rules_path)
+        assert len(result.rules) == 1
+        assert result.rules[0].rule_id == "R001"
+        assert result.rules[0].name == "New"
+
+        loaded_after = load_rules(rules_path)
+        assert len(loaded_after.rules) == 1
+        assert loaded_after.rules[0].rule_id == "R001"
+        assert loaded_after.next_index == 2
+
+    def test_preserves_rule_order(self, rules_path: Path) -> None:
+        drafts = [
+            _make_draft("Alpha"),
+            _make_draft("Beta"),
+            _make_draft("Gamma"),
+        ]
+        result = replace_rules(drafts, rules_path)
+        assert [r.name for r in result.rules] == ["Alpha", "Beta", "Gamma"]
+
+    def test_invalid_draft_raises_and_preserves_existing(
+        self, rules_path: Path
+    ) -> None:
+        existing = RulesFile(version=1, rules=[], next_index=1)
+        new_file, _ = create_rule(existing, _make_draft("Kept"))
+        save_rules(new_file, rules_path)
+
+        with pytest.raises(ValueError, match="invalid"):
+            replace_rules([_make_draft("Good"), {"name": ""}], rules_path)
+
+        loaded = load_rules(rules_path)
+        assert len(loaded.rules) == 1
+        assert loaded.rules[0].name == "Kept"
+
+    def test_empty_config_leaves_next_index_at_1(self, rules_path: Path) -> None:
+        existing = RulesFile(version=1, rules=[], next_index=10)
+        new_file, _ = create_rule(existing, _make_draft("Old"))
+        save_rules(new_file, rules_path)
+
+        result = replace_rules([], rules_path)
+        assert result.next_index == 1
+
+        loaded = load_rules(rules_path)
+        assert loaded.next_index == 1
+        assert loaded.rules == []
+
+    def test_repeated_loading_starts_from_r001(self, rules_path: Path) -> None:
+        drafts = [_make_draft("A"), _make_draft("B")]
+        result1 = replace_rules(drafts, rules_path)
+        assert result1.rules[0].rule_id == "R001"
+        assert result1.rules[1].rule_id == "R002"
+
+        result2 = replace_rules(drafts, rules_path)
+        assert result2.rules[0].rule_id == "R001"
+        assert result2.rules[1].rule_id == "R002"
+
+    def test_next_manual_create_continues_after_replace(
+        self, rules_path: Path
+    ) -> None:
+        drafts = [_make_draft("A"), _make_draft("B"), _make_draft("C")]
+        replace_rules(drafts, rules_path)
+
+        loaded = load_rules(rules_path)
+        assert loaded.next_index == 4
+
+        new_file, rule = create_rule(loaded, _make_draft("D"))
+        assert rule.rule_id == "R004"
+
+
+class TestReplaceRulesApi:
+    def test_replace_via_api(
+        self, api_client: APIClient, tmp_rules_dir: Path
+    ) -> None:
+        from django.test.utils import override_settings
+
+        with override_settings(RULES_FILE=str(tmp_rules_dir / "rules.yaml")):
+            resp = api_client.post(
+                "/api/rules/replace/",
+                {
+                    "rules": [
+                        {
+                            "name": "First",
+                            "logic": {
+                                "format": "value_vs_column",
+                                "column_name": "status",
+                                "operator": "eq",
+                                "target_value": "active",
+                            },
+                        },
+                        {
+                            "name": "Second",
+                            "logic": {
+                                "format": "value_vs_column",
+                                "column_name": "score",
+                                "operator": "gt",
+                                "target_value": "100",
+                            },
+                        },
+                    ]
+                },
+                format="json",
+            )
+            assert resp.status_code == 200, resp.content
+            data = resp.json()
+            assert data["rule_count"] == 2
+            assert data["next_index"] == 3
+
+            list_resp = api_client.get("/api/rules/")
+            rules = list_resp.json()["rules"]
+            assert len(rules) == 2
+            assert rules[0]["rule_id"] == "R001"
+            assert rules[0]["name"] == "First"
+            assert rules[1]["rule_id"] == "R002"
+            assert rules[1]["name"] == "Second"
+
+    def test_replace_with_invalid_draft_returns_400(
+        self, api_client: APIClient, tmp_rules_dir: Path
+    ) -> None:
+        from django.test.utils import override_settings
+
+        with override_settings(RULES_FILE=str(tmp_rules_dir / "rules.yaml")):
+            resp = api_client.post(
+                "/api/rules/replace/",
+                {"rules": [{"name": ""}]},
+                format="json",
+            )
+            assert resp.status_code == 400
+
+    def test_replace_empty_list_clears_rules(
+        self, api_client: APIClient, tmp_rules_dir: Path
+    ) -> None:
+        from django.test.utils import override_settings
+
+        with override_settings(RULES_FILE=str(tmp_rules_dir / "rules.yaml")):
+            api_client.post(
+                "/api/rules/replace/",
+                {
+                    "rules": [
+                        {
+                            "name": "To be cleared",
+                            "logic": {
+                                "format": "value_vs_column",
+                                "column_name": "x",
+                                "operator": "eq",
+                                "target_value": "y",
+                            },
+                        }
+                    ]
+                },
+                format="json",
+            )
+
+            resp = api_client.post(
+                "/api/rules/replace/",
+                {"rules": []},
+                format="json",
+            )
+            assert resp.status_code == 200
+            assert resp.json()["rule_count"] == 0
+
+            list_resp = api_client.get("/api/rules/")
+            assert list_resp.json()["rules"] == []

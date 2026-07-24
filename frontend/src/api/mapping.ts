@@ -5,6 +5,7 @@
  */
 import type {
   AppSettings,
+  ComparisonSection,
   Condition,
   DetailRow,
   Family,
@@ -291,6 +292,8 @@ export function mapRunRequestToWire(request: {
   targetColumns: string[];
   keyColumns: string[];
   aggregationColumns: string[];
+  nestedAggregationEnabled?: boolean;
+  comparisonSections?: ComparisonSection[] | undefined;
   ruleIndexes: string[];
 }): WireRunRequest {
   return {
@@ -303,6 +306,10 @@ export function mapRunRequestToWire(request: {
     // from getting there by requiring at least one key column.
     key_columns: [...request.keyColumns],
     aggregation_columns: request.aggregationColumns,
+    nested_aggregation_enabled: request.nestedAggregationEnabled === true,
+    comparison_sections: request.comparisonSections && request.comparisonSections.length > 0
+      ? request.comparisonSections.map((s) => ({ id: s.id, name: s.name, columns: [...s.columns] }))
+      : undefined,
     filters: request.filters.filter((f) => f.column && f.values.length > 0).map(mapFilterRowToWire),
     // Always serialize `rule_ids` as an array so the backend can distinguish
     // an explicit empty selection (zero rules) from an omitted/default-all
@@ -316,6 +323,13 @@ function displayScalar(value: WireScalar): string | null {
   return value === null ? null : String(value);
 }
 
+function mapGroupingValues(values: Record<string, WireScalar> | undefined): Record<string, string | null> | undefined {
+  if (!values || Object.keys(values).length === 0) return undefined;
+  return Object.fromEntries(
+    Object.entries(values).map(([k, v]) => [k, displayScalar(v)]),
+  );
+}
+
 function rowKeyOf(keyColumns: Record<string, WireScalar>, index: number): string {
   const values = Object.values(keyColumns).map((value) => displayScalar(value) ?? "∅");
   return values.length > 0 ? values.join("/") : `#${index}`;
@@ -326,6 +340,7 @@ export function mapAttributeChange(
   rowKey: string,
   keyColumns: Record<string, WireScalar>,
   index: number,
+  aggregationValues?: Record<string, string | null>,
 ): DetailRow {
   return {
     rowKey: `${rowKey}#${change.column}#${index}`,
@@ -333,11 +348,15 @@ export function mapAttributeChange(
     column: change.column,
     file1Value: displayScalar(change.file_a_value),
     file2Value: displayScalar(change.file_b_value),
+    ...(aggregationValues ? { aggregationValues } : {}),
     kind: "changed",
   };
 }
 
-export function mapViolation(violation: WireViolation, index: number): DetailRow {
+export function mapViolation(
+  violation: WireViolation,
+  index: number,
+): DetailRow {
   const column = violation.violating_column ?? violation.rule_id;
   const violatingValue = violation.violating_value !== undefined
     ? displayScalar(violation.violating_value)
@@ -345,6 +364,7 @@ export function mapViolation(violation: WireViolation, index: number): DetailRow
   const comparisonValue = violation.comparison_value !== undefined
     ? displayScalar(violation.comparison_value)
     : null;
+  const aggregationValues = mapGroupingValues(violation.grouping_values);
   return {
     rowKey: `${rowKeyOf(violation.key_columns, violation.row_index)}#${index}`,
     keyColumns: Object.fromEntries(Object.entries(violation.key_columns).map(([k, v]) => [k, displayScalar(v)])),
@@ -363,6 +383,7 @@ export function mapViolation(violation: WireViolation, index: number): DetailRow
           ),
         }
       : {}),
+    ...(aggregationValues ? { aggregationValues } : {}),
   };
 }
 
@@ -419,8 +440,9 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
   let attrIndex = 0;
   for (const detail of result.comparison.row_details) {
     const rk = rowKeyOf(detail.key_columns, detail.row_index);
+    const aggVals = mapGroupingValues(detail.grouping_values);
     for (const change of detail.attribute_changes) {
-      changeDetails.push(mapAttributeChange(change, rk, detail.key_columns, attrIndex++));
+      changeDetails.push(mapAttributeChange(change, rk, detail.key_columns, attrIndex++, aggVals));
     }
   }
 
@@ -441,6 +463,18 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       : {}),
     ...(result.filters_applied
       ? { filtersApplied: result.filters_applied.map(mapWireFilterRow) }
+      : {}),
+    ...(result.nested_aggregation_enabled !== undefined
+      ? { nestedAggregationEnabled: result.nested_aggregation_enabled }
+      : {}),
+    ...(result.comparison_sections
+      ? { comparisonSections: result.comparison_sections.map((s) => ({ id: s.id, name: s.name, columns: [...s.columns] })) }
+      : {}),
+    ...(result.aggregation_columns && result.aggregation_columns.length > 0
+      ? { aggregationColumns: [...result.aggregation_columns] }
+      : {}),
+    ...(result.key_columns && result.key_columns.length > 0
+      ? { keyColumns: [...result.key_columns] }
       : {}),
   };
 }
