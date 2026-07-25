@@ -87,6 +87,10 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
     // Even an empty drafts array is sent to clear all rules and reset next_index.
     replaceRulesApi(drafts)
       .then(() => {
+        // Reset the first-load guard so the auto-select-all effect below
+        // re-runs when the refreshed rule catalog arrives, picking up every
+        // newly-applied rule's checkbox automatically.
+        initialized.current = false;
         void queryClient.invalidateQueries({ queryKey: RULES_KEY });
       })
       .catch((err: unknown) => {
