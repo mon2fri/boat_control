@@ -240,6 +240,8 @@ const TOC_FAB_HTML = `
  *   container and updates `aria-expanded` / chevron.
  * - Click on `[data-agg-action="expand-all|collapse-all"]` bulk-toggles every
  *   toggle in the panel.
+ * - Detail-table filter buttons open their cloned option lists; search,
+ *   checkbox, and clear interactions filter the standalone table rows.
  * - Hover or focus on `[data-export-toc-trigger]` reveals the TOC popup;
  *   leaving both the trigger and the popup hides it again. The popup's own
  *   scrollable list is populated from the cloned DOM at load time.
@@ -276,6 +278,135 @@ const EXPORT_INTERACTIVE_JS = `
     var toggles = document.querySelectorAll('[data-agg-toggle]');
     for (var i = 0; i < toggles.length; i++) sync(toggles[i], expand);
   });
+
+  // --- Detail-table column filters ---
+  function filterHeaderOf(node) {
+    return node && node.closest ? node.closest('.filterable-th') : null;
+  }
+  function checkedValues(header) {
+    var selected = [];
+    var checks = header.querySelectorAll('.th-filter-option input[type="checkbox"]');
+    for (var i = 0; i < checks.length; i++) {
+      if (checks[i].checked) selected.push(checks[i].value);
+    }
+    return selected;
+  }
+  function syncFilterHeader(header) {
+    var selected = checkedValues(header);
+    var button = header.querySelector('.th-filter-btn');
+    var count = header.querySelector('.th-filter-count');
+    var clear = header.querySelector('.th-filter-clear');
+    if (button) button.classList.toggle('th-filter-btn--active', selected.length > 0);
+    if (!count && selected.length > 0 && button) {
+      count = document.createElement('span');
+      count.className = 'th-filter-count';
+      button.appendChild(count);
+    }
+    if (count) {
+      count.textContent = String(selected.length);
+      count.hidden = selected.length === 0;
+    }
+    if (clear) clear.hidden = selected.length === 0;
+  }
+  function applyDetailFilters(grid) {
+    var headers = grid.querySelectorAll('.detail-grid-header .filterable-th');
+    var active = [];
+    for (var i = 0; i < headers.length; i++) {
+      var values = checkedValues(headers[i]);
+      if (values.length === 0) continue;
+      var headerRow = headers[i].parentElement;
+      var headerCells = headerRow ? headerRow.children : [];
+      var columnIndex = Array.prototype.indexOf.call(headerCells, headers[i]);
+      active.push({ index: columnIndex, values: values });
+    }
+    var rows = grid.querySelectorAll('.detail-grid-body > .detail-grid-row');
+    for (var j = 0; j < rows.length; j++) {
+      var visible = true;
+      for (var k = 0; k < active.length; k++) {
+        var cell = rows[j].children[active[k].index];
+        var value = cell ? cell.textContent.trim() : '';
+        if (active[k].values.indexOf(value) === -1) {
+          visible = false;
+          break;
+        }
+      }
+      rows[j].hidden = !visible;
+    }
+  }
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target || !target.closest) return;
+    var filterButton = target.closest('.th-filter-btn');
+    if (filterButton) {
+      var header = filterHeaderOf(filterButton);
+      var dropdown = header && header.querySelector('.th-filter-dropdown');
+      if (!dropdown) return;
+      var opening = dropdown.hidden;
+      var allDropdowns = document.querySelectorAll('.th-filter-dropdown');
+      for (var i = 0; i < allDropdowns.length; i++) allDropdowns[i].hidden = true;
+      var allButtons = document.querySelectorAll('.th-filter-btn');
+      for (var j = 0; j < allButtons.length; j++) {
+        allButtons[j].setAttribute('aria-expanded', 'false');
+      }
+      dropdown.hidden = !opening;
+      filterButton.setAttribute('aria-expanded', opening ? 'true' : 'false');
+      if (opening) {
+        var search = dropdown.querySelector('.th-filter-search');
+        if (search) search.focus();
+      }
+      return;
+    }
+    var clear = target.closest('.th-filter-clear');
+    if (clear) {
+      var clearHeader = filterHeaderOf(clear);
+      if (!clearHeader) return;
+      var checks = clearHeader.querySelectorAll('input[type="checkbox"]');
+      for (var k = 0; k < checks.length; k++) checks[k].checked = false;
+      var searchInput = clearHeader.querySelector('.th-filter-search');
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      syncFilterHeader(clearHeader);
+      var clearGrid = clearHeader.closest('.detail-grid');
+      if (clearGrid) applyDetailFilters(clearGrid);
+    }
+  });
+  document.addEventListener('change', function (event) {
+    var target = event.target;
+    if (!target || !target.matches ||
+        !target.matches('.th-filter-option input[type="checkbox"]')) return;
+    var header = filterHeaderOf(target);
+    if (!header) return;
+    syncFilterHeader(header);
+    var grid = header.closest('.detail-grid');
+    if (grid) applyDetailFilters(grid);
+  });
+  document.addEventListener('input', function (event) {
+    var target = event.target;
+    if (!target || !target.matches || !target.matches('.th-filter-search')) return;
+    var query = target.value.trim().toLowerCase();
+    var header = filterHeaderOf(target);
+    if (!header) return;
+    var options = header.querySelectorAll('.th-filter-option');
+    var visibleCount = 0;
+    for (var i = 0; i < options.length; i++) {
+      var label = options[i].textContent.trim().toLowerCase();
+      var visible = !query || label.indexOf(query) !== -1;
+      options[i].hidden = !visible;
+      if (visible) visibleCount++;
+    }
+    var empty = header.querySelector('.th-filter-empty');
+    if (empty) empty.hidden = visibleCount !== 0;
+  });
+  var detailGrids = document.querySelectorAll('.detail-grid');
+  for (var detailIndex = 0; detailIndex < detailGrids.length; detailIndex++) {
+    var filterHeaders = detailGrids[detailIndex].querySelectorAll('.filterable-th');
+    for (var headerIndex = 0; headerIndex < filterHeaders.length; headerIndex++) {
+      syncFilterHeader(filterHeaders[headerIndex]);
+    }
+    applyDetailFilters(detailGrids[detailIndex]);
+  }
 
   // --- Floating Table of Contents ---
   var fab = document.querySelector('[data-export-toc-fab]');

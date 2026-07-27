@@ -150,5 +150,29 @@ describe("critical user journey: upload → prepare → rules → run → result
     expect(document.querySelector(".result-content.results-layer-content")).toBeInTheDocument();
     expect(document.querySelector(".results-header.results-layer-header")).toBeInTheDocument();
     expect(document.querySelector(".results-actions.results-layer-actions")).toBeInTheDocument();
-  });
+
+    const prepareCallsBeforeReturn = vi.mocked(fetch).mock.calls.filter(
+      ([url]) => String(url).includes("/files/filters/prepare/"),
+    ).length;
+    fireEvent.click(screen.getByRole("button", { name: "Edit filters or rules" }));
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: /Compare & validate/ })).toBeInTheDocument(),
+    );
+    const prepareCallsAfterReturn = vi.mocked(fetch).mock.calls.filter(
+      ([url]) => String(url).includes("/files/filters/prepare/"),
+    ).length;
+    expect(prepareCallsAfterReturn).toBe(prepareCallsBeforeReturn);
+
+    expect(screen.getByText(/Using cached load results/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Don't use cache and reload" }));
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls.filter(
+        ([url]) => String(url).includes("/files/filters/prepare/"),
+      );
+      expect(calls).toHaveLength(prepareCallsBeforeReturn + 1);
+    });
+    await waitFor(() =>
+      expect(screen.queryByText(/Using cached load results/)).not.toBeInTheDocument(),
+    );
+  }, 10_000);
 });

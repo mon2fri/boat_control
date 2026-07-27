@@ -16,6 +16,38 @@ async function buildExport(root: HTMLElement, reportName: string): Promise<strin
 }
 
 describe("exportRenderedHtml — Table of Contents FAB", () => {
+  it("embeds standalone detail-table column filtering interactions", async () => {
+    const root = document.createElement("section");
+    root.innerHTML = `
+      <div class="detail-grid" role="table">
+        <div class="detail-grid-header"><div class="detail-grid-row">
+          <div class="filterable-th">
+            <span>Status</span>
+            <button class="th-filter-btn" aria-expanded="false">Filter</button>
+            <div class="th-filter-dropdown" hidden>
+              <input class="th-filter-search" />
+              <div class="th-filter-options">
+                <div class="th-filter-empty" hidden>No matches</div>
+                <label class="th-filter-option"><input type="checkbox" value="active" />active</label>
+              </div>
+              <button class="th-filter-clear" hidden>Clear</button>
+            </div>
+          </div>
+        </div></div>
+        <div class="detail-grid-body">
+          <div class="detail-grid-row"><div role="cell">active</div></div>
+        </div>
+      </div>`;
+
+    const html = await buildExport(root, "filterable-report");
+
+    expect(html).toContain("applyDetailFilters");
+    expect(html).toContain("syncFilterHeader");
+    expect(html).toContain("th-filter-option");
+    expect(html).toContain("th-filter-search");
+    expect(html).toContain("th-filter-clear");
+  });
+
   it("embeds the FAB markup and the hover script in the exported HTML", async () => {
     document.documentElement.dataset.theme = "light";
     const root = document.createElement("section");

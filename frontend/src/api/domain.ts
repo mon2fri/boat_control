@@ -32,6 +32,14 @@ export interface ColumnValue {
   starred: boolean;
 }
 
+/** Expensive CSV-derived data loaded for page two. */
+export interface PrepareResult {
+  columnValues: Record<string, ColumnValue[]>;
+  totalRowsA: number;
+  totalRowsB: number;
+  requiresConfirmation: boolean;
+}
+
 export interface FilterRow {
   id: string;
   column: string;
