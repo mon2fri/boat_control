@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mapWorkflowToRowsColumnsConfig, resolveRowsColumnsConfig } from "./configContent";
-import type { Family } from "./domain";
+import {
+  mapRulesToConfigContent,
+  mapWorkflowToRowsColumnsConfig,
+  resolveRowsColumnsConfig,
+  resolveRulesConfig,
+} from "./configContent";
+import type { Family, Rule } from "./domain";
 
 const families: Family[] = [
   {
@@ -165,5 +170,130 @@ describe("ordered-list family compression round-trip", () => {
     expect(config.comparisonColumns).toEqual([
       { kind: "column_family", name: "Name Family" },
     ]);
+  });
+});
+
+describe("rules config grouping-tree round-trip", () => {
+  it("normalizes client condition IDs when saving and restores valid IDs when loading", () => {
+    const rule: Rule = {
+      index: "R001",
+      name: "Grouped",
+      conditions: [
+        { id: "condition-alpha", column: "name", operator: "equals", values: ["A"] },
+        { id: "condition-beta", column: "score", operator: "greater_than", values: ["10"] },
+      ],
+      conditionJoin: "per_grouping",
+      conditionGrouping: null,
+      groupTree: {
+        kind: "or",
+        children: [
+          { kind: "leaf", conditionId: "condition-alpha" },
+          { kind: "leaf", conditionId: "condition-beta" },
+        ],
+      },
+      logic: {
+        id: "l0",
+        format: "value",
+        column: "status",
+        operator: "equals",
+        target: "active",
+        values: ["active"],
+      },
+    };
+
+    const config = mapRulesToConfigContent([rule], []);
+    expect(config[0]?.grouping_tree).toEqual({
+      kind: "or",
+      children: [
+        { kind: "leaf", conditionId: "c0" },
+        { kind: "leaf", conditionId: "c1" },
+      ],
+    });
+
+    const { drafts } = resolveRulesConfig(
+      config,
+      [],
+      ["name", "score", "status"],
+    );
+    expect(drafts[0]?.conditions.map((condition) => condition.id)).toEqual(["c0", "c1"]);
+    expect(drafts[0]?.groupTree).toEqual(config[0]?.grouping_tree);
+    expect(drafts[0]?.conditionJoin).toBe("per_grouping");
+  });
+
+  it("expands a grouped column-family condition without omitting generated conditions", () => {
+    const { drafts } = resolveRulesConfig([
+      {
+        name: "Family grouped",
+        conditions: [
+          {
+            column_name: { kind: "column_family", name: "Name Family" },
+            operator: "equals",
+            filter_values: ["A"],
+          },
+          { column_name: "score", operator: "greater_than", filter_values: ["10"] },
+        ],
+        grouping_tree: {
+          kind: "or",
+          children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ],
+        },
+        logic: {
+          format: "value_vs_column",
+          column_name: "status",
+          operator: "equals",
+          target_value: "active",
+        },
+      },
+    ], families, ["name", "status", "score"]);
+
+    expect(drafts[0]?.conditions.map((condition) => condition.id)).toEqual(["c0", "c1", "c2"]);
+    expect(drafts[0]?.groupTree).toEqual({
+      kind: "or",
+      children: [
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ],
+        },
+        { kind: "leaf", conditionId: "c2" },
+      ],
+    });
+  });
+
+  it("loads legacy grouping trees whose leaves contain old client IDs", () => {
+    const { drafts } = resolveRulesConfig([
+      {
+        name: "Legacy grouped",
+        conditions: [
+          { column_name: "name", operator: "equals", filter_values: ["A"] },
+          { column_name: "score", operator: "greater_than", filter_values: ["10"] },
+        ],
+        grouping_tree: {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "old-alpha" },
+            { kind: "leaf", conditionId: "old-beta" },
+          ],
+        },
+        logic: {
+          format: "value_vs_column",
+          column_name: "status",
+          operator: "equals",
+          target_value: "active",
+        },
+      },
+    ], [], ["name", "score", "status"]);
+
+    expect(drafts[0]?.groupTree).toEqual({
+      kind: "and",
+      children: [
+        { kind: "leaf", conditionId: "c0" },
+        { kind: "leaf", conditionId: "c1" },
+      ],
+    });
   });
 });

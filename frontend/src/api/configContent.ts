@@ -432,6 +432,26 @@ export interface ConfigRule {
   hide_comparison?: boolean;
 }
 
+function mapGroupTreeLeaves(
+  node: GroupNode,
+  replacement: (conditionId: string) => GroupNode,
+): GroupNode {
+  if (node.kind === "leaf") return replacement(node.conditionId);
+  return {
+    kind: node.kind,
+    children: node.children.map((child) => mapGroupTreeLeaves(child, replacement)),
+  };
+}
+
+function collectGroupTreeLeafIds(node: GroupNode, ids: string[] = []): string[] {
+  if (node.kind === "leaf") {
+    if (!ids.includes(node.conditionId)) ids.push(node.conditionId);
+    return ids;
+  }
+  node.children.forEach((child) => collectGroupTreeLeafIds(child, ids));
+  return ids;
+}
+
 /** Resolve a single config rule condition to domain Condition values. */
 export function resolveConfigRuleCondition(
   cond: ConfigRuleCondition,
@@ -525,10 +545,17 @@ export function resolveConfigRule(
   const warnings: ConfigLoadWarning[] = [];
 
   const resolvedConditions: Condition[] = [];
+  const conditionIdsByConfigIndex: string[][] = [];
   if (Array.isArray(rule.conditions)) {
     for (const cond of rule.conditions) {
       const { resolved, warnings: w } = resolveConfigRuleCondition(cond, families, availableColumns);
-      resolvedConditions.push(...resolved);
+      const ids: string[] = [];
+      for (const condition of resolved) {
+        condition.id = `c${resolvedConditions.length}`;
+        ids.push(condition.id);
+        resolvedConditions.push(condition);
+      }
+      conditionIdsByConfigIndex.push(ids);
       warnings.push(...w);
     }
   }
@@ -577,7 +604,26 @@ export function resolveConfigRule(
     resolved.conditionJoin = rule.condition_relation as Rule["conditionJoin"];
   }
   if (rule.grouping_tree) {
-    resolved.groupTree = rule.grouping_tree as GroupNode;
+    const savedTree = rule.grouping_tree as GroupNode;
+    const savedLeafIds = collectGroupTreeLeafIds(savedTree);
+    const savedIdToConfigIndex = new Map<string, number>();
+    savedLeafIds.forEach((id, traversalIndex) => {
+      const match = /^c(\d+)$/.exec(id);
+      const index = match ? Number(match[1]) : traversalIndex;
+      savedIdToConfigIndex.set(id, index);
+    });
+    resolved.groupTree = mapGroupTreeLeaves(savedTree, (savedId) => {
+      const configIndex = savedIdToConfigIndex.get(savedId);
+      const ids = configIndex === undefined ? [] : conditionIdsByConfigIndex[configIndex] ?? [];
+      if (ids.length <= 1) {
+        return { kind: "leaf", conditionId: ids[0] ?? savedId };
+      }
+      return {
+        kind: "and",
+        children: ids.map((conditionId) => ({ kind: "leaf", conditionId })),
+      };
+    });
+    resolved.conditionJoin = "per_grouping";
   }
 
   return { resolved, warnings };
@@ -701,7 +747,13 @@ function ruleToConfigRule(rule: Rule, families: Family[]): ConfigRule {
     result.condition_relation = rule.conditionJoin as "and" | "or";
   }
   if (rule.groupTree) {
-    result.grouping_tree = rule.groupTree as any;
+    const conditionIds = new Map(
+      rule.conditions.map((condition, index) => [condition.id, `c${index}`]),
+    );
+    result.grouping_tree = mapGroupTreeLeaves(rule.groupTree, (conditionId) => ({
+      kind: "leaf",
+      conditionId: conditionIds.get(conditionId) ?? conditionId,
+    })) as NonNullable<ConfigRule["grouping_tree"]>;
   }
   return result;
 }

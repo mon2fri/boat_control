@@ -467,8 +467,11 @@ h3 {
 }
 
 .section-hint {
+  font-family: var(--font-sans);
   font-size: 0.95rem;
-  color: var(--color-muted);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--color-text-soft);
   margin: 0 0 calc(var(--space) * 3);
   line-height: 1.55;
   max-width: 60ch;
@@ -485,8 +488,12 @@ h3 {
 }
 
 .card-hint {
-  font-size: 0.8rem;
-  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: var(--color-text-soft);
   margin: 0 0 var(--space);
 }
 
@@ -1115,15 +1122,22 @@ table.data td {
 }
 
 .field-hint {
-  font-size: 0.8rem;
-  color: var(--color-muted);
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+  color: var(--color-text-soft);
+  text-transform: none;
 }
 .field-hint-inline {
-  font-size: 0.7rem;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
   font-weight: 400;
-  color: var(--color-muted);
+  line-height: 1.4;
+  color: var(--color-text-soft);
   text-transform: none;
-  letter-spacing: normal;
+  letter-spacing: 0;
 }
 
 /* ============================================================
