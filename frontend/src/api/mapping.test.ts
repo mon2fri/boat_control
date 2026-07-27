@@ -122,6 +122,24 @@ describe("mapRunRequestToWire", () => {
     ]);
   });
 
+  it("serializes extra display columns for each comparison section", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      ruleIndexes: [],
+      comparisonSections: [
+        { id: "s1", name: "Region", columns: ["region"], extraColumns: ["owner"] },
+      ],
+    });
+    expect(body.comparison_sections).toEqual([
+      {
+        id: "s1",
+        name: "Region",
+        columns: ["region"],
+        extra_columns: ["owner"],
+      },
+    ]);
+  });
+
   it("returns fresh arrays for comparison section columns", () => {
     const sections = [{ id: "s1", name: "Demo", columns: ["x"] }];
     const body = mapRunRequestToWire({

@@ -21,6 +21,7 @@ interface Draft {
   id: string;
   name: string;
   columns: string[];
+  extraColumns: string[];
 }
 
 export function ComparisonSectionEditor({ sections, onChange, availableColumns, families }: Props) {
@@ -74,6 +75,7 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
       id: draft.id,
       name: draft.name.trim(),
       columns: [...draft.columns],
+      ...(draft.extraColumns.length > 0 ? { extraColumns: [...draft.extraColumns] } : {}),
     };
     // Check if this is an existing section being edited or a new one
     const existingIndex = sections.findIndex((s) => s.id === draft.id);
@@ -95,7 +97,7 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
 
   const handleAdd = useCallback(() => {
     const id = generateId();
-    setDraft({ id, name: "", columns: [] });
+    setDraft({ id, name: "", columns: [], extraColumns: [] });
     setValidationErrors([]);
   }, []);
 
@@ -103,7 +105,12 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
     const section = sections.find((s) => s.id === id);
     if (!section) return;
     // Create a local copy for editing
-    setDraft({ id: section.id, name: section.name, columns: [...section.columns] });
+    setDraft({
+      id: section.id,
+      name: section.name,
+      columns: [...section.columns],
+      extraColumns: [...(section.extraColumns ?? [])],
+    });
     setValidationErrors([]);
   }, [sections]);
 
@@ -122,7 +129,7 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
     setValidationErrors([]);
   }, [draft, sections, onChange]);
 
-  const handleDraftChange = useCallback((updates: Partial<Pick<Draft, "name" | "columns">>) => {
+  const handleDraftChange = useCallback((updates: Partial<Pick<Draft, "name" | "columns" | "extraColumns">>) => {
     setDraft((prev) => (prev ? { ...prev, ...updates } : prev));
     setValidationErrors([]);
   }, []);
@@ -180,6 +187,15 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
                       selected={draft.columns}
                       onChange={(cols) => handleDraftChange({ columns: cols })}
                       placeholder="Search columns…"
+                    />
+                  </div>
+                  <div className="field" style={{ marginTop: "var(--space)" }}>
+                    <SearchableMultiSelect
+                      label="Extra columns to display"
+                      options={availableOptions}
+                      selected={draft.extraColumns}
+                      onChange={(extraColumns) => handleDraftChange({ extraColumns })}
+                      placeholder="Search extra columns…"
                     />
                   </div>
                   {validationErrors.length > 0 && (
@@ -264,6 +280,15 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
                   selected={draft.columns}
                   onChange={(cols) => handleDraftChange({ columns: cols })}
                   placeholder="Search columns…"
+                />
+              </div>
+              <div className="field" style={{ marginTop: "var(--space)" }}>
+                <SearchableMultiSelect
+                  label="Extra columns to display"
+                  options={availableOptions}
+                  selected={draft.extraColumns}
+                  onChange={(extraColumns) => handleDraftChange({ extraColumns })}
+                  placeholder="Search extra columns…"
                 />
               </div>
               {validationErrors.length > 0 && (

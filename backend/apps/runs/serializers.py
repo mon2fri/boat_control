@@ -33,6 +33,9 @@ class RowComparisonSerializer(serializers.Serializer):  # type: ignore[misc]
     key_columns = serializers.DictField(child=serializers.JSONField())
     attribute_changes = AttributeChangeSerializer(many=True)
     change_count = serializers.IntegerField()
+    extra_values = serializers.DictField(
+        child=serializers.JSONField(), required=False, default=dict
+    )
 
 
 class ComparisonResultSerializer(serializers.Serializer):  # type: ignore[misc]

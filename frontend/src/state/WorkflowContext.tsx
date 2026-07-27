@@ -79,7 +79,11 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         targetColumns: state.targetColumns.filter((c) => colSet.has(c)),
         aggregationColumns: state.aggregationColumns.filter((c) => colSet.has(c)),
         comparisonSections: state.comparisonSections
-          .map((s) => ({ ...s, columns: s.columns.filter((c) => colSet.has(c)) }))
+          .map((s) => ({
+            ...s,
+            columns: s.columns.filter((c) => colSet.has(c)),
+            extraColumns: (s.extraColumns ?? []).filter((c) => colSet.has(c)),
+          }))
           .filter((s) => s.columns.length > 0),
         filters: state.filters.map((f) =>
           colSet.has(f.column) ? f : { ...f, column: "" },
@@ -96,7 +100,11 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         targetColumns: state.targetColumns.filter((c) => c !== col),
         aggregationColumns: state.aggregationColumns.filter((c) => c !== col),
         comparisonSections: state.comparisonSections
-          .map((s) => ({ ...s, columns: s.columns.filter((c) => c !== col) }))
+          .map((s) => ({
+            ...s,
+            columns: s.columns.filter((c) => c !== col),
+            extraColumns: (s.extraColumns ?? []).filter((c) => c !== col),
+          }))
           .filter((s) => s.columns.length > 0),
         filters: state.filters.map((f) =>
           f.column === col ? { ...f, column: "" } : f,

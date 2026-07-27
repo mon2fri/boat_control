@@ -144,6 +144,20 @@ class TestValidateRows:
         violation = result.violations_by_rule["R001"][0]
         assert violation.extra_values == {"region": "South"}
 
+    def test_attribute_change_includes_selected_section_extra_columns(self) -> None:
+        import polars as pl
+
+        baseline = pl.DataFrame({"id": [1], "status": ["active"], "region": ["North"]})
+        comparison = pl.DataFrame({"id": [1], "status": ["inactive"], "region": ["South"]})
+        result = compare_rows(
+            baseline,
+            comparison,
+            ["status"],
+            ["id"],
+            extra_columns=["region"],
+        )
+        assert result.row_details[0].extra_values == {"region": "South"}
+
     def test_rule_summary_describes_conditions_and_grouping(self, rules_file: Path) -> None:
         from dataclasses import replace
 

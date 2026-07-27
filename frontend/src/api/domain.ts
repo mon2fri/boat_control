@@ -311,6 +311,8 @@ export interface ComparisonSection {
   id: string;
   name: string;
   columns: string[];
+  /** Comparison-file values shown beside this section's changed rows. */
+  extraColumns?: string[];
 }
 
 export interface GroupStatisticsBundle {

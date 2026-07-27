@@ -27,6 +27,7 @@ def _flatten_rows(result: dict, section: str) -> list[dict]:
                         or str(r.get("row_index", "")),
                         "key_columns": key_cols,
                         "grouping_values": grouping_vals,
+                        "extra_values": r.get("extra_values", {}),
                         "column": change["column"],
                         "file_a_value": change.get("file_a_value"),
                         "file_b_value": change.get("file_b_value"),

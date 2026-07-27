@@ -97,7 +97,12 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
             nested_agg_enabled = bool(request.data.get("nested_aggregation_enabled", False))
             if isinstance(comparison_sections, list) and len(comparison_sections) > 0:
                 comparison_sections = [
-                    {"id": s.get("id", ""), "name": s.get("name", ""), "columns": s.get("columns", [])}
+                    {
+                        "id": s.get("id", ""),
+                        "name": s.get("name", ""),
+                        "columns": s.get("columns", []),
+                        "extra_columns": s.get("extra_columns", []),
+                    }
                     for s in comparison_sections
                 ]
             else:

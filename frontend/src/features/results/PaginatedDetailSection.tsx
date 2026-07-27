@@ -15,9 +15,13 @@ interface Props {
    * change/violation row for the run is fetched.
    */
   sectionColumns?: string[];
+  /** Extra comparison-file columns configured for this named section. */
+  extraColumnNames?: string[];
 }
 
-export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames, exportRows, sectionColumns }: Props) {
+export function PaginatedDetailSection({
+  runId, kind, caption, keyColumnNames, exportRows, sectionColumns, extraColumnNames: configuredExtras,
+}: Props) {
   const [filters, setFilters] = useState<Record<string, string[]>>({});
   const {
     rows, total, hasMore, loading, loadingMore, error, isEmpty, loadMore,
@@ -44,19 +48,20 @@ export function PaginatedDetailSection({ runId, kind, caption, keyColumnNames, e
     }
     for (const [key, options] of Object.entries(availableFilters)) {
       if (!key.startsWith("extra_")) continue;
+      if (configuredExtras && !configuredExtras.includes(key.slice(6))) continue;
       filters.push({ key, label: key.slice(6), options });
     }
     if (availableFilters["column"]) {
       filters.push({ key: "column", label: "COLUMN", options: availableFilters["column"] });
     }
     return filters;
-  }, [keyColumnNames, availableFilters]);
+  }, [keyColumnNames, availableFilters, configuredExtras]);
 
   const extraColumnNames = useMemo(
-    () => Object.keys(availableFilters)
+    () => configuredExtras ?? Object.keys(availableFilters)
       .filter((key) => key.startsWith("extra_"))
       .map((key) => key.slice(6)),
-    [availableFilters],
+    [availableFilters, configuredExtras],
   );
 
   // When sectionColumns is supplied, also restrict the column-filter chips to

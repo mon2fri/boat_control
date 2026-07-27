@@ -308,7 +308,14 @@ export function mapRunRequestToWire(request: {
     aggregation_columns: request.aggregationColumns,
     nested_aggregation_enabled: request.nestedAggregationEnabled === true,
     comparison_sections: request.comparisonSections && request.comparisonSections.length > 0
-      ? request.comparisonSections.map((s) => ({ id: s.id, name: s.name, columns: [...s.columns] }))
+      ? request.comparisonSections.map((s) => ({
+          id: s.id,
+          name: s.name,
+          columns: [...s.columns],
+          ...(s.extraColumns && s.extraColumns.length > 0
+            ? { extra_columns: [...s.extraColumns] }
+            : {}),
+        }))
       : undefined,
     filters: request.filters.filter((f) => f.column && f.values.length > 0).map(mapFilterRowToWire),
     // Always serialize `rule_ids` as an array so the backend can distinguish
@@ -341,6 +348,7 @@ export function mapAttributeChange(
   keyColumns: Record<string, WireScalar>,
   index: number,
   aggregationValues?: Record<string, string | null>,
+  extraValues?: Record<string, string | null>,
 ): DetailRow {
   return {
     rowKey: `${rowKey}#${change.column}#${index}`,
@@ -349,6 +357,7 @@ export function mapAttributeChange(
     file1Value: displayScalar(change.file_a_value),
     file2Value: displayScalar(change.file_b_value),
     ...(aggregationValues ? { aggregationValues } : {}),
+    ...(extraValues ? { extraValues } : {}),
     kind: "changed",
   };
 }
@@ -441,8 +450,15 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
   for (const detail of result.comparison.row_details) {
     const rk = rowKeyOf(detail.key_columns, detail.row_index);
     const aggVals = mapGroupingValues(detail.grouping_values);
+    const extraVals = detail.extra_values
+      ? Object.fromEntries(
+          Object.entries(detail.extra_values).map(([key, value]) => [key, displayScalar(value)]),
+        )
+      : undefined;
     for (const change of detail.attribute_changes) {
-      changeDetails.push(mapAttributeChange(change, rk, detail.key_columns, attrIndex++, aggVals));
+      changeDetails.push(
+        mapAttributeChange(change, rk, detail.key_columns, attrIndex++, aggVals, extraVals),
+      );
     }
   }
 
@@ -468,7 +484,14 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       ? { nestedAggregationEnabled: result.nested_aggregation_enabled }
       : {}),
     ...(result.comparison_sections
-      ? { comparisonSections: result.comparison_sections.map((s) => ({ id: s.id, name: s.name, columns: [...s.columns] })) }
+      ? { comparisonSections: result.comparison_sections.map((s) => ({
+          id: s.id,
+          name: s.name,
+          columns: [...s.columns],
+          ...(s.extra_columns && s.extra_columns.length > 0
+            ? { extraColumns: [...s.extra_columns] }
+            : {}),
+        })) }
       : {}),
     ...(result.aggregation_columns && result.aggregation_columns.length > 0
       ? { aggregationColumns: [...result.aggregation_columns] }
