@@ -15,13 +15,15 @@ interface Props {
   onKeyColumnsChange?: (columns: string[]) => void;
   aggregationColumns?: string[];
   onAggregationColumnsChange?: (columns: string[]) => void;
+  aggregationColumnLabels?: Record<string, string>;
+  onAggregationColumnLabelsChange?: (labels: Record<string, string>) => void;
   nestedAggregationEnabled?: boolean;
   onNestedAggregationEnabledChange?: (enabled: boolean) => void;
   /** Rendered on the same row as the "Column preview" heading. */
   configManager?: ReactNode;
 }
 
-export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, aggregationColumns = [], onAggregationColumnsChange = () => {}, nestedAggregationEnabled = false, onNestedAggregationEnabledChange = () => {}, configManager }: Props) {
+export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange, keyColumns = [], onKeyColumnsChange = () => {}, aggregationColumns = [], onAggregationColumnsChange = () => {}, aggregationColumnLabels = {}, onAggregationColumnLabelsChange = () => {}, nestedAggregationEnabled = false, onNestedAggregationEnabledChange = () => {}, configManager }: Props) {
   const { data: families } = useFamilies();
   const [familyEditorOpen, setFamilyEditorOpen] = useState(false);
 
@@ -200,6 +202,8 @@ export function HeaderReview({ report, selectedColumns, onSelectedColumnsChange,
             <AggregationColumnList
               columns={aggregationColumns.filter((c) => selectedColumns.includes(c))}
               onChange={(cols) => onAggregationColumnsChange(cols)}
+              displayNames={aggregationColumnLabels}
+              onDisplayNamesChange={onAggregationColumnLabelsChange}
             />
           )}
         </section>

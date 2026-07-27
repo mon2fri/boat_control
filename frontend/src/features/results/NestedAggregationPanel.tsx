@@ -6,6 +6,7 @@ interface Props {
   details: DetailRow[];
   aggregationColumns: string[];
   keyColumnNames?: string[];
+  aggregationColumnLabels?: Record<string, string>;
 }
 
 /**
@@ -18,7 +19,13 @@ interface Props {
  * controlled by the `hidden` HTML attribute, which gives the browser's
  * native `display: none` for free and matches what the export JS toggles.
  */
-function TreeNode({ node }: { node: NestedAggNode }) {
+function TreeNode({
+  node,
+  columnLabels,
+}: {
+  node: NestedAggNode;
+  columnLabels: Record<string, string>;
+}) {
   const [expanded, setExpanded] = useState(false);
   const [recordExpanded, setRecordExpanded] = useState(false);
 
@@ -76,13 +83,15 @@ function TreeNode({ node }: { node: NestedAggNode }) {
           {expanded ? "▼" : "▶"}
         </span>
         <span className="nested-agg-label">
-          {node.label}{" "}
+          {columnLabels[node.column]?.trim()
+            ? `${columnLabels[node.column]!.trim()}: ${node.label}`
+            : node.label}{" "}
           <span className="nested-agg-count">({node.children.length} sub-node{node.children.length !== 1 ? "s" : ""}, {node.aggregatedCount} change{node.aggregatedCount !== 1 ? "s" : ""})</span>
         </span>
       </button>
       <ul className="nested-agg-children" data-agg-detail="group" hidden={!expanded}>
         {node.children.map((child, i) => (
-          <TreeNode key={i} node={child} />
+          <TreeNode key={i} node={child} columnLabels={columnLabels} />
         ))}
       </ul>
     </li>
@@ -95,7 +104,7 @@ function displayValue(value: string | null): string {
   return value;
 }
 
-export function NestedAggregationPanel({ details, aggregationColumns, keyColumnNames = [] }: Props) {
+export function NestedAggregationPanel({ details, aggregationColumns, keyColumnNames = [], aggregationColumnLabels = {} }: Props) {
   const tree = buildNestedAggregationTree(details, aggregationColumns, keyColumnNames);
 
   if (tree.length === 0) return null;
@@ -104,7 +113,7 @@ export function NestedAggregationPanel({ details, aggregationColumns, keyColumnN
     <div className="nested-agg-panel">
       <ul className="nested-agg-tree">
         {tree.map((node, i) => (
-          <TreeNode key={i} node={node} />
+          <TreeNode key={i} node={node} columnLabels={aggregationColumnLabels} />
         ))}
       </ul>
     </div>

@@ -46,6 +46,7 @@ export interface RowsColumnsConfigContent {
   comparisonColumns?: ColumnRef[];
   keyColumns?: ColumnRef[];
   aggregationColumns?: ColumnRef[];
+  aggregationColumnLabels?: Record<string, string>;
   filters?: ConfigFilterRow[];
   targetColumns?: ColumnRef[];
   /** When true, aggregation columns form an ordered hierarchy shown as a tree. */
@@ -81,6 +82,7 @@ export interface ConfigLoadResult {
   comparisonColumns: string[];
   keyColumns: string[];
   aggregationColumns: string[];
+  aggregationColumnLabels: Record<string, string>;
   filters: FilterRow[];
   targetColumns: string[];
   nestedAggregationEnabled: boolean;
@@ -224,13 +226,14 @@ export function resolveRowsColumnsConfig(
   const comparisonColumns: string[] = [];
   const keyColumns: string[] = [];
   const aggregationColumns: string[] = [];
+  const aggregationColumnLabels: Record<string, string> = {};
   const filters: FilterRow[] = [];
   const targetColumns: string[] = [];
   let nestedAggregationEnabled = false;
   const comparisonSections: ResolvedComparisonSection[] = [];
 
   if (!data) {
-    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], filters: [], targetColumns: [], nestedAggregationEnabled, comparisonSections: [], warnings };
+    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], aggregationColumnLabels, filters: [], targetColumns: [], nestedAggregationEnabled, comparisonSections: [], warnings };
   }
 
   if (Array.isArray(data.comparisonColumns)) {
@@ -254,6 +257,13 @@ export function resolveRowsColumnsConfig(
       const { resolved, warnings: w } = resolveColumnRef(ref, families, availableColumns);
       aggregationColumns.push(...resolved);
       warnings.push(...w);
+    }
+  }
+  if (data.aggregationColumnLabels && typeof data.aggregationColumnLabels === "object") {
+    for (const [column, label] of Object.entries(data.aggregationColumnLabels)) {
+      if (aggregationColumns.includes(column) && typeof label === "string" && label.trim()) {
+        aggregationColumnLabels[column] = label.trim();
+      }
     }
   }
 
@@ -303,7 +313,7 @@ export function resolveRowsColumnsConfig(
     }
   }
 
-  return { comparisonColumns, keyColumns, aggregationColumns, filters, targetColumns, nestedAggregationEnabled, comparisonSections, warnings };
+  return { comparisonColumns, keyColumns, aggregationColumns, aggregationColumnLabels, filters, targetColumns, nestedAggregationEnabled, comparisonSections, warnings };
 }
 
 /**
@@ -349,6 +359,7 @@ export function mapWorkflowToRowsColumnsConfig(
     comparisonColumns: string[];
     keyColumns: string[];
     aggregationColumns: string[];
+    aggregationColumnLabels?: Record<string, string>;
     filters: FilterRow[];
     targetColumns: string[];
     nestedAggregationEnabled?: boolean;
@@ -365,6 +376,11 @@ export function mapWorkflowToRowsColumnsConfig(
     comparisonColumns: columnsToRefs(state.comparisonColumns, families),
     keyColumns: state.keyColumns.map((c) => ({ kind: "column" as const, name: c })),
     aggregationColumns: state.aggregationColumns.map((c) => ({ kind: "column" as const, name: c })),
+    aggregationColumnLabels: Object.fromEntries(
+      Object.entries(state.aggregationColumnLabels ?? {})
+        .filter(([column, label]) => state.aggregationColumns.includes(column) && label.trim())
+        .map(([column, label]) => [column, label.trim()]),
+    ),
     filters: state.filters.map((f) => ({
       column: columnToRef(f.column, families),
       operator: f.operator,

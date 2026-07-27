@@ -3,6 +3,8 @@ import { useCallback, useRef, useState } from "react";
 interface Props {
   columns: string[];
   onChange: (columns: string[]) => void;
+  displayNames?: Record<string, string>;
+  onDisplayNamesChange?: (displayNames: Record<string, string>) => void;
 }
 
 type KeyboardDrag = {
@@ -11,7 +13,12 @@ type KeyboardDrag = {
   currentIndex: number;
 } | null;
 
-export function AggregationColumnList({ columns, onChange }: Props) {
+export function AggregationColumnList({
+  columns,
+  onChange,
+  displayNames = {},
+  onDisplayNamesChange,
+}: Props) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [keyboardDrag, setKeyboardDrag] = useState<KeyboardDrag>(null);
   const [liveMessage, setLiveMessage] = useState("");
@@ -141,6 +148,21 @@ export function AggregationColumnList({ columns, onChange }: Props) {
               </span>
               <span className="chip-index">{displayIndex + 1}.</span>
               <span className="tag">{column}</span>
+              <label className="aggregation-display-name">
+                <span className="visually-hidden">Display column name for {column}</span>
+                <input
+                  value={displayNames[column] ?? ""}
+                  placeholder="Display column name"
+                  aria-label={`Display column name for ${column}`}
+                  onChange={(event) => {
+                    const next = { ...displayNames };
+                    const value = event.target.value;
+                    if (value.trim()) next[column] = value;
+                    else delete next[column];
+                    onDisplayNamesChange?.(next);
+                  }}
+                />
+              </label>
               <button
                 type="button"
                 className="btn chip-remove"

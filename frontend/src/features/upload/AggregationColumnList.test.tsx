@@ -24,6 +24,22 @@ describe("AggregationColumnList", () => {
     expect(onChange).toHaveBeenCalledWith(["region"]);
   });
 
+  it("allows a display name for an aggregation column", () => {
+    const onDisplayNamesChange = vi.fn();
+    render(
+      <AggregationColumnList
+        columns={["status"]}
+        onChange={vi.fn()}
+        displayNames={{ status: "In HR System" }}
+        onDisplayNamesChange={onDisplayNamesChange}
+      />,
+    );
+    const input = screen.getByRole("textbox", { name: "Display column name for status" });
+    expect(input).toHaveValue("In HR System");
+    fireEvent.change(input, { target: { value: "HR Status" } });
+    expect(onDisplayNamesChange).toHaveBeenCalledWith({ status: "HR Status" });
+  });
+
   it("keyboard Space picks up an item", () => {
     render(<AggregationColumnList columns={["status", "region"]} onChange={vi.fn()} />);
     const handle = screen.getAllByRole("button", { name: /Drag to reorder/ })[0]!;

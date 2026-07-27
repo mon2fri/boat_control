@@ -9,6 +9,7 @@ const baseState: WorkflowState = {
   targetColumns: [],
   keyColumns: [],
   aggregationColumns: [],
+  aggregationColumnLabels: {},
   nestedAggregationEnabled: false,
   comparisonSections: [],
   selectedRuleIndexes: [],

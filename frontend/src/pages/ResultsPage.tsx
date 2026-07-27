@@ -33,6 +33,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
     targetColumns: state.targetColumns,
     keyColumns: state.keyColumns,
     aggregationColumns: state.aggregationColumns,
+    aggregationColumnLabels: state.aggregationColumnLabels,
     ruleIndexes: state.selectedRuleIndexes,
     confirmFullSet: state.confirmFullSet,
   };
@@ -82,6 +83,7 @@ export function ResultsPage() {
         dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled ?? false });
         // Always restore aggregation columns (including empty array).
         dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns ?? [] });
+        dispatch({ type: "setAggregationColumnLabels", labels: result.aggregationColumnLabels ?? {} });
         // Always restore key columns (including empty array).
         dispatch({ type: "setKeyColumns", columns: result.keyColumns ?? [] });
       })
@@ -159,6 +161,7 @@ export function ResultsPage() {
           filters={state.filters}
           keyColumns={state.keyColumns}
           aggregationColumns={state.aggregationColumns}
+          aggregationColumnLabels={state.aggregationColumnLabels}
           nestedAggregationEnabled={state.nestedAggregationEnabled}
           commonColumns={state.header?.common ?? []}
           onRunAnother={handleRunAnother}
@@ -177,6 +180,7 @@ interface ResultViewProps {
   filters: FilterRow[];
   keyColumns: string[];
   aggregationColumns: string[];
+  aggregationColumnLabels: Record<string, string>;
   nestedAggregationEnabled: boolean;
   commonColumns: string[];
   onRunAnother: () => void;
@@ -191,6 +195,7 @@ function ResultView({
   filters,
   keyColumns,
   aggregationColumns,
+  aggregationColumnLabels,
   nestedAggregationEnabled,
   commonColumns,
   onRunAnother,
@@ -232,10 +237,11 @@ function ResultView({
           <NestedAggregationPanel
             details={result.changeDetails}
             aggregationColumns={aggregationColumns}
+            aggregationColumnLabels={aggregationColumnLabels}
             keyColumnNames={keyColumns}
           />
         ) : result.groupStatistics?.overall && result.groupStatistics.overall.length > 0 ? (
-          <GroupStatisticsPanel stats={result.groupStatistics.overall} />
+          <GroupStatisticsPanel stats={result.groupStatistics.overall} columnLabels={aggregationColumnLabels} />
         ) : null}
       </section>
 
@@ -268,10 +274,11 @@ function ResultView({
                   <NestedAggregationPanel
                     details={sectionChanges}
                     aggregationColumns={aggregationColumns}
+                    aggregationColumnLabels={aggregationColumnLabels}
                     keyColumnNames={keyColumns}
                   />
                 ) : !nestedAggregationEnabled && sectionGroupStatistics.length > 0 ? (
-                  <GroupStatisticsPanel stats={sectionGroupStatistics} />
+                  <GroupStatisticsPanel stats={sectionGroupStatistics} columnLabels={aggregationColumnLabels} />
                 ) : null}
                 <PaginatedDetailSection
                   runId={result.id}
@@ -301,10 +308,11 @@ function ResultView({
               <NestedAggregationPanel
                 details={result.changeDetails}
                 aggregationColumns={aggregationColumns}
+                aggregationColumnLabels={aggregationColumnLabels}
                 keyColumnNames={keyColumns}
               />
             ) : result.groupStatistics?.attributeChanges && result.groupStatistics.attributeChanges.length > 0 ? (
-              <GroupStatisticsPanel stats={result.groupStatistics.attributeChanges} />
+              <GroupStatisticsPanel stats={result.groupStatistics.attributeChanges} columnLabels={aggregationColumnLabels} />
             ) : null}
             <PaginatedDetailSection
               runId={result.id}
@@ -323,6 +331,7 @@ function ResultView({
             key={rule.ruleIndex}
             result={rule}
             keyColumnNames={keyColumns}
+            aggregationColumnLabels={aggregationColumnLabels}
             {...(ruleGroupStats ? { groupStats: ruleGroupStats } : {})}
           />
         );

@@ -77,3 +77,6 @@ class ExecutionResultSerializer(serializers.Serializer):  # type: ignore[misc]
     target_columns = serializers.ListField(child=serializers.CharField())
     filters_applied = FilterSerializer(many=True)
     aggregation_columns = serializers.ListField(child=serializers.CharField(), default=list)
+    aggregation_column_labels = serializers.DictField(
+        child=serializers.CharField(), required=False, default=dict
+    )

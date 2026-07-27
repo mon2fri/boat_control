@@ -222,6 +222,7 @@ export const wireRunRequestSchema = z.object({
   target_columns: z.array(z.string()).nullable().optional(),
   key_columns: z.array(z.string()).nullable().optional(),
   aggregation_columns: z.array(z.string()).optional(),
+  aggregation_column_labels: z.record(z.string(), z.string()).optional(),
   nested_aggregation_enabled: z.boolean().optional(),
   comparison_sections: z.array(z.object({
     id: z.string(),
@@ -335,6 +336,7 @@ export const wireRunResultSchema = z.object({
   key_columns: z.array(z.string()).optional(),
   filters_applied: z.array(wireFilterRowSchema),
   aggregation_columns: z.array(z.string()).optional(),
+  aggregation_column_labels: z.record(z.string(), z.string()).optional(),
   group_statistics: wireGroupStatisticsBundleSchema.optional(),
   nested_aggregation_enabled: z.boolean().optional(),
   comparison_sections: z.array(z.object({

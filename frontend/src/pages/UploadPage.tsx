@@ -111,6 +111,7 @@ export function UploadPage() {
     dispatch({ type: "setComparisonColumns", columns: result.comparisonColumns });
     dispatch({ type: "setKeyColumns", columns: result.keyColumns });
     dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns });
+    dispatch({ type: "setAggregationColumnLabels", labels: result.aggregationColumnLabels });
     dispatch({ type: "setFilters", filters: result.filters });
     dispatch({ type: "setTargetColumns", columns: result.targetColumns });
     dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
@@ -325,6 +326,8 @@ export function UploadPage() {
             onKeyColumnsChange={(columns) => dispatch({ type: "setKeyColumns", columns })}
             aggregationColumns={state.aggregationColumns}
             onAggregationColumnsChange={(columns) => dispatch({ type: "setAggregationColumns", columns })}
+            aggregationColumnLabels={state.aggregationColumnLabels}
+            onAggregationColumnLabelsChange={(labels) => dispatch({ type: "setAggregationColumnLabels", labels })}
             nestedAggregationEnabled={state.nestedAggregationEnabled}
             onNestedAggregationEnabledChange={(enabled) => dispatch({ type: "setNestedAggregationEnabled", enabled })}
             configManager={
@@ -335,6 +338,7 @@ export function UploadPage() {
                     comparisonColumns: state.comparisonColumns,
                     keyColumns: state.keyColumns,
                     aggregationColumns: state.aggregationColumns,
+                    aggregationColumnLabels: state.aggregationColumnLabels,
                     filters: state.filters,
                     targetColumns: state.targetColumns,
                     nestedAggregationEnabled: state.nestedAggregationEnabled,

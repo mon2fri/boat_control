@@ -50,6 +50,9 @@ export function exportRenderedHtml(
 }
 
 const EXPORT_ONLY_CSS = `
+.th-filter-dropdown[hidden] {
+  display: none !important;
+}
 .export-report-header {
   top: 0 !important;
   margin-left: 0 !important;
@@ -399,6 +402,15 @@ const EXPORT_INTERACTIVE_JS = `
     var empty = header.querySelector('.th-filter-empty');
     if (empty) empty.hidden = visibleCount !== 0;
   });
+  // Exported reports always start with filter menus closed, even if a menu
+  // happened to be open on the live page when the DOM was cloned.
+  var exportedFilterDropdowns = document.querySelectorAll('.th-filter-dropdown');
+  for (var dropdownIndex = 0; dropdownIndex < exportedFilterDropdowns.length; dropdownIndex++) {
+    exportedFilterDropdowns[dropdownIndex].hidden = true;
+    var exportedHeader = exportedFilterDropdowns[dropdownIndex].closest('.filterable-th');
+    var exportedButton = exportedHeader && exportedHeader.querySelector('.th-filter-btn');
+    if (exportedButton) exportedButton.setAttribute('aria-expanded', 'false');
+  }
   var detailGrids = document.querySelectorAll('.detail-grid');
   for (var detailIndex = 0; detailIndex < detailGrids.length; detailIndex++) {
     var filterHeaders = detailGrids[detailIndex].querySelectorAll('.filterable-th');

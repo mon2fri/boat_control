@@ -46,6 +46,9 @@ describe("exportRenderedHtml — Table of Contents FAB", () => {
     expect(html).toContain("th-filter-option");
     expect(html).toContain("th-filter-search");
     expect(html).toContain("th-filter-clear");
+    expect(html).toContain(".th-filter-dropdown[hidden]");
+    expect(html).toContain("exportedFilterDropdowns");
+    expect(html).toContain("exportedFilterDropdowns[dropdownIndex].hidden = true");
   });
 
   it("embeds the FAB markup and the hover script in the exported HTML", async () => {

@@ -354,6 +354,7 @@ export function executeRun(
     targetColumns: string[];
     keyColumns: string[];
     aggregationColumns: string[];
+    aggregationColumnLabels?: Record<string, string>;
     nestedAggregationEnabled?: boolean;
     comparisonSections?: ComparisonSection[] | undefined;
     ruleIndexes: string[];

@@ -12,10 +12,12 @@ export function RuleResultSection({
   result,
   keyColumnNames = [],
   groupStats,
+  aggregationColumnLabels = {},
 }: {
   result: RuleResult;
   keyColumnNames?: string[];
   groupStats?: GroupStat[];
+  aggregationColumnLabels?: Record<string, string>;
 }) {
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({});
 
@@ -105,7 +107,7 @@ export function RuleResultSection({
         </div>
       </div>
       {groupStats && groupStats.length > 0 && (
-        <GroupStatisticsPanel stats={groupStats} />
+        <GroupStatisticsPanel stats={groupStats} columnLabels={aggregationColumnLabels} />
       )}
       <DetailTable
         rows={filteredRows}

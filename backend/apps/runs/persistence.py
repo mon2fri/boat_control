@@ -150,6 +150,7 @@ def save_run(
                 "key_columns": result.key_columns,
                 "filters_applied": result.filters_applied,
                 "aggregation_columns": result.aggregation_columns,
+                "aggregation_column_labels": result.aggregation_column_labels,
                 "nested_aggregation_enabled": result.nested_aggregation_enabled,
                 "comparison_sections": result.comparison_sections,
                 "group_statistics": result.group_statistics,
@@ -243,6 +244,8 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                     result = data.get("result", {})
                     if "aggregation_columns" not in result:
                         result["aggregation_columns"] = result.get("grouping_columns", [])
+                    if "aggregation_column_labels" not in result:
+                        result["aggregation_column_labels"] = {}
                     if "group_statistics" not in result:
                         result["group_statistics"] = None
                     if "filters_applied" not in result:

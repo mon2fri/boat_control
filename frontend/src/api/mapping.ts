@@ -292,6 +292,7 @@ export function mapRunRequestToWire(request: {
   targetColumns: string[];
   keyColumns: string[];
   aggregationColumns: string[];
+  aggregationColumnLabels?: Record<string, string>;
   nestedAggregationEnabled?: boolean;
   comparisonSections?: ComparisonSection[] | undefined;
   ruleIndexes: string[];
@@ -306,6 +307,7 @@ export function mapRunRequestToWire(request: {
     // from getting there by requiring at least one key column.
     key_columns: [...request.keyColumns],
     aggregation_columns: request.aggregationColumns,
+    aggregation_column_labels: request.aggregationColumnLabels ?? {},
     nested_aggregation_enabled: request.nestedAggregationEnabled === true,
     comparison_sections: request.comparisonSections && request.comparisonSections.length > 0
       ? request.comparisonSections.map((s) => ({
@@ -495,6 +497,9 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       : {}),
     ...(result.aggregation_columns && result.aggregation_columns.length > 0
       ? { aggregationColumns: [...result.aggregation_columns] }
+      : {}),
+    ...(result.aggregation_column_labels
+      ? { aggregationColumnLabels: { ...result.aggregation_column_labels } }
       : {}),
     ...(result.key_columns && result.key_columns.length > 0
       ? { keyColumns: [...result.key_columns] }

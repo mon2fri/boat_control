@@ -106,6 +106,17 @@ describe("mapRunRequestToWire", () => {
     expect(body.comparison_sections).toBeUndefined();
   });
 
+  it("serializes aggregation column display names separately from column keys", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      aggregationColumns: ["status"],
+      aggregationColumnLabels: { status: "In HR System" },
+      ruleIndexes: [],
+    });
+    expect(body.aggregation_columns).toEqual(["status"]);
+    expect(body.aggregation_column_labels).toEqual({ status: "In HR System" });
+  });
+
   it("serializes comparison sections", () => {
     const body = mapRunRequestToWire({
       ...baseRequest,

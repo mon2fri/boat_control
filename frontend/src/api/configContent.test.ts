@@ -93,6 +93,23 @@ describe("ordered-list family compression round-trip", () => {
     expect(resolved.aggregationColumns).toEqual(["region", "score", "name"]);
   });
 
+  it("round-trips aggregation column display names", () => {
+    const config = mapWorkflowToRowsColumnsConfig({
+      comparisonColumns: ["status"],
+      keyColumns: [],
+      aggregationColumns: ["status"],
+      aggregationColumnLabels: { status: "In HR System" },
+      filters: [],
+      targetColumns: [],
+      nestedAggregationEnabled: false,
+      comparisonSections: [],
+    }, families);
+
+    expect(config.aggregationColumnLabels).toEqual({ status: "In HR System" });
+    const resolved = resolveRowsColumnsConfig(config, families, ["status"]);
+    expect(resolved.aggregationColumnLabels).toEqual({ status: "In HR System" });
+  });
+
   it("round-trips comparisonSections columns preserving exact order", () => {
     const state = {
       comparisonColumns: [],

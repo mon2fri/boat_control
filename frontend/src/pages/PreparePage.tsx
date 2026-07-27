@@ -103,6 +103,7 @@ export function PreparePage() {
     dispatch({ type: "setTargetColumns", columns: result.targetColumns });
     dispatch({ type: "setKeyColumns", columns: result.keyColumns });
     dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns });
+    dispatch({ type: "setAggregationColumnLabels", labels: result.aggregationColumnLabels });
     dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
     dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
 
@@ -139,6 +140,7 @@ export function PreparePage() {
               comparisonColumns,
               keyColumns: state.keyColumns,
               aggregationColumns: state.aggregationColumns,
+              aggregationColumnLabels: state.aggregationColumnLabels,
               filters: state.filters,
               targetColumns: state.targetColumns,
               nestedAggregationEnabled: state.nestedAggregationEnabled,

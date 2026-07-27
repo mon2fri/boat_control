@@ -4,6 +4,7 @@ import { distributeEvenly } from "./groupLayout";
 
 interface Props {
   stats: GroupStat[];
+  columnLabels?: Record<string, string>;
 }
 
 const VISIBLE_DATA_ROWS = 5;
@@ -21,7 +22,7 @@ const MAX_PER_ROW = 5;
  * structure for the inline script to toggle; visibility is controlled by the
  * `hidden` HTML attribute.
  */
-function GroupStatCard({ stat }: { stat: GroupStat }) {
+function GroupStatCard({ stat, label }: { stat: GroupStat; label?: string }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -37,7 +38,7 @@ function GroupStatCard({ stat }: { stat: GroupStat }) {
           {expanded ? "▼" : "▶"}
         </span>
         <span className="nested-agg-label">
-          {stat.column}
+          {label?.trim() || stat.column}
           <span className="nested-agg-count">
             {" "}
             (Exception records: {stat.uniqueCount})
@@ -89,7 +90,7 @@ function GroupStatCard({ stat }: { stat: GroupStat }) {
  * When expanded, each card's table shows at most 5 data rows and scrolls if
  * there are more.
  */
-export function GroupStatisticsPanel({ stats }: Props) {
+export function GroupStatisticsPanel({ stats, columnLabels = {} }: Props) {
   if (stats.length === 0) return null;
 
   const rows = distributeEvenly(stats, MAX_PER_ROW);
@@ -102,7 +103,11 @@ export function GroupStatisticsPanel({ stats }: Props) {
           className={`group-stats-row group-stats-row--${Math.min(row.length, MAX_PER_ROW)}`}
         >
           {row.map((stat) => (
-            <GroupStatCard key={stat.column} stat={stat} />
+            <GroupStatCard
+              key={stat.column}
+              stat={stat}
+              {...(columnLabels[stat.column] ? { label: columnLabels[stat.column] } : {})}
+            />
           ))}
         </ul>
       ))}

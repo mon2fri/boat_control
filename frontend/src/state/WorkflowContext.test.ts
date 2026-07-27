@@ -68,6 +68,7 @@ function base(): WorkflowState {
     targetColumns: [],
     keyColumns: ["id"],
     aggregationColumns: [],
+    aggregationColumnLabels: {},
     nestedAggregationEnabled: false,
     comparisonSections: [
       { id: "s1", name: "Region", columns: ["region"] },

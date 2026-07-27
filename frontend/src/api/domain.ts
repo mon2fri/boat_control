@@ -127,6 +127,8 @@ export interface RunRequest {
   keyColumns: string[];
   /** Optional subset of comparison columns used for group-level statistics. */
   aggregationColumns: string[];
+  /** Optional display labels keyed by the underlying aggregation column. */
+  aggregationColumnLabels?: Record<string, string>;
   /** Optional subset of comparison columns used for nested aggregation. */
   nestedAggregationEnabled?: boolean;
   /** User-defined comparison sections for per-section attribute change views. */
@@ -192,6 +194,8 @@ export interface RunResult {
   comparisonSections?: ComparisonSection[];
   /** Aggregation columns used for this run; persisted so reloads restore the tree. */
   aggregationColumns?: string[];
+  /** Display labels keyed by the underlying aggregation column. */
+  aggregationColumnLabels?: Record<string, string>;
   /** Key columns used for this run; persisted so reloads restore the rows. */
   keyColumns?: string[];
 }

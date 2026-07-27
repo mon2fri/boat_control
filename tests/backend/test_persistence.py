@@ -102,6 +102,7 @@ class TestSaveAndLoadRun:
             result = replace(
                 mock_result,
                 nested_aggregation_enabled=True,
+                aggregation_column_labels={"status": "In HR System"},
                 comparison_sections=[
                     {"id": "s1", "name": "Region", "columns": ["region"]},
                 ],
@@ -110,6 +111,9 @@ class TestSaveAndLoadRun:
             data = load_run(meta.run_id)
             assert data is not None
             assert data["result"]["nested_aggregation_enabled"] is True
+            assert data["result"]["aggregation_column_labels"] == {
+                "status": "In HR System",
+            }
             assert data["result"]["comparison_sections"] == [
                 {"id": "s1", "name": "Region", "columns": ["region"]},
             ]
@@ -128,6 +132,7 @@ class TestSaveAndLoadRun:
                 doc = json.load(f)
             doc["result"].pop("nested_aggregation_enabled", None)
             doc["result"].pop("comparison_sections", None)
+            doc["result"].pop("aggregation_column_labels", None)
             with open(path, "w") as f:
                 json.dump(doc, f)
 
@@ -135,6 +140,7 @@ class TestSaveAndLoadRun:
             assert data is not None
             assert data["result"]["nested_aggregation_enabled"] is False
             assert data["result"]["comparison_sections"] == []
+            assert data["result"]["aggregation_column_labels"] == {}
 
 
 class TestRenameRun:

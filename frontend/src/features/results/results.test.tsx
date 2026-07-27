@@ -376,6 +376,17 @@ describe("result components", () => {
     expect(screen.queryByRole("columnheader", { name: "Attribute Count" })).not.toBeInTheDocument();
   });
 
+  it("uses configured display names on aggregation cards", () => {
+    render(
+      <GroupStatisticsPanel
+        stats={[{ column: "status", uniqueCount: 2, attributeCount: 2, rows: [] }]}
+        columnLabels={{ status: "In HR System" }}
+      />,
+    );
+    expect(screen.getByText("In HR System")).toBeInTheDocument();
+    expect(screen.queryByText("status")).not.toBeInTheDocument();
+  });
+
   it("distributes more than 5 stats across evenly sized rows", () => {
     const stats = Array.from({ length: 7 }, (_, i) => ({
       column: `col_${i}`,

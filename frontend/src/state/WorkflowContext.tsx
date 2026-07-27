@@ -29,6 +29,8 @@ export interface WorkflowState {
   keyColumns: string[];
   /** Optional subset of comparison columns used for group-level statistics. */
   aggregationColumns: string[];
+  /** User-facing labels for aggregation columns; keys remain CSV column names. */
+  aggregationColumnLabels: Record<string, string>;
   /** When true, aggregation columns form an ordered hierarchy shown as an expandable tree. */
   nestedAggregationEnabled: boolean;
   /** User-defined comparison sections for attribute comparing configuration. */
@@ -52,6 +54,7 @@ const initialState: WorkflowState = {
   targetColumns: [],
   keyColumns: [],
   aggregationColumns: [],
+  aggregationColumnLabels: {},
   nestedAggregationEnabled: false,
   comparisonSections: [],
   preparedData: null,
@@ -67,6 +70,7 @@ type Action =
   | { type: "setComparisonColumns"; columns: string[] }
   | { type: "removeComparisonColumn"; column: string }
   | { type: "setAggregationColumns"; columns: string[] }
+  | { type: "setAggregationColumnLabels"; labels: Record<string, string> }
   | { type: "setNestedAggregationEnabled"; enabled: boolean }
   | { type: "setComparisonSections"; sections: ComparisonSection[] }
   | { type: "setPreparedData"; cache: PreparedDataCache }
@@ -95,6 +99,9 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         keyColumns: state.keyColumns.filter((c) => colSet.has(c)),
         targetColumns: state.targetColumns.filter((c) => colSet.has(c)),
         aggregationColumns: state.aggregationColumns.filter((c) => colSet.has(c)),
+        aggregationColumnLabels: Object.fromEntries(
+          Object.entries(state.aggregationColumnLabels).filter(([column]) => colSet.has(column)),
+        ),
         comparisonSections: state.comparisonSections
           .map((s) => ({
             ...s,
@@ -117,6 +124,9 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         keyColumns: state.keyColumns.filter((c) => c !== col),
         targetColumns: state.targetColumns.filter((c) => c !== col),
         aggregationColumns: state.aggregationColumns.filter((c) => c !== col),
+        aggregationColumnLabels: Object.fromEntries(
+          Object.entries(state.aggregationColumnLabels).filter(([column]) => column !== col),
+        ),
         comparisonSections: state.comparisonSections
           .map((s) => ({
             ...s,
@@ -136,7 +146,17 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
     case "setKeyColumns":
       return { ...state, keyColumns: action.columns };
     case "setAggregationColumns":
-      return { ...state, aggregationColumns: action.columns };
+      return {
+        ...state,
+        aggregationColumns: action.columns,
+        aggregationColumnLabels: Object.fromEntries(
+          Object.entries(state.aggregationColumnLabels).filter(([column]) =>
+            action.columns.includes(column),
+          ),
+        ),
+      };
+    case "setAggregationColumnLabels":
+      return { ...state, aggregationColumnLabels: action.labels };
     case "setNestedAggregationEnabled":
       return { ...state, nestedAggregationEnabled: action.enabled };
     case "setComparisonSections":

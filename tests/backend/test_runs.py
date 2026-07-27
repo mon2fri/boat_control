@@ -677,9 +677,11 @@ class TestComputeGroupStatistics:
             target_columns=["score"],
             key_columns=["id"],
             aggregation_columns=["status"],
+            aggregation_column_labels={"status": "In HR System"},
         )
         # aggregation_columns should be passed through
         assert result.aggregation_columns == ["status"]
+        assert result.aggregation_column_labels == {"status": "In HR System"}
         assert result.group_statistics is not None
         assert "overall" in result.group_statistics
         assert len(result.group_statistics["overall"]) == 1

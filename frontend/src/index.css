@@ -1635,6 +1635,16 @@ table.data td {
   border-radius: 2px;
 }
 
+.aggregation-display-name {
+  margin-left: 6px;
+}
+.aggregation-display-name input {
+  width: 180px;
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
 .comparison-columns {
   margin-bottom: calc(var(--space) * 1.5);
 }

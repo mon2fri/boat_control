@@ -30,6 +30,7 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
         aggregation_columns = request.data.get(
             "aggregation_columns", request.data.get("grouping_columns", [])
         )
+        aggregation_column_labels = request.data.get("aggregation_column_labels", {})
         comparison_sections = request.data.get("comparison_sections", [])
         filters = request.data.get("filters", [])
         rule_ids = request.data.get("rule_ids")
@@ -116,6 +117,11 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 filters=filters,
                 rule_ids=rule_ids,
                 aggregation_columns=aggregation_columns,
+                aggregation_column_labels={
+                    column: str(label).strip()
+                    for column, label in aggregation_column_labels.items()
+                    if column in aggregation_columns and str(label).strip()
+                } if isinstance(aggregation_column_labels, dict) else {},
                 nested_aggregation_enabled=nested_agg_enabled,
                 comparison_sections=comparison_sections,
             )
