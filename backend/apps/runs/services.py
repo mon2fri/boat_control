@@ -48,6 +48,7 @@ class RowComparison:
     attribute_changes: list[AttributeChange]
     change_count: int
     grouping_values: dict[str, Any] = field(default_factory=dict)
+    extra_values: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -144,6 +145,7 @@ def compare_rows(
     target_columns: list[str],
     key_columns: list[str],
     aggregation_columns: list[str] | None = None,
+    extra_columns: list[str] | None = None,
 ) -> ComparisonResult:
     total_a = df_a.height
     total_b = df_b.height
@@ -162,6 +164,7 @@ def compare_rows(
         )
 
     agg_cols = aggregation_columns or []
+    extra_cols = extra_columns or []
 
     merged = df_a.join(
         df_b,
@@ -210,13 +213,15 @@ def compare_rows(
             key_vals = {k: row[k] for k in key_columns if k in row}
             agg_vals = {g: row.get(g) for g in agg_cols if g in row or f"{g}_b" in row}
             agg_vals = {g: row.get(f"{g}_b", row.get(g)) for g in agg_cols}
+            extra_vals = {c: row.get(f"{c}_b", row.get(c)) for c in extra_cols}
             row_details.append(
                 RowComparison(
                     row_index=int(row["_idx"]),
                     key_columns=key_vals,
                     attribute_changes=changes,
                     change_count=len(changes),
-                        grouping_values=agg_vals,
+                    grouping_values=agg_vals,
+                    extra_values=extra_vals,
                 )
             )
 
@@ -835,9 +840,15 @@ def execute_comparison(
             f"Key columns contain {total_dupes} duplicate key combinations across both files"
         )
 
+    section_extra_columns = list(dict.fromkeys(
+        column
+        for section in (comparison_sections or [])
+        for column in section.get("extra_columns", [])
+    ))
     comparison = compare_rows(
         df_a_final, df_b_final, effective_targets, effective_keys,
         aggregation_columns=aggregation_columns or [],
+        extra_columns=section_extra_columns,
     )
 
     # Phase 2: rule evaluation against comparison (df_b) rows

@@ -77,6 +77,28 @@ describe("ComparisonSectionEditor — add/edit/remove flow", () => {
     expect(sections[0].id).toMatch(/^cs-\d+$/);
   });
 
+  it("stores extra display columns on a comparison section", () => {
+    const onChange = vi.fn();
+    renderEditor([], onChange);
+    fireEvent.click(screen.getByRole("button", { name: "Add section" }));
+    fireEvent.change(screen.getByLabelText("Section name"), {
+      target: { value: "Financial" },
+    });
+    selectColumn("region");
+    const extras = screen.getByRole("searchbox", { name: "Extra columns to display" });
+    fireEvent.focus(extras);
+    fireEvent.change(extras, { target: { value: "status" } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: /status/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+
+    expect(onChange).toHaveBeenCalledWith([{
+      id: expect.stringMatching(/^cs-/),
+      name: "Financial",
+      columns: ["region"],
+      extraColumns: ["status"],
+    }]);
+  });
+
   it("shows validation errors when Done is clicked with an empty name", () => {
     const onChange = vi.fn();
     renderEditor([], onChange);

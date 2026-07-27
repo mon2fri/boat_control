@@ -59,6 +59,7 @@ export interface ComparisonSectionContent {
   id: string;
   name: string;
   columns: ColumnRef[];
+  extraColumns?: ColumnRef[];
 }
 
 /** Warning emitted during config loading. */
@@ -72,6 +73,7 @@ export interface ResolvedComparisonSection {
   id: string;
   name: string;
   columns: string[];
+  extraColumns: string[];
 }
 
 /** Resolved config load result with warnings. */
@@ -279,13 +281,24 @@ export function resolveRowsColumnsConfig(
     for (const section of data.comparisonSections) {
       if (!section.name || !Array.isArray(section.columns)) continue;
       const resolvedCols: string[] = [];
+      const resolvedExtras: string[] = [];
       for (const ref of section.columns) {
         const { resolved, warnings: w } = resolveColumnRef(ref, families, availableColumns);
         resolvedCols.push(...resolved);
         warnings.push(...w);
       }
+      for (const ref of section.extraColumns ?? []) {
+        const { resolved, warnings: w } = resolveColumnRef(ref, families, availableColumns);
+        resolvedExtras.push(...resolved);
+        warnings.push(...w);
+      }
       if (resolvedCols.length > 0) {
-        comparisonSections.push({ id: section.id, name: section.name, columns: resolvedCols });
+        comparisonSections.push({
+          id: section.id,
+          name: section.name,
+          columns: resolvedCols,
+          extraColumns: resolvedExtras,
+        });
       }
     }
   }
@@ -339,7 +352,12 @@ export function mapWorkflowToRowsColumnsConfig(
     filters: FilterRow[];
     targetColumns: string[];
     nestedAggregationEnabled?: boolean;
-    comparisonSections?: { id: string; name: string; columns: string[] }[];
+    comparisonSections?: {
+      id: string;
+      name: string;
+      columns: string[];
+      extraColumns?: string[];
+    }[];
   },
   families: Family[],
 ): RowsColumnsConfigContent {
@@ -358,6 +376,7 @@ export function mapWorkflowToRowsColumnsConfig(
       id: s.id,
       name: s.name,
       columns: s.columns.map((c) => ({ kind: "column" as const, name: c })),
+      extraColumns: (s.extraColumns ?? []).map((c) => ({ kind: "column" as const, name: c })),
     })),
   };
   return result;

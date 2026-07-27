@@ -227,6 +227,7 @@ export const wireRunRequestSchema = z.object({
     id: z.string(),
     name: z.string(),
     columns: z.array(z.string()),
+    extra_columns: z.array(z.string()).optional(),
   })).optional(),
   filters: z.array(wireFilterRowSchema).optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
@@ -246,6 +247,7 @@ export const wireRowDetailSchema = z.object({
   attribute_changes: z.array(wireAttributeChangeSchema),
   change_count: z.number().int().nonnegative(),
   grouping_values: z.record(z.string(), wireScalarSchema).optional(),
+  extra_values: z.record(z.string(), wireScalarSchema).optional(),
 });
 export type WireRowDetail = z.infer<typeof wireRowDetailSchema>;
 
@@ -339,6 +341,7 @@ export const wireRunResultSchema = z.object({
     id: z.string(),
     name: z.string(),
     columns: z.array(z.string()),
+    extra_columns: z.array(z.string()).optional(),
   })).optional(),
 });
 

@@ -12,6 +12,7 @@ import { GroupStatisticsPanel } from "../features/results/GroupStatisticsPanel";
 import { NestedAggregationPanel } from "../features/results/NestedAggregationPanel";
 import { ExceptionRuleSummary } from "../features/results/ExceptionRuleSummary";
 import { ComparisonColumnList } from "../features/results/ComparisonColumnList";
+import { buildSectionGroupStatistics } from "../features/results/sectionGroupStatistics";
 import { clearUploadSession, loadRun } from "../api/endpoints";
 import { formatDateTime } from "../utils/format";
 import type { FilterRow, RunRequest } from "../api/domain";
@@ -245,6 +246,10 @@ function ResultView({
             const sectionChanges = result.changeDetails.filter(
               (d) => section.columns.includes(d.column),
             );
+            const sectionGroupStatistics = buildSectionGroupStatistics(
+              sectionChanges,
+              aggregationColumns,
+            );
             return (
               <section
                 key={section.id}
@@ -265,6 +270,8 @@ function ResultView({
                     aggregationColumns={aggregationColumns}
                     keyColumnNames={keyColumns}
                   />
+                ) : !nestedAggregationEnabled && sectionGroupStatistics.length > 0 ? (
+                  <GroupStatisticsPanel stats={sectionGroupStatistics} />
                 ) : null}
                 <PaginatedDetailSection
                   runId={result.id}
@@ -273,6 +280,7 @@ function ResultView({
                   keyColumnNames={keyColumns}
                   exportRows={sectionChanges}
                   sectionColumns={section.columns}
+                  extraColumnNames={section.extraColumns ?? []}
                 />
               </section>
             );
