@@ -12,6 +12,7 @@ import type { RunResult, RuleResult } from "../../api/domain";
 const ruleResult: RuleResult = {
   ruleIndex: "R001",
   ruleName: "Region present",
+  ruleDescription: "Ensures every record has an assigned region.",
   logicSummary: 'region must not equal ""',
   violationRowCount: 3,
   violationAttributeCount: 4,
@@ -170,6 +171,11 @@ describe("result components", () => {
     expect(screen.queryByRole("columnheader", { name: "Kind" })).not.toBeInTheDocument();
     rerender(<DetailTable rows={[]} caption="Changes" />);
     expect(screen.getByText("No detail rows.")).toBeInTheDocument();
+  });
+
+  it("shows a provided rule description in the result section", () => {
+    render(<RuleResultSection result={ruleResult} />);
+    expect(screen.getByText("Ensures every record has an assigned region.")).toBeVisible();
   });
 
   it("sorts detail rows by any column and toggles direction", () => {

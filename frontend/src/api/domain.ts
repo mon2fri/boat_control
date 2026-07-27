@@ -166,6 +166,7 @@ export interface DetailRow {
 export interface RuleResult {
   ruleIndex: string;
   ruleName: string;
+  ruleDescription?: string;
   logicSummary: string;
   conditionSummary?: string;
   conditionGroupingSummary?: string;

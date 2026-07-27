@@ -269,6 +269,7 @@ def validate_rows(
     for rule in rules:
         rule_summaries[rule.rule_id] = {
             "name": rule.name,
+            "description": rule.description,
             "logic": _describe_rule_logic(rule),
             "condition": _describe_rule_conditions(rule),
             "condition_grouping": _describe_condition_grouping(rule),
@@ -413,7 +414,11 @@ def _describe_condition_grouping(rule: Rule) -> str:
         for index, group_id in enumerate(rule.grouping, start=1):
             grouped.setdefault(group_id, []).append(f"Condition {index}")
         return " AND ".join(
-            f"({' OR '.join(condition_labels)})" if len(condition_labels) > 1 else condition_labels[0]
+            (
+                f"({' OR '.join(condition_labels)})"
+                if len(condition_labels) > 1
+                else condition_labels[0]
+            )
             for condition_labels in grouped.values()
         )
     relation = (rule.condition_relation or "and").upper()
@@ -791,7 +796,9 @@ def execute_comparison(
         for cond in rule.conditions:
             if cond.column_name in valid_filter_cols:
                 needed_columns.add(cond.column_name)
-        invalid_extras = [column for column in rule.extra_columns if column not in valid_filter_cols]
+        invalid_extras = [
+            column for column in rule.extra_columns if column not in valid_filter_cols
+        ]
         if invalid_extras:
             raise ValueError(
                 f"Rule '{rule.rule_id}' references unknown extra columns: "

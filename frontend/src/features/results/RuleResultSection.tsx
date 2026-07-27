@@ -80,6 +80,9 @@ export function RuleResultSection({
       <h3 id={headingId}>
         {result.ruleIndex} — {result.ruleName}
       </h3>
+      {result.ruleDescription && (
+        <p className="rule-result-description">{result.ruleDescription}</p>
+      )}
       {result.conditionSummary && (
         <p className="section-logic">
           <span>Condition: </span>

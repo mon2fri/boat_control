@@ -53,6 +53,9 @@ const EXPORT_ONLY_CSS = `
 .th-filter-dropdown[hidden] {
   display: none !important;
 }
+.detail-grid-body > .detail-grid-row[hidden] {
+  display: none !important;
+}
 .export-report-header {
   top: 0 !important;
   margin-left: 0 !important;

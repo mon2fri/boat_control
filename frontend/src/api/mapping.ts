@@ -429,6 +429,9 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       return {
         ruleIndex: ruleId,
         ruleName: persistedSummary?.name ?? sample?.rule_name ?? ruleId,
+        ...(persistedSummary?.description
+          ? { ruleDescription: persistedSummary.description }
+          : {}),
         logicSummary: humanizeRuleLogic(
           persistedSummary?.logic ?? describeRuleLogicFromViolations(violations, ruleId),
         ),

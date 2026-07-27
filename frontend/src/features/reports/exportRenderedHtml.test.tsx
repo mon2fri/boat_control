@@ -47,6 +47,10 @@ describe("exportRenderedHtml — Table of Contents FAB", () => {
     expect(html).toContain("th-filter-search");
     expect(html).toContain("th-filter-clear");
     expect(html).toContain(".th-filter-dropdown[hidden]");
+    expect(html).toContain(".detail-grid-body > .detail-grid-row[hidden]");
+    expect(html).toMatch(
+      /\.detail-grid-body > \.detail-grid-row\[hidden\]\s*\{\s*display: none !important;/,
+    );
     expect(html).toContain("exportedFilterDropdowns");
     expect(html).toContain("exportedFilterDropdowns[dropdownIndex].hidden = true");
   });

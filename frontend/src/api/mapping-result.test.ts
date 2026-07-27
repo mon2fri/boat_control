@@ -174,10 +174,17 @@ describe("mapRunDocumentToResult", () => {
       violating_rows_by_rule: { R001: 0 },
       violating_attributes_by_rule: { R001: 0 },
       rule_summaries: {
-        R001: { name: "Low score", logic: "score lt '70'" },
+        R001: {
+          name: "Low score",
+          description: "Flags scores below the review threshold.",
+          logic: "score lt '70'",
+        },
       },
     }));
     expect(result.ruleResults[0]!.ruleName).toBe("Low score");
+    expect(result.ruleResults[0]!.ruleDescription).toBe(
+      "Flags scores below the review threshold.",
+    );
     expect(result.ruleResults[0]!.logicSummary).toBe("score less than '70'");
   });
 

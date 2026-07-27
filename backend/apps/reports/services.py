@@ -409,6 +409,11 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         )
         sections.append(f"<section class='card' id='rule-{_escape_html(rule_id)}'>")
         sections.append(f"<h2>{_escape_html(rule_id)} — {_escape_html(rule_name)}</h2>")
+        if summary.get("description"):
+            sections.append(
+                "<p class='rule-description'>"
+                f"{_escape_html(summary['description'])}</p>"
+            )
         if summary.get("condition"):
             sections.append(
                 "<p class='section-logic'>Condition: "
@@ -619,6 +624,28 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         rule_name = summary.get("name") or sample.get("rule_name") or rule_id
         overall.cell(next_row, 1, _excel_value(rule_name))
         overall.cell(next_row, 2, row_counts.get(rule_id, len(violations)))
+
+    rule_summary_sheet = workbook.create_sheet("Rule Summary")
+    rule_summary_sheet["A1"] = "Rule Summary"
+    _append_row(
+        rule_summary_sheet,
+        3,
+        ["Rule index", "Rule name", "Description", "Exception records"],
+    )
+    for row_number, rule_id in enumerate(rule_ids, start=4):
+        violations = violations_by_rule.get(rule_id) or []
+        sample = violations[0] if violations else {}
+        summary = summaries.get(rule_id) or {}
+        _append_row(
+            rule_summary_sheet,
+            row_number,
+            [
+                rule_id,
+                summary.get("name") or sample.get("rule_name") or rule_id,
+                summary.get("description", ""),
+                row_counts.get(rule_id, len(violations)),
+            ],
+        )
 
     changes_sheet = workbook.create_sheet("Attribute Changes")
     changes_sheet["A1"] = "Attribute Changes"

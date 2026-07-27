@@ -120,6 +120,7 @@ class TestValidateRows:
         assert violation.comparison_value == "pending"
         assert result.rule_summaries["R001"] == {
             "name": "Active Check",
+            "description": "",
             "logic": "status equals 'active'",
             "condition": "",
             "condition_grouping": "",

@@ -326,6 +326,7 @@ export const wireValidationSchema = z.object({
     z.string(),
     z.object({
       name: z.string(),
+      description: z.string().optional(),
       logic: z.string(),
       condition: z.string().optional(),
       condition_grouping: z.string().optional(),

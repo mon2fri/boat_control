@@ -51,11 +51,16 @@ def sample_result() -> dict:
             "rule_summaries": {
                 "R001": {
                     "name": "Test Rule",
+                    "description": "Checks score eligibility.",
                     "logic": "score lt '20'",
                     "condition": "Condition 1: region equals 'EMEA'",
                     "condition_grouping": "Condition 1 AND Condition 2",
                 },
-                "R002": {"name": "No exception", "logic": "score eq '15'"},
+                "R002": {
+                    "name": "No exception",
+                    "description": "A rule with no matching exceptions.",
+                    "logic": "score eq '15'",
+                },
             },
         },
         "target_columns": ["score"],
@@ -76,6 +81,7 @@ class TestExportHtml:
         assert "Attribute changes" in result
         assert "Exception Rule Summary" in result
         assert "Exception records" in result
+        assert "Checks score eligibility." in result
         assert "Comparing columns" in result
         assert "<span class='tag'>score</span>" in result
         assert "In Baseline" in result
@@ -209,7 +215,13 @@ class TestExportExcel:
         }
         workbook = load_workbook(BytesIO(export_excel(sample_result, "Test Report")))
 
-        assert workbook.sheetnames == ["Overall", "Attribute Changes", "R001", "R002"]
+        assert workbook.sheetnames == [
+            "Overall",
+            "Rule Summary",
+            "Attribute Changes",
+            "R001",
+            "R002",
+        ]
         overall = workbook["Overall"]
         assert overall["A1"].value == "Overall Results"
         assert any(cell.value == "Filtering information" for row in overall for cell in row)
@@ -224,6 +236,26 @@ class TestExportExcel:
         assert not any(
             cell.value == "Aggregation: also_not_exported" for row in overall for cell in row
         )
+
+        rule_summary = workbook["Rule Summary"]
+        assert [rule_summary.cell(3, column).value for column in range(1, 5)] == [
+            "Rule index",
+            "Rule name",
+            "Description",
+            "Exception records",
+        ]
+        assert [rule_summary.cell(4, column).value for column in range(1, 5)] == [
+            "R001",
+            "Test Rule",
+            "Checks score eligibility.",
+            1,
+        ]
+        assert [rule_summary.cell(5, column).value for column in range(1, 5)] == [
+            "R002",
+            "No exception",
+            "A rule with no matching exceptions.",
+            0,
+        ]
 
         changes = workbook["Attribute Changes"]
         assert changes["A1"].value == "Attribute Changes"

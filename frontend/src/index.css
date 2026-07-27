@@ -1829,6 +1829,13 @@ table.data td {
   color: var(--color-muted);
   font-size: 0.8rem;
 }
+.rule-result-description {
+  margin: calc(var(--space) * -0.5) 0 calc(var(--space) * 1.5);
+  color: var(--color-text-soft);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
 
 fieldset {
   border: 1px solid var(--color-rule);
