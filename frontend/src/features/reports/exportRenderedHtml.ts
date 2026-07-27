@@ -336,6 +336,58 @@ const EXPORT_INTERACTIVE_JS = `
       rows[j].hidden = !visible;
     }
   }
+
+  // --- Detail-table column sorting ---
+  function applyDetailSort(button) {
+    var header = button.closest('[role="columnheader"]');
+    var grid = button.closest('.detail-grid');
+    if (!header || !grid) return;
+    var headerCells = header.parentElement ? header.parentElement.children : [];
+    var columnIndex = Array.prototype.indexOf.call(headerCells, header);
+    if (columnIndex < 0) return;
+    var sortKey = button.getAttribute('data-detail-sort') || '';
+    var previousKey = grid.getAttribute('data-sort-key');
+    var previousDirection = grid.getAttribute('data-sort-direction');
+    var direction = previousKey === sortKey && previousDirection === 'asc' ? 'desc' : 'asc';
+    grid.setAttribute('data-sort-key', sortKey);
+    grid.setAttribute('data-sort-direction', direction);
+
+    var body = grid.querySelector('.detail-grid-body');
+    if (!body) return;
+    var rows = Array.prototype.slice.call(body.querySelectorAll(':scope > .detail-grid-row'));
+    rows = rows.map(function (row, index) { return { row: row, index: index }; });
+    rows.sort(function (left, right) {
+      var leftCell = left.row.children[columnIndex];
+      var rightCell = right.row.children[columnIndex];
+      var a = leftCell ? leftCell.textContent.trim() : '';
+      var b = rightCell ? rightCell.textContent.trim() : '';
+      if ((a === '' || a === '\\u2014') && b !== '' && b !== '\\u2014') return 1;
+      if ((b === '' || b === '\\u2014') && a !== '' && a !== '\\u2014') return -1;
+      var compared = a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      return compared === 0 ? left.index - right.index : compared * (direction === 'asc' ? 1 : -1);
+    });
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].row.setAttribute('aria-rowindex', String(i + 2));
+      body.appendChild(rows[i].row);
+    }
+
+    var headers = grid.querySelectorAll('[role="columnheader"]');
+    for (var j = 0; j < headers.length; j++) headers[j].setAttribute('aria-sort', 'none');
+    header.setAttribute('aria-sort', direction === 'asc' ? 'ascending' : 'descending');
+    var buttons = grid.querySelectorAll('[data-detail-sort]');
+    for (var k = 0; k < buttons.length; k++) {
+      var active = buttons[k] === button;
+      buttons[k].classList.toggle('th-sort-btn--active', active);
+      buttons[k].setAttribute('data-sort-direction', active ? direction : 'none');
+    }
+  }
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!target || !target.closest) return;
+    var sortButton = target.closest('[data-detail-sort]');
+    if (sortButton) applyDetailSort(sortButton);
+  });
+
   document.addEventListener('click', function (event) {
     var target = event.target;
     if (!target || !target.closest) return;

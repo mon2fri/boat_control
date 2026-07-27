@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RuleEditor } from "../features/rules/RuleEditor";
-import { describeLogic, useCreateRule, useDeleteRule, useRules, useUpdateRule } from "../features/rules/useRules";
+import { useCreateRule, useDeleteRule, useReorderRules, useRules, useUpdateRule } from "../features/rules/useRules";
+import { SortableRuleList } from "../features/rules/SortableRuleList";
 import { useFamilies } from "../features/settings/useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
@@ -16,22 +17,6 @@ const RULES_KEY = ["rules"] as const;
 
 type EditorState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; rule: Rule };
 
-function getRuleReferencedColumns(rule: Rule): string[] {
-  const cols = new Set<string>();
-  for (const cond of rule.conditions) {
-    if (cond.column) cols.add(cond.column);
-  }
-  if (rule.logic.column) cols.add(rule.logic.column);
-  if (rule.logic.format === "column" && rule.logic.target) cols.add(rule.logic.target);
-  for (const column of rule.extraColumns ?? []) cols.add(column);
-  return [...cols];
-}
-
-function ruleHasInvalidColumns(rule: Rule, validColumns: string[]): boolean {
-  const valid = new Set(validColumns);
-  return getRuleReferencedColumns(rule).some((c) => !valid.has(c));
-}
-
 export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: boolean; columnValues?: Record<string, { value: string; starred: boolean }[]> }) {
   const navigate = useNavigate();
   const { state, dispatch, reset } = useWorkflow();
@@ -39,6 +24,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
   const createRule = useCreateRule();
   const updateRule = useUpdateRule();
   const deleteRule = useDeleteRule();
+  const reorderRules = useReorderRules();
 
   const familiesQuery = useFamilies();
   const families = familiesQuery.data ?? [];
@@ -167,41 +153,16 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
                 {rules.data.length === 0 ? (
                   <p role="status">No rules configured yet. Add one below.</p>
                 ) : (
-                  <ul className="rule-select-list" aria-label="Rules">
-                    {rules.data.map((rule) => {
-                      const invalid = ruleHasInvalidColumns(rule, columns);
-                      return (
-                        <li key={rule.index} className={invalid ? "rule-select-list__item--warn" : undefined}>
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={selected.includes(rule.index)}
-                              onChange={() => toggle(rule.index)}
-                            />{" "}
-                            <strong>{rule.index}</strong> — {rule.name}
-                            {invalid && <span className="rule-warn-badge" title="References columns not in current comparison selection">⚠</span>}
-                          </label>
-                          <div className="rule-actions">
-                            <code className="rule-logic">{describeLogic(rule)}</code>
-                            <button
-                              type="button"
-                              className="btn"
-                              onClick={() => setEditor({ mode: "edit", rule })}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn--danger"
-                              onClick={() => setPendingDelete(rule)}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
+                  <SortableRuleList
+                    rules={rules.data}
+                    selected={selected}
+                    validColumns={columns}
+                    disabled={reorderRules.isPending}
+                    onToggle={toggle}
+                    onEdit={(rule) => setEditor({ mode: "edit", rule })}
+                    onDelete={setPendingDelete}
+                    onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}
+                  />
                 )}
                 {editor.mode === "closed" && (
                   <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
@@ -330,41 +291,16 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
             {rules.data.length === 0 ? (
               <p role="status">No rules configured yet. Add one below.</p>
             ) : (
-              <ul className="rule-select-list" aria-label="Rules">
-                {rules.data.map((rule) => {
-                  const invalid = ruleHasInvalidColumns(rule, columns);
-                  return (
-                    <li key={rule.index} className={invalid ? "rule-select-list__item--warn" : undefined}>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={selected.includes(rule.index)}
-                          onChange={() => toggle(rule.index)}
-                        />{" "}
-                        <strong>{rule.index}</strong> — {rule.name}
-                        {invalid && <span className="rule-warn-badge" title="References columns not in current comparison selection">⚠</span>}
-                      </label>
-                      <div className="rule-actions">
-                        <code className="rule-logic">{describeLogic(rule)}</code>
-                        <button
-                          type="button"
-                          className="btn"
-                          onClick={() => setEditor({ mode: "edit", rule })}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--danger"
-                          onClick={() => setPendingDelete(rule)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
+              <SortableRuleList
+                rules={rules.data}
+                selected={selected}
+                validColumns={columns}
+                disabled={reorderRules.isPending}
+                onToggle={toggle}
+                onEdit={(rule) => setEditor({ mode: "edit", rule })}
+                onDelete={setPendingDelete}
+                onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}
+              />
             )}
             {editor.mode === "closed" && (
               <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>

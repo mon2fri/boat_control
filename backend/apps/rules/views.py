@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.rules.serializers import (
+    ReorderRulesSerializer,
     ReplaceRulesSerializer,
     RuleSerializer,
 )
@@ -17,6 +18,7 @@ from apps.rules.services import (
     create_rule,
     delete_rule,
     load_rules,
+    reorder_rules,
     replace_rules,
     save_rules,
     update_rule,
@@ -171,5 +173,25 @@ class ReplaceRulesView(APIView):  # type: ignore[misc]
                     },
                     status=200,
                 )
+            except ValueError as e:
+                return Response({"error": str(e)}, status=400)
+
+
+class ReorderRulesView(APIView):  # type: ignore[misc]
+    def post(self, request: Request) -> Response:
+        serializer = ReorderRulesSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with _rules_lock:
+            rules_file = load_rules()
+            try:
+                reordered = reorder_rules(
+                    rules_file,
+                    serializer.validated_data["rule_ids"],
+                )
+                save_rules(reordered)
+                return Response({
+                    "message": "Rules reordered.",
+                    "rule_ids": [rule.rule_id for rule in reordered.rules],
+                })
             except ValueError as e:
                 return Response({"error": str(e)}, status=400)

@@ -171,6 +171,11 @@ export const replaceRulesResponseSchema = z.object({
   next_index: z.number(),
 });
 
+export const reorderRulesResponseSchema = z.object({
+  message: z.string(),
+  rule_ids: z.array(z.string()),
+});
+
 export const ruleDraftRequestSchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),

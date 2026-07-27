@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createRule, deleteRule, loadRules, updateRule } from "../../api/endpoints";
+import { createRule, deleteRule, loadRules, reorderRules, updateRule } from "../../api/endpoints";
 import type { Rule, RuleDraft } from "../../api/domain";
 
 const RULES_KEY = ["rules"] as const;
@@ -29,6 +29,29 @@ export function useDeleteRule() {
   return useMutation({
     mutationFn: (index: string) => deleteRule(index),
     onSuccess: () => client.invalidateQueries({ queryKey: RULES_KEY }),
+  });
+}
+
+export function useReorderRules() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (ruleIds: string[]) => reorderRules(ruleIds),
+    onMutate: async (ruleIds) => {
+      await client.cancelQueries({ queryKey: RULES_KEY });
+      const previous = client.getQueryData<Rule[]>(RULES_KEY);
+      if (previous) {
+        const byId = new Map(previous.map((rule) => [rule.index, rule]));
+        client.setQueryData(
+          RULES_KEY,
+          ruleIds.map((ruleId) => byId.get(ruleId)).filter((rule): rule is Rule => Boolean(rule)),
+        );
+      }
+      return { previous };
+    },
+    onError: (_error, _ruleIds, context) => {
+      if (context?.previous) client.setQueryData(RULES_KEY, context.previous);
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: RULES_KEY }),
   });
 }
 

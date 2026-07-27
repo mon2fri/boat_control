@@ -80,3 +80,15 @@ class RulesListResponseSerializer(serializers.Serializer):  # type: ignore[misc]
 
 class ReplaceRulesSerializer(serializers.Serializer):  # type: ignore[misc]
     rules = RuleSerializer(many=True)
+
+
+class ReorderRulesSerializer(serializers.Serializer):  # type: ignore[misc]
+    rule_ids = serializers.ListField(
+        child=serializers.CharField(),
+        allow_empty=False,
+    )
+
+    def validate_rule_ids(self, value):  # type: ignore[no-untyped-def]
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("Rule IDs must be unique.")
+        return value

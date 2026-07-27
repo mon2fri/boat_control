@@ -6,6 +6,7 @@ import {
   ruleDraftRequestSchema,
   ruleMutationResponseSchema,
   replaceRulesResponseSchema,
+  reorderRulesResponseSchema,
   rulesListResponseSchema,
   uploadResponseSchema,
   validateFilterResponseSchema,
@@ -346,6 +347,14 @@ export function replaceRules(
     body,
     schema: replaceRulesResponseSchema,
   }).then((r) => ({ message: r.message, ruleCount: r.rule_count, nextIndex: r.next_index }));
+}
+
+export function reorderRules(ruleIds: string[]): Promise<{ message: string; ruleIds: string[] }> {
+  return apiRequest("/rules/reorder/", {
+    method: "POST",
+    body: { rule_ids: ruleIds },
+    schema: reorderRulesResponseSchema,
+  }).then((response) => ({ message: response.message, ruleIds: response.rule_ids }));
 }
 
 // --- Runs ------------------------------------------------------------------

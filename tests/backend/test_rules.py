@@ -1,8 +1,6 @@
 from pathlib import Path
 
 import pytest
-from django.test.utils import override_settings
-from rest_framework.test import APIClient
 from apps.rules.services import (
     GroupingBranch,
     GroupingLeaf,
@@ -14,11 +12,14 @@ from apps.rules.services import (
     create_rule,
     delete_rule,
     load_rules,
+    reorder_rules,
     replace_rules,
     save_rules,
     update_rule,
     validate_rule,
 )
+from django.test.utils import override_settings
+from rest_framework.test import APIClient
 
 
 @pytest.fixture
@@ -600,3 +601,50 @@ class TestReplaceRulesApi:
 
             list_resp = api_client.get("/api/rules/")
             assert list_resp.json()["rules"] == []
+
+
+def test_reorder_rules_persists_complete_requested_order(
+    api_client: APIClient,
+    tmp_rules_dir: Path,
+) -> None:
+    rules_file = tmp_rules_dir / "rules.yaml"
+    with override_settings(RULES_FILE=str(rules_file)):
+        response = api_client.post(
+            "/api/rules/replace/",
+            {
+                "rules": [
+                    {
+                        "name": name,
+                        "logic": {
+                            "format": "value_vs_column",
+                            "column_name": "status",
+                            "operator": "eq",
+                            "target_value": name,
+                        },
+                    }
+                    for name in ("First", "Second", "Third")
+                ]
+            },
+            format="json",
+        )
+        assert response.status_code == 200
+
+        response = api_client.post(
+            "/api/rules/reorder/",
+            {"rule_ids": ["R003", "R001", "R002"]},
+            format="json",
+        )
+        assert response.status_code == 200
+        assert response.json()["rule_ids"] == ["R003", "R001", "R002"]
+        assert [
+            rule["rule_id"] for rule in api_client.get("/api/rules/").json()["rules"]
+        ] == ["R003", "R001", "R002"]
+
+
+def test_reorder_rules_rejects_incomplete_order(sample_rule_data: dict) -> None:
+    populated, _ = create_rule(
+        RulesFile(version=1, rules=[], next_index=1),
+        sample_rule_data,
+    )
+    with pytest.raises(ValueError, match="every rule exactly once"):
+        reorder_rules(populated, [])

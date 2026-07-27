@@ -317,6 +317,25 @@ def save_rules(rules_file: RulesFile, path: Path | None = None) -> None:
     tmp_path.replace(target)
 
 
+def reorder_rules(rules_file: RulesFile, rule_ids: list[str]) -> RulesFile:
+    existing = {rule.rule_id: rule for rule in rules_file.rules}
+    requested = set(rule_ids)
+    if requested != set(existing) or len(rule_ids) != len(existing):
+        missing = sorted(set(existing) - requested)
+        unknown = sorted(requested - set(existing))
+        details = []
+        if missing:
+            details.append(f"missing: {', '.join(missing)}")
+        if unknown:
+            details.append(f"unknown: {', '.join(unknown)}")
+        raise ValueError(f"Rule order must contain every rule exactly once ({'; '.join(details)}).")
+    return RulesFile(
+        version=rules_file.version,
+        rules=[existing[rule_id] for rule_id in rule_ids],
+        next_index=rules_file.next_index,
+    )
+
+
 def validate_rule(rule_data: dict[str, Any]) -> RuleValidationResult:
     errors: list[str] = []
 

@@ -31,6 +31,39 @@ interface StaticProps {
 const ROW_HEIGHT = 42;
 const LOAD_MORE_THRESHOLD = 50;
 const VISIBLE_DATA_ROWS = 10;
+type SortDirection = "asc" | "desc";
+
+function detailCellValue(row: DetailRow, key: string): string {
+  if (key === "row") return String(row.rowKey ?? "");
+  if (key === "column") return String(row.column ?? "");
+  if (key === "file1") return String(row.file1Value ?? "");
+  if (key === "file2") return String(row.file2Value ?? "");
+  if (key.startsWith("key_")) return String(row.keyColumns[key.slice(4)] ?? "");
+  if (key.startsWith("extra_")) return String(row.extraValues?.[key.slice(6)] ?? "");
+  return "";
+}
+
+export function sortDetailRows(
+  rows: DetailRow[],
+  key: string,
+  direction: SortDirection,
+): DetailRow[] {
+  const factor = direction === "asc" ? 1 : -1;
+  return rows
+    .map((row, index) => ({ row, index }))
+    .sort((left, right) => {
+      const a = detailCellValue(left.row, key);
+      const b = detailCellValue(right.row, key);
+      if (!a && b) return 1;
+      if (a && !b) return -1;
+      const compared = a.localeCompare(b, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+      return compared === 0 ? left.index - right.index : compared * factor;
+    })
+    .map(({ row }) => row);
+}
 
 export function DetailTable({
   rows,
@@ -49,7 +82,18 @@ export function DetailTable({
 }: StaticProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [exportMode, setExportMode] = useState(false);
-  const renderedRows = exportMode ? (exportRows ?? rows) : rows;
+  const [sort, setSort] = useState<{ key: string; direction: SortDirection } | null>(null);
+  const baseRenderedRows = exportMode ? (exportRows ?? rows) : rows;
+  const renderedRows = useMemo(
+    () => sort ? sortDetailRows(baseRenderedRows, sort.key, sort.direction) : baseRenderedRows,
+    [baseRenderedRows, sort],
+  );
+  const toggleSort = useCallback((key: string) => {
+    setSort((current) => current?.key === key
+      ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+      : { key, direction: "asc" });
+    if (scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, []);
 
   useEffect(() => {
     const prepare = () => setExportMode(true);
@@ -64,7 +108,7 @@ export function DetailTable({
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: renderedRows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
     initialRect: { width: 0, height: VISIBLE_DATA_ROWS * ROW_HEIGHT },
@@ -121,17 +165,20 @@ export function DetailTable({
             <FilterableTh
               key={name}
               label={name}
+              sortKey={`key_${name}`}
+              sort={sort}
+              onSort={toggleSort}
               options={cf.options}
               selected={activeFilters[cf.key] ?? []}
               onChange={(vals) => onFilterChange?.(cf.key, vals)}
               forceRenderOptions={exportMode}
             />
           ) : (
-            <div key={name} role="columnheader">{name}</div>
+            <SortableTh key={name} label={name} sortKey={`key_${name}`} sort={sort} onSort={toggleSort} />
           );
         })
       ) : (
-        <div role="columnheader">Row</div>
+        <SortableTh label="Row" sortKey="row" sort={sort} onSort={toggleSort} />
       )}
       {extraColumnNames.map((name) => {
         const cf = columnFilters.find((f) => f.key === `extra_${name}`);
@@ -139,13 +186,16 @@ export function DetailTable({
           <FilterableTh
             key={name}
             label={name}
+            sortKey={`extra_${name}`}
+            sort={sort}
+            onSort={toggleSort}
             options={cf.options}
             selected={activeFilters[cf.key] ?? []}
             onChange={(vals) => onFilterChange?.(cf.key, vals)}
             forceRenderOptions={exportMode}
           />
         ) : (
-          <div key={name} role="columnheader">{name}</div>
+          <SortableTh key={name} label={name} sortKey={`extra_${name}`} sort={sort} onSort={toggleSort} />
         );
       })}
       {!hideComparison && (() => {
@@ -153,17 +203,20 @@ export function DetailTable({
         return colFilter ? (
           <FilterableTh
             label="Column"
+            sortKey="column"
+            sort={sort}
+            onSort={toggleSort}
             options={colFilter.options}
             selected={activeFilters[colFilter.key] ?? []}
             onChange={(vals) => onFilterChange?.(colFilter.key, vals)}
             forceRenderOptions={exportMode}
           />
         ) : (
-          <div role="columnheader">Column</div>
+          <SortableTh label="Column" sortKey="column" sort={sort} onSort={toggleSort} />
         );
       })()}
-      {!hideComparison && <div role="columnheader">In Baseline</div>}
-      {!hideComparison && <div role="columnheader">In Comparison</div>}
+      {!hideComparison && <SortableTh label="In Baseline" sortKey="file1" sort={sort} onSort={toggleSort} />}
+      {!hideComparison && <SortableTh label="In Comparison" sortKey="file2" sort={sort} onSort={toggleSort} />}
     </>
   );
 
@@ -246,12 +299,18 @@ export function DetailTable({
 
 function FilterableTh({
   label,
+  sortKey,
+  sort,
+  onSort,
   options,
   selected,
   onChange,
   forceRenderOptions = false,
 }: {
   label: string;
+  sortKey: string;
+  sort: { key: string; direction: SortDirection } | null;
+  onSort: (key: string) => void;
   options: string[];
   selected: string[];
   onChange: (values: string[]) => void;
@@ -290,8 +349,15 @@ function FilterableTh({
   const hasActive = selected.length > 0;
 
   return (
-    <div className="filterable-th" ref={ref} role="columnheader">
+    <div
+      className="filterable-th"
+      ref={ref}
+      role="columnheader"
+      aria-label={label}
+      aria-sort={sort?.key === sortKey ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+    >
       <span>{label}</span>
+      <SortButton label={label} sortKey={sortKey} sort={sort} onSort={onSort} />
       <button
         type="button"
         className={`th-filter-btn${hasActive ? " th-filter-btn--active" : ""}`}
@@ -347,6 +413,62 @@ function FilterableTh({
           </button>
       </div>}
     </div>
+  );
+}
+
+function SortableTh({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: string;
+  sort: { key: string; direction: SortDirection } | null;
+  onSort: (key: string) => void;
+}) {
+  return (
+    <div
+      className="sortable-th"
+      role="columnheader"
+      aria-label={label}
+      aria-sort={sort?.key === sortKey ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <span>{label}</span>
+      <SortButton label={label} sortKey={sortKey} sort={sort} onSort={onSort} />
+    </div>
+  );
+}
+
+function SortButton({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: string;
+  sort: { key: string; direction: SortDirection } | null;
+  onSort: (key: string) => void;
+}) {
+  const active = sort?.key === sortKey;
+  const nextDirection = active && sort.direction === "asc" ? "descending" : "ascending";
+  return (
+    <button
+      type="button"
+      className={`th-sort-btn${active ? " th-sort-btn--active" : ""}`}
+      data-detail-sort={sortKey}
+      data-sort-direction={active ? sort.direction : "none"}
+      onClick={() => onSort(sortKey)}
+      aria-label={`Sort ${label} ${nextDirection}`}
+      title={`Sort ${label} ${nextDirection}`}
+    >
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+        <path className="sort-icon sort-icon--none" d="M3 4.5 6 1.5l3 3H7v3H5v-3H3Zm6 3L6 10.5 3 7.5h2v-3h2v3h2Z" />
+        <path className="sort-icon sort-icon--asc" d="M2 8 6 4l4 4H2Z" />
+        <path className="sort-icon sort-icon--desc" d="m2 4 4 4 4-4H2Z" />
+      </svg>
+    </button>
   );
 }
 

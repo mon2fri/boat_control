@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { OverallSummaryCards } from "./OverallSummaryCards";
 import { RuleResultSection } from "./RuleResultSection";
 import { TableOfContents } from "./TableOfContents";
-import { DetailTable } from "./DetailTable";
+import { DetailTable, sortDetailRows } from "./DetailTable";
 import { GroupStatisticsPanel } from "./GroupStatisticsPanel";
 import { ExceptionRuleSummary } from "./ExceptionRuleSummary";
 import { ComparisonColumnList } from "./ComparisonColumnList";
@@ -170,6 +170,47 @@ describe("result components", () => {
     expect(screen.queryByRole("columnheader", { name: "Kind" })).not.toBeInTheDocument();
     rerender(<DetailTable rows={[]} caption="Changes" />);
     expect(screen.getByText("No detail rows.")).toBeInTheDocument();
+  });
+
+  it("sorts detail rows by any column and toggles direction", () => {
+    const rows = [
+      {
+        rowKey: "10",
+        keyColumns: { id: "10" },
+        column: "status",
+        file1Value: "active",
+        file2Value: "pending",
+        kind: "changed" as const,
+      },
+      {
+        rowKey: "2",
+        keyColumns: { id: "2" },
+        column: "name",
+        file1Value: "Zulu",
+        file2Value: "Alpha",
+        kind: "changed" as const,
+      },
+    ];
+    render(<DetailTable rows={rows} caption="Sortable" keyColumnNames={["id"]} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort id ascending" }));
+    expect(screen.getByRole("columnheader", { name: "id" })).toHaveAttribute("aria-sort", "ascending");
+    let bodyRows = [...document.querySelectorAll(".detail-grid-body .detail-grid-row")];
+    expect(within(bodyRows[0] as HTMLElement).getAllByRole("cell")[0]).toHaveTextContent("2");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort id descending" }));
+    expect(screen.getByRole("columnheader", { name: "id" })).toHaveAttribute("aria-sort", "descending");
+    bodyRows = [...document.querySelectorAll(".detail-grid-body .detail-grid-row")];
+    expect(within(bodyRows[0] as HTMLElement).getAllByRole("cell")[0]).toHaveTextContent("10");
+  });
+
+  it("sorts missing detail values last", () => {
+    const rows = [
+      { rowKey: "1", keyColumns: {}, column: "x", file1Value: null, file2Value: "b", kind: "changed" as const },
+      { rowKey: "2", keyColumns: {}, column: "x", file1Value: "A", file2Value: "b", kind: "changed" as const },
+    ];
+    expect(sortDetailRows(rows, "file1", "asc").map((row) => row.rowKey)).toEqual(["2", "1"]);
+    expect(sortDetailRows(rows, "file1", "desc").map((row) => row.rowKey)).toEqual(["2", "1"]);
   });
 
   it("shows rule-selected extra values as named detail columns", () => {
