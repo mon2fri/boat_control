@@ -1151,6 +1151,36 @@ table.data td {
   align-items: end;
   margin-bottom: var(--space);
 }
+
+.rule-condition-row {
+  grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.condition-number {
+  align-self: center;
+  min-width: 6.5rem;
+  padding: 5px 8px;
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-surface-raised);
+  color: var(--color-text-soft);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 900px) {
+  .rule-condition-row {
+    grid-template-columns: 1fr;
+  }
+
+  .condition-number {
+    justify-self: start;
+  }
+}
+
 .filter-row > .field {
   min-width: 0;
   margin-bottom: 0;

@@ -202,6 +202,10 @@ describe("rules config grouping-tree round-trip", () => {
     };
 
     const config = mapRulesToConfigContent([rule], []);
+    expect(config[0]?.conditions?.map((condition) => condition.column_name)).toEqual([
+      { kind: "column", name: "name" },
+      { kind: "column", name: "score" },
+    ]);
     expect(config[0]?.grouping_tree).toEqual({
       kind: "or",
       children: [
@@ -290,6 +294,51 @@ describe("rules config grouping-tree round-trip", () => {
 
     expect(drafts[0]?.groupTree).toEqual({
       kind: "and",
+      children: [
+        { kind: "leaf", conditionId: "c0" },
+        { kind: "leaf", conditionId: "c1" },
+      ],
+    });
+  });
+
+  it("repairs legacy configs that repeated one family reference for every family member", () => {
+    const { drafts } = resolveRulesConfig([
+      {
+        name: "Legacy family group",
+        conditions: [
+          {
+            column_name: { kind: "column_family", name: "Name Family" },
+            operator: "equals",
+            filter_values: ["A"],
+          },
+          {
+            column_name: { kind: "column_family", name: "Name Family" },
+            operator: "equals",
+            filter_values: ["B"],
+          },
+        ],
+        grouping_tree: {
+          kind: "or",
+          children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ],
+        },
+        logic: {
+          format: "value_vs_column",
+          column_name: "score",
+          operator: "greater_than",
+          target_value: "10",
+        },
+      },
+    ], families, ["name", "status", "score"]);
+
+    expect(drafts[0]?.conditions).toMatchObject([
+      { id: "c0", column: "name", values: ["A"] },
+      { id: "c1", column: "status", values: ["B"] },
+    ]);
+    expect(drafts[0]?.groupTree).toEqual({
+      kind: "or",
       children: [
         { kind: "leaf", conditionId: "c0" },
         { kind: "leaf", conditionId: "c1" },

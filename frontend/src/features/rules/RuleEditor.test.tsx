@@ -92,6 +92,15 @@ describe("RuleEditor", () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ conditionJoin: "and" }));
   });
 
+  it("shows condition numbers in add/edit rows", () => {
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "+ Add condition" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add condition" }));
+
+    expect(within(screen.getByRole("group", { name: "Condition 1" })).getByText("Condition 1")).toBeVisible();
+    expect(within(screen.getByRole("group", { name: "Condition 2" })).getByText("Condition 2")).toBeVisible();
+  });
+
   it("selects multiple values in one condition and keeps them as OR alternatives", () => {
     const { onSave } = setup({
       columns: ["status", "result"],

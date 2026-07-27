@@ -546,9 +546,35 @@ export function resolveConfigRule(
 
   const resolvedConditions: Condition[] = [];
   const conditionIdsByConfigIndex: string[][] = [];
+  const familyConditionCounts = new Map<string, number>();
+  for (const cond of rule.conditions ?? []) {
+    if (isColumnFamilyRef(cond.column_name)) {
+      familyConditionCounts.set(
+        cond.column_name.name,
+        (familyConditionCounts.get(cond.column_name.name) ?? 0) + 1,
+      );
+    }
+  }
+  const familyConditionIndexes = new Map<string, number>();
   if (Array.isArray(rule.conditions)) {
     for (const cond of rule.conditions) {
-      const { resolved, warnings: w } = resolveConfigRuleCondition(cond, families, availableColumns);
+      const conditionResult = resolveConfigRuleCondition(cond, families, availableColumns);
+      let resolved = conditionResult.resolved;
+      const w = conditionResult.warnings;
+      if (
+        isColumnFamilyRef(cond.column_name)
+        && resolved.length > 1
+        && familyConditionCounts.get(cond.column_name.name) === resolved.length
+      ) {
+        // Older app versions saved every concrete condition column as the
+        // same family reference. A six-column family therefore reloaded six
+        // times into 36 conditions. When the occurrence count exactly
+        // matches the available family size, restore one member per saved
+        // condition in family order.
+        const familyIndex = familyConditionIndexes.get(cond.column_name.name) ?? 0;
+        resolved = resolved[familyIndex] ? [resolved[familyIndex]] : [];
+        familyConditionIndexes.set(cond.column_name.name, familyIndex + 1);
+      }
       const ids: string[] = [];
       for (const condition of resolved) {
         condition.id = `c${resolvedConditions.length}`;
@@ -680,13 +706,9 @@ export function resolveRulesConfig(
   return { drafts, warnings };
 }
 
-/**
- * Convert a domain Condition.column to a ColumnRef.
- * Uses a family reference when the column belongs to a family and all
- * conditions in the rule that reference that family's columns are present.
- */
-function conditionColumnToRef(column: string, families: Family[]): ColumnRef {
-  return columnToRef(column, families);
+/** Preserve a rule's concrete column so loading cannot multiply conditions. */
+function ruleColumnToRef(column: string): ColumnRef {
+  return { kind: "column", name: column };
 }
 
 /**
@@ -714,7 +736,7 @@ function ruleToConfigRule(rule: Rule, families: Family[]): ConfigRule {
     name: rule.name,
     conditions: rule.conditions.map((cond) => {
       const c: ConfigRuleCondition = {
-        column_name: conditionColumnToRef(cond.column, families),
+        column_name: ruleColumnToRef(cond.column),
         operator: cond.operator,
       };
       if (cond.values && cond.values.length > 0) {
@@ -726,7 +748,7 @@ function ruleToConfigRule(rule: Rule, families: Family[]): ConfigRule {
     }),
     logic: {
       format: rule.logic.format === "value" ? "value_vs_column" : "column_vs_column",
-      column_name: conditionColumnToRef(rule.logic.column, families),
+      column_name: ruleColumnToRef(rule.logic.column),
       operator: rule.logic.operator,
       target_value: rule.logic.target,
       ...(rule.logic.format === "column"

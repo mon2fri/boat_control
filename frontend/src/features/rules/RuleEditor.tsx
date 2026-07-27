@@ -185,7 +185,10 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
             })),
           ];
           return (
-            <div key={condition.id} className="filter-row" role="group" aria-label={`Condition ${index + 1}`}>
+            <div key={condition.id} className="filter-row rule-condition-row" role="group" aria-label={`Condition ${index + 1}`}>
+              <span className="condition-number" aria-hidden="true">
+                Condition {index + 1}
+              </span>
               <ColumnField
                 label="Column"
                 columns={columns}
