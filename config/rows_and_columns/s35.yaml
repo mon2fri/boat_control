@@ -5,11 +5,31 @@ comparisonColumns:
 - region
 - score
 keyColumns:
-- id
-- name
+- kind: column
+  name: id
+- kind: column
+  name: name
 aggregationColumns:
-- status
-- region
+- kind: column
+  name: status
+- kind: column
+  name: region
 filters: []
 targetColumns: []
-_version: 2
+nestedAggregationEnabled: false
+comparisonSections:
+- id: cs-1
+  name: TBBBB
+  columns:
+  - kind: column
+    name: region
+  - kind: column
+    name: status
+- id: cs-2
+  name: asdfadf
+  columns:
+  - kind: column
+    name: name
+  - kind: column
+    name: status
+_version: 3

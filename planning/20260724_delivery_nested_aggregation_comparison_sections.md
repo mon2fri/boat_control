@@ -1,4 +1,4 @@
-# Delivery: Nested Aggregation + Configurable Comparison Sections + Rule-Config Loading Fix + Config Removal Fix + Overall Tree Fix + Config Persistence + Drag-and-Drop + Blocking Findings Fix + HSBC Theme
+# Delivery: Nested Aggregation + Configurable Comparison Sections + Rule-Config Loading Fix + Config Removal Fix + Overall Tree Fix + Config Persistence + Drag-and-Drop + Blocking Findings Fix + Brand Theme
 
 ## Summary
 
@@ -19,7 +19,7 @@ Extended the comparison-sections feature to persist and render per-section attri
 3. Fixed family column compression — ordered lists (aggregation, key, section columns, rule extra_columns) now serialize as explicit column refs to prevent corruption on reload.
 4. Added rule-config error display in RulesPage (errors are no longer swallowed).
 5. Added ConfigManager delete error display and 5 interaction tests.
-6. Applied HSBC brand theme (Red #EE3524, Black #231F20, White, Gray #9FA1A4).
+6. Applied brand theme (Red #EE3524, Black #231F20, White, Gray #9FA1A4).
 
 ## Changes
 
@@ -46,7 +46,7 @@ Extended the comparison-sections feature to persist and render per-section attri
 | `src/features/targets/ComparisonSectionEditor.tsx` | Rewritten to use local draft editing for both new and existing sections; premature deletion prevented; duplicate-name validation fixed |
 | `src/features/configs/ConfigManager.tsx` | Added `del.isError` display; delete confirmation dialog dismisses on error |
 | `src/pages/RulesPage.tsx` | Added `configError` state; rule-config errors now displayed to user instead of swallowed |
-| `src/index.css` | Added nested-aggregation tree styling (`.nested-agg-*` classes); added `.sr-only` and `.drag-handle` classes; applied HSBC brand theme (Red `#EE3524`, Black `#231F20`, Gray `#9FA1A4` in light mode) |
+| `src/index.css` | Added nested-aggregation tree styling (`.nested-agg-*` classes); added `.sr-only` and `.drag-handle` classes; applied brand theme (Red `#EE3524`, Black `#231F20`, Gray `#9FA1A4` in light mode) |
 
 ### Backend
 
@@ -164,8 +164,8 @@ Seven screenshot files tracked in git were manually deleted from the working tre
 
 **Fix**: Restored via `git restore screenshots/`.
 
-### 15. HSBC brand theme applied (2026-07-24)
-Replaced the default blue accent with HSBC brand colors: Red `#EE3524`, Black `#231F20`, White, Gray `#9FA1A4`.
+### 15. Brand theme applied (2026-07-24)
+Replaced the default blue accent with brand colors: Red `#EE3524`, Black `#231F20`, White, Gray `#9FA1A4`.
 
 ## Disposition of Reset-Rules Changes
 
@@ -268,7 +268,7 @@ No stacking contexts introduced; tree content stays below the sticky Results hea
 - [x] Config deletion errors are displayed to the user
 - [x] `config/rules/rules.yaml` is unmodified from its committed state
 - [x] All tracked screenshots are present in the working tree
-- [x] HSBC brand theme is applied
+- [x] Brand theme is applied
 - [x] All required automated checks pass (359 frontend, 211 backend, build clean, git diff --check clean)
 - [x] Manual browser results recorded accurately
 - [x] Delivery document matches actual implementation and verification results

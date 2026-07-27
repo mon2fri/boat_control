@@ -7,7 +7,11 @@ interface Props {
 /** Compact per-rule summary using the backend's distinct exception-row count. */
 export function ExceptionRuleSummary({ rules }: Props) {
   return (
-    <section className="card" aria-labelledby="exception-rule-summary-title">
+    <section
+      id="exception-rule-summary"
+      className="card"
+      aria-labelledby="exception-rule-summary-title"
+    >
       <h3 id="exception-rule-summary-title">Exception Rule Summary</h3>
       {rules.length === 0 ? (
         <p role="status">No exception rules were selected.</p>
