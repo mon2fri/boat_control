@@ -1,5 +1,17 @@
 import { createContext, useCallback, useContext, useMemo, useReducer, type ReactNode } from "react";
-import type { ComparisonSection, FilterRow, HeaderReport, RunResult } from "../api/domain";
+import type {
+  ComparisonSection,
+  FilterRow,
+  HeaderReport,
+  PrepareResult,
+  RunResult,
+} from "../api/domain";
+
+export interface PreparedDataCache {
+  sessionId: string;
+  comparisonColumns: string[];
+  data: PrepareResult;
+}
 
 /**
  * Cross-page workflow state. The server issues a `sessionId` on upload and
@@ -21,6 +33,8 @@ export interface WorkflowState {
   nestedAggregationEnabled: boolean;
   /** User-defined comparison sections for attribute comparing configuration. */
   comparisonSections: ComparisonSection[];
+  /** Page-two CSV scan result, reusable while files and columns are unchanged. */
+  preparedData?: PreparedDataCache | null;
   selectedRuleIndexes: string[];
   /** User acknowledged running against the full set with no filters. */
   confirmFullSet: boolean;
@@ -40,6 +54,7 @@ const initialState: WorkflowState = {
   aggregationColumns: [],
   nestedAggregationEnabled: false,
   comparisonSections: [],
+  preparedData: null,
   selectedRuleIndexes: [],
   confirmFullSet: false,
   result: null,
@@ -54,6 +69,7 @@ type Action =
   | { type: "setAggregationColumns"; columns: string[] }
   | { type: "setNestedAggregationEnabled"; enabled: boolean }
   | { type: "setComparisonSections"; sections: ComparisonSection[] }
+  | { type: "setPreparedData"; cache: PreparedDataCache }
   | { type: "setFilters"; filters: FilterRow[] }
   | { type: "setTargetColumns"; columns: string[] }
   | { type: "setKeyColumns"; columns: string[] }
@@ -75,6 +91,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       return {
         ...state,
         comparisonColumns: cols,
+        preparedData: null,
         keyColumns: state.keyColumns.filter((c) => colSet.has(c)),
         targetColumns: state.targetColumns.filter((c) => colSet.has(c)),
         aggregationColumns: state.aggregationColumns.filter((c) => colSet.has(c)),
@@ -96,6 +113,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       return {
         ...state,
         comparisonColumns: next,
+        preparedData: null,
         keyColumns: state.keyColumns.filter((c) => c !== col),
         targetColumns: state.targetColumns.filter((c) => c !== col),
         aggregationColumns: state.aggregationColumns.filter((c) => c !== col),
@@ -128,6 +146,8 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
           (s) => s.name.trim().length > 0 && s.columns.length > 0,
         ),
       };
+    case "setPreparedData":
+      return { ...state, preparedData: action.cache };
     case "setSelectedRules":
       return { ...state, selectedRuleIndexes: action.ruleIndexes };
     case "setConfirmFullSet":

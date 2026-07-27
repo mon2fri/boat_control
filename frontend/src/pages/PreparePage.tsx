@@ -7,7 +7,8 @@ import { ComparisonSectionEditor } from "../features/targets/ComparisonSectionEd
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { useFamilies } from "../features/settings/useSettings";
-import { prepareFilters, type PrepareResult } from "../api/endpoints";
+import { prepareFilters } from "../api/endpoints";
+import type { PrepareResult } from "../api/domain";
 import { resolveRowsColumnsConfig, mapWorkflowToRowsColumnsConfig } from "../api/configContent";
 import { useSessionExpiryDispatcher } from "../features/session/useSessionExpiry";
 import { RulesPage } from "./RulesPage";
@@ -18,39 +19,76 @@ export function PreparePage() {
   const familiesQuery = useFamilies();
   const families = familiesQuery.data ?? [];
 
+  const header = state.header;
+  const comparisonColumns = state.comparisonColumns;
+  const comparisonColumnsKey = JSON.stringify(comparisonColumns);
+  const cachedPrepare = header
+    && state.preparedData?.sessionId === header.sessionId
+    && state.preparedData.comparisonColumns.length === comparisonColumns.length
+    && state.preparedData.comparisonColumns.every(
+      (column, index) => column === comparisonColumns[index],
+    )
+    ? state.preparedData.data
+    : null;
+
   const [prepare, setPrepare] = useState<{
     status: "loading" | "ready" | "error";
     data: PrepareResult | null;
     error: string | null;
-  }>({ status: "loading", data: null, error: null });
+  }>({
+    status: cachedPrepare ? "ready" : "loading",
+    data: cachedPrepare,
+    error: null,
+  });
+  const [forceReload, setForceReload] = useState(false);
+  const [loadedFromCache, setLoadedFromCache] = useState(cachedPrepare !== null);
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const [discardWarnings, setDiscardWarnings] = useState<string[]>([]);
 
-  const header = state.header;
   const totalRows = (prepare.data?.totalRowsA ?? 0) + (prepare.data?.totalRowsB ?? 0);
-  const comparisonColumns = state.comparisonColumns;
 
   const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0;
 
   useEffect(() => {
     if (!header) return;
+    if (cachedPrepare && !forceReload) {
+      return;
+    }
     let cancelled = false;
     prepareFilters(header.sessionId, comparisonColumns)
       .then((data) => {
         if (cancelled) return;
         setPrepare({ status: "ready", data, error: null });
+        setForceReload(false);
+        setLoadedFromCache(false);
+        dispatch({
+          type: "setPreparedData",
+          cache: {
+            sessionId: header.sessionId,
+            comparisonColumns: [...comparisonColumns],
+            data,
+          },
+        });
         dispatch({ type: "setServerRequiresConfirmation", requires: data.requiresConfirmation });
       })
       .catch((err: Error) => {
         if (cancelled) return;
         if (handleSessionError(err)) return;
+        setForceReload(false);
         setPrepare({ status: "error", data: null, error: err.message });
       });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [header?.sessionId, comparisonColumns.join(","), dispatch, handleSessionError]);
+  }, [
+    header?.sessionId,
+    comparisonColumnsKey,
+    cachedPrepare,
+    forceReload,
+    dispatch,
+    handleSessionError,
+  ]);
 
   if (!header) {
     return <RequireSession>Upload two files before choosing filters and targets.</RequireSession>;
@@ -76,6 +114,12 @@ export function PreparePage() {
     if (warnings.length > 0) {
       setTimeout(() => setDiscardWarnings([]), 8000);
     }
+  }
+
+  function handleReloadWithoutCache(): void {
+    setLoadedFromCache(false);
+    setPrepare({ status: "loading", data: null, error: null });
+    setForceReload(true);
   }
 
   return (
@@ -123,6 +167,21 @@ export function PreparePage() {
           {discardWarnings.map((w, i) => (
             <p key={i} style={{ margin: 0 }}>{w}</p>
           ))}
+        </div>
+      )}
+
+      {loadedFromCache && cachedPrepare && !forceReload && (
+        <div className="alert alert--info" role="status">
+          <span>
+            Using cached load results for these files and comparison columns.
+          </span>{" "}
+          <button
+            type="button"
+            className="btn"
+            onClick={handleReloadWithoutCache}
+          >
+            Don&apos;t use cache and reload
+          </button>
         </div>
       )}
 

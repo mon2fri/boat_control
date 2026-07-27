@@ -124,6 +124,7 @@ export function DetailTable({
               options={cf.options}
               selected={activeFilters[cf.key] ?? []}
               onChange={(vals) => onFilterChange?.(cf.key, vals)}
+              forceRenderOptions={exportMode}
             />
           ) : (
             <div key={name} role="columnheader">{name}</div>
@@ -141,6 +142,7 @@ export function DetailTable({
             options={cf.options}
             selected={activeFilters[cf.key] ?? []}
             onChange={(vals) => onFilterChange?.(cf.key, vals)}
+            forceRenderOptions={exportMode}
           />
         ) : (
           <div key={name} role="columnheader">{name}</div>
@@ -154,6 +156,7 @@ export function DetailTable({
             options={colFilter.options}
             selected={activeFilters[colFilter.key] ?? []}
             onChange={(vals) => onFilterChange?.(colFilter.key, vals)}
+            forceRenderOptions={exportMode}
           />
         ) : (
           <div role="columnheader">Column</div>
@@ -246,11 +249,13 @@ function FilterableTh({
   options,
   selected,
   onChange,
+  forceRenderOptions = false,
 }: {
   label: string;
   options: string[];
   selected: string[];
   onChange: (values: string[]) => void;
+  forceRenderOptions?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -300,8 +305,12 @@ function FilterableTh({
         </svg>
         {hasActive && <span className="th-filter-count">{selected.length}</span>}
       </button>
-      {open && (
-        <div className="th-filter-dropdown" role="group" aria-label={`Filter ${label}`}>
+      {(open || forceRenderOptions) && <div
+        className="th-filter-dropdown"
+        role="group"
+        aria-label={`Filter ${label}`}
+        hidden={!open}
+      >
           <input
             type="text"
             className="th-filter-search"
@@ -311,11 +320,16 @@ function FilterableTh({
             autoFocus
           />
           <div className="th-filter-options">
-            {filtered.length === 0 && <div className="th-filter-empty">No matches</div>}
-            {filtered.map((val) => (
-              <label key={val} className="th-filter-option">
+            <div className="th-filter-empty" hidden={filtered.length !== 0}>No matches</div>
+            {options.map((val) => (
+              <label
+                key={val}
+                className="th-filter-option"
+                hidden={q.length > 0 && !val.toLowerCase().includes(q)}
+              >
                 <input
                   type="checkbox"
+                  value={val}
                   checked={selected.includes(val)}
                   onChange={() => toggle(val)}
                 />
@@ -323,17 +337,15 @@ function FilterableTh({
               </label>
             ))}
           </div>
-          {selected.length > 0 && (
-            <button
-              type="button"
-              className="th-filter-clear"
-              onClick={() => { onChange([]); setQuery(""); }}
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      )}
+          <button
+            type="button"
+            className="th-filter-clear"
+            onClick={() => { onChange([]); setQuery(""); }}
+            hidden={selected.length === 0}
+          >
+            Clear
+          </button>
+      </div>}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback } from "react";
-import { DetailTable, filterDetailRows } from "./DetailTable";
+import { DetailTable } from "./DetailTable";
 import type { DetailRow } from "../../api/domain";
 import { usePaginatedDetails } from "./usePaginatedDetails";
 
@@ -67,13 +67,12 @@ export function PaginatedDetailSection({
   // When sectionColumns is supplied, also restrict the column-filter chips to
   // that section. After the section filter is applied, every remaining row's
   // column is one of these, so unrelated columns would never be selectable.
-  const filteredExportRows = useMemo(() => {
+  const sectionExportRows = useMemo(() => {
     if (!exportRows) return rows;
-    const sliced = filterDetailRows(exportRows, filters);
-    if (!sectionColumns || sectionColumns.length === 0) return sliced;
+    if (!sectionColumns || sectionColumns.length === 0) return exportRows;
     const set = new Set(sectionColumns);
-    return sliced.filter((row) => set.has(row.column));
-  }, [exportRows, filters, rows, sectionColumns]);
+    return exportRows.filter((row) => set.has(row.column));
+  }, [exportRows, rows, sectionColumns]);
 
   if (loading && rows.length === 0) {
     return (
@@ -97,7 +96,7 @@ export function PaginatedDetailSection({
     <>
       <DetailTable
         rows={rows}
-        exportRows={filteredExportRows}
+        exportRows={sectionExportRows}
         total={total}
         hasMore={hasMore}
         onReachEnd={loadMore}

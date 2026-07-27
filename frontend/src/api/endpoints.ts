@@ -48,6 +48,7 @@ import type {
   Rule as DomainRule,
   FilterRow,
   HeaderReport,
+  PrepareResult,
   PresetSource,
   RunResult,
   RunSummary,
@@ -97,12 +98,7 @@ export function clearUploadSession(sessionId: string): Promise<void> {
   }).then(() => undefined);
 }
 
-export interface PrepareResult {
-  columnValues: Record<string, { value: string; starred: boolean }[]>;
-  totalRowsA: number;
-  totalRowsB: number;
-  requiresConfirmation: boolean;
-}
+export type { PrepareResult };
 
 export interface ColumnValuesPage {
   column: string;
