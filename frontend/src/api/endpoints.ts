@@ -220,10 +220,15 @@ export function fetchDetailPage(
 export function prepareFilters(
   sessionId: string,
   commonColumns?: string[],
+  forceReload = false,
 ): Promise<PrepareResult> {
   return apiRequest("/files/filters/prepare/", {
     method: "POST",
-    body: { session_id: sessionId, ...(commonColumns ? { common_columns: commonColumns } : {}) },
+    body: {
+      session_id: sessionId,
+      ...(commonColumns ? { common_columns: commonColumns } : {}),
+      ...(forceReload ? { force_reload: true } : {}),
+    },
     schema: prepareResponseSchema,
   }).then((response) => ({
     columnValues: Object.fromEntries(
@@ -235,6 +240,7 @@ export function prepareFilters(
     totalRowsA: response.total_rows_a,
     totalRowsB: response.total_rows_b,
     requiresConfirmation: response.requires_confirmation,
+    cacheUsed: response.cache_used,
   }));
 }
 

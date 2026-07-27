@@ -13,6 +13,7 @@ from apps.files.filter_services import (
     validate_filter,
     validate_target_columns,
 )
+from apps.files.preparation_cache import load_preparation, save_preparation
 from apps.files.sessions import get_session
 
 logger = logging.getLogger(__name__)
@@ -38,9 +39,14 @@ class FilterPreparationView(APIView):  # type: ignore[misc]
         common_columns = request.data.get("common_columns") or session.common_columns
         path_a = Path(session.file_a_path)
         path_b = Path(session.file_b_path)
+        force_reload = bool(request.data.get("force_reload", False))
 
         try:
-            result = prepare_filters(path_a, path_b, common_columns)
+            result = None if force_reload else load_preparation(path_a, path_b, common_columns)
+            cache_used = result is not None
+            if result is None:
+                result = prepare_filters(path_a, path_b, common_columns)
+                save_preparation(path_a, path_b, common_columns, result)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception:
@@ -67,6 +73,7 @@ class FilterPreparationView(APIView):  # type: ignore[misc]
             "total_rows_a": result.total_rows_a,
             "total_rows_b": result.total_rows_b,
             "requires_confirmation": result.requires_confirmation,
+            "cache_used": cache_used,
         })
 
 

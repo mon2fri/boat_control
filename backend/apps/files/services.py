@@ -119,6 +119,9 @@ def inspect_headers(path_a: Path, name_a: str, path_b: Path, name_b: str) -> Hea
 
 def delete_upload(path: Path) -> None:
     if path.exists() and path.resolve().parent == Path(settings.UPLOADS_DIR).resolve():
+        from apps.files.preparation_cache import delete_for_upload
+
+        delete_for_upload(path)
         path.unlink()
 
 

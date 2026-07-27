@@ -38,6 +38,8 @@ export interface PrepareResult {
   totalRowsA: number;
   totalRowsB: number;
   requiresConfirmation: boolean;
+  /** True when the backend reused a persisted preparation result. */
+  cacheUsed?: boolean;
 }
 
 export interface FilterRow {

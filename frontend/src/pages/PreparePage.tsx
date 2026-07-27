@@ -55,12 +55,12 @@ export function PreparePage() {
       return;
     }
     let cancelled = false;
-    prepareFilters(header.sessionId, comparisonColumns)
+    prepareFilters(header.sessionId, comparisonColumns, forceReload)
       .then((data) => {
         if (cancelled) return;
         setPrepare({ status: "ready", data, error: null });
         setForceReload(false);
-        setLoadedFromCache(false);
+        setLoadedFromCache(data.cacheUsed === true);
         dispatch({
           type: "setPreparedData",
           cache: {

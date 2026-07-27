@@ -117,6 +117,7 @@ class TestFilterPrepareContract:
         assert required.issubset(data.keys())
         assert isinstance(data["column_values"], dict)
         assert isinstance(data["requires_confirmation"], bool)
+        assert isinstance(data["cache_used"], bool)
 
 
 class TestFilterValidateContract:

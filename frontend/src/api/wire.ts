@@ -73,6 +73,7 @@ export const prepareResponseSchema = z.object({
   total_rows_a: z.number().int().nonnegative(),
   total_rows_b: z.number().int().nonnegative(),
   requires_confirmation: z.boolean(),
+  cache_used: z.boolean().optional().default(false),
 });
 export type WirePrepareResponse = z.infer<typeof prepareResponseSchema>;
 

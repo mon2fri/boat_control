@@ -170,6 +170,9 @@ describe("critical user journey: upload → prepare → rules → run → result
         ([url]) => String(url).includes("/files/filters/prepare/"),
       );
       expect(calls).toHaveLength(prepareCallsBeforeReturn + 1);
+      expect(JSON.parse(String(calls.at(-1)?.[1]?.body))).toMatchObject({
+        force_reload: true,
+      });
     });
     await waitFor(() =>
       expect(screen.queryByText(/Using cached load results/)).not.toBeInTheDocument(),

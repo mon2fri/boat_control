@@ -55,9 +55,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 DATA_DIR = BASE_DIR / "data"
 UPLOADS_DIR = DATA_DIR / "uploads"
 RESULTS_DIR = DATA_DIR / "results"
+PREPARE_CACHE_DIR = DATA_DIR / "prepare_cache"
 CONFIG_DIR = BASE_DIR / "config"
 
-for _d in (DATA_DIR, UPLOADS_DIR, RESULTS_DIR):
+for _d in (DATA_DIR, UPLOADS_DIR, RESULTS_DIR, PREPARE_CACHE_DIR):
     _d.mkdir(parents=True, exist_ok=True)
 
 LANGUAGE_CODE = "en-us"
