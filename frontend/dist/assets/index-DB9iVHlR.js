@@ -148,7 +148,7 @@ ${HA}`,s=new XMLSerializer().serializeToString(l),u=document.documentElement.dat
 }
 .export-toc-fab__trigger:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--shadow-focus, rgba(219, 0, 17, 0.35));
+  box-shadow: var(--shadow-focus);
 }
 .export-toc-fab__trigger svg {
   width: 14px;

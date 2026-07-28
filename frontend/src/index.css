@@ -1,9 +1,10 @@
 /*
  * Boat Control — Design System
  *
- * Aesthetic: "Editorial Banking" — editorial banking inspired. Warm paper backgrounds,
- * authentic brand red (#DB0011), editorial serif numerals, hexagonal brand
- * motif, strong horizontal rules, generous editorial spacing.
+ * Palette: corporate-slate + brand red. The tokens below mirror the colour
+ * schema defined in requirements/20260728_theme_requirement.md and are
+ * re-exposed through the existing `--color-*` slots so the rest of the
+ * stylesheet can stay structural.
  *
  * Themes are gated on `html[data-theme]` with a single set of design tokens.
  * The hexagonal motif reuses a CSS custom property so the same SVG can be
@@ -11,10 +12,34 @@
  */
 
 :root {
-  /* ---------- Brand ---------- */
-  --brand-red: #EE3524;
-  --brand-red-deep: #d92e20;
-  --brand-red-soft: #fde8e6;
+  /* ---------- Brand & semantic palette (from 20260728 theme requirement) ---------- */
+  --red: #db0011;          /* primary brand / primary action colour */
+  --black: #000;
+  --white: #fff;
+  --pearl: #f3f3f3;        /* very light grey */
+  --silver: #d7d8d6;       /* light grey / cool border */
+  --pewter: #767676;       /* mid grey */
+  --charcoal: #333;        /* dark grey */
+  --light-slate: #4d6474;
+  --slate: #3e5b5d;
+  --dark-slate: #253038;
+  --corp-slate: #1d262c;   /* topbar background + main text */
+  --rag-red: #a8000b;      /* error / removal */
+  --rag-amber: #ffbb33;    /* warning / change */
+  --rag-green: #00847f;    /* success / addition */
+  --rag-blue: #305a85;     /* info */
+  --rag-red-tint: #f9f2f3;
+  --rag-amber-tint: #fff8ea;
+  --rag-green-tint: #e5f2f2;
+  --rag-blue-tint: #ebeff4;
+  --primary: #367ea2;      /* focus ring + interactive accent */
+  --bgPrimary: #ddf6f5;    /* table header tint */
+
+  /* Legacy brand aliases — preserved so existing markup that still references
+     these names keeps working after the palette migration. */
+  --brand-red: var(--red);
+  --brand-red-deep: #b80010;
+  --brand-red-soft: var(--rag-red-tint);
 
   /* ---------- Type stack ---------- */
   --font-display: "Didot", "Bodoni 72", "Bodoni MT", "Hoefler Text", Georgia, "Times New Roman", serif;
@@ -30,41 +55,60 @@
   --rule-strong: 2px solid var(--color-rule-strong);
 
   /* Hex motif color slot (set per-theme below). */
-  --hex-stroke: rgba(0, 0, 0, 0.06);
+  --hex-stroke: rgba(29, 38, 44, 0.10);
   --hex-fill: rgba(219, 0, 17, 0.04);
   --hex-accent: rgba(219, 0, 17, 0.85);
 
   /* Header bar under-rule thickness. */
   --brand-bar: 3px;
+
+  /* Side-nav hover — solid navy fill, white text (see screenshot
+     photo_2026-07-28_12-24-25.jpg). Per-theme values below. */
+  --nav-hover-bg: #1e3a8a;
+  --nav-hover-text: var(--white);
 }
 
 :root,
 :root[data-theme="dark"] {
-  /* Dark theme — warm charcoal, off-white text, calm ambience. */
-  --color-bg: #0d0d0f;
-  --color-surface: #16161a;
-  --color-surface-raised: #1d1d22;
-  --color-surface-hover: #23232a;
-  --color-rule: #2a2a31;
-  --color-rule-strong: #3a3a44;
-  --color-text: #f1ede4;
-  --color-text-soft: #c9c4ba;
-  --color-muted: #8a857c;
-  --color-accent: var(--brand-red);
-  --color-accent-hover: #f0233a;
-  --color-accent-contrast: #ffffff;
+  /* Dark theme — corp-slate foundation, pearl text, brand red accents. */
+  --color-bg: var(--corp-slate);
+  --color-surface: var(--dark-slate);
+  --color-surface-raised: #2d3942;
+  --color-surface-hover: #34404a;
+  --color-rule: #34404a;
+  --color-rule-strong: var(--light-slate);
+  --color-text: var(--pearl);
+  --color-text-soft: var(--silver);
+  --color-muted: #8a9499;
+  --color-accent: var(--red);
+  --color-accent-hover: #ef2a3a;
+  --color-accent-contrast: var(--white);
   --color-danger: #ef4444;
-  --color-warn: #d4a017;
-  --color-ok: #4ec97a;
-  --color-star: #d4a017;
+  --color-warn: #ffc455;
+  --color-ok: #20b2a8;
+  --color-star: #ffc455;
+  --color-table-header: #2d3942;
+  --color-focus: #5da8d4;
 
-  --hex-stroke: rgba(255, 255, 255, 0.05);
+  /* Top bar — slightly raised over the page bg so the brand mark still
+     reads even when the rest of the surface is the same slate. */
+  --topbar-bg: var(--dark-slate);
+  --topbar-text: var(--pearl);
+  --topbar-muted: var(--silver);
+  --topbar-rule: var(--red);
+
+  /* Side-nav hover — slightly brighter navy so the highlight still pops
+     against the dark-slate nav surface. */
+  --nav-hover-bg: #2547a8;
+  --nav-hover-text: var(--white);
+
+  --hex-stroke: rgba(255, 255, 255, 0.06);
   --hex-fill: rgba(219, 0, 17, 0.06);
   --hex-accent: rgba(219, 0, 17, 0.95);
 
   --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.02), 0 2px 6px rgba(0, 0, 0, 0.35);
   --shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.5);
-  --shadow-focus: 0 0 0 3px rgba(219, 0, 17, 0.35);
+  --shadow-focus: 0 0 0 3px rgba(93, 168, 212, 0.35);
 
   --app-header-height: 64px;
   color-scheme: dark;
@@ -78,30 +122,40 @@
 }
 
 :root[data-theme="light"] {
-  --color-bg: #faf7f2;
-  --color-surface: #ffffff;
-  --color-surface-raised: #f4efe6;
-  --color-surface-hover: #ece6da;
-  --color-rule: #e3dccf;
-  --color-rule-strong: #1a1a1a;
-  --color-text: #1a1a1a;
-  --color-text-soft: #2d2d2d;
-  --color-muted: #6b655c;
-  --color-accent: var(--brand-red);
-  --color-accent-hover: var(--brand-red-deep);
-  --color-accent-contrast: #ffffff;
-  --color-danger: #b40010;
-  --color-warn: #a16a00;
-  --color-ok: #1f7a3e;
-  --color-star: #a16a00;
+  /* Light theme — white surfaces, corp-slate text, brand red accents. */
+  --color-bg: var(--white);
+  --color-surface: var(--white);
+  --color-surface-raised: var(--pearl);
+  --color-surface-hover: #ebebeb;
+  --color-rule: var(--silver);
+  --color-rule-strong: var(--dark-slate);
+  --color-text: var(--corp-slate);
+  --color-text-soft: var(--slate);
+  --color-muted: var(--pewter);
+  --color-accent: var(--red);
+  --color-accent-hover: #b80010;
+  --color-accent-contrast: var(--white);
+  --color-danger: var(--rag-red);
+  --color-warn: var(--rag-amber);
+  --color-ok: var(--rag-green);
+  --color-star: var(--rag-amber);
+  --color-table-header: var(--bgPrimary);
+  --color-focus: var(--primary);
 
-  --hex-stroke: rgba(0, 0, 0, 0.06);
-  --hex-fill: rgba(219, 0, 17, 0.05);
+  /* Top bar — always dark corp-slate with a red underline (matches the brand
+     spec for the navigation surface regardless of theme). */
+  --topbar-bg: var(--corp-slate);
+  --topbar-text: var(--white);
+  --topbar-muted: var(--silver);
+  --topbar-rule: var(--red);
+
+  --hex-stroke: rgba(29, 38, 44, 0.10);
+  --hex-fill: rgba(219, 0, 17, 0.04);
   --hex-accent: rgba(219, 0, 17, 0.95);
 
   --shadow-card: 0 1px 0 rgba(0, 0, 0, 0.02), 0 1px 2px rgba(0, 0, 0, 0.04);
   --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.08);
-  --shadow-focus: 0 0 0 3px rgba(219, 0, 17, 0.2);
+  --shadow-focus: 0 0 0 3px rgba(54, 126, 162, 0.25);
 
   --app-header-height: 64px;
   color-scheme: light;
@@ -115,7 +169,7 @@ body {
   margin: 0;
   line-height: 1.5;
   background:
-    radial-gradient(ellipse at top right, rgba(219, 0, 17, 0.04), transparent 50%),
+    radial-gradient(ellipse at top right, rgba(54, 126, 162, 0.05), transparent 55%),
     var(--color-bg);
   background-attachment: fixed;
 }
@@ -165,8 +219,8 @@ body {
   justify-content: space-between;
   gap: calc(var(--space) * 2);
   padding: 0 calc(var(--space) * 4);
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-rule);
+  background: var(--topbar-bg);
+  border-bottom: 1px solid transparent;
   box-shadow: var(--shadow-card);
 }
 
@@ -177,7 +231,7 @@ body {
   right: 0;
   bottom: -1px;
   height: var(--brand-bar);
-  background: var(--color-accent);
+  background: var(--topbar-rule);
 }
 
 .app-header__brand {
@@ -206,7 +260,7 @@ body {
   flex-direction: column;
   justify-content: center;
   line-height: 1.1;
-  border-left: 1px solid var(--color-rule);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
   padding-left: calc(var(--space) * 1.5);
 }
 
@@ -225,7 +279,7 @@ body {
   font-weight: 400;
   letter-spacing: -0.005em;
   margin: 0;
-  color: var(--color-text);
+  color: var(--topbar-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -246,6 +300,13 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  color: var(--topbar-text);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.app-header .theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
 }
 
 .app-header .theme-toggle svg {
@@ -265,7 +326,7 @@ body {
 }
 
 .app-nav {
-  background: var(--color-surface);
+  background: var(--color-surface-raised);
   border-right: 1px solid var(--color-rule);
   padding: calc(var(--space) * 3) calc(var(--space) * 2);
   position: sticky;
@@ -308,9 +369,11 @@ body {
   transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
 
-.app-nav a:hover:not([aria-current="page"]) {
-  color: var(--color-text);
-  background: var(--color-surface-hover);
+.app-nav a:hover:not([aria-current="page"]),
+.app-nav a:focus-visible:not([aria-current="page"]) {
+  color: var(--nav-hover-text);
+  background: var(--nav-hover-bg);
+  border-left-color: var(--nav-hover-bg);
 }
 
 .app-nav a[aria-current="page"] {
@@ -364,9 +427,15 @@ body {
   display: block;
   padding: 4px calc(var(--space) * 1.5) 4px calc(var(--space) * 2);
   border-left: 2px solid transparent;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-right: calc(var(--space) * -0.5);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
 }
-.app-nav__results a:hover {
-  color: var(--color-accent);
+.app-nav__results a:hover,
+.app-nav__results a:focus-visible {
+  color: var(--nav-hover-text);
+  background: var(--nav-hover-bg);
+  border-left-color: var(--nav-hover-bg);
 }
 .app-nav__results .toc__item--active a {
   color: var(--color-accent);
@@ -388,8 +457,8 @@ body {
   right: calc(var(--space) * 2);
   width: 320px;
   height: 320px;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><defs><pattern id='hex' width='40' height='46.188' patternUnits='userSpaceOnUse'><path d='M20 1.155 L38.641 12.5 L38.641 33.812 L20 45.155 L1.359 33.812 L1.359 12.5 Z' fill='none' stroke='rgba(0,0,0,0.06)' stroke-width='0.8'/></pattern></defs><rect width='200' height='200' fill='url(%23hex)'/></svg>");
-  opacity: 0.6;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><defs><pattern id='hex' width='40' height='46.188' patternUnits='userSpaceOnUse'><path d='M20 1.155 L38.641 12.5 L38.641 33.812 L20 45.155 L1.359 33.812 L1.359 12.5 Z' fill='none' stroke='rgba(29,38,44,0.10)' stroke-width='0.8'/></pattern></defs><rect width='200' height='200' fill='url(%23hex)'/></svg>");
+  opacity: 0.55;
   pointer-events: none;
   z-index: 0;
 }
@@ -658,7 +727,7 @@ h3 {
   border-color: var(--color-danger);
 }
 .btn--danger:hover {
-  background: rgba(180, 0, 16, 0.08);
+  background: var(--rag-red-tint);
 }
 
 .history-actions {
@@ -715,7 +784,7 @@ input[aria-invalid="true"] {
   border-color: var(--color-danger);
 }
 input[aria-invalid="true"]:focus {
-  box-shadow: 0 0 0 3px rgba(180, 0, 16, 0.25);
+  box-shadow: 0 0 0 3px rgba(168, 0, 11, 0.25);
 }
 
 /* ============================================================
@@ -735,19 +804,19 @@ input[aria-invalid="true"]:focus {
   color: var(--color-text-soft);
 }
 .tag--star {
-  color: var(--color-star);
-  border-color: var(--color-star);
-  background: rgba(212, 160, 23, 0.1);
+  color: var(--rag-amber);
+  border-color: var(--rag-amber);
+  background: var(--rag-amber-tint);
 }
 .tag--included {
-  color: var(--color-ok);
-  border-color: var(--color-ok);
-  background: rgba(78, 201, 122, 0.1);
+  color: var(--rag-green);
+  border-color: var(--rag-green);
+  background: var(--rag-green-tint);
 }
 .tag--excluded {
-  color: var(--color-danger);
-  border-color: var(--color-danger);
-  background: rgba(239, 68, 68, 0.1);
+  color: var(--rag-red);
+  border-color: var(--rag-red);
+  background: var(--rag-red-tint);
 }
 
 .multi-check {
@@ -769,19 +838,19 @@ input[aria-invalid="true"]:focus {
   border-left-width: 3px;
 }
 .alert--success {
-  color: var(--color-ok);
-  border-color: var(--color-ok);
-  background: rgba(78, 201, 122, 0.06);
+  color: var(--rag-green);
+  border-color: var(--rag-green);
+  background: var(--rag-green-tint);
 }
 .alert--error {
-  color: var(--color-danger);
-  border-color: var(--color-danger);
-  background: rgba(180, 0, 16, 0.06);
+  color: var(--rag-red);
+  border-color: var(--rag-red);
+  background: var(--rag-red-tint);
 }
 .alert--warn {
-  color: var(--color-warn);
-  border-color: var(--color-warn);
-  background: rgba(212, 160, 23, 0.06);
+  color: var(--rag-amber);
+  border-color: var(--rag-amber);
+  background: var(--rag-amber-tint);
 }
 
 /* ============================================================
@@ -817,7 +886,7 @@ table.data td {
   text-align: left;
 }
 table.data th {
-  background: var(--color-surface-raised);
+  background: var(--color-table-header, var(--color-surface-raised));
   font-weight: 700;
   color: var(--color-muted);
   text-transform: uppercase;
@@ -917,9 +986,15 @@ table.data td {
   color: var(--color-muted);
   text-decoration: none;
   font-size: 0.875rem;
+  display: block;
+  padding: 4px calc(var(--space) * 1.5);
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
 }
-.toc a:hover {
-  color: var(--color-accent);
+.toc a:hover,
+.toc a:focus-visible {
+  color: var(--nav-hover-text);
+  background: var(--nav-hover-bg);
 }
 .toc__item--active > a {
   color: var(--color-accent);
@@ -1020,7 +1095,7 @@ table.data td {
 }
 
 .detail-grid-header .detail-grid-row > * {
-  background: var(--color-surface-raised);
+  background: var(--color-table-header, var(--color-surface-raised));
   color: var(--color-muted);
   font-weight: 700;
   text-transform: uppercase;
@@ -1410,12 +1485,12 @@ table.data td {
   text-transform: uppercase;
 }
 .group-tree-type--group {
-  color: #6b7280;
+  color: var(--pewter);
   background: var(--color-surface-raised);
 }
 .group-tree-type--condition {
   color: var(--color-accent);
-  background: rgba(219, 0, 17, 0.1);
+  background: var(--rag-red-tint);
 }
 .group-tree-label--group {
   color: var(--color-text);
@@ -1807,7 +1882,7 @@ table.data td {
   box-shadow: inset 0 2px 0 var(--color-accent);
 }
 .rule-select-list__item--warn {
-  background: rgba(180, 0, 16, 0.06);
+  background: var(--rag-red-tint);
   border-left: 3px solid var(--color-danger);
   padding-left: var(--space);
 }
