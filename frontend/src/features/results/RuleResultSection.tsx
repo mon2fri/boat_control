@@ -77,7 +77,7 @@ export function RuleResultSection({
   const headingId = `heading-${result.ruleIndex}`;
   return (
     <section id={sectionId(result.ruleIndex)} aria-labelledby={headingId} className="card">
-      <h3 id={headingId}>
+      <h3 id={headingId} className="results-card-title">
         {result.ruleIndex} — {result.ruleName}
       </h3>
       {result.ruleDescription && (

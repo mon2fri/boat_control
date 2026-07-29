@@ -125,7 +125,7 @@ export function ResultsPage() {
 
       {!state.result && (
         <div className="card">
-          <h3>Run comparison &amp; validation</h3>
+          <h3 className="results-card-title">Run comparison &amp; validation</h3>
           <ul className="run-summary">
             <li>{completeFilters(state.filters).length} filter(s)</li>
             <li>
@@ -228,7 +228,7 @@ function ResultView({
         <ExportControls runId={result.id} reportName={result.reportName} />
       </div>
       <section id="overall" aria-labelledby="overall-title" className="card">
-        <h3 id="overall-title">Overall result</h3>
+        <h3 id="overall-title" className="results-card-title">Overall result</h3>
         <p className="section-logic">
           Comparison across{" "}
           {targetColumns.length === 0
@@ -273,7 +273,7 @@ function ResultView({
                 className="card"
                 style={{ marginTop: "var(--space)" }}
               >
-                <h3 id={`changes-title-${section.id}`}>{section.name}</h3>
+                <h3 id={`changes-title-${section.id}`} className="results-card-title">{section.name}</h3>
                 <p className="section-logic">
                   <code>In Baseline ≠ In Comparison</code> — {section.columns.length} column
                   {section.columns.length !== 1 ? "s" : ""}
@@ -303,7 +303,7 @@ function ResultView({
           })
         : (
           <section id="changes" aria-labelledby="changes-title" className="card" style={{ marginTop: "var(--space)" }}>
-            <h3 id="changes-title">Attribute changes</h3>
+            <h3 id="changes-title" className="results-card-title">Attribute changes</h3>
             <p className="section-logic">
               <code>In Baseline ≠ In Comparison</code> on shared target columns.
             </p>

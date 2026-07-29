@@ -12,7 +12,7 @@ export function ExceptionRuleSummary({ rules }: Props) {
       className="card"
       aria-labelledby="exception-rule-summary-title"
     >
-      <h3 id="exception-rule-summary-title">Exception Rule Summary</h3>
+      <h3 id="exception-rule-summary-title" className="results-card-title">Exception Rule Summary</h3>
       {rules.length === 0 ? (
         <p role="status">No exception rules were selected.</p>
       ) : (

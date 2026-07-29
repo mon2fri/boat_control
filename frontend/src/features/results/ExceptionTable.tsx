@@ -257,11 +257,8 @@ export function ExceptionTable({
   return (
     <section id="exception-table" aria-labelledby="exception-table-title" className="card">
       <details ref={detailsRef}>
-        <summary
-          className="group-stat-toggle"
-          style={{ width: "100%", justifyContent: "space-between", cursor: "pointer" }}
-        >
-          <span className="nested-agg-label" style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--color-muted)" }}>
+        <summary className="group-stat-toggle result-card-summary">
+          <span id="exception-table-title" className="nested-agg-label">
             Exception Table
           </span>
           <span className="nested-agg-count">
