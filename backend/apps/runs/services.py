@@ -100,6 +100,7 @@ class ExecutionResult:
     aggregation_column_labels: dict[str, str] = field(default_factory=dict)
     nested_aggregation_enabled: bool = False
     comparison_sections: list[dict[str, Any]] = field(default_factory=list)
+    exception_columns: list[str] = field(default_factory=list)
     group_statistics: dict[str, Any] | None = None
 
 
@@ -243,6 +244,7 @@ def validate_rows(
     key_columns: list[str] | None = None,
     comparison_df: pl.DataFrame | None = None,
     aggregation_columns: list[str] | None = None,
+    exception_columns: list[str] | None = None,
 ) -> ValidationResult:
     """Validate rows from the comparison file against rules.
 
@@ -299,7 +301,11 @@ def validate_rows(
                     if baseline_row is not None and viol_col in baseline_row
                     else None
                 )
-                extra_values = {column: row.get(column) for column in rule.extra_columns}
+                extra_values: dict[str, Any] = {}
+                for column in rule.extra_columns:
+                    extra_values[column] = row.get(column)
+                for column in (exception_columns or []):
+                    extra_values[column] = row.get(column)
                 violations.append(
                     ValidationViolation(
                         row_index=idx,
@@ -722,6 +728,7 @@ def execute_comparison(
     aggregation_column_labels: dict[str, str] | None = None,
     nested_aggregation_enabled: bool = False,
     comparison_sections: list[dict[str, Any]] | None = None,
+    exception_columns: list[str] | None = None,
 ) -> ExecutionResult:
     if filters is None:
         filters = []
@@ -806,6 +813,10 @@ def execute_comparison(
             )
         needed_columns.update(rule.extra_columns)
 
+    for col in (exception_columns or []):
+        if col in valid_filter_cols:
+            needed_columns.add(col)
+
     if not needed_columns:
         raise ValueError("No columns to process")
 
@@ -868,6 +879,7 @@ def execute_comparison(
         effective_keys,
         comparison_df=df_a_final,
         aggregation_columns=aggregation_columns or [],
+        exception_columns=exception_columns or [],
     )
 
     grp_stats = None
@@ -890,5 +902,6 @@ def execute_comparison(
         aggregation_column_labels=aggregation_column_labels or {},
         nested_aggregation_enabled=nested_aggregation_enabled,
         comparison_sections=comparison_sections or [],
+        exception_columns=exception_columns or [],
         group_statistics=grp_stats,
     )

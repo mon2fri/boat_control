@@ -49,6 +49,8 @@ export interface RowsColumnsConfigContent {
   aggregationColumnLabels?: Record<string, string>;
   filters?: ConfigFilterRow[];
   targetColumns?: ColumnRef[];
+  /** Extra columns included in the exception table beyond key + aggregation columns. */
+  exceptionColumns?: ColumnRef[];
   /** When true, aggregation columns form an ordered hierarchy shown as a tree. */
   nestedAggregationEnabled?: boolean;
   /** User-defined comparison sections, each with a name and column set. */
@@ -85,6 +87,7 @@ export interface ConfigLoadResult {
   aggregationColumnLabels: Record<string, string>;
   filters: FilterRow[];
   targetColumns: string[];
+  exceptionColumns: string[];
   nestedAggregationEnabled: boolean;
   comparisonSections: ResolvedComparisonSection[];
   warnings: ConfigLoadWarning[];
@@ -233,7 +236,7 @@ export function resolveRowsColumnsConfig(
   const comparisonSections: ResolvedComparisonSection[] = [];
 
   if (!data) {
-    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], aggregationColumnLabels, filters: [], targetColumns: [], nestedAggregationEnabled, comparisonSections: [], warnings };
+    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], aggregationColumnLabels, filters: [], targetColumns: [], exceptionColumns: [], nestedAggregationEnabled, comparisonSections: [], warnings };
   }
 
   if (Array.isArray(data.comparisonColumns)) {
@@ -271,6 +274,15 @@ export function resolveRowsColumnsConfig(
     for (const ref of data.targetColumns) {
       const { resolved, warnings: w } = resolveColumnRef(ref, families, availableColumns);
       targetColumns.push(...resolved);
+      warnings.push(...w);
+    }
+  }
+
+  const exceptionColumns: string[] = [];
+  if (Array.isArray(data.exceptionColumns)) {
+    for (const ref of data.exceptionColumns) {
+      const { resolved, warnings: w } = resolveColumnRef(ref, families, availableColumns);
+      exceptionColumns.push(...resolved);
       warnings.push(...w);
     }
   }
@@ -313,7 +325,7 @@ export function resolveRowsColumnsConfig(
     }
   }
 
-  return { comparisonColumns, keyColumns, aggregationColumns, aggregationColumnLabels, filters, targetColumns, nestedAggregationEnabled, comparisonSections, warnings };
+  return { comparisonColumns, keyColumns, aggregationColumns, aggregationColumnLabels, filters, targetColumns, exceptionColumns, nestedAggregationEnabled, comparisonSections, warnings };
 }
 
 /**
@@ -362,6 +374,7 @@ export function mapWorkflowToRowsColumnsConfig(
     aggregationColumnLabels?: Record<string, string>;
     filters: FilterRow[];
     targetColumns: string[];
+    exceptionColumns?: string[];
     nestedAggregationEnabled?: boolean;
     comparisonSections?: {
       id: string;
@@ -387,6 +400,7 @@ export function mapWorkflowToRowsColumnsConfig(
       filter_values: f.values,
     })),
     targetColumns: columnsToRefs(state.targetColumns, families),
+    exceptionColumns: (state.exceptionColumns ?? []).map((c) => ({ kind: "column" as const, name: c })),
     nestedAggregationEnabled: state.nestedAggregationEnabled ?? false,
     comparisonSections: (state.comparisonSections ?? []).map((s) => ({
       id: s.id,

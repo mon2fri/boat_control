@@ -79,6 +79,7 @@ const EXPORT_ONLY_CSS = `
 #overall,
 #changes,
 #exception-rule-summary,
+#exception-table,
 [id^="rule-"],
 [id^="changes-"] {
   scroll-margin-top: 64px !important;
@@ -489,11 +490,13 @@ const EXPORT_INTERACTIVE_JS = `
   //   2. Exception rule summary (#exception-rule-summary)
   //   3. Attribute compare cards (#changes, #changes-…)
   //   4. Per rule             (#rule-…)
+  //   5. Exception table      (#exception-table)
   var SECTION_IDS = {
     overall: 0,
     'exception-rule-summary': 1,
     changes: 2,
     rule: 3,
+    'exception-table': 4,
   };
   function sectionOrder(id) {
     if (id === 'overall') return SECTION_IDS.overall;
@@ -506,6 +509,7 @@ const EXPORT_INTERACTIVE_JS = `
       return SECTION_IDS.changes;
     }
     if (id.indexOf('rule-') === 0) return SECTION_IDS.rule;
+    if (id === 'exception-table') return SECTION_IDS['exception-table'];
     return 99;
   }
   var seen = [];
@@ -562,6 +566,7 @@ const EXPORT_INTERACTIVE_JS = `
       }
       return id;
     }
+    if (id === 'exception-table') return 'Exception Table';
     return id;
   }
 

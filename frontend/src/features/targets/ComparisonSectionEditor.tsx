@@ -149,8 +149,8 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
   if (sections.length === 0 && editingId === null) {
     return (
       <section className="card">
-        <h3 className="card-heading">Attribute Comparing Sections</h3>
-        <p className="field-hint">No custom sections defined. All target columns are compared together.</p>
+        <h3 id="comparison-sections-title" className="section-heading">Attribute Comparing Sections</h3>
+        <p className="section-hint">No custom sections defined. All target columns are compared together.</p>
         <button type="button" className="btn" onClick={handleAdd} style={{ marginTop: "var(--space)" }}>
           Add section
         </button>
@@ -159,9 +159,9 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
   }
 
   return (
-    <section className="card">
-      <h3 className="card-heading">Attribute Comparing Sections</h3>
-      <p className="card-hint">Define named sections that compare specific column subsets.</p>
+    <section className="card" aria-labelledby="comparison-sections-title">
+      <h3 id="comparison-sections-title" className="section-heading">Attribute Comparing Sections</h3>
+      <p className="section-hint">Define named sections that compare specific column subsets.</p>
 
       <ul className="comparison-section-list" style={{ listStyle: "none", padding: 0 }}>
         {sections.map((section, index) => {

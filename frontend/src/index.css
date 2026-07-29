@@ -1369,6 +1369,9 @@ table.data td {
   flex-direction: column;
   margin-top: 2px;
 }
+.th-filter-dropdown[hidden] {
+  display: none;
+}
 .th-filter-search {
   border: none;
   border-bottom: 1px solid var(--color-rule);

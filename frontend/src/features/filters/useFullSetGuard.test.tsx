@@ -12,6 +12,7 @@ const baseState: WorkflowState = {
   aggregationColumnLabels: {},
   nestedAggregationEnabled: false,
   comparisonSections: [],
+  exceptionColumns: [],
   selectedRuleIndexes: [],
   confirmFullSet: false,
   result: null,

@@ -108,6 +108,11 @@ describe("exportRenderedHtml — Table of Contents FAB", () => {
     rule.innerHTML = "<h3>R002 — Low score</h3>";
     root.appendChild(rule);
 
+    const exceptionTable = document.createElement("section");
+    exceptionTable.id = "exception-table";
+    exceptionTable.innerHTML = "<h3>Exception Table</h3>";
+    root.appendChild(exceptionTable);
+
     const html = await buildExport(root, "test-report");
 
     // The script block contains the discovery + ordering logic. Verify that
@@ -118,6 +123,8 @@ describe("exportRenderedHtml — Table of Contents FAB", () => {
     expect(html).toContain("'changes'");
     // The dedup branch that excludes heading ids from the TOC.
     expect(html).toContain("'changes-title-'");
+    expect(html).toContain("'exception-table'");
+    expect(html).toContain("Exception Table");
 
     // The section ids must exist in the cloned main region.
     expect(html).toContain('id="overall"');
@@ -126,6 +133,7 @@ describe("exportRenderedHtml — Table of Contents FAB", () => {
     expect(html).toContain('id="changes-section-7"');
     expect(html).toContain('id="changes-title-section-7"');
     expect(html).toContain('id="rule-2"');
+    expect(html).toContain('id="exception-table"');
   });
 
   it("excludes heading ids (changes-title-…) from the TOC discovery", () => {

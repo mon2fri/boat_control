@@ -5,6 +5,7 @@ import { RequireSession } from "../components/RequireSession";
 import { useRunExecution } from "../features/results/useRunExecution";
 import { OverallSummaryCards } from "../features/results/OverallSummaryCards";
 import { RuleResultSection } from "../features/results/RuleResultSection";
+import { ExceptionTable } from "../features/results/ExceptionTable";
 import { ReportName } from "../features/reports/ReportName";
 import { ExportControls } from "../features/reports/ExportControls";
 import { PaginatedDetailSection } from "../features/results/PaginatedDetailSection";
@@ -42,6 +43,9 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
   }
   if (state.comparisonSections.length > 0) {
     request.comparisonSections = state.comparisonSections;
+  }
+  if (state.exceptionColumns.length > 0) {
+    request.exceptionColumns = state.exceptionColumns;
   }
   return request;
 }
@@ -86,6 +90,8 @@ export function ResultsPage() {
         dispatch({ type: "setAggregationColumnLabels", labels: result.aggregationColumnLabels ?? {} });
         // Always restore key columns (including empty array).
         dispatch({ type: "setKeyColumns", columns: result.keyColumns ?? [] });
+        // Always restore exception columns (including empty array).
+        dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns ?? [] });
       })
       .catch(() => {
         // Surface a quiet failure by leaving the result empty; the page's
@@ -162,6 +168,7 @@ export function ResultsPage() {
           keyColumns={state.keyColumns}
           aggregationColumns={state.aggregationColumns}
           aggregationColumnLabels={state.aggregationColumnLabels}
+          exceptionColumns={state.exceptionColumns}
           nestedAggregationEnabled={state.nestedAggregationEnabled}
           commonColumns={state.header?.common ?? []}
           onRunAnother={handleRunAnother}
@@ -181,6 +188,7 @@ interface ResultViewProps {
   keyColumns: string[];
   aggregationColumns: string[];
   aggregationColumnLabels: Record<string, string>;
+  exceptionColumns: string[];
   nestedAggregationEnabled: boolean;
   commonColumns: string[];
   onRunAnother: () => void;
@@ -196,6 +204,7 @@ function ResultView({
   keyColumns,
   aggregationColumns,
   aggregationColumnLabels,
+  exceptionColumns,
   nestedAggregationEnabled,
   commonColumns,
   onRunAnother,
@@ -336,6 +345,13 @@ function ResultView({
           />
         );
       })}
+
+      <ExceptionTable
+        ruleResults={result.ruleResults}
+        keyColumnNames={keyColumns}
+        aggregationColumnLabels={aggregationColumnLabels}
+        exceptionColumns={exceptionColumns}
+      />
 
       <div className="card results-actions results-layer-actions" data-export-exclude>
         <div className="config-inline-row">

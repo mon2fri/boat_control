@@ -92,6 +92,25 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 status=400,
             )
 
+        exception_columns = request.data.get("exception_columns", [])
+        if isinstance(exception_columns, list):
+            exception_columns = [str(c) for c in exception_columns]
+            comp_set = set(comparison_columns)
+            dupes = [c for c in exception_columns if exception_columns.count(c) > 1]
+            if dupes:
+                return Response(
+                    {"error": f"Duplicate exception columns: {', '.join(set(dupes))}"},
+                    status=400,
+                )
+            invalid = [c for c in exception_columns if c not in comp_set]
+            if invalid:
+                return Response(
+                    {"error": f"Invalid exception columns: {', '.join(invalid)}"},
+                    status=400,
+                )
+        else:
+            exception_columns = []
+
         try:
             # Nested aggregation is read independently of comparison sections:
             # a user can opt into the tree view without defining any sections.
@@ -124,6 +143,7 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 } if isinstance(aggregation_column_labels, dict) else {},
                 nested_aggregation_enabled=nested_agg_enabled,
                 comparison_sections=comparison_sections,
+                exception_columns=exception_columns,
             )
         except Exception as exc:
             logger.warning("execute_comparison failed: %s", exc)

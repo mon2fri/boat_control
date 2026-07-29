@@ -238,6 +238,7 @@ export const wireRunRequestSchema = z.object({
   })).optional(),
   filters: z.array(wireFilterRowSchema).optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
+  exception_columns: z.array(z.string()).optional(),
 });
 export type WireRunRequest = z.infer<typeof wireRunRequestSchema>;
 
@@ -352,6 +353,7 @@ export const wireRunResultSchema = z.object({
     columns: z.array(z.string()),
     extra_columns: z.array(z.string()).optional(),
   })).optional(),
+  exception_columns: z.array(z.string()).optional(),
 });
 
 export const wireRunDocumentSchema = z.object({

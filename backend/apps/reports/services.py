@@ -209,6 +209,128 @@ def _render_comparing_columns(result: dict[str, Any]) -> str:
     )
 
 
+def _exception_table_columns(
+    result: dict[str, Any], violations_by_rule: dict[str, list[dict[str, Any]]]
+) -> list[str]:
+    """Return configured exception columns, preserving old runs without configuration."""
+    configured = result.get("exception_columns")
+    if isinstance(configured, list):
+        return [str(column) for column in configured]
+    return list(
+        dict.fromkeys(
+            column
+            for violations in violations_by_rule.values()
+            for violation in violations
+            for column in (violation.get("extra_values") or {})
+        )
+    )
+
+
+def _render_exception_table(
+    result: dict[str, Any], validation: dict[str, Any], key_columns: list[str]
+) -> str:
+    """Render the cross-rule table used by server-side HTML exports."""
+    violations_by_rule = validation.get("violations_by_rule") or {}
+    aggregation_columns = list(result.get("aggregation_columns") or [])
+    aggregation_labels = result.get("aggregation_column_labels") or {}
+    exception_columns = _exception_table_columns(result, violations_by_rule)
+    headers = [
+        *(key_columns or ["Row"]),
+        "Rule Index",
+        *(aggregation_labels.get(column, column) for column in aggregation_columns),
+        *exception_columns,
+    ]
+    data_rows: list[list[str]] = []
+    for rule_id, violations in violations_by_rule.items():
+        for violation in violations:
+            grouping = violation.get("grouping_values") or {}
+            extras = violation.get("extra_values") or {}
+            identity_values = (
+                [
+                    violation.get("key_columns", {}).get(column, "—")
+                    for column in key_columns
+                ]
+                if key_columns
+                else [violation.get("row_index", "")]
+            )
+            row_values = [
+                *identity_values,
+                rule_id,
+                *(grouping.get(column, "—") for column in aggregation_columns),
+                *(extras.get(column, "—") for column in exception_columns),
+            ]
+            data_rows.append([str(value) if value is not None else "—" for value in row_values])
+    if not data_rows:
+        return (
+            "<section class='card' id='exception-table'><details>"
+            "<summary>Exception Table (0 rows)</summary>"
+            "<p>No exceptions found across any rule.</p></details></section>"
+        )
+    header_cells_list: list[str] = []
+    for index, header in enumerate(headers):
+        options = "".join(
+            f'<option value="{_escape_html(value)}">{_escape_html(value)}</option>'
+            for value in sorted({row[index] for row in data_rows})
+        )
+        header_cells_list.append(
+            "<th>"
+            f"<button type='button' class='exception-table-sort' data-exception-sort='{index}' "
+            f"aria-label='Sort by {_escape_html(header)}'>{_escape_html(header)} ↕</button>"
+            f"<select class='exception-table-filter' data-exception-filter='{index}' "
+            f"aria-label='Filter {_escape_html(header)}'><option value=''>All</option>"
+            f"{options}</select></th>"
+        )
+    header_cells = "".join(header_cells_list)
+    body_rows = "".join(
+        f"<tr>{''.join(f'<td>{_escape_html(value)}</td>' for value in row)}</tr>"
+        for row in data_rows
+    )
+    return (
+        "<section class='card' id='exception-table'><details>"
+        f"<summary>Exception Table ({len(data_rows)} rows)</summary>"
+        "<div class='table-scroll'><table class='result-table' data-exception-table><thead>"
+        f"<tr>{header_cells}</tr></thead><tbody>{body_rows}</tbody></table></div>"
+        "</details></section>"
+    )
+
+
+_EXCEPTION_TABLE_INTERACTIONS = """
+<script type='text/javascript'>
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('[data-exception-table]').forEach(function (table) {
+    var body = table.tBodies[0];
+    function applyFilters() {
+      var filters = table.querySelectorAll('[data-exception-filter]');
+      Array.from(body.rows).forEach(function (row) {
+        row.hidden = Array.from(filters).some(function (filter) {
+          return filter.value &&
+            row.cells[Number(filter.dataset.exceptionFilter)].textContent !== filter.value;
+        });
+      });
+    }
+    table.querySelectorAll('[data-exception-filter]').forEach(function (filter) {
+      filter.addEventListener('change', applyFilters);
+    });
+    table.querySelectorAll('[data-exception-sort]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var index = Number(button.dataset.exceptionSort);
+        var direction = button.dataset.direction === 'asc' ? 'desc' : 'asc';
+        table.querySelectorAll('[data-exception-sort]').forEach(function (item) {
+          item.dataset.direction = item === button ? direction : '';
+        });
+        Array.from(body.rows).sort(function (left, right) {
+          return left.cells[index].textContent.localeCompare(
+            right.cells[index].textContent, undefined, { numeric: true, sensitivity: 'base' }
+          ) * (direction === 'asc' ? 1 : -1);
+        }).forEach(function (row) { body.appendChild(row); });
+      });
+    });
+  });
+});
+</script>
+"""
+
+
 def export_html(result: dict[str, Any], report_name: str, created_at: str | None = None) -> str:
     comparison = result.get("comparison", {})
     validation = result.get("validation", {})
@@ -252,6 +374,11 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(".result-table th:last-child, .result-table td:last-child { border-right:0; }")
     sections.append(".result-table tbody tr:last-child td { border-bottom:0; }")
     sections.append(".exception-rule-table th:last-child { text-align:right; }")
+    sections.append(
+        ".exception-table-sort { border:0; background:transparent; color:inherit; cursor:pointer; "
+        "font:inherit; font-weight:700; text-transform:uppercase; } "
+        ".exception-table-filter { display:block; width:100%; margin-top:5px; }"
+    )
     sections.append(
         ".number-cell { text-align:right; font-weight:700; font-variant-numeric:tabular-nums; }"
     )
@@ -479,6 +606,8 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
             sections.append("<p>Nil exception detected under current rule.</p>")
         sections.append("</section>")
 
+    sections.append(_render_exception_table(result, validation, key_columns))
+    sections.append(_EXCEPTION_TABLE_INTERACTIONS)
     sections.append("</main></body></html>")
     return "\n".join(sections)
 
@@ -683,6 +812,60 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
             )
             change_row += 1
 
+    comparison_sections = result.get("comparison_sections") or []
+    if comparison_sections:
+        sections_sheet = workbook.create_sheet("Attribute Comparing Sections")
+        next_row = 1
+        for section in comparison_sections:
+            section_columns = list(section.get("columns") or [])
+            if not section_columns:
+                continue
+
+            section_headers = [
+                *(key_columns or ["Row"]),
+                "Column",
+                "In Baseline",
+                "In Comparison",
+            ]
+
+            section_name = section.get("name") or "Attribute Comparing Section"
+            sections_sheet.cell(next_row, 1, _excel_value(section_name))
+            sections_sheet.cell(next_row + 1, 1, "Comparing columns")
+            sections_sheet.cell(
+                next_row + 1,
+                2,
+                _excel_value(", ".join(str(column) for column in section_columns)),
+            )
+            for column_offset, header in enumerate(section_headers):
+                sections_sheet.cell(next_row + 3, column_offset + 1, header)
+
+            section_row = next_row + 4
+            for detail in comparison.get("row_details") or []:
+                identity = _excel_identity(
+                    key_columns, detail.get("key_columns") or {}, detail.get("row_index", "")
+                )
+                for change in detail.get("attribute_changes") or []:
+                    if change.get("column") not in section_columns:
+                        continue
+                    if section_row > _EXCEL_MAX_ROWS:
+                        raise ValueError(
+                            "An Attribute Comparing Section exceeds Excel's 1,048,576-row worksheet limit."
+                        )
+                    _append_row(
+                        sections_sheet,
+                        section_row,
+                        [
+                            *identity,
+                            change.get("column", ""),
+                            change.get("file_a_value", ""),
+                            change.get("file_b_value", ""),
+                        ],
+                    )
+                    section_row += 1
+
+            # Keep one blank row between adjacent section tables.
+            next_row = section_row + 1
+
     for rule_id in rule_ids:
         violations = violations_by_rule.get(rule_id) or []
         summary = summaries.get(rule_id) or {}
@@ -731,6 +914,52 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                 )
             _append_row(sheet, row_number, values)
             row_number += 1
+
+    agg_columns = list(result.get("aggregation_columns") or [])
+    agg_labels = result.get("aggregation_column_labels") or {}
+    exception_cols = _exception_table_columns(result, violations_by_rule)
+    exception_col_set = set(exception_cols)
+
+    exc_sheet = workbook.create_sheet("Exception Table")
+    exc_sheet["A1"] = "Exception Table"
+    exc_headers = [
+        *(key_columns or ["Row"]),
+        "Rule Index",
+        *(
+            agg_labels.get(col, col) for col in agg_columns
+        ),
+        *exception_cols,
+    ]
+    _append_row(exc_sheet, 3, exc_headers)
+    exc_row = 4
+
+    for rule_id in rule_ids:
+        violations = violations_by_rule.get(rule_id) or []
+        for violation in violations:
+            grouping = violation.get("grouping_values") or {}
+            extra_vals = violation.get("extra_values") or {}
+            filtered_extra = {k: v for k, v in extra_vals.items() if k in exception_col_set}
+            if exc_row > _EXCEL_MAX_ROWS:
+                raise ValueError("Exception Table exceeds Excel's 1,048,576-row worksheet limit.")
+            _append_row(
+                exc_sheet,
+                exc_row,
+                [
+                    *_excel_identity(
+                        key_columns,
+                        violation.get("key_columns") or {},
+                        violation.get("row_index", ""),
+                    ),
+                    _excel_value(rule_id),
+                    *(
+                        _excel_value(grouping.get(col, "")) for col in agg_columns
+                    ),
+                    *(
+                        _excel_value(filtered_extra.get(col, "")) for col in exception_cols
+                    ),
+                ],
+            )
+            exc_row += 1
 
     for sheet in workbook.worksheets:
         _style_excel_sheet(sheet)

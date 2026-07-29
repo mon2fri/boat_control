@@ -127,6 +127,39 @@ class TestValidateRows:
             "hide_comparison": False,
         }
 
+    def test_execute_comparison_includes_configured_exception_columns(
+        self, csv_a: Path, csv_b: Path, rules_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dataclasses import replace
+
+        loaded_rules = load_rules(rules_file)
+        selected_rule = replace(
+            loaded_rules.rules[0],
+            logic=replace(
+                loaded_rules.rules[0].logic,
+                target_value="inactive",
+                target_values=("inactive",),
+            ),
+        )
+        monkeypatch.setattr(
+            "apps.runs.services.load_rules",
+            lambda: replace(loaded_rules, rules=[selected_rule]),
+        )
+
+        result = execute_comparison(
+            path_a=csv_a,
+            path_b=csv_b,
+            comparison_columns=["id", "name", "status", "score"],
+            target_columns=["status"],
+            key_columns=["id"],
+            exception_columns=["name"],
+        )
+
+        violation = result.validation.violations_by_rule["R001"][0]
+        assert result.exception_columns == ["name"]
+        assert violation.key_columns == {"id": "1"}
+        assert violation.extra_values["name"] == "alice"
+
     def test_rule_violation_includes_selected_extra_columns(self, rules_file: Path) -> None:
         from dataclasses import replace
 

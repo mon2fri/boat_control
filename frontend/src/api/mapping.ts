@@ -296,6 +296,7 @@ export function mapRunRequestToWire(request: {
   nestedAggregationEnabled?: boolean;
   comparisonSections?: ComparisonSection[] | undefined;
   ruleIndexes: string[];
+  exceptionColumns?: string[];
 }): WireRunRequest {
   return {
     session_id: request.sessionId,
@@ -325,6 +326,9 @@ export function mapRunRequestToWire(request: {
     // selection. Translating an empty array to `null` here would cause every
     // rule to run when the user deliberately deselected them all.
     rule_ids: [...request.ruleIndexes],
+    ...(request.exceptionColumns && request.exceptionColumns.length > 0
+      ? { exception_columns: [...request.exceptionColumns] }
+      : {}),
   };
 }
 
@@ -506,6 +510,9 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       : {}),
     ...(result.key_columns && result.key_columns.length > 0
       ? { keyColumns: [...result.key_columns] }
+      : {}),
+    ...(result.exception_columns && result.exception_columns.length > 0
+      ? { exceptionColumns: [...result.exception_columns] }
       : {}),
   };
 }

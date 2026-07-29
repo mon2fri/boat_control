@@ -35,6 +35,8 @@ export interface WorkflowState {
   nestedAggregationEnabled: boolean;
   /** User-defined comparison sections for attribute comparing configuration. */
   comparisonSections: ComparisonSection[];
+  /** Extra columns included in the exception table beyond key + aggregation columns. */
+  exceptionColumns: string[];
   /** Page-two CSV scan result, reusable while files and columns are unchanged. */
   preparedData?: PreparedDataCache | null;
   selectedRuleIndexes: string[];
@@ -57,6 +59,7 @@ const initialState: WorkflowState = {
   aggregationColumnLabels: {},
   nestedAggregationEnabled: false,
   comparisonSections: [],
+  exceptionColumns: [],
   preparedData: null,
   selectedRuleIndexes: [],
   confirmFullSet: false,
@@ -73,6 +76,7 @@ type Action =
   | { type: "setAggregationColumnLabels"; labels: Record<string, string> }
   | { type: "setNestedAggregationEnabled"; enabled: boolean }
   | { type: "setComparisonSections"; sections: ComparisonSection[] }
+  | { type: "setExceptionColumns"; columns: string[] }
   | { type: "setPreparedData"; cache: PreparedDataCache }
   | { type: "setFilters"; filters: FilterRow[] }
   | { type: "setTargetColumns"; columns: string[] }
@@ -109,6 +113,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
             extraColumns: (s.extraColumns ?? []).filter((c) => colSet.has(c)),
           }))
           .filter((s) => s.columns.length > 0),
+        exceptionColumns: state.exceptionColumns.filter((c) => colSet.has(c)),
         filters: state.filters.map((f) =>
           colSet.has(f.column) ? f : { ...f, column: "" },
         ),
@@ -134,6 +139,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
             extraColumns: (s.extraColumns ?? []).filter((c) => c !== col),
           }))
           .filter((s) => s.columns.length > 0),
+        exceptionColumns: state.exceptionColumns.filter((c) => c !== col),
         filters: state.filters.map((f) =>
           f.column === col ? { ...f, column: "" } : f,
         ),
@@ -166,6 +172,8 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
           (s) => s.name.trim().length > 0 && s.columns.length > 0,
         ),
       };
+    case "setExceptionColumns":
+      return { ...state, exceptionColumns: action.columns };
     case "setPreparedData":
       return { ...state, preparedData: action.cache };
     case "setSelectedRules":

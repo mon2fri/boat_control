@@ -55,6 +55,8 @@ function reducer(state: WorkflowState, action: any): WorkflowState {
           (s: any) => s.name.trim().length > 0 && s.columns.length > 0,
         ),
       };
+    case "setExceptionColumns":
+      return { ...state, exceptionColumns: action.columns };
     default:
       return state;
   }
@@ -74,6 +76,7 @@ function base(): WorkflowState {
       { id: "s1", name: "Region", columns: ["region"] },
       { id: "s2", name: "Ownership", columns: ["status", "owner"] },
     ],
+    exceptionColumns: [],
     selectedRuleIndexes: [],
     confirmFullSet: false,
     result: null,
@@ -176,6 +179,35 @@ describe("Workflow reducer — comparisonSections pruning", () => {
         columns: ["type"],
       });
       expect(next.comparisonSections).toEqual([]);
+    });
+  });
+
+  describe("setExceptionColumns", () => {
+    it("sets exception columns verbatim", () => {
+      const state = base();
+      const next = reducer(state, {
+        type: "setExceptionColumns",
+        columns: ["region", "owner"],
+      });
+      expect(next.exceptionColumns).toEqual(["region", "owner"]);
+    });
+
+    it("replaces previous selection", () => {
+      const state = { ...base(), exceptionColumns: ["region"] };
+      const next = reducer(state, {
+        type: "setExceptionColumns",
+        columns: ["owner"],
+      });
+      expect(next.exceptionColumns).toEqual(["owner"]);
+    });
+
+    it("accepts empty array", () => {
+      const state = { ...base(), exceptionColumns: ["region"] };
+      const next = reducer(state, {
+        type: "setExceptionColumns",
+        columns: [],
+      });
+      expect(next.exceptionColumns).toEqual([]);
     });
   });
 });

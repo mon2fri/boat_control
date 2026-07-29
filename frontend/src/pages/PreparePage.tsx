@@ -4,6 +4,7 @@ import { RequireSession } from "../components/RequireSession";
 import { FilterBuilder } from "../features/filters/FilterBuilder";
 import { TargetSelector } from "../features/targets/TargetSelector";
 import { ComparisonSectionEditor } from "../features/targets/ComparisonSectionEditor";
+import { ExceptionColumnPicker } from "../features/targets/ExceptionColumnPicker";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { useFamilies } from "../features/settings/useSettings";
@@ -47,7 +48,7 @@ export function PreparePage() {
 
   const totalRows = (prepare.data?.totalRowsA ?? 0) + (prepare.data?.totalRowsB ?? 0);
 
-  const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0;
+  const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0 || state.exceptionColumns.length > 0;
 
   useEffect(() => {
     if (!header) return;
@@ -106,6 +107,7 @@ export function PreparePage() {
     dispatch({ type: "setAggregationColumnLabels", labels: result.aggregationColumnLabels });
     dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
     dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
+    dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns });
 
     for (const w of result.warnings) {
       warnings.push(w.message);
@@ -143,6 +145,7 @@ export function PreparePage() {
               aggregationColumnLabels: state.aggregationColumnLabels,
               filters: state.filters,
               targetColumns: state.targetColumns,
+              exceptionColumns: state.exceptionColumns,
               nestedAggregationEnabled: state.nestedAggregationEnabled,
               comparisonSections: state.comparisonSections,
             },
@@ -206,12 +209,21 @@ export function PreparePage() {
         onChange={(rows) => dispatch({ type: "setFilters", filters: rows })}
       />
 
-      <TargetSelector
-        columns={comparisonColumns}
-        families={families}
-        selected={state.targetColumns}
-        onChange={(columns) => dispatch({ type: "setTargetColumns", columns })}
-      />
+      <div className="card-grid-2">
+        <TargetSelector
+          columns={comparisonColumns}
+          families={families}
+          selected={state.targetColumns}
+          onChange={(columns) => dispatch({ type: "setTargetColumns", columns })}
+        />
+
+        <ExceptionColumnPicker
+          columns={comparisonColumns}
+          families={families}
+          selected={state.exceptionColumns}
+          onChange={(columns) => dispatch({ type: "setExceptionColumns", columns })}
+        />
+      </div>
 
       <ComparisonSectionEditor
         sections={state.comparisonSections}

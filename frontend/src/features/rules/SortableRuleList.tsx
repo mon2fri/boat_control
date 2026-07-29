@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useMemo } from "react";
 import type { Rule } from "../../api/domain";
 import { describeLogic } from "./useRules";
 
@@ -8,6 +8,7 @@ interface Props {
   validColumns: string[];
   disabled?: boolean;
   onToggle: (ruleId: string) => void;
+  onToggleAll: (ruleIds: string[]) => void;
   onEdit: (rule: Rule) => void;
   onDelete: (rule: Rule) => void;
   onReorder: (ruleIds: string[]) => void;
@@ -18,6 +19,8 @@ type KeyboardDrag = {
   fromIndex: number;
   currentIndex: number;
 } | null;
+
+const PAGE_SIZE = 10;
 
 function referencedColumns(rule: Rule): string[] {
   const columns = new Set(rule.conditions.map((condition) => condition.column));
@@ -33,6 +36,7 @@ export function SortableRuleList({
   validColumns,
   disabled = false,
   onToggle,
+  onToggleAll,
   onEdit,
   onDelete,
   onReorder,
@@ -40,8 +44,18 @@ export function SortableRuleList({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [keyboardDrag, setKeyboardDrag] = useState<KeyboardDrag>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [currentPage, setCurrentPage] = useState(0);
   const draggedRuleRef = useRef<string | null>(null);
   const valid = new Set(validColumns);
+
+  const totalPages = Math.ceil(rules.length / PAGE_SIZE);
+  const effectivePage = Math.min(currentPage, Math.max(0, totalPages - 1));
+  const paginatedRules = useMemo(() => {
+    const start = effectivePage * PAGE_SIZE;
+    return rules.slice(start, start + PAGE_SIZE);
+  }, [rules, effectivePage]);
+
+  const allSelected = rules.length > 0 && rules.every((r) => selected.includes(r.index));
 
   const announce = useCallback((message: string) => {
     setAnnouncement("");
@@ -88,33 +102,57 @@ export function SortableRuleList({
     }
   }
 
+  function handleToggleAll() {
+    if (allSelected) {
+      onToggleAll([]);
+    } else {
+      onToggleAll(rules.map((r) => r.index));
+    }
+  }
+
   return (
     <>
       <p className="field-hint rule-order-hint">Drag rules to change their saved order.</p>
+
+      {rules.length >= 2 && (
+        <div className="config-inline-row" style={{ marginBottom: "var(--space)" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.85rem" }}>
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={(el) => {
+                if (el) el.indeterminate = !allSelected && rules.some((r) => selected.includes(r.index));
+              }}
+              onChange={handleToggleAll}
+              disabled={disabled}
+            />
+            Select all
+          </label>
+        </div>
+      )}
+
       <ul className="rule-select-list" aria-label="Rules">
-        {rules.map((rule, index) => {
+        {paginatedRules.map((rule, pageIndex) => {
+          const globalIndex = effectivePage * PAGE_SIZE + pageIndex;
           const invalid = referencedColumns(rule).some((column) => !valid.has(column));
-          const keyboardPosition = keyboardDrag?.ruleId === rule.index
-            ? keyboardDrag.currentIndex
-            : index;
           return (
             <li
               key={rule.index}
               className={[
                 invalid ? "rule-select-list__item--warn" : "",
-                dragOverIndex === index ? "rule-select-list__item--drop-target" : "",
+                dragOverIndex === globalIndex ? "rule-select-list__item--drop-target" : "",
               ].filter(Boolean).join(" ")}
               onDragOver={(event) => {
                 event.preventDefault();
                 event.dataTransfer.dropEffect = "move";
-                setDragOverIndex(index);
+                setDragOverIndex(globalIndex);
               }}
               onDrop={(event) => {
                 event.preventDefault();
                 const ruleId = draggedRuleRef.current;
                 draggedRuleRef.current = null;
                 setDragOverIndex(null);
-                if (ruleId) move(ruleId, index);
+                if (ruleId) move(ruleId, globalIndex);
               }}
             >
               <div className="rule-select-list__main">
@@ -135,11 +173,11 @@ export function SortableRuleList({
                     draggedRuleRef.current = null;
                     setDragOverIndex(null);
                   }}
-                  onKeyDown={(event) => handleKeyDown(event, rule, index)}
+                  onKeyDown={(event) => handleKeyDown(event, rule, globalIndex)}
                 >
                   ⠿
                 </span>
-                <span className="rule-order-number" aria-hidden="true">{keyboardPosition + 1}.</span>
+                <span className="rule-order-number" aria-hidden="true">{globalIndex + 1}.</span>
                 <label>
                   <input
                     type="checkbox"
@@ -159,6 +197,31 @@ export function SortableRuleList({
           );
         })}
       </ul>
+
+      {totalPages > 1 && (
+        <nav aria-label="Rule list pagination" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--space)", marginTop: "var(--space)" }}>
+          <button
+            type="button"
+            className="btn"
+            disabled={effectivePage === 0}
+            onClick={() => setCurrentPage((p) => p - 1)}
+          >
+            Previous
+          </button>
+          <span style={{ fontSize: "0.85rem", color: "var(--color-muted)" }}>
+            Page {effectivePage + 1} of {totalPages}
+          </span>
+          <button
+            type="button"
+            className="btn"
+            disabled={effectivePage >= totalPages - 1}
+            onClick={() => setCurrentPage((p) => p + 1)}
+          >
+            Next
+          </button>
+        </nav>
+      )}
+
       <span className="visually-hidden" aria-live="polite">{announcement}</span>
     </>
   );

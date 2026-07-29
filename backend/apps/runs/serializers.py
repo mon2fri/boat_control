@@ -80,3 +80,4 @@ class ExecutionResultSerializer(serializers.Serializer):  # type: ignore[misc]
     aggregation_column_labels = serializers.DictField(
         child=serializers.CharField(), required=False, default=dict
     )
+    exception_columns = serializers.ListField(child=serializers.CharField(), default=list)

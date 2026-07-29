@@ -153,6 +153,7 @@ def save_run(
                 "aggregation_column_labels": result.aggregation_column_labels,
                 "nested_aggregation_enabled": result.nested_aggregation_enabled,
                 "comparison_sections": result.comparison_sections,
+                "exception_columns": result.exception_columns,
                 "group_statistics": result.group_statistics,
             },
         }
@@ -254,6 +255,8 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                         result["nested_aggregation_enabled"] = False
                     if "comparison_sections" not in result:
                         result["comparison_sections"] = []
+                    if "exception_columns" not in result:
+                        result["exception_columns"] = []
                     return data
             return None
     return None

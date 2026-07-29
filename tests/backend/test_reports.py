@@ -221,6 +221,7 @@ class TestExportExcel:
             "Attribute Changes",
             "R001",
             "R002",
+            "Exception Table",
         ]
         overall = workbook["Overall"]
         assert overall["A1"].value == "Overall Results"
@@ -312,6 +313,82 @@ class TestExportExcel:
             "EMEA",
             "Ops",
         ]
+
+    def test_exception_table_sheet_is_always_present(self, sample_result: dict) -> None:
+        workbook = load_workbook(BytesIO(export_excel(sample_result, "Test")))
+        assert "Exception Table" in workbook.sheetnames
+
+    def test_comparison_sections_share_a_single_vertical_worksheet(
+        self, sample_result: dict
+    ) -> None:
+        sample_result["comparison"]["row_details"][0]["attribute_changes"].append(
+            {"column": "region", "file_a_value": "EMEA", "file_b_value": "APAC"}
+        )
+        sample_result["comparison_sections"] = [
+            {"id": "financial", "name": "Financial", "columns": ["score"]},
+            {"id": "location", "name": "Location", "columns": ["region"]},
+        ]
+
+        workbook = load_workbook(BytesIO(export_excel(sample_result, "Test")))
+
+        assert workbook.sheetnames.count("Attribute Comparing Sections") == 1
+        sheet = workbook["Attribute Comparing Sections"]
+        assert sheet["A1"].value == "Financial"
+        assert sheet["A2"].value == "Comparing columns"
+        assert sheet["B2"].value == "score"
+        assert [sheet.cell(4, column).value for column in range(1, 5)] == [
+            "id",
+            "Column",
+            "In Baseline",
+            "In Comparison",
+        ]
+        assert [sheet.cell(5, column).value for column in range(1, 5)] == [
+            "123",
+            "score",
+            "10",
+            "15",
+        ]
+        # The second table follows the first after one blank row.
+        assert sheet["A7"].value == "Location"
+        assert sheet["B8"].value == "region"
+        assert [sheet.cell(11, column).value for column in range(1, 5)] == [
+            "123",
+            "region",
+            "EMEA",
+            "APAC",
+        ]
+
+    def test_exception_table_shows_configured_columns(self, sample_result: dict) -> None:
+        sample_result["exception_columns"] = ["region"]
+        sample_result["validation"]["violations_by_rule"]["R001"][0]["extra_values"] = {
+            "region": "EMEA"
+        }
+        workbook = load_workbook(BytesIO(export_excel(sample_result, "Test")))
+        sheet = workbook["Exception Table"]
+        assert sheet["A1"].value == "Exception Table"
+        headers = [sheet.cell(3, c).value for c in range(1, 5)]
+        assert "id" in headers
+        assert "Rule Index" in headers
+        assert "region" in headers
+        assert sheet.cell(4, 1).value == "456"
+        assert sheet.cell(4, 2).value == "R001"
+        assert sheet.cell(4, 3).value == "EMEA"
+
+    def test_html_export_includes_configured_exception_table(self, sample_result: dict) -> None:
+        sample_result["exception_columns"] = ["region"]
+        sample_result["validation"]["violations_by_rule"]["R001"][0]["extra_values"] = {
+            "region": "EMEA",
+        }
+
+        rendered = export_html(sample_result, "Test")
+
+        assert "id" in rendered
+        assert "Exception Table" in rendered
+        assert "Rule Index" in rendered
+        assert "EMEA" in rendered
+        assert "data-exception-sort" in rendered
+        assert "data-exception-filter" in rendered
+        assert "addEventListener('change', applyFilters)" in rendered
 
 
 class TestExportEndpoint(TestCase):

@@ -373,6 +373,7 @@ export function executeRun(
     nestedAggregationEnabled?: boolean;
     comparisonSections?: ComparisonSection[] | undefined;
     ruleIndexes: string[];
+    exceptionColumns?: string[];
   },
   signal?: AbortSignal,
 ): Promise<RunResult> {

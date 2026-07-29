@@ -96,6 +96,10 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
     dispatch({ type: "setSelectedRules", ruleIndexes: next });
   }
 
+  function toggleAll(ruleIds: string[]): void {
+    dispatch({ type: "setSelectedRules", ruleIndexes: ruleIds });
+  }
+
   function handleSave(draft: RuleDraft): void {
     if (editor.mode === "edit") {
       updateRule.mutate(
@@ -159,6 +163,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
                     validColumns={columns}
                     disabled={reorderRules.isPending}
                     onToggle={toggle}
+                    onToggleAll={toggleAll}
                     onEdit={(rule) => setEditor({ mode: "edit", rule })}
                     onDelete={setPendingDelete}
                     onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}
@@ -297,6 +302,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
                 validColumns={columns}
                 disabled={reorderRules.isPending}
                 onToggle={toggle}
+                onToggleAll={toggleAll}
                 onEdit={(rule) => setEditor({ mode: "edit", rule })}
                 onDelete={setPendingDelete}
                 onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}

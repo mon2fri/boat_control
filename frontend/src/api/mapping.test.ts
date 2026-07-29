@@ -12,13 +12,13 @@ import {
   mapConditionToWire,
   mapFilterRowToWire,
   mapRuleToWireDraft,
+  mapRunDocumentToResult,
   mapRunRequestToWire,
   mapWireCondition,
   mapWireFilterRow,
   mapWireRule,
 } from "./mapping";
-import { ruleDraftRequestSchema } from "./wire";
-import { wireRunRequestSchema } from "./wire";
+import { ruleDraftRequestSchema, wireRunRequestSchema, wireRunDocumentSchema } from "./wire";
 
 const baseRequest = {
   sessionId: "s1",
@@ -337,5 +337,76 @@ describe("rule condition mapping", () => {
     const request = ruleDraftRequestSchema.parse(mapped);
     expect(request.extra_columns).toEqual(["region", "owner"]);
     expect(request.hide_comparison).toBe(true);
+  });
+
+  describe("mapRunRequestToWire — exceptionColumns", () => {
+    it("omits exception_columns when empty", () => {
+      const body = mapRunRequestToWire({ ...baseRequest, exceptionColumns: [], ruleIndexes: [] });
+      expect(body.exception_columns).toBeUndefined();
+    });
+
+    it("omits exception_columns when undefined", () => {
+      const body = mapRunRequestToWire({ ...baseRequest, ruleIndexes: [] });
+      expect(body.exception_columns).toBeUndefined();
+    });
+
+    it("serializes exception_columns verbatim", () => {
+      const body = mapRunRequestToWire({
+        ...baseRequest,
+        exceptionColumns: ["region", "owner"],
+        ruleIndexes: [],
+      });
+      expect(body.exception_columns).toEqual(["region", "owner"]);
+    });
+
+    it("produces a body that the wire schema accepts", () => {
+      const body = mapRunRequestToWire({
+        ...baseRequest,
+        exceptionColumns: ["region"],
+        ruleIndexes: [],
+      });
+      expect(() => wireRunRequestSchema.parse(body)).not.toThrow();
+    });
+  });
+
+  describe("mapRunDocumentToResult — exceptionColumns", () => {
+    it("maps exception_columns from the wire result", () => {
+      const wireDoc = wireRunDocumentSchema.parse({
+        run_id: "r1",
+        report_name: "test",
+        file_a_name: "a.csv",
+        file_b_name: "b.csv",
+        created_at: "2026-01-01T00:00:00Z",
+        result: {
+          comparison: { total_rows_a: 10, total_rows_b: 10, rows_with_changes: 0, total_attribute_changes: 0, row_details: [] },
+          validation: { total_violations: 0, violations_by_rule: {}, violation_count_by_rule: {} },
+          common_columns: ["id", "region"],
+          target_columns: ["id", "region"],
+          filters_applied: [],
+          exception_columns: ["region", "owner"],
+        },
+      });
+      const result = mapRunDocumentToResult(wireDoc);
+      expect(result.exceptionColumns).toEqual(["region", "owner"]);
+    });
+
+    it("defaults to undefined when exception_columns is absent", () => {
+      const wireDoc = wireRunDocumentSchema.parse({
+        run_id: "r1",
+        report_name: "test",
+        file_a_name: "a.csv",
+        file_b_name: "b.csv",
+        created_at: "2026-01-01T00:00:00Z",
+        result: {
+          comparison: { total_rows_a: 10, total_rows_b: 10, rows_with_changes: 0, total_attribute_changes: 0, row_details: [] },
+          validation: { total_violations: 0, violations_by_rule: {}, violation_count_by_rule: {} },
+          common_columns: ["id", "region"],
+          target_columns: ["id", "region"],
+          filters_applied: [],
+        },
+      });
+      const result = mapRunDocumentToResult(wireDoc);
+      expect(result.exceptionColumns).toBeUndefined();
+    });
   });
 });

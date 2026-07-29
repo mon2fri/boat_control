@@ -137,6 +137,8 @@ export interface RunRequest {
   comparisonSections?: ComparisonSection[] | undefined;
   ruleIndexes: string[];
   confirmFullSet: boolean;
+  /** Extra columns selected for the cross-rule exception table. */
+  exceptionColumns?: string[];
 }
 
 export interface OverallSummary {
@@ -201,6 +203,8 @@ export interface RunResult {
   aggregationColumnLabels?: Record<string, string>;
   /** Key columns used for this run; persisted so reloads restore the rows. */
   keyColumns?: string[];
+  /** Extra columns selected for the cross-rule exception table; persisted with the run. */
+  exceptionColumns?: string[];
 }
 
 export interface RunSummary {
