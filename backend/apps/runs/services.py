@@ -366,7 +366,8 @@ def _describe_rule_logic(rule: Rule) -> str:
         if len(values) == 1:
             desc += f"'{values[0]}'"
         else:
-            joined = "' or '".join(values)
+            connector = "' and '" if logic.operator in ("neq", "ncontains") else "' or '"
+            joined = connector.join(values)
             desc += f"'{joined}'"
     return desc
 
@@ -574,7 +575,7 @@ def _check_rule(
             except ValueError:
                 matched = False
     else:
-        # Value vs column: support multiple target_values with OR semantics
+        # Positive operators match any target value; negative operators match none.
         target_values = logic.target_values if logic.target_values else (target,)
         if logic.operator == "eq":
             matched = val in target_values

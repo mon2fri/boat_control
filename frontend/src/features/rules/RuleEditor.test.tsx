@@ -197,6 +197,12 @@ describe("RuleEditor", () => {
     // fails before the wording reaches the rule list and history views.
     const preview = screen.getByTestId("rule-logic-preview");
     expect(preview.textContent).toMatch(/status must equal "active"/);
+
+    fireEvent.change(screen.getByLabelText("Operator"), { target: { value: "not_equals" } });
+    fireEvent.focus(logicValue);
+    fireEvent.change(logicValue, { target: { value: "pending" } });
+    fireEvent.keyDown(logicValue, { key: "Enter" });
+    expect(preview.textContent).toMatch(/status must not equal "active" and "pending"/);
   });
 
   it("help text describes rules as required valid state, not invalid state", () => {

@@ -626,7 +626,10 @@ function previewLogicDescription(draft: DraftState): string {
   const values = draft.logic.values?.filter((v) => v.trim()) ?? (draft.logic.target.trim() ? [draft.logic.target.trim()] : []);
   if (values.length === 0) return `${col} ${phrase} "<value>"`;
   if (values.length === 1) return `${col} ${phrase} "${values[0]}"`;
-  const joined = values.slice(0, -1).map((v) => `"${v}"`).join(" or ") + ` or "${values[values.length - 1]}"`;
+  const connector = draft.logic.operator === "not_equals" || draft.logic.operator === "not_contains"
+    ? " and "
+    : " or ";
+  const joined = values.slice(0, -1).map((v) => `"${v}"`).join(connector) + `${connector}"${values[values.length - 1]}"`;
   return `${col} ${phrase} ${joined}`;
 }
 

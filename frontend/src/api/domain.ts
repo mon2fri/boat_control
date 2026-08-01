@@ -59,7 +59,7 @@ export interface Condition {
   id: string;
   column: string;
   operator: LogicOperator;
-  /** Values inside one condition are evaluated with OR semantics. */
+  /** `equals`/`contains` match any value; negative operators match none. */
   values?: string[];
   /** Legacy scalar retained while older saved rules are migrated. */
   value?: string;
