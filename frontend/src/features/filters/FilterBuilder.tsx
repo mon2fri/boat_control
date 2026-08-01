@@ -28,8 +28,11 @@ export function FilterBuilder({ columns, rows, columnValues, loadingValues, onCh
     <section aria-labelledby="filters-title" className="card">
       <h3 id="filters-title" className="section-heading">Filtering Rows</h3>
       <p className="section-hint">
-        Each row applies one condition. Values within a row are OR-ed. Rows are combined with logical AND.
-        Leave the list empty to run against the full set.
+        Each row applies one condition. Multiple values within a row are combined with OR for
+        <code> equals</code>/<code>contains</code> (matches if any value matches) and with AND for
+        <code> not equals</code>/<code>not contains</code> (matches if the value is not equal to /
+        does not contain any of the selected values). Rows are combined with logical AND. Leave the
+        list empty to run against the full set.
       </p>
 
       {rows.length === 0 ? (

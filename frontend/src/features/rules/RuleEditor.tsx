@@ -225,7 +225,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                     placeholder={condition.column ? "Search or type values…" : "Pick a column first"}
                     disabled={!condition.column}
                     freeText
-                    hint="Selected values are joined with OR within this condition."
+                    hint="Multiple values: equals/contains match if ANY value matches; not equals/not contains match if NO value matches (i.e. not any)."
                   />
               )}
               <button
@@ -428,7 +428,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                 placeholder={draft.logic.column ? "Search or type values…" : "Pick a column first"}
                 disabled={!draft.logic.column}
                 freeText
-                hint="Multiple values are OR-ed for every operator."
+                hint="Multiple values: equals/contains match if ANY value matches; not equals/not contains match if NO value matches (i.e. not any)."
               />
             </>
           )}

@@ -23,7 +23,10 @@ interface Props {
  * searchable combobox; values use a searchable multi-select. Values come
  * from the prepare response (fetched once at the Prepare page level) and
  * carry a star marker when present in only one file (not selectable).
- * Multiple values within a row are OR-ed; rows are AND-ed.
+ * Multiple values within a row are OR-ed for `equals`/`contains`
+ * (matches if any value matches) and AND-ed for `not equals`/`not contains`
+ * (matches if the value is not equal to / does not contain any of the
+ * selected values). Rows are AND-ed.
  */
 export function FilterRowEditor({
   row,

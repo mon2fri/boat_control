@@ -135,7 +135,9 @@ describe("RuleEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
 
     expect(onSave.mock.calls[0]![0].conditions[0]!.values).toEqual(["active", "pending"]);
-    expect(within(condition).getByText(/joined with OR/i)).toBeInTheDocument();
+    expect(
+      within(condition).getByText(/Multiple values.*ANY value matches/i),
+    ).toBeInTheDocument();
   });
 
   it("uses unrestricted numeric inputs for greater-than and less-than values", () => {
