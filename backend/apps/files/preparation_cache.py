@@ -43,6 +43,51 @@ def _cache_path(path_a: Path, path_b: Path, columns: list[str]) -> Path:
     return Path(settings.PREPARE_CACHE_DIR) / f"{_cache_key(path_a, path_b, columns)}.json"
 
 
+def _legacy_cache_path(path_a: Path, path_b: Path, columns: list[str]) -> Path:
+    identity = {
+        "file_a": path_a.resolve().name,
+        "file_b": path_b.resolve().name,
+        "columns": columns,
+    }
+    encoded = json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()
+    key = hashlib.sha256(encoded).hexdigest()
+    return Path(settings.PREPARE_CACHE_DIR) / f"{key}.json"
+
+
+def _swap_result(result: FilterPreparationResult) -> FilterPreparationResult:
+    return FilterPreparationResult(
+        columns=result.columns,
+        column_values={
+            column: [
+                ColumnValueInfo(
+                    value=value.value,
+                    in_file_a=value.in_file_b,
+                    in_file_b=value.in_file_a,
+                    display=value.display,
+                )
+                for value in values
+            ]
+            for column, values in result.column_values.items()
+        },
+        total_rows_a=result.total_rows_b,
+        total_rows_b=result.total_rows_a,
+        requires_confirmation=result.requires_confirmation,
+    )
+
+
+def _read_result(raw: dict[str, Any]) -> FilterPreparationResult:
+    return FilterPreparationResult(
+        columns=list(raw["columns"]),
+        column_values={
+            column: [ColumnValueInfo(**value) for value in values]
+            for column, values in raw["column_values"].items()
+        },
+        total_rows_a=int(raw["total_rows_a"]),
+        total_rows_b=int(raw["total_rows_b"]),
+        requires_confirmation=bool(raw["requires_confirmation"]),
+    )
+
+
 def load_preparation(
     path_a: Path,
     path_b: Path,
@@ -50,43 +95,29 @@ def load_preparation(
 ) -> FilterPreparationResult | None:
     if not path_a.exists() or not path_b.exists():
         return None
-    cache_path = _cache_path(path_a, path_b, columns)
-    try:
-        raw: dict[str, Any] = json.loads(cache_path.read_text())
-        result = FilterPreparationResult(
-            columns=list(raw["columns"]),
-            column_values={
-                column: [ColumnValueInfo(**value) for value in values]
-                for column, values in raw["column_values"].items()
-            },
-            total_rows_a=int(raw["total_rows_a"]),
-            total_rows_b=int(raw["total_rows_b"]),
-            requires_confirmation=bool(raw["requires_confirmation"]),
-        )
-        _, is_canonical = _ordered_file_identities(path_a, path_b)
-        if is_canonical:
-            return result
-        return FilterPreparationResult(
-            columns=result.columns,
-            column_values={
-                column: [
-                    ColumnValueInfo(
-                        value=value.value,
-                        in_file_a=value.in_file_b,
-                        in_file_b=value.in_file_a,
-                        display=value.display,
-                    )
-                    for value in values
-                ]
-                for column, values in result.column_values.items()
-            },
-            total_rows_a=result.total_rows_b,
-            total_rows_b=result.total_rows_a,
-            requires_confirmation=result.requires_confirmation,
-        )
-    except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-        cache_path.unlink(missing_ok=True)
-        return None
+    current_path = _cache_path(path_a, path_b, columns)
+    cache_paths = [current_path, _legacy_cache_path(path_a, path_b, columns)]
+    reverse_legacy_path = _legacy_cache_path(path_b, path_a, columns)
+    if reverse_legacy_path not in cache_paths:
+        cache_paths.append(reverse_legacy_path)
+
+    for cache_path in cache_paths:
+        try:
+            raw: dict[str, Any] = json.loads(cache_path.read_text())
+            result = _read_result(raw)
+            if "file_hashes" in raw:
+                _, is_canonical = _ordered_file_identities(path_a, path_b)
+                return result if is_canonical else _swap_result(result)
+
+            references = raw.get("upload_refs", [])
+            requested = [path_a.resolve().name, path_b.resolve().name]
+            oriented = result if references == requested else _swap_result(result)
+            return oriented
+        except FileNotFoundError:
+            continue
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            cache_path.unlink(missing_ok=True)
+    return None
 
 
 def save_preparation(
@@ -99,24 +130,7 @@ def save_preparation(
     cache_dir.mkdir(parents=True, exist_ok=True)
     file_identities, is_canonical = _ordered_file_identities(path_a, path_b)
     if not is_canonical:
-        result = FilterPreparationResult(
-            columns=result.columns,
-            column_values={
-                column: [
-                    ColumnValueInfo(
-                        value=value.value,
-                        in_file_a=value.in_file_b,
-                        in_file_b=value.in_file_a,
-                        display=value.display,
-                    )
-                    for value in values
-                ]
-                for column, values in result.column_values.items()
-            },
-            total_rows_a=result.total_rows_b,
-            total_rows_b=result.total_rows_a,
-            requires_confirmation=result.requires_confirmation,
-        )
+        result = _swap_result(result)
     payload = {
         "upload_refs": [path_a.resolve().name, path_b.resolve().name],
         "file_hashes": file_identities,

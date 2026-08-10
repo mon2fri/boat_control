@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from rest_framework.request import Request
@@ -8,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.files.filter_services import (
+    FilterPreparationResult,
     parse_target_columns,
     prepare_filters,
     validate_filter,
@@ -17,6 +19,19 @@ from apps.files.preparation_cache import load_preparation, save_preparation
 from apps.files.sessions import get_session
 
 logger = logging.getLogger(__name__)
+_CACHE_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="prepare-cache")
+
+
+def _save_preparation_in_background(
+    path_a: Path,
+    path_b: Path,
+    columns: list[str],
+    result: FilterPreparationResult,
+) -> None:
+    try:
+        save_preparation(path_a, path_b, columns, result)
+    except Exception:
+        logger.exception("Failed to persist preparation cache")
 
 
 class FilterPreparationView(APIView):  # type: ignore[misc]
@@ -46,7 +61,13 @@ class FilterPreparationView(APIView):  # type: ignore[misc]
             cache_used = result is not None
             if result is None:
                 result = prepare_filters(path_a, path_b, common_columns)
-                save_preparation(path_a, path_b, common_columns, result)
+                _CACHE_EXECUTOR.submit(
+                    _save_preparation_in_background,
+                    path_a,
+                    path_b,
+                    common_columns,
+                    result,
+                )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception:

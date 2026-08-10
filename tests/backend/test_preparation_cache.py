@@ -1,7 +1,10 @@
+import json
+from dataclasses import asdict
 from pathlib import Path
 
 from apps.files.filter_services import ColumnValueInfo, FilterPreparationResult
 from apps.files.preparation_cache import (
+    _legacy_cache_path,
     load_preparation,
     save_preparation,
 )
@@ -77,6 +80,27 @@ def test_preparation_cache_is_reused_when_files_are_reversed(tmp_path: Path) -> 
     assert loaded.total_rows_b == 2
     assert loaded.column_values["id"][0].in_file_a is False
     assert loaded.column_values["id"][0].in_file_b is True
+
+
+def test_legacy_preparation_cache_remains_reusable(tmp_path: Path) -> None:
+    uploads = tmp_path / "uploads"
+    cache = tmp_path / "prepare_cache"
+    uploads.mkdir()
+    path_a = uploads / "aaa.csv"
+    path_b = uploads / "bbb.csv"
+    path_a.write_text("id\n1\n")
+    path_b.write_text("id\n1\n")
+
+    with override_settings(UPLOADS_DIR=uploads, PREPARE_CACHE_DIR=cache):
+        cache.mkdir()
+        legacy_path = _legacy_cache_path(path_a, path_b, ["id"])
+        legacy_path.write_text(json.dumps({
+            "upload_refs": [path_a.name, path_b.name],
+            **asdict(_result()),
+        }))
+
+        assert load_preparation(path_a, path_b, ["id"]) == _result()
+        assert len(list(cache.glob("*.json"))) == 1
 
 
 def test_upload_housekeeping_removes_only_related_cache_files(tmp_path: Path) -> None:

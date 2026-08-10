@@ -43,16 +43,24 @@ export function PreparePage() {
   });
   const [forceReload, setForceReload] = useState(false);
   const [loadedFromCache, setLoadedFromCache] = useState(cachedPrepare !== null);
-  const [progressColumns, setProgressColumns] = useState(cachedPrepare ? comparisonColumns.length : 0);
+  const [loadingElapsedMs, setLoadingElapsedMs] = useState(0);
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const [discardWarnings, setDiscardWarnings] = useState<string[]>([]);
 
   const totalRows = (prepare.data?.totalRowsA ?? 0) + (prepare.data?.totalRowsB ?? 0);
-  const totalColumns = comparisonColumns.length;
-  const displayedProgressColumns = prepare.status === "ready" ? totalColumns : progressColumns;
-  const progressPercent = totalColumns === 0
-    ? 0
-    : Math.round((displayedProgressColumns / totalColumns) * 100);
+  const progressPercent = prepare.status === "ready"
+    ? 100
+    : Math.min(
+      95,
+      Math.round(
+        loadingElapsedMs < 150_000
+          ? (loadingElapsedMs / 150_000) * 50
+          : 50 + ((loadingElapsedMs - 150_000) / 150_000) * 45,
+      ),
+    );
+  const progressPhase = loadingElapsedMs < 150_000
+    ? "Loading columns from both files"
+    : "Finalizing preparation and waiting for the server response";
 
   const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0 || state.exceptionColumns.length > 0;
 
@@ -103,12 +111,13 @@ export function PreparePage() {
       return;
     }
 
-    setProgressColumns(0);
+    setLoadingElapsedMs(0);
+    const startedAt = Date.now();
     const interval = window.setInterval(() => {
-      setProgressColumns((current) => Math.min(current + 1, Math.max(totalColumns - 1, 0)));
-    }, 400);
+      setLoadingElapsedMs(Date.now() - startedAt);
+    }, 1000);
     return () => window.clearInterval(interval);
-  }, [prepare.status, totalColumns]);
+  }, [prepare.status]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!header) {
@@ -216,15 +225,15 @@ export function PreparePage() {
             <span className="spinner" aria-hidden="true" /> Loading data, please wait, DO NOT refresh...
           </p>
           <p className="data-loading-progress__label">
-            {displayedProgressColumns} of {totalColumns} columns finished ({progressPercent}%)
+            {progressPhase} ({progressPercent}%, five-minute estimate)
           </p>
           <div
             className="data-loading-progress__track"
             role="progressbar"
             aria-label="Column data loading progress"
             aria-valuemin={0}
-            aria-valuemax={totalColumns}
-            aria-valuenow={displayedProgressColumns}
+            aria-valuemax={100}
+            aria-valuenow={progressPercent}
           >
             <div className="data-loading-progress__fill" style={{ width: `${progressPercent}%` }} />
           </div>
