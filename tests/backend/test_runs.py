@@ -510,6 +510,28 @@ class TestValidateRows:
         assert " or " in _describe_condition(contains_cond)
         assert " and " in _describe_condition(ncontains_cond)
 
+    def test_multi_value_logic_summary_uses_and_connector_for_negatives(self) -> None:
+        """`_describe_rule_logic` must mirror the value-vs-column evaluator."""
+        from apps.rules.services import LogicClause, Rule
+        from apps.runs.services import _describe_rule_logic
+
+        def rule_for(operator: str) -> Rule:
+            return Rule(
+                rule_id="R001",
+                name="Multi-value logic",
+                description="",
+                conditions=[],
+                condition_relation=None,
+                grouping=None,
+                grouping_tree=None,
+                logic=LogicClause("value_vs_column", "status", operator, "ops", ("ops", "blocked")),
+            )
+
+        assert "'ops' or 'blocked'" in _describe_rule_logic(rule_for("eq"))
+        assert "'ops' or 'blocked'" in _describe_rule_logic(rule_for("contains"))
+        assert "'ops' and 'blocked'" in _describe_rule_logic(rule_for("neq"))
+        assert "'ops' and 'blocked'" in _describe_rule_logic(rule_for("ncontains"))
+
     def test_numeric_condition_accepts_decimal_and_negative_values(self) -> None:
         from apps.rules.services import Condition, LogicClause, Rule
         from apps.runs.services import _check_rule

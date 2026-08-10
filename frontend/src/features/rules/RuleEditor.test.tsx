@@ -135,7 +135,9 @@ describe("RuleEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
 
     expect(onSave.mock.calls[0]![0].conditions[0]!.values).toEqual(["active", "pending"]);
-    expect(within(condition).getByText(/joined with OR/i)).toBeInTheDocument();
+    expect(
+      within(condition).getByText(/Multiple values.*ANY value matches/i),
+    ).toBeInTheDocument();
   });
 
   it("uses unrestricted numeric inputs for greater-than and less-than values", () => {
@@ -195,6 +197,12 @@ describe("RuleEditor", () => {
     // fails before the wording reaches the rule list and history views.
     const preview = screen.getByTestId("rule-logic-preview");
     expect(preview.textContent).toMatch(/status must equal "active"/);
+
+    fireEvent.change(screen.getByLabelText("Operator"), { target: { value: "not_equals" } });
+    fireEvent.focus(logicValue);
+    fireEvent.change(logicValue, { target: { value: "pending" } });
+    fireEvent.keyDown(logicValue, { key: "Enter" });
+    expect(preview.textContent).toMatch(/status must not equal "active" and "pending"/);
   });
 
   it("help text describes rules as required valid state, not invalid state", () => {
