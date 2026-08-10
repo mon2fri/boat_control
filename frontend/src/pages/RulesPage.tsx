@@ -17,7 +17,7 @@ const RULES_KEY = ["rules"] as const;
 
 type EditorState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; rule: Rule };
 
-export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: boolean; columnValues?: Record<string, { value: string; starred: boolean }[]> }) {
+export function RulesPage({ embedded = false, disabled = false, columnValues = {} }: { embedded?: boolean; disabled?: boolean; columnValues?: Record<string, { value: string; starred: boolean }[]> }) {
   const navigate = useNavigate();
   const { state, dispatch, reset } = useWorkflow();
   const rules = useRules();
@@ -133,6 +133,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
   if (embedded) {
     return (
       <section id="validation-rules" aria-labelledby="rules-title">
+        <fieldset disabled={disabled} className="validation-rules__fieldset">
         <div className="config-layout">
           <div>
             <h3 id="rules-title" className="section-heading">Validation rules</h3>
@@ -142,7 +143,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
             configType="rules"
             currentContent={mapRulesToConfigContent(rules.data ?? [], families)}
             onLoad={(name) => setConfigLoadName(name)}
-            disabled={rules.isPending || isApplyingConfig}
+            disabled={disabled || rules.isPending || isApplyingConfig}
             hasUnsavedChanges={editor.mode !== "closed"}
             title="Load config for rules"
           />
@@ -166,7 +167,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
                     rules={rules.data}
                     selected={selected}
                     validColumns={columns}
-                    disabled={reorderRules.isPending}
+                    disabled={disabled || reorderRules.isPending}
                     onToggle={toggle}
                     onToggleAll={toggleAll}
                     onEdit={(rule) => setEditor({ mode: "edit", rule })}
@@ -207,7 +208,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
             <button
               type="button"
               className="btn btn--primary"
-              disabled={!state.header}
+              disabled={disabled || !state.header}
               onClick={handleRunComparison}
             >
               Run comparison and validation
@@ -253,6 +254,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
             {configError}
           </p>
         )}
+        </fieldset>
 
         <ConfirmDialog
           title="Delete rule?"

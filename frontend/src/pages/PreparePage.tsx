@@ -43,10 +43,16 @@ export function PreparePage() {
   });
   const [forceReload, setForceReload] = useState(false);
   const [loadedFromCache, setLoadedFromCache] = useState(cachedPrepare !== null);
+  const [progressColumns, setProgressColumns] = useState(cachedPrepare ? comparisonColumns.length : 0);
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const [discardWarnings, setDiscardWarnings] = useState<string[]>([]);
 
   const totalRows = (prepare.data?.totalRowsA ?? 0) + (prepare.data?.totalRowsB ?? 0);
+  const totalColumns = comparisonColumns.length;
+  const displayedProgressColumns = prepare.status === "ready" ? totalColumns : progressColumns;
+  const progressPercent = totalColumns === 0
+    ? 0
+    : Math.round((displayedProgressColumns / totalColumns) * 100);
 
   const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0 || state.exceptionColumns.length > 0;
 
@@ -90,6 +96,20 @@ export function PreparePage() {
     dispatch,
     handleSessionError,
   ]);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- reset progress when a new preparation starts. */
+  useEffect(() => {
+    if (prepare.status !== "loading") {
+      return;
+    }
+
+    setProgressColumns(0);
+    const interval = window.setInterval(() => {
+      setProgressColumns((current) => Math.min(current + 1, Math.max(totalColumns - 1, 0)));
+    }, 400);
+    return () => window.clearInterval(interval);
+  }, [prepare.status, totalColumns]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (!header) {
     return <RequireSession>Upload two files before choosing filters and targets.</RequireSession>;
@@ -191,9 +211,24 @@ export function PreparePage() {
       )}
 
       {prepare.status === "loading" && (
-        <p role="status" aria-live="polite" className="busy-row alert alert--error">
-          <span className="spinner" aria-hidden="true" /> Loading data, please wait, DO NOT refresh...
-        </p>
+        <div className="data-loading-progress" role="status" aria-live="polite">
+          <p className="busy-row alert alert--error">
+            <span className="spinner" aria-hidden="true" /> Loading data, please wait, DO NOT refresh...
+          </p>
+          <p className="data-loading-progress__label">
+            {displayedProgressColumns} of {totalColumns} columns finished ({progressPercent}%)
+          </p>
+          <div
+            className="data-loading-progress__track"
+            role="progressbar"
+            aria-label="Column data loading progress"
+            aria-valuemin={0}
+            aria-valuemax={totalColumns}
+            aria-valuenow={displayedProgressColumns}
+          >
+            <div className="data-loading-progress__fill" style={{ width: `${progressPercent}%` }} />
+          </div>
+        </div>
       )}
       {prepare.status === "error" && (
         <p className="alert alert--error" role="alert">
@@ -232,7 +267,11 @@ export function PreparePage() {
         families={families}
       />
 
-      <RulesPage embedded columnValues={prepare.data?.columnValues ?? {}} />
+      <RulesPage
+        embedded
+        disabled={prepare.status === "loading"}
+        columnValues={prepare.data?.columnValues ?? {}}
+      />
     </section>
   );
 }
