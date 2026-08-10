@@ -132,11 +132,13 @@ describe("critical user journey: upload → prepare → rules → run → result
     // 3. Compare and validate page loads (embedded rules, filters, targets).
     await waitFor(() => expect(screen.getByRole("heading", { name: /Compare & validate/ })).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText(/Region present/)).toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: "3. Results" })).not.toBeInTheDocument();
 
     // 4. Run comparison and validation from the prepare page.
     const runBtn = await screen.findByRole("button", { name: "Run comparison and validation" });
     await waitFor(() => expect(runBtn).toBeEnabled());
     fireEvent.click(runBtn);
+    await waitFor(() => expect(screen.getByRole("link", { name: "3. Results" })).toBeInTheDocument());
 
     // 5. Results page: click "Run now", then the report renders with the overall counts.
     await waitFor(() => expect(screen.getByRole("button", { name: "Run now" })).toBeInTheDocument());
@@ -150,6 +152,13 @@ describe("critical user journey: upload → prepare → rules → run → result
     expect(document.querySelector(".result-content.results-layer-content")).toBeInTheDocument();
     expect(document.querySelector(".results-header.results-layer-header")).toBeInTheDocument();
     expect(document.querySelector(".results-actions.results-layer-actions")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start over with new uploads" }));
+    expect(screen.getByRole("alertdialog")).toHaveTextContent(
+      "This will clear all current config and reload all data.",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.getByLabelText("Overall result summary")).toBeInTheDocument();
 
     const prepareCallsBeforeReturn = vi.mocked(fetch).mock.calls.filter(
       ([url]) => String(url).includes("/files/filters/prepare/"),

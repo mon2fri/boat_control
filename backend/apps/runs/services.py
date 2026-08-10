@@ -381,7 +381,12 @@ def _describe_condition(rule_condition: Any) -> str:
         "lt": "less than",
     }.get(rule_condition.operator, rule_condition.operator.replace("_", " "))
     values = rule_condition.filter_values or (rule_condition.filter_value,)
-    rendered_values = " or ".join(f"'{value}'" for value in values)
+    # The multi-value connector mirrors the evaluator's semantics, so the
+    # human-readable description cannot be misread as the opposite polarity:
+    #   eq / contains      → "or"  (matches any)
+    #   neq / ncontains    → "and" (matches none — "not any")
+    connector = " and " if rule_condition.operator in ("neq", "ncontains") else " or "
+    rendered_values = connector.join(f"'{value}'" for value in values)
     return f"{rule_condition.column_name} {operator} {rendered_values}"
 
 
@@ -477,8 +482,18 @@ def _check_rule(
                         matches.append(False)
                 else:
                     matches.append(False)
-            # Multiple values within one condition are alternatives.
-            cond_results.append(any(matches))
+            # Multi-value semantics, frozen with the contract:
+            #   eq / contains   → matches if ANY value matches (OR)
+            #   neq / ncontains → matches if NO value matches (AND of negations),
+            #                     i.e. the value is "not equal to / does not
+            #                     contain ANY of the selected values".
+            # Numeric operators (gt / lt) keep the "ANY" interpretation, which
+            # collapses to `val > min(values)` / `val < max(values)` and matches
+            # the legacy single-value behaviour.
+            if cond.operator in ("neq", "ncontains"):
+                cond_results.append(all(matches))
+            else:
+                cond_results.append(any(matches))
 
         if rule.grouping_tree is not None:
             tree_result = _evaluate_grouping_tree(rule.grouping_tree, cond_results)

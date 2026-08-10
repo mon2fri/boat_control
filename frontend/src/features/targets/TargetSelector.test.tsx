@@ -17,15 +17,21 @@ function Harness({ initial = [] as string[] }) {
   );
 }
 
+function expandCard(): void {
+  fireEvent.click(screen.getByRole("button", { name: /Track Changing Columns/ }));
+}
+
 describe("TargetSelector", () => {
   it("renders a searchable multi-select for comparing columns", () => {
     renderWithClient(<Harness />);
-    expect(screen.getByText("Comparing Columns")).toBeInTheDocument();
+    expect(screen.getByText("Track Changing Columns")).toBeInTheDocument();
+    expandCard();
     expect(screen.getByRole("searchbox", { name: "Add columns to compare values" })).toBeInTheDocument();
   });
 
   it("shows selected columns as removable chips", () => {
     renderWithClient(<Harness initial={["region", "status"]} />);
+    expandCard();
     const list = screen.getByRole("list", { name: "Selected comparing columns" });
     expect(within(list).getByText("region")).toBeInTheDocument();
     expect(within(list).getByText("status")).toBeInTheDocument();
@@ -33,6 +39,7 @@ describe("TargetSelector", () => {
 
   it("allows deselecting columns via checkbox multi-select", () => {
     renderWithClient(<Harness initial={["region"]} />);
+    expandCard();
     fireEvent.focus(screen.getByRole("searchbox", { name: "Add columns to compare values" }));
     // The already-selected column should be checked
     const list = screen.getByRole("listbox", { name: "Add columns to compare values" });
@@ -42,6 +49,6 @@ describe("TargetSelector", () => {
   it("empty selection means all comparison columns are used", () => {
     renderWithClient(<Harness />);
     expect(screen.queryByRole("list", { name: "Selected comparing columns" })).not.toBeInTheDocument();
-    expect(screen.getByText(/all selected comparison columns/)).toBeInTheDocument();
+    expect(screen.getByText(/All comparison columns will be tracked/)).toBeInTheDocument();
   });
 });

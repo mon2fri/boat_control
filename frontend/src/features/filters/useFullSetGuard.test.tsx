@@ -15,6 +15,7 @@ const baseState: WorkflowState = {
   exceptionColumns: [],
   selectedRuleIndexes: [],
   confirmFullSet: false,
+  page2Complete: false,
   result: null,
   serverRequiresConfirmation: false,
   sessionExpired: false,

@@ -45,6 +45,40 @@ def test_preparation_cache_persists_by_upload_pair_and_columns(tmp_path: Path) -
         assert load_preparation(path_a, path_b, ["other"]) is None
 
 
+def test_preparation_cache_is_reused_when_files_are_reversed(tmp_path: Path) -> None:
+    uploads = tmp_path / "uploads"
+    cache = tmp_path / "prepare_cache"
+    uploads.mkdir()
+    path_a = uploads / "first-name.csv"
+    path_b = uploads / "second-name.csv"
+    path_a.write_text("id\n1\n2\n")
+    path_b.write_text("id\n2\n")
+    result = FilterPreparationResult(
+        columns=["id"],
+        column_values={
+            "id": [
+                ColumnValueInfo(
+                    value="1", in_file_a=True, in_file_b=False, display="1"
+                )
+            ]
+        },
+        total_rows_a=2,
+        total_rows_b=1,
+        requires_confirmation=False,
+    )
+
+    with override_settings(UPLOADS_DIR=uploads, PREPARE_CACHE_DIR=cache):
+        save_preparation(path_a, path_b, ["id"], result)
+
+        loaded = load_preparation(path_b, path_a, ["id"])
+
+    assert loaded is not None
+    assert loaded.total_rows_a == 1
+    assert loaded.total_rows_b == 2
+    assert loaded.column_values["id"][0].in_file_a is False
+    assert loaded.column_values["id"][0].in_file_b is True
+
+
 def test_upload_housekeeping_removes_only_related_cache_files(tmp_path: Path) -> None:
     uploads = tmp_path / "uploads"
     cache = tmp_path / "prepare_cache"
@@ -52,8 +86,9 @@ def test_upload_housekeeping_removes_only_related_cache_files(tmp_path: Path) ->
     path_a = uploads / "aaa.csv"
     path_b = uploads / "bbb.csv"
     path_c = uploads / "ccc.csv"
-    for path in (path_a, path_b, path_c):
-        path.write_text("id\n1\n")
+    path_a.write_text("id\n1\n")
+    path_b.write_text("id\n1\n")
+    path_c.write_text("id\n2\n")
 
     with override_settings(UPLOADS_DIR=uploads, PREPARE_CACHE_DIR=cache):
         save_preparation(path_a, path_b, ["id"], _result())

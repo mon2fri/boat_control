@@ -1,5 +1,6 @@
 import type { FilterRow } from "../../api/domain";
 import { nextId } from "../../lib/id";
+import { CollapsibleCard } from "../../components/CollapsibleCard";
 import { FilterRowEditor } from "./FilterRowEditor";
 
 interface Props {
@@ -25,11 +26,19 @@ export function FilterBuilder({ columns, rows, columnValues, loadingValues, onCh
   }
 
   return (
-    <section aria-labelledby="filters-title" className="card">
-      <h3 id="filters-title" className="section-heading">Filtering Rows</h3>
+    <CollapsibleCard
+      id="filters"
+      title="Row filters"
+      summary={rows.length === 0
+        ? "No filters configured. Expand to change."
+        : `${rows.length} filter${rows.length === 1 ? "" : "s"} configured. Expand to change.`}
+    >
       <p className="section-hint">
-        Each row applies one condition. Values within a row are OR-ed. Rows are combined with logical AND.
-        Leave the list empty to run against the full set.
+        Each row applies one condition. Multiple values within a row are combined with OR for
+        <code> equals</code>/<code>contains</code> (matches if any value matches) and with AND for
+        <code> not equals</code>/<code>not contains</code> (matches if the value is not equal to /
+        does not contain any of the selected values). Rows are combined with logical AND. Leave the
+        list empty to run against the full set.
       </p>
 
       {rows.length === 0 ? (
@@ -52,6 +61,6 @@ export function FilterBuilder({ columns, rows, columnValues, loadingValues, onCh
       <button type="button" className="btn" onClick={() => onChange([...rows, newFilterRow()])}>
         + Add filter
       </button>
-    </section>
+    </CollapsibleCard>
   );
 }

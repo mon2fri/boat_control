@@ -1,7 +1,8 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { RequireSession } from "../components/RequireSession";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useRunExecution } from "../features/results/useRunExecution";
 import { OverallSummaryCards } from "../features/results/OverallSummaryCards";
 import { RuleResultSection } from "../features/results/RuleResultSection";
@@ -54,9 +55,10 @@ export function ResultsPage() {
   const navigate = useNavigate();
   const { runId } = useParams<{ runId?: string }>();
   const { state, dispatch, reset, clearResult } = useWorkflow();
+  const [showStartOverConfirm, setShowStartOverConfirm] = useState(false);
   const execution = useRunExecution((result) => dispatch({ type: "setResult", result }));
 
-  const handleRunAnother = useCallback(() => {
+  const handleStartOver = useCallback(() => {
     if (state.header) {
       void clearUploadSession(state.header.sessionId).catch(() => undefined);
     }
@@ -171,12 +173,22 @@ export function ResultsPage() {
           exceptionColumns={state.exceptionColumns}
           nestedAggregationEnabled={state.nestedAggregationEnabled}
           commonColumns={state.header?.common ?? []}
-          onRunAnother={handleRunAnother}
+          onRunAnother={() => setShowStartOverConfirm(true)}
           onEditFilters={handleEditFiltersOrRules}
           onViewHistory={() => void navigate("/history")}
           onRename={(result) => dispatch({ type: "setResult", result })}
         />
       )}
+      <ConfirmDialog
+        title="Start over with new uploads?"
+        open={showStartOverConfirm}
+        confirmLabel="Start over"
+        confirmTone="danger"
+        onCancel={() => setShowStartOverConfirm(false)}
+        onConfirm={handleStartOver}
+      >
+        <p>This will clear all current config and reload all data.</p>
+      </ConfirmDialog>
     </section>
   );
 }
@@ -356,7 +368,7 @@ function ResultView({
       <div className="card results-actions results-layer-actions" data-export-exclude>
         <div className="config-inline-row">
           <button type="button" className="btn btn--primary" onClick={onRunAnother}>
-            Run another report
+            Start over with new uploads
           </button>
           <button type="button" className="btn" onClick={onEditFilters}>
             Edit filters or rules

@@ -73,7 +73,11 @@ export interface LogicClause {
   column: string;
   operator: LogicOperator;
   target: string;
-  /** Multiple values for Value-against-column; OR-ed across all operators. */
+  /**
+   * Multiple values for Value-against-column.
+   * Semantics mirror the contract: `equals`/`contains` are OR-ed (match any),
+   * `not_equals`/`not_contains` are AND-ed (match none — i.e. not any).
+   */
   values?: string[];
   /** Source of the right-hand column for Column-against-Column logic. */
   columnComparisonMode?: "comparison_vs_baseline" | "comparison_vs_comparison";

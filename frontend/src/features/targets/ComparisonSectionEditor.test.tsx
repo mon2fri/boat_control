@@ -20,7 +20,7 @@ function renderEditor(
   onChange: (sections: ComparisonSection[]) => void,
   options: { availableColumns?: string[] } = {},
 ) {
-  return render(
+  const result = render(
     <ComparisonSectionEditor
       sections={sections}
       onChange={onChange}
@@ -28,6 +28,8 @@ function renderEditor(
       families={FAMILIES}
     />,
   );
+  fireEvent.click(screen.getByRole("button", { name: /Attribute Comparing Sections/ }));
+  return result;
 }
 
 /** Drive the SearchableMultiSelect into a chosen selection. */

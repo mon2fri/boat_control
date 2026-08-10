@@ -66,6 +66,70 @@ class TestApplyFilters:
         filtered_a, filtered_b = apply_filters(df_a, df_b, filters)
         # Phase 2: only df_b is filtered; df_a passes through
         assert filtered_a.collect().height == 3  # baseline unchanged
+        # csv_b has 0 rows with status != 'active' (all three are 'active')
+        assert filtered_b.collect().height == 0
+
+    def test_multi_value_eq_matches_any_selected(self, csv_a: Path, csv_b: Path) -> None:
+        """`eq` with multiple values: keep rows whose value equals ANY of the selected."""
+        import polars as pl
+
+        df_a = pl.scan_csv(csv_a)
+        df_b = pl.scan_csv(csv_b)
+        # csv_b statuses: active, active, active. Adding inactive/pending must NOT exclude any row.
+        filters = [{"column": "status", "operator": "eq", "filter_values": ["inactive", "pending"]}]
+        filtered_a, filtered_b = apply_filters(df_a, df_b, filters)
+        assert filtered_b.collect().height == 0  # none of csv_b matches either
+        # Now include 'active' — should keep all three.
+        filters = [{"column": "status", "operator": "eq", "filter_values": ["inactive", "active"]}]
+        _, filtered_b = apply_filters(df_a, df_b, filters)
+        assert filtered_b.collect().height == 3
+
+    def test_multi_value_neq_excludes_any_selected(self, csv_a: Path, csv_b: Path) -> None:
+        """`neq` with multiple values: keep rows whose value is NOT EQUAL to ANY selected (= not in)."""
+        import polars as pl
+
+        df_a = pl.scan_csv(csv_a)
+        df_b = pl.scan_csv(csv_b)
+        # csv_b all rows are 'active'. Selecting neq ['active', 'inactive'] must drop every row
+        # because 'active' is in the selected list.
+        filters = [{"column": "status", "operator": "neq", "filter_values": ["active", "inactive"]}]
+        _, filtered_b = apply_filters(df_a, df_b, filters)
+        assert filtered_b.collect().height == 0
+        # Selecting neq ['inactive', 'pending'] (neither is in csv_b) keeps all rows.
+        filters = [{"column": "status", "operator": "neq", "filter_values": ["inactive", "pending"]}]
+        _, filtered_b = apply_filters(df_a, df_b, filters)
+        assert filtered_b.collect().height == 3
+
+    def test_multi_value_contains_matches_any_selected(self, csv_a: Path, csv_b: Path) -> None:
+        """`contains` with multiple values: keep rows whose value contains ANY of the selected."""
+        import polars as pl
+
+        df_a = pl.scan_csv(csv_a)
+        df_b = pl.scan_csv(csv_b)
+        # csv_b names: alice, bob, dave. None of these contain 'zz' or 'qq'.
+        filters = [{"column": "name", "operator": "contains", "filter_values": ["zz", "qq"]}]
+        _, filtered_b = apply_filters(df_a, df_b, filters)
+        assert filtered_b.collect().height == 0
+        # 'ali' matches 'alice' only — single hit.
+        filters = [{"column": "name", "operator": "contains", "filter_values": ["zz", "ali"]}]
+        _, filtered_b = apply_filters(df_a, df_b, filters)
+        assert filtered_b.collect().height == 1
+
+    def test_multi_value_ncontains_excludes_any_selected(self, csv_a: Path, csv_b: Path) -> None:
+        """`ncontains` with multiple values: keep rows whose value contains NONE of the selected."""
+        import polars as pl
+
+        df_a = pl.scan_csv(csv_a)
+        df_b = pl.scan_csv(csv_b)
+        # csv_b names: alice, bob, dave. Selecting ncontains ['ali', 'bob'] drops both alice (contains 'ali') and bob (contains 'bob'), keeps dave.
+        filters = [{"column": "name", "operator": "ncontains", "filter_values": ["ali", "bob"]}]
+        _, filtered_b = apply_filters(df_a, df_b, filters)
+        result_names = sorted(filtered_b.collect()["name"].to_list())
+        assert result_names == ["dave"]
+        # Selecting ncontains ['zz', 'qq'] keeps all rows (none contain either).
+        filters = [{"column": "name", "operator": "ncontains", "filter_values": ["zz", "qq"]}]
+        _, filtered_b = apply_filters(df_a, df_b, filters)
+        assert filtered_b.collect().height == 3
 
 
 class TestCompareRows:
@@ -349,6 +413,102 @@ class TestValidateRows:
         assert _check_rule({"status": "active", "result": "bad"}, rule, [])[0] is True
         assert _check_rule({"status": "pending", "result": "bad"}, rule, [])[0] is True
         assert _check_rule({"status": "closed", "result": "bad"}, rule, [])[0] is False
+
+    def test_multi_value_eq_condition_matches_any(self) -> None:
+        from apps.rules.services import Condition, LogicClause, Rule
+        from apps.runs.services import _check_rule
+
+        rule = Rule(
+            rule_id="R001",
+            name="Status eq any",
+            description="",
+            conditions=[Condition("status", "eq", "active", ("active", "pending"))],
+            condition_relation=None,
+            grouping=None,
+            grouping_tree=None,
+            logic=LogicClause("value_vs_column", "result", "eq", "ok"),
+        )
+        # active OR pending both scope the rule in.
+        assert _check_rule({"status": "active", "result": "bad"}, rule, [])[0] is True
+        assert _check_rule({"status": "pending", "result": "bad"}, rule, [])[0] is True
+        # Neither matches, rule doesn't apply.
+        assert _check_rule({"status": "closed", "result": "bad"}, rule, [])[0] is False
+
+    def test_multi_value_neq_condition_matches_none(self) -> None:
+        from apps.rules.services import Condition, LogicClause, Rule
+        from apps.runs.services import _check_rule
+
+        rule = Rule(
+            rule_id="R001",
+            name="Status not eq any",
+            description="",
+            conditions=[Condition("status", "neq", "ops", ("ops", "blocked"))],
+            condition_relation=None,
+            grouping=None,
+            grouping_tree=None,
+            logic=LogicClause("value_vs_column", "result", "eq", "ok"),
+        )
+        # 'ops' IS in the list — condition does NOT match.
+        assert _check_rule({"status": "ops", "result": "bad"}, rule, [])[0] is False
+        # 'blocked' IS in the list — condition does NOT match.
+        assert _check_rule({"status": "blocked", "result": "bad"}, rule, [])[0] is False
+        # 'active' is NOT in the list — condition matches, rule applies, logic fails -> violation.
+        assert _check_rule({"status": "active", "result": "bad"}, rule, [])[0] is True
+        assert _check_rule({"status": "active", "result": "ok"}, rule, [])[0] is False
+
+    def test_multi_value_contains_condition_matches_any(self) -> None:
+        from apps.rules.services import Condition, LogicClause, Rule
+        from apps.runs.services import _check_rule
+
+        rule = Rule(
+            rule_id="R001",
+            name="Name contains any",
+            description="",
+            conditions=[Condition("name", "contains", "ali", ("ali", "bob"))],
+            condition_relation=None,
+            grouping=None,
+            grouping_tree=None,
+            logic=LogicClause("value_vs_column", "result", "eq", "ok"),
+        )
+        assert _check_rule({"name": "alice", "result": "bad"}, rule, [])[0] is True
+        assert _check_rule({"name": "bobby", "result": "bad"}, rule, [])[0] is True
+        assert _check_rule({"name": "carol", "result": "bad"}, rule, [])[0] is False
+
+    def test_multi_value_ncontains_condition_matches_none(self) -> None:
+        from apps.rules.services import Condition, LogicClause, Rule
+        from apps.runs.services import _check_rule
+
+        rule = Rule(
+            rule_id="R001",
+            name="Name not contains any",
+            description="",
+            conditions=[Condition("name", "ncontains", "test", ("test", "demo"))],
+            condition_relation=None,
+            grouping=None,
+            grouping_tree=None,
+            logic=LogicClause("value_vs_column", "result", "eq", "ok"),
+        )
+        # 'alice' contains neither 'test' nor 'demo' -> condition matches -> rule applies.
+        assert _check_rule({"name": "alice", "result": "bad"}, rule, [])[0] is True
+        # 'tester' contains 'test' -> condition does NOT match.
+        assert _check_rule({"name": "tester", "result": "bad"}, rule, [])[0] is False
+        # 'demo_user' contains 'demo' -> condition does NOT match.
+        assert _check_rule({"name": "demo_user", "result": "bad"}, rule, [])[0] is False
+
+    def test_multi_value_condition_summary_uses_and_connector_for_negatives(self) -> None:
+        """`_describe_condition` must use 'and' for neq/ncontains and 'or' for eq/contains."""
+        from apps.rules.services import Condition
+        from apps.runs.services import _describe_condition
+
+        eq_cond = Condition("status", "eq", "active", ("active", "pending"))
+        neq_cond = Condition("status", "neq", "ops", ("ops", "blocked"))
+        contains_cond = Condition("name", "contains", "ali", ("ali", "bob"))
+        ncontains_cond = Condition("name", "ncontains", "test", ("test", "demo"))
+
+        assert " or " in _describe_condition(eq_cond)
+        assert " and " in _describe_condition(neq_cond)
+        assert " or " in _describe_condition(contains_cond)
+        assert " and " in _describe_condition(ncontains_cond)
 
     def test_numeric_condition_accepts_decimal_and_negative_values(self) -> None:
         from apps.rules.services import Condition, LogicClause, Rule

@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from "react";
 import type { ComparisonSection, Family } from "../../api/domain";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { CollapsibleCard } from "../../components/CollapsibleCard";
 import { withColumnFamilies } from "../families/familyOptions";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 
@@ -148,19 +149,25 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
 
   if (sections.length === 0 && editingId === null) {
     return (
-      <section className="card">
-        <h3 id="comparison-sections-title" className="section-heading">Attribute Comparing Sections</h3>
+      <CollapsibleCard
+        id="comparison-sections"
+        title="Attribute Comparing Sections"
+        summary="No sections configured. Expand to change."
+      >
         <p className="section-hint">No custom sections defined. All target columns are compared together.</p>
         <button type="button" className="btn" onClick={handleAdd} style={{ marginTop: "var(--space)" }}>
           Add section
         </button>
-      </section>
+      </CollapsibleCard>
     );
   }
 
   return (
-    <section className="card" aria-labelledby="comparison-sections-title">
-      <h3 id="comparison-sections-title" className="section-heading">Attribute Comparing Sections</h3>
+    <CollapsibleCard
+      id="comparison-sections"
+      title="Attribute Comparing Sections"
+      summary={`${sections.length} section${sections.length === 1 ? "" : "s"} configured. Expand to change.`}
+    >
       <p className="section-hint">Define named sections that compare specific column subsets.</p>
 
       <ul className="comparison-section-list" style={{ listStyle: "none", padding: 0 }}>
@@ -330,6 +337,6 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
       >
         <p>Remove this comparison section? This cannot be undone.</p>
       </ConfirmDialog>
-    </section>
+    </CollapsibleCard>
   );
 }

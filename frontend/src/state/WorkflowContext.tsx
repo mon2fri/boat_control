@@ -42,6 +42,8 @@ export interface WorkflowState {
   selectedRuleIndexes: string[];
   /** User acknowledged running against the full set with no filters. */
   confirmFullSet: boolean;
+  /** Whether page two has been submitted to the results step. */
+  page2Complete: boolean;
   result: RunResult | null;
   /** Set when the server says the run needs confirmation; shown as a banner. */
   serverRequiresConfirmation: boolean;
@@ -63,6 +65,7 @@ const initialState: WorkflowState = {
   preparedData: null,
   selectedRuleIndexes: [],
   confirmFullSet: false,
+  page2Complete: false,
   result: null,
   serverRequiresConfirmation: false,
   sessionExpired: false,
@@ -83,6 +86,7 @@ type Action =
   | { type: "setKeyColumns"; columns: string[] }
   | { type: "setSelectedRules"; ruleIndexes: string[] }
   | { type: "setConfirmFullSet"; confirmed: boolean }
+  | { type: "setPage2Complete"; complete: boolean }
   | { type: "setServerRequiresConfirmation"; requires: boolean }
   | { type: "setResult"; result: RunResult }
   | { type: "clearResult" }
@@ -100,6 +104,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         ...state,
         comparisonColumns: cols,
         preparedData: null,
+        page2Complete: false,
         keyColumns: state.keyColumns.filter((c) => colSet.has(c)),
         targetColumns: state.targetColumns.filter((c) => colSet.has(c)),
         aggregationColumns: state.aggregationColumns.filter((c) => colSet.has(c)),
@@ -126,6 +131,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
         ...state,
         comparisonColumns: next,
         preparedData: null,
+        page2Complete: false,
         keyColumns: state.keyColumns.filter((c) => c !== col),
         targetColumns: state.targetColumns.filter((c) => c !== col),
         aggregationColumns: state.aggregationColumns.filter((c) => c !== col),
@@ -180,6 +186,8 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       return { ...state, selectedRuleIndexes: action.ruleIndexes };
     case "setConfirmFullSet":
       return { ...state, confirmFullSet: action.confirmed };
+    case "setPage2Complete":
+      return { ...state, page2Complete: action.complete };
     case "setServerRequiresConfirmation":
       return { ...state, serverRequiresConfirmation: action.requires };
     case "setResult":

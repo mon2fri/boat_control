@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { CollapsibleCard } from "../../components/CollapsibleCard";
 import { withColumnFamilies } from "../families/familyOptions";
 import type { Family } from "../../api/domain";
 
@@ -25,8 +26,13 @@ export function ExceptionColumnPicker({ columns, selected, onChange, families = 
   }
 
   return (
-    <section aria-labelledby="exception-columns-title" className="card">
-      <h3 id="exception-columns-title" className="section-heading">Exception Columns</h3>
+    <CollapsibleCard
+      id="exception-columns"
+      title="Extra Columns in Exception Table"
+      summary={selected.length === 0
+        ? "No extra columns configured. Expand to change."
+        : `${selected.length} extra column${selected.length === 1 ? "" : "s"} configured. Expand to change.`}
+    >
       <p className="section-hint">
         Select extra columns to appear in the exception table, which lists all records across exception rows. Key columns and aggregation columns are always included.
       </p>
@@ -57,6 +63,6 @@ export function ExceptionColumnPicker({ columns, selected, onChange, families = 
           ))}
         </ul>
       )}
-    </section>
+    </CollapsibleCard>
   );
 }

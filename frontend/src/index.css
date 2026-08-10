@@ -365,7 +365,8 @@ body {
   gap: 2px;
 }
 
-.app-nav a {
+.app-nav a,
+.app-nav__link {
   position: relative;
   display: block;
   padding: 10px calc(var(--space) * 1.5) 10px calc(var(--space) * 2);
@@ -375,6 +376,12 @@ body {
   font-weight: 500;
   border-left: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.app-nav__link--disabled {
+  color: var(--color-muted);
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .app-nav a:hover:not([aria-current="page"]),
@@ -449,6 +456,42 @@ body {
   color: var(--color-accent);
   font-weight: 600;
   border-left-color: var(--color-accent);
+}
+
+.collapsible-card__header {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collapsible-card__header:hover .section-heading,
+.collapsible-card__header:focus-visible .section-heading {
+  color: var(--color-accent);
+}
+
+.collapsible-card__summary {
+  display: block;
+  margin-top: calc(var(--space) * 0.5);
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  font-weight: 400;
+}
+
+.collapsible-card__toggle {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 
 .app-main {

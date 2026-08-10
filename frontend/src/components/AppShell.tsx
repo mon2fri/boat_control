@@ -86,6 +86,13 @@ export function AppShell() {
   });
 
   const isResultsRoute = location.pathname === "/results" || location.pathname.startsWith("/results/");
+  const page1Complete =
+    state.header !== null && state.comparisonColumns.length > 0 && state.keyColumns.length > 0;
+  const pageAvailability: Record<string, boolean> = {
+    "/": true,
+    "/prepare": page1Complete,
+    "/results": page1Complete && state.page2Complete,
+  };
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -126,13 +133,19 @@ export function AppShell() {
             <ol>
               {NAV_ITEMS.map((item) => (
                 <li key={item.to}>
-                  <NavLink
-                    to={item.to}
-                    end={item.end ?? false}
-                    className={({ isActive }) => (isActive ? "is-active" : undefined)}
-                  >
-                    {item.label}
-                  </NavLink>
+                  {pageAvailability[item.to] === false ? (
+                    <span className="app-nav__link app-nav__link--disabled" aria-disabled="true">
+                      {item.label}
+                    </span>
+                  ) : (
+                    <NavLink
+                      to={item.to}
+                      end={item.end ?? false}
+                      className={({ isActive }) => `app-nav__link${isActive ? " is-active" : ""}`}
+                    >
+                      {item.label}
+                    </NavLink>
+                  )}
                 </li>
               ))}
             </ol>

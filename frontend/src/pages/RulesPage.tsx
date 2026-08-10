@@ -42,6 +42,11 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
   const columns = state.comparisonColumns.length > 0 ? state.comparisonColumns : (state.header?.common ?? []);
   const selected = state.selectedRuleIndexes;
 
+  function handleRunComparison(): void {
+    dispatch({ type: "setPage2Complete", complete: true });
+    void navigate("/results");
+  }
+
   useEffect(() => {
     if (!initialized.current && rules.data && rules.data.length > 0) {
       initialized.current = true;
@@ -203,7 +208,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
               type="button"
               className="btn btn--primary"
               disabled={!state.header}
-              onClick={() => void navigate("/results")}
+              onClick={handleRunComparison}
             >
               Run comparison and validation
             </button>
@@ -335,7 +340,7 @@ export function RulesPage({ embedded = false, columnValues = {} }: { embedded?: 
             type="button"
             className="btn btn--primary"
             disabled={!state.header}
-            onClick={() => void navigate("/results")}
+            onClick={handleRunComparison}
           >
             Run comparison and validation
           </button>

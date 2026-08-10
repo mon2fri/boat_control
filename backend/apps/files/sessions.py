@@ -119,6 +119,12 @@ def remove_upload_if_unreferenced(path: Path) -> bool:
 
     if upload_is_referenced(path):
         return False
+    from apps.files.preparation_cache import (
+        upload_is_referenced as cache_upload_is_referenced,
+    )
+
+    if cache_upload_is_referenced(path):
+        return False
     delete_upload(path)
     logger.debug("Cleaned up unreferenced upload: %s", path)
     return not path.exists()

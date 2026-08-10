@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { CollapsibleCard } from "../../components/CollapsibleCard";
 import { withColumnFamilies } from "../families/familyOptions";
 import type { Family } from "../../api/domain";
 
@@ -26,8 +27,13 @@ export function TargetSelector({ columns, selected, onChange, families = [] }: P
   }
 
   return (
-    <section aria-labelledby="targets-title" className="card">
-      <h3 id="targets-title" className="section-heading">Comparing Columns</h3>
+    <CollapsibleCard
+      id="targets"
+      title="Track Changing Columns"
+      summary={selected.length === 0
+        ? "All comparison columns will be tracked. Expand to change."
+        : `${selected.length} column${selected.length === 1 ? "" : "s"} selected. Expand to change.`}
+    >
       <p className="section-hint">
         Choose the columns to compare and validate. If none are chosen, all selected comparison columns are used.
       </p>
@@ -58,6 +64,6 @@ export function TargetSelector({ columns, selected, onChange, families = [] }: P
           ))}
         </ul>
       )}
-    </section>
+    </CollapsibleCard>
   );
 }
