@@ -14,6 +14,8 @@ import { resolveRowsColumnsConfig, mapWorkflowToRowsColumnsConfig } from "../api
 import { useSessionExpiryDispatcher } from "../features/session/useSessionExpiry";
 import { RulesPage } from "./RulesPage";
 
+const PREPARATION_ESTIMATE_MS = 5 * 60 * 1000;
+
 export function PreparePage() {
   const { state, dispatch } = useWorkflow();
   const handleSessionError = useSessionExpiryDispatcher();
@@ -50,17 +52,7 @@ export function PreparePage() {
   const totalRows = (prepare.data?.totalRowsA ?? 0) + (prepare.data?.totalRowsB ?? 0);
   const progressPercent = prepare.status === "ready"
     ? 100
-    : Math.min(
-      95,
-      Math.round(
-        loadingElapsedMs < 150_000
-          ? (loadingElapsedMs / 150_000) * 50
-          : 50 + ((loadingElapsedMs - 150_000) / 150_000) * 45,
-      ),
-    );
-  const progressPhase = loadingElapsedMs < 150_000
-    ? "Loading columns from both files"
-    : "Finalizing preparation and waiting for the server response";
+    : Math.min(99, Math.floor((loadingElapsedMs / PREPARATION_ESTIMATE_MS) * 99));
 
   const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0 || state.exceptionColumns.length > 0;
 
@@ -225,7 +217,7 @@ export function PreparePage() {
             <span className="spinner" aria-hidden="true" /> Loading data, please wait, DO NOT refresh...
           </p>
           <p className="data-loading-progress__label">
-            {progressPhase} ({progressPercent}%, five-minute estimate)
+            Loading data ({progressPercent}%, five-minute estimate)
           </p>
           <div
             className="data-loading-progress__track"
