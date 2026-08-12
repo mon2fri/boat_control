@@ -59,6 +59,16 @@ class FilterPreparationView(APIView):  # type: ignore[misc]
         try:
             result = None if force_reload else load_preparation(path_a, path_b, common_columns)
             cache_used = result is not None
+            logger.warning(
+                "Preparation cache decision: %s session=%s force_reload=%s "
+                "columns=%s files=(%s, %s)",
+                "MISS (forced)" if force_reload else ("HIT" if cache_used else "MISS"),
+                session.session_id,
+                force_reload,
+                common_columns,
+                path_a.name,
+                path_b.name,
+            )
             if result is None:
                 result = prepare_filters(path_a, path_b, common_columns)
                 _CACHE_EXECUTOR.submit(
