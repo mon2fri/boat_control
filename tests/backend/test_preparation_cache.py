@@ -103,7 +103,7 @@ def test_legacy_preparation_cache_remains_reusable(tmp_path: Path) -> None:
         assert len(list(cache.glob("*.json"))) == 1
 
 
-def test_upload_housekeeping_removes_only_related_cache_files(tmp_path: Path) -> None:
+def test_upload_housekeeping_preserves_preparation_cache(tmp_path: Path) -> None:
     uploads = tmp_path / "uploads"
     cache = tmp_path / "prepare_cache"
     uploads.mkdir()
@@ -121,8 +121,10 @@ def test_upload_housekeeping_removes_only_related_cache_files(tmp_path: Path) ->
 
         delete_upload(path_a)
         assert not path_a.exists()
-        assert len(list(cache.glob("*.json"))) == 1
+        assert len(list(cache.glob("*.json"))) == 2
         assert load_preparation(path_b, path_c, ["id"]) == _result()
 
         delete_upload(path_b)
-        assert len(list(cache.glob("*.json"))) == 0
+        assert len(list(cache.glob("*.json"))) == 2
+        path_b.write_text("id\n1\n")
+        assert load_preparation(path_b, path_c, ["id"]) == _result()

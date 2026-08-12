@@ -22,8 +22,9 @@ writing.
 - Cache writes use a temporary file followed by replacement to avoid exposing
   partial JSON files.
 - Existing legacy name-based cache entries remain readable.
-- Upload cleanup preserves files referenced by preparation caches and removes
-  cache entries when their final upload reference is deleted.
+- Upload cleanup preserves files referenced by preparation caches. Cache files
+  are not deleted when a session or upload copy is removed, so the same bytes
+  can reuse the preparation result in a later session.
 
 ### Loading progress
 

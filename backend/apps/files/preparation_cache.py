@@ -33,7 +33,9 @@ def _cache_key(path_a: Path, path_b: Path, columns: list[str]) -> str:
     file_identities, _ = _ordered_file_identities(path_a, path_b)
     identity = {
         "files": file_identities,
-        "columns": columns,
+        # Preparation computes independent value sets per column, so column
+        # order should not prevent reuse of the same prepared data.
+        "columns": sorted(set(columns)),
     }
     encoded = json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
@@ -41,6 +43,15 @@ def _cache_key(path_a: Path, path_b: Path, columns: list[str]) -> str:
 
 def _cache_path(path_a: Path, path_b: Path, columns: list[str]) -> Path:
     return Path(settings.PREPARE_CACHE_DIR) / f"{_cache_key(path_a, path_b, columns)}.json"
+
+
+def _previous_cache_path(path_a: Path, path_b: Path, columns: list[str]) -> Path:
+    """Return the pre-2026-08-12 key so existing caches can be migrated on read."""
+    file_identities, _ = _ordered_file_identities(path_a, path_b)
+    identity = {"files": file_identities, "columns": columns}
+    encoded = json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()
+    key = hashlib.sha256(encoded).hexdigest()
+    return Path(settings.PREPARE_CACHE_DIR) / f"{key}.json"
 
 
 def _legacy_cache_path(path_a: Path, path_b: Path, columns: list[str]) -> Path:
@@ -88,6 +99,22 @@ def _read_result(raw: dict[str, Any]) -> FilterPreparationResult:
     )
 
 
+def _in_requested_order(
+    result: FilterPreparationResult, columns: list[str]
+) -> FilterPreparationResult:
+    if result.columns == columns:
+        return result
+    if set(result.columns) != set(columns):
+        return result
+    return FilterPreparationResult(
+        columns=list(columns),
+        column_values={column: result.column_values[column] for column in columns},
+        total_rows_a=result.total_rows_a,
+        total_rows_b=result.total_rows_b,
+        requires_confirmation=result.requires_confirmation,
+    )
+
+
 def load_preparation(
     path_a: Path,
     path_b: Path,
@@ -96,7 +123,11 @@ def load_preparation(
     if not path_a.exists() or not path_b.exists():
         return None
     current_path = _cache_path(path_a, path_b, columns)
-    cache_paths = [current_path, _legacy_cache_path(path_a, path_b, columns)]
+    cache_paths = [
+        current_path,
+        _previous_cache_path(path_a, path_b, columns),
+        _legacy_cache_path(path_a, path_b, columns),
+    ]
     reverse_legacy_path = _legacy_cache_path(path_b, path_a, columns)
     if reverse_legacy_path not in cache_paths:
         cache_paths.append(reverse_legacy_path)
@@ -107,7 +138,8 @@ def load_preparation(
             result = _read_result(raw)
             if "file_hashes" in raw:
                 _, is_canonical = _ordered_file_identities(path_a, path_b)
-                return result if is_canonical else _swap_result(result)
+                oriented = result if is_canonical else _swap_result(result)
+                return _in_requested_order(oriented, columns)
 
             references = raw.get("upload_refs", [])
             requested = [path_a.resolve().name, path_b.resolve().name]
