@@ -1,10 +1,10 @@
 import type { OverallSummary } from "../../api/domain";
 
 const METRICS: { key: keyof OverallSummary; label: string }[] = [
-  { key: "recordsLoaded", label: "Records loaded" },
-  { key: "ruleViolationRowCount", label: "Rows with rule exception" },
+  { key: "recordsLoaded", label: "Books after filters" },
+  { key: "ruleViolationRowCount", label: "Books with rule exception" },
   { key: "ruleViolationAttributeCount", label: "Attributes with rule exception" },
-  { key: "changedRowCount", label: "Rows with changes" },
+  { key: "changedRowCount", label: "Books with changes" },
   { key: "changedAttributeCount", label: "Attributes changed" },
 ];
 

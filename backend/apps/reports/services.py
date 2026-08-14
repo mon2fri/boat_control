@@ -476,10 +476,10 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         "</p>"
     )
     sections.append("<div class='summary-grid'>")
-    sections.append(_metric("Records loaded", rows_a + rows_b))
-    sections.append(_metric("Rows with rule exception", violation_rows))
+    sections.append(_metric("Books after filters", rows_a + rows_b))
+    sections.append(_metric("Books with rule exception", violation_rows))
     sections.append(_metric("Attributes with rule exception", violation_attrs))
-    sections.append(_metric("Rows changed", changes))
+    sections.append(_metric("Books with changes", changes))
     sections.append(_metric("Attributes changed", attr_changes))
     sections.append("</div>")
 
@@ -681,7 +681,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     overall.append(["Overall Results"])
     overall.append(["Report name", _excel_value(report_name)])
     overall.append(
-        ["Records loaded", comparison.get("total_rows_a", 0) + comparison.get("total_rows_b", 0)]
+        ["Books after filters", comparison.get("total_rows_a", 0) + comparison.get("total_rows_b", 0)]
     )
     overall.append(
         [
