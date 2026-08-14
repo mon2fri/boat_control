@@ -26,6 +26,8 @@ interface StaticProps {
   activeFilters?: Record<string, string[]>;
   /** Called when the user changes a column filter. */
   onFilterChange?: (key: string, values: string[]) => void;
+  /** Clears all active column filters. */
+  onClearAll?: () => void;
 }
 
 const ROW_HEIGHT = 42;
@@ -79,6 +81,7 @@ export function DetailTable({
   columnFilters = [],
   activeFilters = {},
   onFilterChange,
+  onClearAll,
 }: StaticProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [exportMode, setExportMode] = useState(false);
@@ -221,8 +224,15 @@ export function DetailTable({
   );
 
   return (
-    <div
-      ref={scrollRef}
+    <>
+      {columnFilters.length > 0 && Object.keys(activeFilters).length > 0 && (
+        <div className="detail-toolbar">
+          <span>{Object.keys(activeFilters).length} filter(s) active</span>
+          <button type="button" onClick={onClearAll}>Clear all filters</button>
+        </div>
+      )}
+      <div
+        ref={scrollRef}
       className={`detail-scroll${rows.length > VISIBLE_DATA_ROWS ? " detail-scroll--capped" : ""}`}
       role="region"
       aria-label={caption}
@@ -292,6 +302,7 @@ export function DetailTable({
         </div>
       </div>
     </div>
+    </>
   );
 }
 
@@ -407,7 +418,6 @@ function FilterableTh({
             type="button"
             className="th-filter-clear"
             onClick={() => { onChange([]); setQuery(""); }}
-            hidden={selected.length === 0}
           >
             Clear
           </button>

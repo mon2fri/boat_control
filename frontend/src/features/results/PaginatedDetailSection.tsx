@@ -40,6 +40,8 @@ export function PaginatedDetailSection({
     });
   }, []);
 
+  const clearAllFilters = useCallback(() => setFilters({}), []);
+
   const columnFilters = useMemo(() => {
     const filters: { key: string; label: string; options: string[] }[] = [];
     for (const kc of keyColumnNames ?? []) {
@@ -106,6 +108,7 @@ export function PaginatedDetailSection({
         columnFilters={columnFilters}
         activeFilters={filters}
         onFilterChange={handleFilterChange}
+        onClearAll={clearAllFilters}
       />
       {isEmpty && (
         <p role="status">No detail rows match the current filters.</p>

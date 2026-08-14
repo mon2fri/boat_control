@@ -1224,6 +1224,34 @@ table.data td {
   overflow-y: auto;
 }
 
+/* Allow filter dropdowns to escape short tables */
+.detail-scroll,
+.detail-grid,
+.detail-grid-header {
+  overflow: visible;
+}
+
+.detail-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+.detail-toolbar button {
+  background: none;
+  border: 1px solid #dce2ea;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #1f2937;
+}
+.detail-toolbar button:hover {
+  background: #f0f4f8;
+}
+
 .detail-grid {
   display: grid;
   width: 100%;
