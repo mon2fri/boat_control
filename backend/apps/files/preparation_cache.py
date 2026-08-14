@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -14,8 +15,14 @@ from apps.files.filter_services import (
     FilterPreparationResult,
 )
 
+_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+
 
 def _file_identity(path: Path) -> str:
+    resolved = path.resolve()
+    uploads_dir = Path(settings.UPLOADS_DIR).resolve()
+    if resolved.parent == uploads_dir and _DIGEST_RE.match(resolved.stem):
+        return resolved.stem
     digest = hashlib.sha256()
     with path.open("rb") as file:
         while chunk := file.read(1024 * 1024):
@@ -29,10 +36,9 @@ def _ordered_file_identities(path_a: Path, path_b: Path) -> tuple[list[str], boo
     return ordered, identities == ordered
 
 
-def _cache_key(path_a: Path, path_b: Path, columns: list[str]) -> str:
-    file_identities, _ = _ordered_file_identities(path_a, path_b)
+def _cache_key(identities: list[str], columns: list[str]) -> str:
     identity = {
-        "files": file_identities,
+        "files": identities,
         # Preparation computes independent value sets per column, so column
         # order should not prevent reuse of the same prepared data.
         "columns": sorted(set(columns)),
@@ -41,14 +47,13 @@ def _cache_key(path_a: Path, path_b: Path, columns: list[str]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _cache_path(path_a: Path, path_b: Path, columns: list[str]) -> Path:
-    return Path(settings.PREPARE_CACHE_DIR) / f"{_cache_key(path_a, path_b, columns)}.json"
+def _cache_path(identities: list[str], columns: list[str]) -> Path:
+    return Path(settings.PREPARE_CACHE_DIR) / f"{_cache_key(identities, columns)}.json"
 
 
-def _previous_cache_path(path_a: Path, path_b: Path, columns: list[str]) -> Path:
+def _previous_cache_path(identities: list[str], columns: list[str]) -> Path:
     """Return the pre-2026-08-12 key so existing caches can be migrated on read."""
-    file_identities, _ = _ordered_file_identities(path_a, path_b)
-    identity = {"files": file_identities, "columns": columns}
+    identity = {"files": identities, "columns": columns}
     encoded = json.dumps(identity, ensure_ascii=False, separators=(",", ":")).encode()
     key = hashlib.sha256(encoded).hexdigest()
     return Path(settings.PREPARE_CACHE_DIR) / f"{key}.json"
@@ -122,10 +127,11 @@ def load_preparation(
 ) -> FilterPreparationResult | None:
     if not path_a.exists() or not path_b.exists():
         return None
-    current_path = _cache_path(path_a, path_b, columns)
+    identities, is_canonical = _ordered_file_identities(path_a, path_b)
+    current_path = _cache_path(identities, columns)
     cache_paths = [
         current_path,
-        _previous_cache_path(path_a, path_b, columns),
+        _previous_cache_path(identities, columns),
         _legacy_cache_path(path_a, path_b, columns),
     ]
     reverse_legacy_path = _legacy_cache_path(path_b, path_a, columns)
@@ -137,7 +143,6 @@ def load_preparation(
             raw: dict[str, Any] = json.loads(cache_path.read_text())
             result = _read_result(raw)
             if "file_hashes" in raw:
-                _, is_canonical = _ordered_file_identities(path_a, path_b)
                 oriented = result if is_canonical else _swap_result(result)
                 return _in_requested_order(oriented, columns)
 
@@ -160,12 +165,12 @@ def save_preparation(
 ) -> None:
     cache_dir = Path(settings.PREPARE_CACHE_DIR)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    file_identities, is_canonical = _ordered_file_identities(path_a, path_b)
+    identities, is_canonical = _ordered_file_identities(path_a, path_b)
     if not is_canonical:
         result = _swap_result(result)
     payload = {
         "upload_refs": [path_a.resolve().name, path_b.resolve().name],
-        "file_hashes": file_identities,
+        "file_hashes": identities,
         **asdict(result),
     }
     with tempfile.NamedTemporaryFile(
@@ -177,7 +182,7 @@ def save_preparation(
     ) as temporary:
         json.dump(payload, temporary, ensure_ascii=False, separators=(",", ":"))
         temporary_path = Path(temporary.name)
-    temporary_path.replace(_cache_path(path_a, path_b, columns))
+    temporary_path.replace(_cache_path(identities, columns))
 
 
 def delete_for_upload(path: Path) -> int:
