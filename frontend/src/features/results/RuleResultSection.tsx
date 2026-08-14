@@ -102,7 +102,7 @@ export function RuleResultSection({
       <div className="summary-grid" style={{ marginBottom: "var(--space)" }}>
         <div className="metric">
           <b>{result.violationRowCount.toLocaleString()}</b>
-          <span>Rows with exception</span>
+          <span>Books with Exception</span>
         </div>
         <div className="metric">
           <b>{result.violationAttributeCount.toLocaleString()}</b>

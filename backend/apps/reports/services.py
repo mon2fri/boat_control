@@ -580,7 +580,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
             f"<code>{_escape_html(_humanize_rule_logic(logic))}</code></p>"
         )
         sections.append("<div class='summary-grid'>")
-        sections.append(_metric("Rows with exception", row_count))
+        sections.append(_metric("Books with Exception", row_count))
         sections.append(_metric("Attributes with exception", attribute_count))
         sections.append("</div>")
         rule_grp = (grp.get("validation_rules") or {}).get(rule_id, [])
