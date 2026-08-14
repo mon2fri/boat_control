@@ -43,18 +43,15 @@ class TargetColumnsResult:
     all_common_columns: list[str]
 
 
-def _scan_csv(path: Path) -> pl.LazyFrame:
+def _read_csv(path: Path) -> pl.DataFrame:
     """Read a CSV with every column forced to string to avoid type-inference errors."""
-    return pl.scan_csv(path, infer_schema=False)
+    return pl.read_csv(path, infer_schema=False)
 
 
-def get_column_values(path_a: Path, path_b: Path, column: str) -> list[ColumnValueInfo]:
-    """Read values from both files and mark which file each value appears in."""
-    df_a = _scan_csv(path_a).select(column).collect().drop_nulls()
-    df_b = _scan_csv(path_b).select(column).collect().drop_nulls()
-
-    vals_a = set(df_a[column].to_list())
-    vals_b = set(df_b[column].to_list())
+def get_column_values(df_a: pl.DataFrame, df_b: pl.DataFrame, column: str) -> list[ColumnValueInfo]:
+    """Read values from both in-memory frames and mark which file each value appears in."""
+    vals_a = set(df_a[column].drop_nulls().to_list())
+    vals_b = set(df_b[column].drop_nulls().to_list())
 
     result = []
     for val in sorted(vals_a | vals_b):
@@ -73,19 +70,22 @@ def prepare_filters(
     path_b: Path,
     common_columns: list[str],
 ) -> FilterPreparationResult:
-    row_count_a = _scan_csv(path_a).select(pl.len()).collect().item()
-    row_count_b = _scan_csv(path_b).select(pl.len()).collect().item()
-    total = row_count_a + row_count_b
+    # Read each file into memory once, then compute every column's value set
+    # from the frames. This avoids re-scanning the files from disk once per
+    # column, which is significant for large uploads.
+    df_a = _read_csv(path_a)
+    df_b = _read_csv(path_b)
+    total = df_a.height + df_b.height
 
     column_values: dict[str, list[ColumnValueInfo]] = {}
     for col in common_columns:
-        column_values[col] = get_column_values(path_a, path_b, col)
+        column_values[col] = get_column_values(df_a, df_b, col)
 
     return FilterPreparationResult(
         columns=common_columns,
         column_values=column_values,
-        total_rows_a=row_count_a,
-        total_rows_b=row_count_b,
+        total_rows_a=df_a.height,
+        total_rows_b=df_b.height,
         requires_confirmation=total >= load_settings().full_set_confirmation_rows,
     )
 

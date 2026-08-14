@@ -42,8 +42,9 @@ def create_session(
     columns_b: list[str],
     only_in_a: list[str],
     only_in_b: list[str],
+    session_id: str | None = None,
 ) -> UploadSession:
-    session_id = uuid.uuid4().hex[:12]
+    session_id = session_id or uuid.uuid4().hex[:12]
     session = UploadSession(
         session_id=session_id,
         file_a_path=str(file_a_path),
@@ -98,8 +99,23 @@ def _is_expired(session: UploadSession) -> bool:
 
 
 def _cleanup_files(session: UploadSession) -> None:
+    from apps.files.preparation_store import drop_by_key, pair_key
+
+    key = pair_key(Path(session.file_a_path), Path(session.file_b_path))
+    if not _any_session_uses_pair(key):
+        drop_by_key(key)
     for path_str in {session.file_a_path, session.file_b_path}:
         remove_upload_if_unreferenced(Path(path_str))
+
+
+def _any_session_uses_pair(key: str) -> bool:
+    from apps.files.preparation_store import pair_key
+
+    with _lock:
+        return any(
+            pair_key(Path(s.file_a_path), Path(s.file_b_path)) == key
+            for s in _sessions.values()
+        )
 
 
 def is_upload_path_active(path: Path) -> bool:

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+import threading
+import uuid
 
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.files.preparation_store import prewarm_preparation
 from apps.files.preset_services import (
     get_preset_source,
     list_preset_sources,
@@ -110,6 +113,12 @@ class PresetLoadView(APIView):  # type: ignore[misc]
                 status=400,
             )
 
+        # Start background preparation now; it waits on `ready` (set after the
+        # session is created) so it never contends with header inspection.
+        ready = threading.Event()
+        session_id = uuid.uuid4().hex[:12]
+        prewarm_preparation(path_a, path_b, session_id, ready)
+
         try:
             result = inspect_headers(
                 path_a, file_a_name, path_b, file_b_name
@@ -118,6 +127,7 @@ class PresetLoadView(APIView):  # type: ignore[misc]
             return Response({"error": str(e)}, status=400)
 
         session = create_session(
+            session_id=session_id,
             file_a_path=path_a,
             file_b_path=path_b,
             file_a_name=file_a_name,
@@ -128,6 +138,7 @@ class PresetLoadView(APIView):  # type: ignore[misc]
             only_in_a=result.only_in_a,
             only_in_b=result.only_in_b,
         )
+        ready.set()
 
         return Response({
             "session_id": session.session_id,
