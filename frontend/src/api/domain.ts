@@ -151,6 +151,7 @@ export interface OverallSummary {
   ruleViolationAttributeCount: number;
   changedRowCount: number;
   changedAttributeCount: number;
+  newBookCount?: number;
 }
 
 export interface DetailRow {
@@ -166,7 +167,7 @@ export interface DetailRow {
   extraValues?: Record<string, string | null>;
   /** Values of the aggregation columns for this row's record. */
   aggregationValues?: Record<string, string | null>;
-  kind: "changed" | "exception";
+  kind: "changed" | "exception" | "added";
 }
 
 export interface RuleResult {
@@ -342,4 +343,5 @@ export interface GroupStatisticsBundle {
   overall: GroupStat[];
   attributeChanges: GroupStat[];
   validationRules: Record<string, GroupStat[]>;
+  newBooks?: GroupStat[];
 }

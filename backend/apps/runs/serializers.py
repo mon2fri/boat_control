@@ -38,12 +38,21 @@ class RowComparisonSerializer(serializers.Serializer):  # type: ignore[misc]
     )
 
 
+class NewBookRowSerializer(serializers.Serializer):  # type: ignore[misc]
+    row_index = serializers.IntegerField()
+    key_columns = serializers.DictField(child=serializers.JSONField())
+    grouping_values = serializers.DictField(child=serializers.JSONField(), required=False, default=dict)
+    extra_values = serializers.DictField(child=serializers.JSONField(), required=False, default=dict)
+
+
 class ComparisonResultSerializer(serializers.Serializer):  # type: ignore[misc]
     total_rows_a = serializers.IntegerField()
     total_rows_b = serializers.IntegerField()
     rows_with_changes = serializers.IntegerField()
     total_attribute_changes = serializers.IntegerField()
     row_details = RowComparisonSerializer(many=True)
+    new_book_count = serializers.IntegerField(required=False, default=0)
+    new_book_details = NewBookRowSerializer(many=True, required=False, default=list)
 
 
 class ValidationViolationSerializer(serializers.Serializer):  # type: ignore[misc]

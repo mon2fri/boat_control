@@ -257,6 +257,14 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                         result["comparison_sections"] = []
                     if "exception_columns" not in result:
                         result["exception_columns"] = []
+                    comparison = result.get("comparison", {})
+                    if "new_book_count" not in comparison:
+                        comparison["new_book_count"] = 0
+                    if "new_book_details" not in comparison:
+                        comparison["new_book_details"] = []
+                    gs = result.get("group_statistics")
+                    if gs and "new_books" not in gs:
+                        gs["new_books"] = []
                     return data
             return None
     return None

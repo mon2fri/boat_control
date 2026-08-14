@@ -488,6 +488,30 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(_render_group_section("Aggregation by grouping columns", overall_grp))
     sections.append("</section>")
 
+    new_book_count = comparison.get("new_book_count", 0)
+    new_books_grp = grp.get("new_books") or []
+    if new_book_count > 0:
+        sections.append("<section class='card' id='new-books'>")
+        sections.append("<h2>New Books</h2>")
+        sections.append(_metric("Books only in comparison file", new_book_count))
+        if new_books_grp:
+            sections.append(_render_group_section("New Books aggregation", new_books_grp))
+        nb_details = comparison.get("new_book_details") or []
+        if nb_details:
+            sections.append("<table>")
+            sections.append("<thead><tr>")
+            for k in key_columns:
+                sections.append(f"<th>{_escape_html(k)}</th>")
+            sections.append("</tr></thead><tbody>")
+            for nb in nb_details:
+                sections.append("<tr>")
+                for k in key_columns:
+                    val = nb.get("key_columns", {}).get(k, "")
+                    sections.append(f"<td>{_escape_html(str(val)) if val is not None else ''}</td>")
+                sections.append("</tr>")
+            sections.append("</tbody></table>")
+        sections.append("</section>")
+
     sections.append(_render_exception_rule_summary(validation))
 
     sections.append("<section class='card' id='changes'>")
@@ -697,6 +721,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     )
     overall.append(["Rows changed", comparison.get("rows_with_changes", 0)])
     overall.append(["Attributes changed", comparison.get("total_attribute_changes", 0)])
+    overall.append(["New Books", comparison.get("new_book_count", 0)])
     overall.append([])
     overall.append(["Filtering information"])
     filters = result.get("filters_applied") or []
@@ -811,6 +836,25 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                 ],
             )
             change_row += 1
+
+    new_book_count = comparison.get("new_book_count", 0)
+    if new_book_count > 0:
+        nb_sheet = workbook.create_sheet("New Books")
+        nb_sheet["A1"] = "New Books"
+        nb_sheet["A2"] = "Books only in comparison file (not in baseline)"
+        nb_sheet["B2"] = new_book_count
+        nb_details = comparison.get("new_book_details") or []
+        nb_headers = [*key_columns]
+        if len(nb_details) + 4 > _EXCEL_MAX_ROWS:
+            raise ValueError("New Books exceeds Excel's 1,048,576-row worksheet limit.")
+        _append_row(nb_sheet, 4, nb_headers)
+        nb_row_num = 5
+        for nb in nb_details:
+            identity = _excel_identity(
+                key_columns, nb.get("key_columns") or {}, nb.get("row_index", "")
+            )
+            _append_row(nb_sheet, nb_row_num, identity)
+            nb_row_num += 1
 
     comparison_sections = result.get("comparison_sections") or []
     if comparison_sections:

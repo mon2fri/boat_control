@@ -13,6 +13,7 @@ import { PaginatedDetailSection } from "../features/results/PaginatedDetailSecti
 import { GroupStatisticsPanel } from "../features/results/GroupStatisticsPanel";
 import { NestedAggregationPanel } from "../features/results/NestedAggregationPanel";
 import { ExceptionRuleSummary } from "../features/results/ExceptionRuleSummary";
+import { NewBooksCard } from "../features/results/NewBooksCard";
 import { ComparisonColumnList } from "../features/results/ComparisonColumnList";
 import { buildSectionGroupStatistics } from "../features/results/sectionGroupStatistics";
 import { clearUploadSession, loadRun } from "../api/endpoints";
@@ -265,6 +266,17 @@ function ResultView({
           <GroupStatisticsPanel stats={result.groupStatistics.overall} columnLabels={aggregationColumnLabels} />
         ) : null}
       </section>
+
+      {result.overall.newBookCount && result.overall.newBookCount > 0 ? (
+        <NewBooksCard
+          newBookCount={result.overall.newBookCount}
+          newBookDetails={result.changeDetails.filter((d) => d.kind === "added")}
+          aggregationColumns={aggregationColumns}
+          aggregationColumnLabels={aggregationColumnLabels}
+          keyColumnNames={keyColumns}
+          {...(result.groupStatistics?.newBooks && { groupStatistics: result.groupStatistics.newBooks })}
+        />
+      ) : null}
 
       <ExceptionRuleSummary rules={result.ruleResults} />
 

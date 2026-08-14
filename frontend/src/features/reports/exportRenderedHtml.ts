@@ -543,6 +543,7 @@ const EXPORT_INTERACTIVE_JS = `
 
   function labelFor(id) {
     if (id === 'overall') return 'Overall result';
+    if (id === 'new-books') return 'New Books';
     if (id === 'exception-rule-summary') return 'Exception rule summary';
     if (id === 'changes') return 'Attribute changes';
     if (id.indexOf('changes-') === 0) {

@@ -25,6 +25,8 @@ def sample_result() -> dict:
                     "change_count": 1,
                 }
             ],
+            "new_book_count": 0,
+            "new_book_details": [],
         },
         "validation": {
             "total_violations": 3,
@@ -77,7 +79,7 @@ class TestExportHtml:
         assert "Test Report" in result
         assert "100" in result
         assert "Overall result" in result
-        assert "Rows with rule exception" in result
+        assert "Books with rule exception" in result
         assert "Attribute changes" in result
         assert "Exception Rule Summary" in result
         assert "Exception records" in result

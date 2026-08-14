@@ -45,9 +45,9 @@ describe("result components", () => {
     render(<OverallSummaryCards summary={result.overall} />);
     const region = screen.getByLabelText("Overall result summary");
     expect(within(region).getByText("1,200")).toBeInTheDocument();
-    expect(within(region).getByText("Rows with rule exception")).toBeInTheDocument();
+    expect(within(region).getByText("Books with rule exception")).toBeInTheDocument();
     expect(within(region).getByText("Attributes changed")).toBeInTheDocument();
-    // Five metric cards, one per required count.
+    // Six metric cards (five always shown, newBooks shown only when > 0).
     expect(region.querySelectorAll(".metric")).toHaveLength(5);
   });
 

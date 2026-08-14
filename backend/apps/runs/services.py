@@ -52,6 +52,14 @@ class RowComparison:
 
 
 @dataclass(frozen=True)
+class NewBookRow:
+    row_index: int
+    key_columns: dict[str, Any]
+    grouping_values: dict[str, Any] = field(default_factory=dict)
+    extra_values: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ValidationViolation:
     row_index: int
     rule_id: str
@@ -74,6 +82,8 @@ class ComparisonResult:
     rows_with_changes: int
     total_attribute_changes: int
     row_details: list[RowComparison]
+    new_book_count: int = 0
+    new_book_rows: list[NewBookRow] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -195,6 +205,23 @@ def compare_rows(
     merged = merged.with_row_index("_idx")
     changed = merged.filter(pl.any_horizontal(change_conditions))
 
+    # Detect B-only rows: rows in df_b with no matching key in df_a
+    b_only_df = df_b.join(df_a.select(key_columns), on=key_columns, how="anti")
+    new_book_count = b_only_df.height
+    new_book_rows: list[NewBookRow] = []
+    for row in b_only_df.iter_rows(named=True):
+        key_vals = {k: row[k] for k in key_columns if k in row}
+        agg_vals = {g: row.get(g) for g in agg_cols}
+        extra_vals = {c: row.get(c) for c in extra_cols}
+        new_book_rows.append(
+            NewBookRow(
+                row_index=-1,
+                key_columns=key_vals,
+                grouping_values=agg_vals,
+                extra_values=extra_vals,
+            )
+        )
+
     rows_with_changes = 0
     total_changes = 0
     row_details: list[RowComparison] = []
@@ -234,6 +261,8 @@ def compare_rows(
         rows_with_changes=rows_with_changes,
         total_attribute_changes=total_changes,
         row_details=row_details,
+        new_book_count=new_book_count,
+        new_book_rows=new_book_rows,
     )
 
 
@@ -678,6 +707,7 @@ def compute_group_statistics(
     comparison_rows: list[RowComparison],
     violations: dict[str, list[ValidationViolation]],
     aggregation_columns: list[str],
+    new_book_rows: list[NewBookRow] | None = None,
 ) -> dict[str, Any]:
     """Compute group statistics for all aggregation columns across all sections."""
     if not aggregation_columns:
@@ -716,6 +746,7 @@ def compute_group_statistics(
         "overall": [],
         "attribute_changes": [],
         "validation_rules": {},
+        "new_books": [],
     }
 
     for col in aggregation_columns:
@@ -728,6 +759,13 @@ def compute_group_statistics(
             result["validation_rules"][rule_id].append(
                 _build_group_stats(col, rule_items)
             )
+
+    if new_book_rows:
+        new_book_items: list[tuple[dict[str, Any], dict[str, Any], int]] = [
+            (r.key_columns, r.grouping_values, 1) for r in new_book_rows
+        ]
+        for col in aggregation_columns:
+            result["new_books"].append(_build_group_stats(col, new_book_items))
 
     return result
 
@@ -905,6 +943,7 @@ def execute_comparison(
             comparison.row_details,
             validation.violations_by_rule,
             effective_agg,
+            new_book_rows=comparison.new_book_rows,
         )
 
     return ExecutionResult(

@@ -209,6 +209,7 @@ export const wireGroupStatisticsBundleSchema = z.object({
   overall: z.array(wireGroupStatisticsSchema),
   attribute_changes: z.array(wireGroupStatisticsSchema),
   validation_rules: z.record(z.string(), z.array(wireGroupStatisticsSchema)),
+  new_books: z.array(wireGroupStatisticsSchema).optional(),
 });
 export type WireGroupStatisticsBundle = z.infer<typeof wireGroupStatisticsBundleSchema>;
 
@@ -293,6 +294,13 @@ export const wireComparisonSchema = z.object({
   rows_with_changes: z.number().int().nonnegative(),
   total_attribute_changes: z.number().int().nonnegative(),
   row_details: z.array(wireRowDetailSchema),
+  new_book_count: z.number().int().nonnegative().optional(),
+  new_book_details: z.array(z.object({
+    row_index: z.number().int(),
+    key_columns: z.record(z.string(), wireScalarSchema),
+    grouping_values: z.record(z.string(), wireScalarSchema).optional(),
+    extra_values: z.record(z.string(), wireScalarSchema).optional(),
+  })).optional(),
 });
 
 export const wireViolationSchema = z.object({

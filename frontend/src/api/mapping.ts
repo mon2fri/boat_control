@@ -419,6 +419,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
     ruleViolationAttributeCount: distinctViolationAttributeCount,
     changedRowCount: result.comparison.rows_with_changes,
     changedAttributeCount: result.comparison.total_attribute_changes,
+    newBookCount: result.comparison.new_book_count ?? 0,
   };
 
   // Per-rule results.
@@ -469,6 +470,30 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
         mapAttributeChange(change, rk, detail.key_columns, attrIndex++, aggVals, extraVals),
       );
     }
+  }
+
+  // Append new-book rows (kind="added") for B-only records.
+  const newBookDetails = result.comparison.new_book_details ?? [];
+  for (let i = 0; i < newBookDetails.length; i++) {
+    const nb = newBookDetails[i]!;
+    const row: DetailRow = {
+      rowKey: `newbook#${nb.row_index}#${i}`,
+      keyColumns: Object.fromEntries(
+        Object.entries(nb.key_columns).map(([k, v]) => [k, displayScalar(v)]),
+      ),
+      column: "",
+      file1Value: null,
+      file2Value: null,
+      kind: "added",
+    };
+    const aggVals = mapGroupingValues(nb.grouping_values);
+    if (aggVals) row.aggregationValues = aggVals;
+    if (nb.extra_values) {
+      row.extraValues = Object.fromEntries(
+        Object.entries(nb.extra_values).map(([k, v]) => [k, displayScalar(v)]),
+      );
+    }
+    changeDetails.push(row);
   }
 
   return {
@@ -544,6 +569,7 @@ function mapGroupStatisticsBundle(bundle: WireGroupStatisticsBundle): GroupStati
         stats.map(mapGroupStatistics),
       ]),
     ),
+    ...(bundle.new_books ? { newBooks: bundle.new_books.map(mapGroupStatistics) } : {}),
   };
 }
 
