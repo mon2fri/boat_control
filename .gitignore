@@ -34,6 +34,8 @@ data/uploads/*
 !data/uploads/.gitkeep
 data/results/*
 !data/results/.gitkeep
+data/prepare_cache/*
+!data/prepare_cache/.gitkeep
 data/*.sqlite3
 data/playwright/
 

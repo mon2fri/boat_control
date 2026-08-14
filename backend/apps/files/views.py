@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+import threading
+import uuid
 from pathlib import Path
 
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.files.preparation_store import prewarm_preparation
 from apps.files.services import inspect_headers, store_uploaded_file
 from apps.files.sessions import (
     create_session,
@@ -42,6 +45,12 @@ class FileUploadView(APIView):  # type: ignore[misc]
         path_a, dedup_a = store_uploaded_file(file_a)
         path_b, dedup_b = store_uploaded_file(file_b)
 
+        # Start background preparation now; it waits on `ready` (set after the
+        # session is created) so it never contends with header inspection.
+        ready = threading.Event()
+        session_id = uuid.uuid4().hex[:12]
+        prewarm_preparation(path_a, path_b, session_id, ready)
+
         try:
             result = inspect_headers(
                 path_a, file_a.name, path_b, file_b.name
@@ -61,6 +70,7 @@ class FileUploadView(APIView):  # type: ignore[misc]
             )
 
         session = create_session(
+            session_id=session_id,
             file_a_path=path_a,
             file_b_path=path_b,
             file_a_name=file_a.name,
@@ -71,6 +81,7 @@ class FileUploadView(APIView):  # type: ignore[misc]
             only_in_a=result.only_in_a,
             only_in_b=result.only_in_b,
         )
+        ready.set()
 
         return Response({
             "session_id": session.session_id,
