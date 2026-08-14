@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import polars as pl
 import pytest
 from apps.files.filter_services import (
     FilterPreparationResult,
@@ -28,7 +29,9 @@ def csv_b(tmp_path: Path) -> Path:
 class TestGetColumnValues:
     def test_marks_values_in_one_file(self, csv_a: Path, csv_b: Path) -> None:
         """Values from both files; in_file_a/in_file_b set correctly."""
-        result = get_column_values(csv_a, csv_b, "name")
+        df_a = pl.read_csv(csv_a, infer_schema=False)
+        df_b = pl.read_csv(csv_b, infer_schema=False)
+        result = get_column_values(df_a, df_b, "name")
         by_val = {v.value: v for v in result}
         # alice is in both files
         assert by_val["alice"].in_file_a is True
