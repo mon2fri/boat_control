@@ -18,8 +18,6 @@ export function NewBooksCard({
   keyColumnNames,
   groupStatistics,
 }: Props) {
-  if (newBookCount === 0) return null;
-
   return (
     <section id="new-books" aria-labelledby="new-books-title" className="card">
       <h3 id="new-books-title" className="results-card-title">New Books</h3>
