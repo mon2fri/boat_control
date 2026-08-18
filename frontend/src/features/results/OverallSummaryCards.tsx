@@ -15,7 +15,7 @@ export function OverallSummaryCards({ summary }: { summary: OverallSummary }) {
     <div className="summary-grid" aria-label="Overall result summary">
       {METRICS.map((metric) => {
         const value = summary[metric.key];
-        if (value === undefined || value === 0) return null;
+        if (value === undefined || (value === 0 && metric.key !== "newBookCount")) return null;
         return (
           <div className="metric" key={metric.key}>
             <b>{value.toLocaleString()}</b>

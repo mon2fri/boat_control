@@ -267,16 +267,14 @@ function ResultView({
         ) : null}
       </section>
 
-      {result.overall.newBookCount && result.overall.newBookCount > 0 ? (
-        <NewBooksCard
-          newBookCount={result.overall.newBookCount}
-          newBookDetails={result.changeDetails.filter((d) => d.kind === "added")}
-          aggregationColumns={aggregationColumns}
-          aggregationColumnLabels={aggregationColumnLabels}
-          keyColumnNames={keyColumns}
-          {...(result.groupStatistics?.newBooks && { groupStatistics: result.groupStatistics.newBooks })}
-        />
-      ) : null}
+      <NewBooksCard
+        newBookCount={result.overall.newBookCount ?? 0}
+        newBookDetails={result.changeDetails.filter((d) => d.kind === "added")}
+        aggregationColumns={aggregationColumns}
+        aggregationColumnLabels={aggregationColumnLabels}
+        keyColumnNames={keyColumns}
+        {...(result.groupStatistics?.newBooks && { groupStatistics: result.groupStatistics.newBooks })}
+      />
 
       <ExceptionRuleSummary rules={result.ruleResults} />
 
