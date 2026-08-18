@@ -1224,12 +1224,8 @@ table.data td {
   overflow-y: auto;
 }
 
-/* Allow filter dropdowns to escape short tables */
-.detail-scroll,
-.detail-grid,
-.detail-grid-header {
-  overflow: visible;
-}
+/* Filter dropdown popups are rendered with position: fixed so they escape
+   this scroll container; the table itself must stay scrollable here. */
 
 .detail-toolbar {
   display: flex;

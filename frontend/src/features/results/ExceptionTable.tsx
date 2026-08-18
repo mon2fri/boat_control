@@ -447,10 +447,55 @@ interface FilterDropdownProps {
 function FilterDropdown({ column, options, active, onChange }: FilterDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   const filteredOptions = options.filter((opt) =>
     opt.toLowerCase().includes(search.toLowerCase())
   );
+
+  // The popup is positioned against the viewport (fixed) so the scrollable
+  // table container never clips it. Close it whenever the page moves so it
+  // cannot end up detached from its trigger button.
+  useEffect(() => {
+    if (!isOpen) return;
+    function handleMouseDown(e: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setIsOpen(false);
+    }
+    function close() {
+      setIsOpen(false);
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [isOpen]);
+
+  function toggleMenu() {
+    if (!isOpen) {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (rect) {
+        const width = 180;
+        setPos({
+          top: rect.bottom + 2,
+          left: Math.min(rect.left, Math.max(8, window.innerWidth - width - 8)),
+        });
+      }
+    }
+    setIsOpen(!isOpen);
+  }
 
   function toggleOption(value: string) {
     const next = active.includes(value)
@@ -465,14 +510,12 @@ function FilterDropdown({ column, options, active, onChange }: FilterDropdownPro
   }
 
   return (
-    <div className="th-filter-wrapper" style={{ position: "relative" }}>
+    <div className="th-filter-wrapper" ref={wrapperRef} style={{ position: "relative" }}>
       <button
+        ref={buttonRef}
         type="button"
         className={`th-filter-btn ${active.length > 0 ? "th-filter-btn--active" : ""}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsOpen(!isOpen);
-        }}
+        onClick={toggleMenu}
         aria-expanded={isOpen}
         aria-label={`Filter by ${column}`}
       >
@@ -483,7 +526,11 @@ function FilterDropdown({ column, options, active, onChange }: FilterDropdownPro
           <span className="th-filter-count">{active.length}</span>
         )}
       </button>
-      <div className="th-filter-dropdown" hidden={!isOpen} style={{ position: "absolute", top: "100%", left: 0, zIndex: 100, minWidth: "150px" }}>
+      <div
+        className="th-filter-dropdown"
+        hidden={!isOpen}
+        style={pos ? { position: "fixed", top: pos.top, left: pos.left, zIndex: 1000, minWidth: "150px" } : undefined}
+      >
         <input
           type="text"
           className="th-filter-search"

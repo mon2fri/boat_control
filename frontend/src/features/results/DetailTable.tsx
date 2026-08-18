@@ -329,15 +329,34 @@ function FilterableTh({
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
+  // The popup is positioned against the viewport (fixed) so the scrollable
+  // table container never clips it. Close it whenever the page moves so it
+  // cannot end up detached from its trigger button.
   useEffect(() => {
     if (!open) return;
-    function handleClickOutside(e: MouseEvent) {
+    function handleMouseDown(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    function close() {
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+      document.removeEventListener("keydown", handleKey);
+    };
   }, [open]);
 
   const q = query.trim().toLowerCase();
@@ -370,9 +389,22 @@ function FilterableTh({
       <span>{label}</span>
       <SortButton label={label} sortKey={sortKey} sort={sort} onSort={onSort} />
       <button
+        ref={buttonRef}
         type="button"
         className={`th-filter-btn${hasActive ? " th-filter-btn--active" : ""}`}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          if (!open) {
+            const rect = buttonRef.current?.getBoundingClientRect();
+            if (rect) {
+              const width = 180;
+              setPos({
+                top: rect.bottom + 2,
+                left: Math.min(rect.left, Math.max(8, window.innerWidth - width - 8)),
+              });
+            }
+          }
+          setOpen(!open);
+        }}
         aria-label={`Filter ${label}`}
         aria-haspopup="true"
         aria-expanded={open}
@@ -387,6 +419,7 @@ function FilterableTh({
         role="group"
         aria-label={`Filter ${label}`}
         hidden={!open}
+        style={pos ? { position: "fixed", top: pos.top, left: pos.left, zIndex: 1000 } : undefined}
       >
           <input
             type="text"
