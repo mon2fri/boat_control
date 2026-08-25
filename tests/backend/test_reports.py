@@ -73,6 +73,18 @@ def sample_result() -> dict:
 
 
 class TestExportHtml:
+    def test_comparison_section_without_changes_names_the_empty_state(
+        self, sample_result: dict
+    ) -> None:
+        sample_result["comparison_sections"] = [
+            {"id": "inventory", "name": "Inventory", "columns": ["region"]},
+        ]
+
+        rendered = export_html(sample_result, "Test")
+
+        assert "No books with Inventory" in rendered
+        assert "No detail rows." not in rendered
+
     def test_generates_valid_html(self, sample_result: dict) -> None:
         result = export_html(sample_result, "Test Report")
         assert "<!DOCTYPE html>" in result
@@ -359,6 +371,18 @@ class TestExportExcel:
             "EMEA",
             "APAC",
         ]
+
+    def test_empty_comparison_section_includes_a_zero_record_row(
+        self, sample_result: dict
+    ) -> None:
+        sample_result["comparison_sections"] = [
+            {"id": "inventory", "name": "Inventory", "columns": ["region"]},
+        ]
+
+        workbook = load_workbook(BytesIO(export_excel(sample_result, "Test")))
+        sheet = workbook["Attribute Comparing Sections"]
+
+        assert sheet["A5"].value == "There is 0 record for this table."
 
     def test_exception_table_shows_configured_columns(self, sample_result: dict) -> None:
         sample_result["exception_columns"] = ["region"]

@@ -11,12 +11,14 @@ export function buildNestedAggregationTree(
   details: DetailRow[],
   aggregationColumns: string[],
   keyColumnNames: string[],
+  detailKinds: DetailRow["kind"][] = ["changed"],
 ): NestedAggNode[] {
   if (aggregationColumns.length === 0 || details.length === 0) return [];
 
-  // Defensive filter: exclude rule-exception rows. Only genuine attribute
-  // changes (kind === "changed") should appear in the change tree.
-  const changedDetails = details.filter((d) => d.kind === "changed");
+  // Callers explicitly choose which result rows belong in the tree. The
+  // default remains genuine attribute changes, while New Books can reuse the
+  // same aggregation hierarchy for comparison-only records.
+  const changedDetails = details.filter((d) => detailKinds.includes(d.kind));
   if (changedDetails.length === 0) return [];
 
   // Group detail rows by their record key. Each record yields one entry

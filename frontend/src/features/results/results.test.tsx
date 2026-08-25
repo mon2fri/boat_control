@@ -7,6 +7,7 @@ import { DetailTable, sortDetailRows } from "./DetailTable";
 import { GroupStatisticsPanel } from "./GroupStatisticsPanel";
 import { ExceptionRuleSummary } from "./ExceptionRuleSummary";
 import { ComparisonColumnList } from "./ComparisonColumnList";
+import { NewBooksCard } from "./NewBooksCard";
 import type { RunResult, RuleResult } from "../../api/domain";
 
 const ruleResult: RuleResult = {
@@ -41,6 +42,35 @@ const result: RunResult = {
 };
 
 describe("result components", () => {
+  it("uses the overall aggregation mode for New Books and retains its detail rows", () => {
+    const props = {
+      newBookCount: 1,
+      newBookDetails: [{
+        rowKey: "newbook#0#0",
+        keyColumns: { id: "new-1" },
+        column: "",
+        file1Value: null,
+        file2Value: null,
+        aggregationValues: { status: "active" },
+        kind: "added" as const,
+      }],
+      aggregationColumns: ["status"],
+      aggregationColumnLabels: {},
+      keyColumnNames: ["id"],
+      groupStatistics: [{ column: "status", uniqueCount: 1, attributeCount: 1, rows: [] }],
+    };
+
+    const { rerender } = render(<NewBooksCard {...props} nestedAggregationEnabled />);
+    expect(screen.getByText(/active/)).toBeInTheDocument();
+    expect(screen.queryByText("Exception records: 1")).not.toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "new-1" })).toBeInTheDocument();
+
+    rerender(<NewBooksCard {...props} nestedAggregationEnabled={false} />);
+    expect(screen.getByRole("button", { name: /Exception records: 1/ })).toBeInTheDocument();
+    expect(screen.queryByText(/active.*sub-node/)).not.toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "new-1" })).toBeInTheDocument();
+  });
+
   it("renders all five overall counts with their values", () => {
     render(<OverallSummaryCards summary={result.overall} />);
     const region = screen.getByLabelText("Overall result summary");

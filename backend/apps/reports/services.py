@@ -514,32 +514,65 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
 
     sections.append(_render_exception_rule_summary(validation))
 
-    sections.append("<section class='card' id='changes'>")
-    sections.append("<h2>Attribute changes</h2>")
-    sections.append(
-        "<p class='section-logic'><code>In Baseline ≠ In Comparison</code> "
-        "on shared target columns.</p>"
-    )
-    sections.append(_render_comparing_columns(result))
-    attr_changes_grp = grp.get("attribute_changes") or []
-    sections.append(_render_group_section("Attribute change aggregation", attr_changes_grp))
     row_details = comparison.get("row_details") or []
-    if row_details:
-        sections.append("<table>")
-        sections.append(_detail_header(key_columns))
-        for row in row_details:
-            key_values = row.get("key_columns", {})
-            for change in row.get("attribute_changes", []):
-                sections.append("<tr>")
-                sections.append(_identity_cells(key_columns, key_values, row.get("row_index", "")))
-                sections.append(f"<td>{_escape_html(change.get('column', ''))}</td>")
-                sections.append(f"<td>{_escape_html(change.get('file_a_value', ''))}</td>")
-                sections.append(f"<td>{_escape_html(change.get('file_b_value', ''))}</td>")
-                sections.append("</tr>")
-        sections.append("</table>")
+
+    comparison_sections = result.get("comparison_sections") or []
+    if comparison_sections:
+        for section in comparison_sections:
+            section_name = section.get("name") or "Attribute Comparing Section"
+            section_columns = set(section.get("columns") or [])
+            section_rows = [
+                (row, change)
+                for row in row_details
+                for change in row.get("attribute_changes", [])
+                if change.get("column") in section_columns
+            ]
+            sections.append("<section class='card'>")
+            sections.append(f"<h2>{_escape_html(section_name)}</h2>")
+            sections.append(
+                "<p class='section-logic'><code>In Baseline ≠ In Comparison</code> "
+                f"— {len(section_columns)} column{'s' if len(section_columns) != 1 else ''}</p>"
+            )
+            if section_rows:
+                sections.append("<table>")
+                sections.append(_detail_header(key_columns))
+                for row, change in section_rows:
+                    sections.append("<tr>")
+                    sections.append(_identity_cells(key_columns, row.get("key_columns", {}), row.get("row_index", "")))
+                    sections.append(f"<td>{_escape_html(change.get('column', ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('file_a_value', ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('file_b_value', ''))}</td>")
+                    sections.append("</tr>")
+                sections.append("</table>")
+            else:
+                sections.append(f"<p>No books with {_escape_html(section_name)}</p>")
+            sections.append("</section>")
     else:
-        sections.append("<p>No detail rows.</p>")
-    sections.append("</section>")
+        sections.append("<section class='card' id='changes'>")
+        sections.append("<h2>Attribute changes</h2>")
+        sections.append(
+            "<p class='section-logic'><code>In Baseline ≠ In Comparison</code> "
+            "on shared target columns.</p>"
+        )
+        sections.append(_render_comparing_columns(result))
+        attr_changes_grp = grp.get("attribute_changes") or []
+        sections.append(_render_group_section("Attribute change aggregation", attr_changes_grp))
+        if row_details:
+            sections.append("<table>")
+            sections.append(_detail_header(key_columns))
+            for row in row_details:
+                key_values = row.get("key_columns", {})
+                for change in row.get("attribute_changes", []):
+                    sections.append("<tr>")
+                    sections.append(_identity_cells(key_columns, key_values, row.get("row_index", "")))
+                    sections.append(f"<td>{_escape_html(change.get('column', ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('file_a_value', ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('file_b_value', ''))}</td>")
+                    sections.append("</tr>")
+            sections.append("</table>")
+        else:
+            sections.append("<p>No detail rows.</p>")
+        sections.append("</section>")
 
     violations_by_rule = validation.get("violations_by_rule") or {}
     rule_summaries = validation.get("rule_summaries") or {}
@@ -884,6 +917,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                 sections_sheet.cell(next_row + 3, column_offset + 1, header)
 
             section_row = next_row + 4
+            record_count = 0
             for detail in comparison.get("row_details") or []:
                 identity = _excel_identity(
                     key_columns, detail.get("key_columns") or {}, detail.get("row_index", "")
@@ -906,6 +940,11 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                         ],
                     )
                     section_row += 1
+                    record_count += 1
+
+            if record_count == 0:
+                sections_sheet.cell(section_row, 1, "There is 0 record for this table.")
+                section_row += 1
 
             # Keep one blank row between adjacent section tables.
             next_row = section_row + 1

@@ -273,6 +273,7 @@ function ResultView({
         aggregationColumns={aggregationColumns}
         aggregationColumnLabels={aggregationColumnLabels}
         keyColumnNames={keyColumns}
+        nestedAggregationEnabled={nestedAggregationEnabled}
         {...(result.groupStatistics?.newBooks && { groupStatistics: result.groupStatistics.newBooks })}
       />
 
@@ -319,6 +320,7 @@ function ResultView({
                   exportRows={sectionChanges}
                   sectionColumns={section.columns}
                   extraColumnNames={section.extraColumns ?? []}
+                  emptyMessage={`No books with ${section.name}`}
                 />
               </section>
             );

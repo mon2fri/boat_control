@@ -1,5 +1,6 @@
 import type { DetailRow, GroupStat } from "../../api/domain";
 import { GroupStatisticsPanel } from "./GroupStatisticsPanel";
+import { NestedAggregationPanel } from "./NestedAggregationPanel";
 
 interface Props {
   newBookCount: number;
@@ -7,6 +8,7 @@ interface Props {
   aggregationColumns: string[];
   aggregationColumnLabels: Record<string, string>;
   keyColumnNames: string[];
+  nestedAggregationEnabled: boolean;
   groupStatistics?: GroupStat[];
 }
 
@@ -16,6 +18,7 @@ export function NewBooksCard({
   aggregationColumns,
   aggregationColumnLabels,
   keyColumnNames,
+  nestedAggregationEnabled,
   groupStatistics,
 }: Props) {
   return (
@@ -26,7 +29,22 @@ export function NewBooksCard({
         <span>Books only in comparison file</span>
       </p>
 
-      {aggregationColumns.length > 0 && groupStatistics && groupStatistics.length > 0 && (
+      {nestedAggregationEnabled && aggregationColumns.length > 0 ? (
+        <NestedAggregationPanel
+          details={newBookDetails}
+          aggregationColumns={aggregationColumns}
+          aggregationColumnLabels={aggregationColumnLabels}
+          keyColumnNames={keyColumnNames}
+          detailKinds={["added"]}
+          recordSummary={(count) => `${count} new book${count !== 1 ? "s" : ""}`}
+          renderRecordDetail={(node) => (
+            <table className="nested-agg-table">
+              <thead><tr>{keyColumnNames.map((col) => <th key={col}>{col}</th>)}</tr></thead>
+              <tbody><tr>{keyColumnNames.map((col) => <td key={col}>{node.keyColumns[col] ?? ""}</td>)}</tr></tbody>
+            </table>
+          )}
+        />
+      ) : aggregationColumns.length > 0 && groupStatistics && groupStatistics.length > 0 && (
         <GroupStatisticsPanel stats={groupStatistics} columnLabels={aggregationColumnLabels} />
       )}
 

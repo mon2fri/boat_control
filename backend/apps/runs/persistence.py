@@ -114,6 +114,8 @@ def save_run(
         run_id = _generate_run_id()
         effective_name = report_name or _default_report_name(file_a_name, file_b_name)
         safe_name = _sanitize_report_name(effective_name)
+        comparison = asdict(result.comparison)
+        new_book_details = comparison.pop("new_book_rows")
 
         run_data: dict[str, Any] = {
             "run_id": run_id,
@@ -129,7 +131,13 @@ def save_run(
                 )
             ),
             "result": {
-                "comparison": asdict(result.comparison),
+                # The public wire contract calls these ``new_book_details``.
+                # Keep the internal dataclass name separate so persistence and
+                # every report reader agree on the same field.
+                "comparison": {
+                    **comparison,
+                    "new_book_details": new_book_details,
+                },
                 "validation": {
                     "total_violations": result.validation.total_violations,
                     "distinct_violating_rows": result.validation.distinct_violating_rows,
@@ -261,7 +269,10 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                     if "new_book_count" not in comparison:
                         comparison["new_book_count"] = 0
                     if "new_book_details" not in comparison:
-                        comparison["new_book_details"] = []
+                        # Migrate the brief internal field name used by the
+                        # initial implementation, rather than dropping real
+                        # new-book rows on load.
+                        comparison["new_book_details"] = comparison.pop("new_book_rows", [])
                     gs = result.get("group_statistics")
                     if gs and "new_books" not in gs:
                         gs["new_books"] = []

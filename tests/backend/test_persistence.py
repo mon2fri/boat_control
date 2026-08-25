@@ -13,6 +13,7 @@ from apps.runs.persistence import (
 from apps.runs.services import (
     ComparisonResult,
     ExecutionResult,
+    NewBookRow,
     ValidationResult,
 )
 from django.test import TestCase
@@ -85,6 +86,27 @@ class TestSaveAndLoadRun:
         data = load_run(meta.run_id)
         assert data is not None
         assert data["run_id"] == meta.run_id
+
+    def test_preserves_new_book_details(self, mock_result: ExecutionResult, tmp_path: Path) -> None:
+        from dataclasses import replace
+
+        with override_settings(RESULTS_DIR=str(tmp_path / "results")):
+            result = replace(
+                mock_result,
+                comparison=replace(
+                    mock_result.comparison,
+                    new_book_count=1,
+                    new_book_rows=[NewBookRow(row_index=7, key_columns={"id": "new-1"})],
+                ),
+            )
+            meta = save_run(result, "a.csv", "b.csv")
+            data = load_run(meta.run_id)
+            assert data is not None
+            comparison = data["result"]["comparison"]
+            assert comparison["new_book_details"] == [
+                {"row_index": 7, "key_columns": {"id": "new-1"}, "grouping_values": {}, "extra_values": {}},
+            ]
+            assert "new_book_rows" not in comparison
 
     def test_list_runs_returns_all(self, mock_result: ExecutionResult) -> None:
         save_run(mock_result, "a.csv", "b.csv")

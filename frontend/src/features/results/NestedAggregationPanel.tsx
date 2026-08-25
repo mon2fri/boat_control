@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { DetailRow, NestedAggNode } from "../../api/domain";
 import { buildNestedAggregationTree } from "./nestedAggregationTree";
 
@@ -7,6 +7,9 @@ interface Props {
   aggregationColumns: string[];
   keyColumnNames?: string[];
   aggregationColumnLabels?: Record<string, string>;
+  detailKinds?: DetailRow["kind"][];
+  recordSummary?: (count: number) => string;
+  renderRecordDetail?: (node: Extract<NestedAggNode, { kind: "record" }>) => ReactNode;
 }
 
 /**
@@ -22,9 +25,13 @@ interface Props {
 function TreeNode({
   node,
   columnLabels,
+  recordSummary,
+  renderRecordDetail,
 }: {
   node: NestedAggNode;
   columnLabels: Record<string, string>;
+  recordSummary: (count: number) => string;
+  renderRecordDetail?: (node: Extract<NestedAggNode, { kind: "record" }>) => ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [recordExpanded, setRecordExpanded] = useState(false);
@@ -43,11 +50,11 @@ function TreeNode({
             {recordExpanded ? "▼" : "▶"}
           </span>
           <span className="nested-agg-label">
-            {node.label} — {node.changeCount} attribute{node.changeCount !== 1 ? "s" : ""} changed
+            {node.label} — {recordSummary(node.changeCount)}
           </span>
         </button>
         <div className="nested-agg-record-detail" data-agg-detail="record" hidden={!recordExpanded}>
-          <table className="nested-agg-table">
+          {renderRecordDetail ? renderRecordDetail(node) : <table className="nested-agg-table">
             <thead>
               <tr>
                 <th>Column</th>
@@ -64,7 +71,7 @@ function TreeNode({
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table>}
         </div>
       </li>
     );
@@ -91,7 +98,13 @@ function TreeNode({
       </button>
       <ul className="nested-agg-children" data-agg-detail="group" hidden={!expanded}>
         {node.children.map((child, i) => (
-          <TreeNode key={i} node={child} columnLabels={columnLabels} />
+          <TreeNode
+            key={i}
+            node={child}
+            columnLabels={columnLabels}
+            recordSummary={recordSummary}
+            {...(renderRecordDetail ? { renderRecordDetail } : {})}
+          />
         ))}
       </ul>
     </li>
@@ -104,8 +117,16 @@ function displayValue(value: string | null): string {
   return value;
 }
 
-export function NestedAggregationPanel({ details, aggregationColumns, keyColumnNames = [], aggregationColumnLabels = {} }: Props) {
-  const tree = buildNestedAggregationTree(details, aggregationColumns, keyColumnNames);
+export function NestedAggregationPanel({
+  details,
+  aggregationColumns,
+  keyColumnNames = [],
+  aggregationColumnLabels = {},
+  detailKinds,
+  recordSummary = (count) => `${count} attribute${count !== 1 ? "s" : ""} changed`,
+  renderRecordDetail,
+}: Props) {
+  const tree = buildNestedAggregationTree(details, aggregationColumns, keyColumnNames, detailKinds);
 
   if (tree.length === 0) return null;
 
@@ -113,7 +134,13 @@ export function NestedAggregationPanel({ details, aggregationColumns, keyColumnN
     <div className="nested-agg-panel">
       <ul className="nested-agg-tree">
         {tree.map((node, i) => (
-          <TreeNode key={i} node={node} columnLabels={aggregationColumnLabels} />
+          <TreeNode
+            key={i}
+            node={node}
+            columnLabels={aggregationColumnLabels}
+            recordSummary={recordSummary}
+            {...(renderRecordDetail ? { renderRecordDetail } : {})}
+          />
         ))}
       </ul>
     </div>
