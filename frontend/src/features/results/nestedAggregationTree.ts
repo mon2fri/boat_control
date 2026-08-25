@@ -31,7 +31,10 @@ export function buildNestedAggregationTree(
   }>();
 
   for (const row of changedDetails) {
-    const recKey = row.rowKey.split("#")[0] ?? row.rowKey;
+    // Attribute-change rows share a base key and need coalescing, whereas an
+    // added book is already one complete record. Retaining its full key keeps
+    // every comparison-only book as a separate leaf in the New Books tree.
+    const recKey = row.kind === "added" ? row.rowKey : (row.rowKey.split("#")[0] ?? row.rowKey);
     let entry = recordMap.get(recKey);
     if (!entry) {
       entry = {

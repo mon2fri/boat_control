@@ -44,31 +44,33 @@ const result: RunResult = {
 describe("result components", () => {
   it("uses the overall aggregation mode for New Books and retains its detail rows", () => {
     const props = {
-      newBookCount: 1,
-      newBookDetails: [{
-        rowKey: "newbook#0#0",
-        keyColumns: { id: "new-1" },
+      newBookCount: 2,
+      newBookDetails: ["new-1", "new-2"].map((id, index) => ({
+        rowKey: `newbook#0#${index}`,
+        keyColumns: { id },
         column: "",
         file1Value: null,
         file2Value: null,
         aggregationValues: { status: "active" },
         kind: "added" as const,
-      }],
+      })),
       aggregationColumns: ["status"],
       aggregationColumnLabels: {},
       keyColumnNames: ["id"],
-      groupStatistics: [{ column: "status", uniqueCount: 1, attributeCount: 1, rows: [] }],
+      groupStatistics: [{ column: "status", uniqueCount: 2, attributeCount: 2, rows: [] }],
     };
 
     const { rerender } = render(<NewBooksCard {...props} nestedAggregationEnabled />);
+    expect(screen.getByText("new books found")).toBeInTheDocument();
     expect(screen.getByText(/active/)).toBeInTheDocument();
-    expect(screen.queryByText("Exception records: 1")).not.toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "new-1" })).toBeInTheDocument();
+    expect(screen.getByText(/2 sub-nodes/)).toBeInTheDocument();
+    expect(screen.queryByRole("cell", { name: "new-1" })).not.toBeInTheDocument();
 
     rerender(<NewBooksCard {...props} nestedAggregationEnabled={false} />);
-    expect(screen.getByRole("button", { name: /Exception records: 1/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Exception records: 2/ })).toBeInTheDocument();
     expect(screen.queryByText(/active.*sub-node/)).not.toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "new-1" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "new-2" })).toBeInTheDocument();
   });
 
   it("renders all five overall counts with their values", () => {

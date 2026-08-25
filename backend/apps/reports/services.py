@@ -493,7 +493,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     if new_book_count > 0:
         sections.append("<section class='card' id='new-books'>")
         sections.append("<h2>New Books</h2>")
-        sections.append(_metric("Books only in comparison file", new_book_count))
+        sections.append(_metric("new books found", new_book_count))
         if new_books_grp:
             sections.append(_render_group_section("New Books aggregation", new_books_grp))
         nb_details = comparison.get("new_book_details") or []

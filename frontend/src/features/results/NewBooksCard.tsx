@@ -25,8 +25,8 @@ export function NewBooksCard({
     <section id="new-books" aria-labelledby="new-books-title" className="card">
       <h3 id="new-books-title" className="results-card-title">New Books</h3>
       <p className="metric">
-        <b>{newBookCount.toLocaleString()}</b>
-        <span>Books only in comparison file</span>
+        <b>{newBookCount.toLocaleString()}</b>{" "}
+        <span>new books found</span>
       </p>
 
       {nestedAggregationEnabled && aggregationColumns.length > 0 ? (
@@ -48,7 +48,7 @@ export function NewBooksCard({
         <GroupStatisticsPanel stats={groupStatistics} columnLabels={aggregationColumnLabels} />
       )}
 
-      {newBookDetails.length > 0 && (
+      {!nestedAggregationEnabled && newBookDetails.length > 0 && (
         <div className="new-books-table">
           <table>
             <thead>
