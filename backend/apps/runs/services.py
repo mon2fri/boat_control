@@ -942,7 +942,6 @@ def execute_comparison(
         comparison_df=df_a_final,
         aggregation_columns=aggregation_columns or [],
         exception_columns=(exception_columns or []) if display.get("exception_tables") else [],
-        extra_column_display=display,
     )
 
     grp_stats = None
