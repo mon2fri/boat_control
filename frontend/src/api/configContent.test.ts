@@ -33,7 +33,7 @@ describe("ordered-list family compression round-trip", () => {
       nestedAggregationEnabled: false, comparisonSections: [],
     }, families);
 
-    expect(config.exceptionColumns).toEqual([{ kind: "column", name: "region" }]);
+    expect(config.extraColumns).toEqual([{ kind: "column", name: "region" }]);
     expect(resolveRowsColumnsConfig(config, families, ["status", "region"]).extraColumnDisplay)
       .toEqual(extraColumnDisplay);
   });

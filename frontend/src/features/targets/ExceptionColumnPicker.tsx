@@ -28,6 +28,14 @@ export function ExceptionColumnPicker({ columns, selected, onChange, families = 
     onChange(selected.filter((c) => c !== column));
   }
 
+  function moveColumn(index: number, direction: -1 | 1): void {
+    const target = index + direction;
+    if (target < 0 || target >= selected.length) return;
+    const reordered = [...selected];
+    [reordered[index], reordered[target]] = [reordered[target]!, reordered[index]!];
+    onChange(reordered);
+  }
+
   return (
     <CollapsibleCard
       id="exception-columns"
@@ -58,9 +66,27 @@ export function ExceptionColumnPicker({ columns, selected, onChange, families = 
 
       {selected.length > 0 && (
         <ul aria-label="Selected exception columns" className="chip-list">
-          {selected.map((column) => (
+          {selected.map((column, index) => (
             <li key={column}>
               <span className="tag">{column}</span>
+              <button
+                type="button"
+                className="btn chip-remove"
+                onClick={() => moveColumn(index, -1)}
+                disabled={index === 0}
+                aria-label={`Move ${column} up`}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="btn chip-remove"
+                onClick={() => moveColumn(index, 1)}
+                disabled={index === selected.length - 1}
+                aria-label={`Move ${column} down`}
+              >
+                ↓
+              </button>
               <button
                 type="button"
                 className="btn chip-remove"

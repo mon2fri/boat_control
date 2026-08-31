@@ -50,7 +50,9 @@ export interface RowsColumnsConfigContent {
   aggregationColumnLabels?: Record<string, string>;
   filters?: ConfigFilterRow[];
   targetColumns?: ColumnRef[];
-  /** Extra columns included in the exception table beyond key + aggregation columns. */
+  /** Extra columns selected for result and report display. */
+  extraColumns?: ColumnRef[];
+  /** Legacy name retained so existing rows-and-columns configs still load. */
   exceptionColumns?: ColumnRef[];
   extraColumnDisplay?: ExtraColumnDisplay | undefined;
   /** When true, aggregation columns form an ordered hierarchy shown as a tree. */
@@ -282,8 +284,11 @@ export function resolveRowsColumnsConfig(
   }
 
   const exceptionColumns: string[] = [];
-  if (Array.isArray(data.exceptionColumns)) {
-    for (const ref of data.exceptionColumns) {
+  const configuredExtraColumns = Array.isArray(data.extraColumns)
+    ? data.extraColumns
+    : data.exceptionColumns;
+  if (Array.isArray(configuredExtraColumns)) {
+    for (const ref of configuredExtraColumns) {
       const { resolved, warnings: w } = resolveColumnRef(ref, families, availableColumns);
       exceptionColumns.push(...resolved);
       warnings.push(...w);
@@ -405,7 +410,7 @@ export function mapWorkflowToRowsColumnsConfig(
       filter_values: f.values,
     })),
     targetColumns: columnsToRefs(state.targetColumns, families),
-    exceptionColumns: (state.exceptionColumns ?? []).map((c) => ({ kind: "column" as const, name: c })),
+    extraColumns: (state.exceptionColumns ?? []).map((c) => ({ kind: "column" as const, name: c })),
     ...(state.extraColumnDisplay ? { extraColumnDisplay: state.extraColumnDisplay } : {}),
     nestedAggregationEnabled: state.nestedAggregationEnabled ?? false,
     comparisonSections: (state.comparisonSections ?? []).map((s) => ({
