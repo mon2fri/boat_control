@@ -17,12 +17,13 @@ interface Props {
   sectionColumns?: string[];
   /** Extra comparison-file columns configured for this named section. */
   extraColumnNames?: string[];
+  extraColumnLabels?: Record<string, string>;
   /** Message shown when this section has no rows before filters are applied. */
   emptyMessage?: string;
 }
 
 export function PaginatedDetailSection({
-  runId, kind, caption, keyColumnNames, exportRows, sectionColumns, extraColumnNames: configuredExtras,
+  runId, kind, caption, keyColumnNames, exportRows, sectionColumns, extraColumnNames: configuredExtras, extraColumnLabels,
   emptyMessage = "No detail rows.",
 }: Props) {
   const [filters, setFilters] = useState<Record<string, string[]>>({});
@@ -108,6 +109,7 @@ export function PaginatedDetailSection({
         caption={caption}
         {...(keyColumnNames ? { keyColumnNames } : {})}
         extraColumnNames={extraColumnNames}
+        extraColumnLabels={extraColumnLabels ?? {}}
         columnFilters={columnFilters}
         activeFilters={filters}
         onFilterChange={handleFilterChange}

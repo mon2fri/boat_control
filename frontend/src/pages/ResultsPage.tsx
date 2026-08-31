@@ -230,6 +230,7 @@ function ResultView({
   onViewHistory,
   onRename,
 }: ResultViewProps) {
+  const overallExtraLabels = Object.fromEntries(exceptionColumns.map((column) => [column, `${column}(Latest Value)`]));
   return (
     <div className="result-content results-layer-content" data-export-source="result">
       <div className="results-header results-layer-header">
@@ -267,6 +268,7 @@ function ResultView({
             aggregationColumnLabels={aggregationColumnLabels}
             keyColumnNames={keyColumns}
             extraColumnNames={extraColumnDisplay.overallResultPage ? exceptionColumns : []}
+            extraColumnLabels={overallExtraLabels}
           />
         ) : result.groupStatistics?.overall && result.groupStatistics.overall.length > 0 ? (
           <GroupStatisticsPanel stats={result.groupStatistics.overall} columnLabels={aggregationColumnLabels} />
@@ -351,6 +353,7 @@ function ResultView({
                 aggregationColumnLabels={aggregationColumnLabels}
                 keyColumnNames={keyColumns}
                 extraColumnNames={extraColumnDisplay.overallResultPage ? exceptionColumns : []}
+                extraColumnLabels={overallExtraLabels}
               />
             ) : result.groupStatistics?.attributeChanges && result.groupStatistics.attributeChanges.length > 0 ? (
               <GroupStatisticsPanel stats={result.groupStatistics.attributeChanges} columnLabels={aggregationColumnLabels} />
@@ -361,6 +364,7 @@ function ResultView({
               caption="Attribute change details"
               keyColumnNames={keyColumns}
               extraColumnNames={extraColumnDisplay.overallResultPage ? exceptionColumns : []}
+              extraColumnLabels={overallExtraLabels}
               exportRows={result.changeDetails}
             />
           </section>

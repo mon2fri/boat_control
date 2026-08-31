@@ -11,6 +11,7 @@ interface Props {
   recordSummary?: (count: number) => string;
   renderRecordDetail?: (node: Extract<NestedAggNode, { kind: "record" }>) => ReactNode;
   extraColumnNames?: string[];
+  extraColumnLabels?: Record<string, string>;
 }
 
 /**
@@ -127,6 +128,7 @@ export function NestedAggregationPanel({
   recordSummary = (count) => `${count} attribute${count !== 1 ? "s" : ""} changed`,
   renderRecordDetail,
   extraColumnNames = [],
+  extraColumnLabels = {},
 }: Props) {
   const tree = buildNestedAggregationTree(details, aggregationColumns, keyColumnNames, detailKinds);
 
@@ -141,7 +143,7 @@ export function NestedAggregationPanel({
             node={node}
             columnLabels={aggregationColumnLabels}
             recordSummary={recordSummary}
-            {...(renderRecordDetail ? { renderRecordDetail } : extraColumnNames.length > 0 ? { renderRecordDetail: (record: Extract<NestedAggNode, { kind: "record" }>) => <table className="nested-agg-table"><thead><tr><th>Column</th><th>Old</th><th>New</th>{extraColumnNames.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{record.attributes.map((attribute, index) => <tr key={index}><td>{attribute.column}</td><td>{displayValue(attribute.old)}</td><td>{displayValue(attribute.new)}</td>{extraColumnNames.map((column) => <td key={column}>{displayValue(record.extraValues?.[column] ?? null)}</td>)}</tr>)}</tbody></table> } : {})}
+            {...(renderRecordDetail ? { renderRecordDetail } : extraColumnNames.length > 0 ? { renderRecordDetail: (record: Extract<NestedAggNode, { kind: "record" }>) => <table className="nested-agg-table"><thead><tr><th>Column</th><th>Old</th><th>New</th>{extraColumnNames.map((column) => <th key={column}>{extraColumnLabels[column] ?? column}</th>)}</tr></thead><tbody>{record.attributes.map((attribute, index) => <tr key={index}><td>{attribute.column}</td><td>{displayValue(attribute.old)}</td><td>{displayValue(attribute.new)}</td>{extraColumnNames.map((column) => <td key={column}>{displayValue(record.extraValues?.[column] ?? null)}</td>)}</tr>)}</tbody></table> } : {})}
           />
         ))}
       </ul>
