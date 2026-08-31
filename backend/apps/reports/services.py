@@ -902,7 +902,13 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         nb_sheet["A2"] = "Books only in comparison file (not in baseline)"
         nb_sheet["B2"] = new_book_count
         nb_details = comparison.get("new_book_details") or []
-        nb_headers = [*key_columns, *(selected_extra_columns if extra_display.get("new_books_excel_report") else [])]
+        aggregation_columns = list(result.get("aggregation_columns") or [])
+        aggregation_labels = result.get("aggregation_column_labels") or {}
+        nb_headers = [
+            *key_columns,
+            *(aggregation_labels.get(column, column) for column in aggregation_columns),
+            *(selected_extra_columns if extra_display.get("new_books_excel_report") else []),
+        ]
         if len(nb_details) + 4 > _EXCEL_MAX_ROWS:
             raise ValueError("New Books exceeds Excel's 1,048,576-row worksheet limit.")
         _append_row(nb_sheet, 4, nb_headers)
@@ -912,6 +918,8 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                 key_columns, nb.get("key_columns") or {}, nb.get("row_index", "")
             )
             values = [*identity]
+            grouping_values = nb.get("grouping_values") or {}
+            values.extend(grouping_values.get(column, "") for column in aggregation_columns)
             if extra_display.get("new_books_excel_report"):
                 extras = nb.get("extra_values") or {}
                 values.extend(extras.get(column, "") for column in selected_extra_columns)
