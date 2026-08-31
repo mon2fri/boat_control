@@ -966,5 +966,6 @@ def execute_comparison(
         nested_aggregation_enabled=nested_aggregation_enabled,
         comparison_sections=comparison_sections or [],
         exception_columns=exception_columns or [],
+        extra_column_display=display,
         group_statistics=grp_stats,
     )

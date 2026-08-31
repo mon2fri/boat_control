@@ -374,6 +374,7 @@ export function executeRun(
     comparisonSections?: ComparisonSection[] | undefined;
     ruleIndexes: string[];
     exceptionColumns?: string[];
+    extraColumnDisplay?: import("./domain").ExtraColumnDisplay;
   },
   signal?: AbortSignal,
 ): Promise<RunResult> {
