@@ -243,6 +243,7 @@ export const wireRunRequestSchema = z.object({
   extra_column_display: z.object({
     overall_result_page: z.boolean(), overall_html_report: z.boolean(), overall_excel_report: z.boolean(),
     new_books_result_page: z.boolean(), new_books_html_report: z.boolean(), new_books_excel_report: z.boolean(),
+    exception_tables: z.boolean(),
   }).optional(),
 });
 export type WireRunRequest = z.infer<typeof wireRunRequestSchema>;
@@ -369,6 +370,7 @@ export const wireRunResultSchema = z.object({
   extra_column_display: z.object({
     overall_result_page: z.boolean(), overall_html_report: z.boolean(), overall_excel_report: z.boolean(),
     new_books_result_page: z.boolean(), new_books_html_report: z.boolean(), new_books_excel_report: z.boolean(),
+    exception_tables: z.boolean(),
   }).optional(),
 });
 

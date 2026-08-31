@@ -922,6 +922,7 @@ def execute_comparison(
         for column in section.get("extra_columns", [])
     ))
     display = extra_column_display or {}
+    display.setdefault("exception_tables", True)
     comparison_extra_columns = list(dict.fromkeys([
         *section_extra_columns,
         *((exception_columns or []) if display.get("overall_result_page") or display.get("overall_html_report") or display.get("overall_excel_report") or display.get("new_books_result_page") or display.get("new_books_html_report") or display.get("new_books_excel_report") else []),
@@ -940,7 +941,7 @@ def execute_comparison(
         effective_keys,
         comparison_df=df_a_final,
         aggregation_columns=aggregation_columns or [],
-        exception_columns=exception_columns or [],
+        exception_columns=(exception_columns or []) if display.get("exception_tables") else [],
         extra_column_display=display,
     )
 

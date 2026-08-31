@@ -239,7 +239,7 @@ export function resolveRowsColumnsConfig(
   const comparisonSections: ResolvedComparisonSection[] = [];
 
   if (!data) {
-    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], aggregationColumnLabels, filters: [], targetColumns: [], exceptionColumns: [], extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false }, nestedAggregationEnabled, comparisonSections: [], warnings };
+    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], aggregationColumnLabels, filters: [], targetColumns: [], exceptionColumns: [], extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true }, nestedAggregationEnabled, comparisonSections: [], warnings };
   }
 
   if (Array.isArray(data.comparisonColumns)) {
@@ -328,7 +328,7 @@ export function resolveRowsColumnsConfig(
     }
   }
 
-  const extraColumnDisplay = data.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false };
+  const extraColumnDisplay = { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true, ...(data.extraColumnDisplay ?? {}) };
   return { comparisonColumns, keyColumns, aggregationColumns, aggregationColumnLabels, filters, targetColumns, exceptionColumns, extraColumnDisplay, nestedAggregationEnabled, comparisonSections, warnings };
 }
 

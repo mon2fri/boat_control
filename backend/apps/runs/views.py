@@ -150,6 +150,7 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 extra_column_display={key: bool(extra_column_display.get(key, False)) for key in (
                     "overall_result_page", "overall_html_report", "overall_excel_report",
                     "new_books_result_page", "new_books_html_report", "new_books_excel_report",
+                    "exception_tables",
                 )},
             )
         except Exception as exc:

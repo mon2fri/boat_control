@@ -50,13 +50,10 @@ export function ExceptionColumnPicker({ columns, selected, onChange, families = 
       />
 
       <fieldset className="field" disabled={selected.length === 0}>
-        <legend>Display extra columns in</legend>
-        <Destination label="Overall Results — Result page" checked={display.overallResultPage} onChange={(checked) => onDisplayChange({ ...display, overallResultPage: checked })} />
-        <Destination label="Overall Results — Exported HTML Report" checked={display.overallHtmlReport} onChange={(checked) => onDisplayChange({ ...display, overallHtmlReport: checked })} />
-        <Destination label="Overall Results — Exported Excel Report" checked={display.overallExcelReport} onChange={(checked) => onDisplayChange({ ...display, overallExcelReport: checked })} />
-        <Destination label="New Books — Result page" checked={display.newBooksResultPage} onChange={(checked) => onDisplayChange({ ...display, newBooksResultPage: checked })} />
-        <Destination label="New Books — Exported HTML Report" checked={display.newBooksHtmlReport} onChange={(checked) => onDisplayChange({ ...display, newBooksHtmlReport: checked })} />
-        <Destination label="New Books — Exported Excel Report" checked={display.newBooksExcelReport} onChange={(checked) => onDisplayChange({ ...display, newBooksExcelReport: checked })} />
+        <legend>Display Extra Columns In</legend>
+        <Destination label="Overall Results" checked={display.overallResultPage} onChange={(checked) => onDisplayChange({ ...display, overallResultPage: checked, overallHtmlReport: checked, overallExcelReport: checked })} />
+        <Destination label="New Books" checked={display.newBooksResultPage} onChange={(checked) => onDisplayChange({ ...display, newBooksResultPage: checked, newBooksHtmlReport: checked, newBooksExcelReport: checked })} />
+        <Destination label="Exception Tables" checked={display.exceptionTables} onChange={(checked) => onDisplayChange({ ...display, exceptionTables: checked })} />
       </fieldset>
 
       {selected.length > 0 && (

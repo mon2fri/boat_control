@@ -49,7 +49,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
   if (state.exceptionColumns.length > 0) {
     request.exceptionColumns = state.exceptionColumns;
   }
-  request.extraColumnDisplay = state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false };
+  request.extraColumnDisplay = state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true };
   return request;
 }
 
@@ -96,7 +96,7 @@ export function ResultsPage() {
         dispatch({ type: "setKeyColumns", columns: result.keyColumns ?? [] });
         // Always restore exception columns (including empty array).
         dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns ?? [] });
-        dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false } });
+        dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true } });
       })
       .catch(() => {
         // Surface a quiet failure by leaving the result empty; the page's
@@ -174,7 +174,7 @@ export function ResultsPage() {
           aggregationColumns={state.aggregationColumns}
           aggregationColumnLabels={state.aggregationColumnLabels}
           exceptionColumns={state.exceptionColumns}
-          extraColumnDisplay={state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false }}
+          extraColumnDisplay={state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true }}
           nestedAggregationEnabled={state.nestedAggregationEnabled}
           commonColumns={state.header?.common ?? []}
           onRunAnother={() => setShowStartOverConfirm(true)}
@@ -383,7 +383,7 @@ function ResultView({
         ruleResults={result.ruleResults}
         keyColumnNames={keyColumns}
         aggregationColumnLabels={aggregationColumnLabels}
-        exceptionColumns={exceptionColumns}
+        exceptionColumns={extraColumnDisplay.exceptionTables ? exceptionColumns : []}
       />
 
       <div className="card results-actions results-layer-actions" data-export-exclude>

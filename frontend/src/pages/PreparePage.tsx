@@ -21,7 +21,7 @@ export function PreparePage() {
   const handleSessionError = useSessionExpiryDispatcher();
   const familiesQuery = useFamilies();
   const families = familiesQuery.data ?? [];
-  const extraColumnDisplay = state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false };
+  const extraColumnDisplay = state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true };
 
   const header = state.header;
   const comparisonColumns = state.comparisonColumns;

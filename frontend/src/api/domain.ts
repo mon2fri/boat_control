@@ -154,6 +154,7 @@ export interface ExtraColumnDisplay {
   newBooksResultPage: boolean;
   newBooksHtmlReport: boolean;
   newBooksExcelReport: boolean;
+  exceptionTables: boolean;
 }
 
 export interface OverallSummary {

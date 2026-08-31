@@ -337,6 +337,7 @@ export function mapRunRequestToWire(request: {
       new_books_result_page: request.extraColumnDisplay.newBooksResultPage,
       new_books_html_report: request.extraColumnDisplay.newBooksHtmlReport,
       new_books_excel_report: request.extraColumnDisplay.newBooksExcelReport,
+      exception_tables: request.extraColumnDisplay.exceptionTables,
     } } : {}),
   };
 }
@@ -555,6 +556,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       newBooksResultPage: result.extra_column_display.new_books_result_page,
       newBooksHtmlReport: result.extra_column_display.new_books_html_report,
       newBooksExcelReport: result.extra_column_display.new_books_excel_report,
+      exceptionTables: result.extra_column_display.exception_tables,
     } } : {}),
   };
 }

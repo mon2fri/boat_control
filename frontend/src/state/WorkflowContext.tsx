@@ -64,7 +64,7 @@ const initialState: WorkflowState = {
   nestedAggregationEnabled: false,
   comparisonSections: [],
   exceptionColumns: [],
-  extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false },
+  extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true },
   preparedData: null,
   selectedRuleIndexes: [],
   confirmFullSet: false,
