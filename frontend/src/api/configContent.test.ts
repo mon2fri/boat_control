@@ -21,6 +21,23 @@ const families: Family[] = [
 ];
 
 describe("ordered-list family compression round-trip", () => {
+  it("round-trips extra columns and their three display destinations", () => {
+    const extraColumnDisplay = {
+      overallResultPage: true, overallHtmlReport: true, overallExcelReport: true,
+      newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false,
+      exceptionTables: true,
+    };
+    const config = mapWorkflowToRowsColumnsConfig({
+      comparisonColumns: ["status", "region"], keyColumns: [], aggregationColumns: [],
+      filters: [], targetColumns: [], exceptionColumns: ["region"], extraColumnDisplay,
+      nestedAggregationEnabled: false, comparisonSections: [],
+    }, families);
+
+    expect(config.exceptionColumns).toEqual([{ kind: "column", name: "region" }]);
+    expect(resolveRowsColumnsConfig(config, families, ["status", "region"]).extraColumnDisplay)
+      .toEqual(extraColumnDisplay);
+  });
+
   it("serializes aggregationColumns as explicit column refs, not family refs", () => {
     const state = {
       comparisonColumns: [],
