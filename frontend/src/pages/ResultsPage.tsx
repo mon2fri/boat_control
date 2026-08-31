@@ -286,8 +286,6 @@ function ResultView({
         {...(result.groupStatistics?.newBooks && { groupStatistics: result.groupStatistics.newBooks })}
       />
 
-      <ExceptionRuleSummary rules={result.ruleResults} />
-
       {result.comparisonSections && result.comparisonSections.length > 0
         ? result.comparisonSections.map((section) => {
             const sectionChanges = result.changeDetails.filter(
@@ -369,6 +367,8 @@ function ResultView({
             />
           </section>
         )}
+
+      <ExceptionRuleSummary rules={result.ruleResults} />
 
       {result.ruleResults.map((rule) => {
         const ruleGroupStats = result.groupStatistics?.validationRules?.[rule.ruleIndex];

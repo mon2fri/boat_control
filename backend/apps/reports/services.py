@@ -521,8 +521,6 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
             sections.append("</tbody></table>")
         sections.append("</section>")
 
-    sections.append(_render_exception_rule_summary(validation))
-
     row_details = comparison.get("row_details") or []
 
     comparison_sections = result.get("comparison_sections") or []
@@ -590,6 +588,8 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         else:
             sections.append("<p>No detail rows.</p>")
         sections.append("</section>")
+
+    sections.append(_render_exception_rule_summary(validation))
 
     violations_by_rule = validation.get("violations_by_rule") or {}
     rule_summaries = validation.get("rule_summaries") or {}
