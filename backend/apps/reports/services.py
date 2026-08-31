@@ -863,7 +863,11 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         "Column",
         "In Baseline",
         "In Comparison",
-        *(selected_extra_columns if extra_display.get("overall_excel_report") else []),
+        *(
+            [f"{column}(Latest Value)" for column in selected_extra_columns]
+            if extra_display.get("overall_excel_report")
+            else []
+        ),
     ]
     change_count = sum(
         len(detail.get("attribute_changes") or []) for detail in comparison.get("row_details") or []
