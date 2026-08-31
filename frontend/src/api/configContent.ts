@@ -10,6 +10,7 @@ import type {
   RuleDraft,
   ValueFamily,
 } from "./domain";
+import type { ExtraColumnDisplay } from "./domain";
 
 /**
  * Tagged column reference used in saved configs.
@@ -51,6 +52,7 @@ export interface RowsColumnsConfigContent {
   targetColumns?: ColumnRef[];
   /** Extra columns included in the exception table beyond key + aggregation columns. */
   exceptionColumns?: ColumnRef[];
+  extraColumnDisplay?: ExtraColumnDisplay | undefined;
   /** When true, aggregation columns form an ordered hierarchy shown as a tree. */
   nestedAggregationEnabled?: boolean;
   /** User-defined comparison sections, each with a name and column set. */
@@ -88,6 +90,7 @@ export interface ConfigLoadResult {
   filters: FilterRow[];
   targetColumns: string[];
   exceptionColumns: string[];
+  extraColumnDisplay: ExtraColumnDisplay;
   nestedAggregationEnabled: boolean;
   comparisonSections: ResolvedComparisonSection[];
   warnings: ConfigLoadWarning[];
@@ -236,7 +239,7 @@ export function resolveRowsColumnsConfig(
   const comparisonSections: ResolvedComparisonSection[] = [];
 
   if (!data) {
-    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], aggregationColumnLabels, filters: [], targetColumns: [], exceptionColumns: [], nestedAggregationEnabled, comparisonSections: [], warnings };
+    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], aggregationColumnLabels, filters: [], targetColumns: [], exceptionColumns: [], extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false }, nestedAggregationEnabled, comparisonSections: [], warnings };
   }
 
   if (Array.isArray(data.comparisonColumns)) {
@@ -325,7 +328,8 @@ export function resolveRowsColumnsConfig(
     }
   }
 
-  return { comparisonColumns, keyColumns, aggregationColumns, aggregationColumnLabels, filters, targetColumns, exceptionColumns, nestedAggregationEnabled, comparisonSections, warnings };
+  const extraColumnDisplay = data.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false };
+  return { comparisonColumns, keyColumns, aggregationColumns, aggregationColumnLabels, filters, targetColumns, exceptionColumns, extraColumnDisplay, nestedAggregationEnabled, comparisonSections, warnings };
 }
 
 /**
@@ -375,6 +379,7 @@ export function mapWorkflowToRowsColumnsConfig(
     filters: FilterRow[];
     targetColumns: string[];
     exceptionColumns?: string[];
+    extraColumnDisplay?: ExtraColumnDisplay;
     nestedAggregationEnabled?: boolean;
     comparisonSections?: {
       id: string;
@@ -401,6 +406,7 @@ export function mapWorkflowToRowsColumnsConfig(
     })),
     targetColumns: columnsToRefs(state.targetColumns, families),
     exceptionColumns: (state.exceptionColumns ?? []).map((c) => ({ kind: "column" as const, name: c })),
+    ...(state.extraColumnDisplay ? { extraColumnDisplay: state.extraColumnDisplay } : {}),
     nestedAggregationEnabled: state.nestedAggregationEnabled ?? false,
     comparisonSections: (state.comparisonSections ?? []).map((s) => ({
       id: s.id,

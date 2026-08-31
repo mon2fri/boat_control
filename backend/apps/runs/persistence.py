@@ -162,6 +162,7 @@ def save_run(
                 "nested_aggregation_enabled": result.nested_aggregation_enabled,
                 "comparison_sections": result.comparison_sections,
                 "exception_columns": result.exception_columns,
+                "extra_column_display": result.extra_column_display,
                 "group_statistics": result.group_statistics,
             },
         }

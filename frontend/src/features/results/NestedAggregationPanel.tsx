@@ -10,6 +10,7 @@ interface Props {
   detailKinds?: DetailRow["kind"][];
   recordSummary?: (count: number) => string;
   renderRecordDetail?: (node: Extract<NestedAggNode, { kind: "record" }>) => ReactNode;
+  extraColumnNames?: string[];
 }
 
 /**
@@ -125,6 +126,7 @@ export function NestedAggregationPanel({
   detailKinds,
   recordSummary = (count) => `${count} attribute${count !== 1 ? "s" : ""} changed`,
   renderRecordDetail,
+  extraColumnNames = [],
 }: Props) {
   const tree = buildNestedAggregationTree(details, aggregationColumns, keyColumnNames, detailKinds);
 
@@ -139,7 +141,7 @@ export function NestedAggregationPanel({
             node={node}
             columnLabels={aggregationColumnLabels}
             recordSummary={recordSummary}
-            {...(renderRecordDetail ? { renderRecordDetail } : {})}
+            {...(renderRecordDetail ? { renderRecordDetail } : extraColumnNames.length > 0 ? { renderRecordDetail: (record: Extract<NestedAggNode, { kind: "record" }>) => <table className="nested-agg-table"><thead><tr><th>Column</th><th>Old</th><th>New</th>{extraColumnNames.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{record.attributes.map((attribute, index) => <tr key={index}><td>{attribute.column}</td><td>{displayValue(attribute.old)}</td><td>{displayValue(attribute.new)}</td>{extraColumnNames.map((column) => <td key={column}>{displayValue(record.extraValues?.[column] ?? null)}</td>)}</tr>)}</tbody></table> } : {})}
           />
         ))}
       </ul>

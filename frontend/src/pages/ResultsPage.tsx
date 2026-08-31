@@ -49,6 +49,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
   if (state.exceptionColumns.length > 0) {
     request.exceptionColumns = state.exceptionColumns;
   }
+  request.extraColumnDisplay = state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false };
   return request;
 }
 
@@ -95,6 +96,7 @@ export function ResultsPage() {
         dispatch({ type: "setKeyColumns", columns: result.keyColumns ?? [] });
         // Always restore exception columns (including empty array).
         dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns ?? [] });
+        dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false } });
       })
       .catch(() => {
         // Surface a quiet failure by leaving the result empty; the page's
@@ -172,6 +174,7 @@ export function ResultsPage() {
           aggregationColumns={state.aggregationColumns}
           aggregationColumnLabels={state.aggregationColumnLabels}
           exceptionColumns={state.exceptionColumns}
+          extraColumnDisplay={state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false }}
           nestedAggregationEnabled={state.nestedAggregationEnabled}
           commonColumns={state.header?.common ?? []}
           onRunAnother={() => setShowStartOverConfirm(true)}
@@ -202,6 +205,7 @@ interface ResultViewProps {
   aggregationColumns: string[];
   aggregationColumnLabels: Record<string, string>;
   exceptionColumns: string[];
+  extraColumnDisplay: import("../api/domain").ExtraColumnDisplay;
   nestedAggregationEnabled: boolean;
   commonColumns: string[];
   onRunAnother: () => void;
@@ -218,6 +222,7 @@ function ResultView({
   aggregationColumns,
   aggregationColumnLabels,
   exceptionColumns,
+  extraColumnDisplay,
   nestedAggregationEnabled,
   commonColumns,
   onRunAnother,
@@ -261,6 +266,7 @@ function ResultView({
             aggregationColumns={aggregationColumns}
             aggregationColumnLabels={aggregationColumnLabels}
             keyColumnNames={keyColumns}
+            extraColumnNames={extraColumnDisplay.overallResultPage ? exceptionColumns : []}
           />
         ) : result.groupStatistics?.overall && result.groupStatistics.overall.length > 0 ? (
           <GroupStatisticsPanel stats={result.groupStatistics.overall} columnLabels={aggregationColumnLabels} />
@@ -274,6 +280,7 @@ function ResultView({
         aggregationColumnLabels={aggregationColumnLabels}
         keyColumnNames={keyColumns}
         nestedAggregationEnabled={nestedAggregationEnabled}
+        extraColumnNames={extraColumnDisplay.newBooksResultPage ? exceptionColumns : []}
         {...(result.groupStatistics?.newBooks && { groupStatistics: result.groupStatistics.newBooks })}
       />
 
@@ -343,6 +350,7 @@ function ResultView({
                 aggregationColumns={aggregationColumns}
                 aggregationColumnLabels={aggregationColumnLabels}
                 keyColumnNames={keyColumns}
+                extraColumnNames={extraColumnDisplay.overallResultPage ? exceptionColumns : []}
               />
             ) : result.groupStatistics?.attributeChanges && result.groupStatistics.attributeChanges.length > 0 ? (
               <GroupStatisticsPanel stats={result.groupStatistics.attributeChanges} columnLabels={aggregationColumnLabels} />
@@ -352,6 +360,7 @@ function ResultView({
               kind="changed"
               caption="Attribute change details"
               keyColumnNames={keyColumns}
+              extraColumnNames={extraColumnDisplay.overallResultPage ? exceptionColumns : []}
               exportRows={result.changeDetails}
             />
           </section>

@@ -10,6 +10,7 @@ interface Props {
   keyColumnNames: string[];
   nestedAggregationEnabled: boolean;
   groupStatistics?: GroupStat[];
+  extraColumnNames?: string[];
 }
 
 export function NewBooksCard({
@@ -20,6 +21,7 @@ export function NewBooksCard({
   keyColumnNames,
   nestedAggregationEnabled,
   groupStatistics,
+  extraColumnNames = [],
 }: Props) {
   return (
     <section id="new-books" aria-labelledby="new-books-title" className="card">
@@ -39,8 +41,8 @@ export function NewBooksCard({
           recordSummary={(count) => `${count} new book${count !== 1 ? "s" : ""}`}
           renderRecordDetail={(node) => (
             <table className="nested-agg-table">
-              <thead><tr>{keyColumnNames.map((col) => <th key={col}>{col}</th>)}</tr></thead>
-              <tbody><tr>{keyColumnNames.map((col) => <td key={col}>{node.keyColumns[col] ?? ""}</td>)}</tr></tbody>
+              <thead><tr>{keyColumnNames.map((col) => <th key={col}>{col}</th>)}{extraColumnNames.map((col) => <th key={col}>{col}</th>)}</tr></thead>
+              <tbody><tr>{keyColumnNames.map((col) => <td key={col}>{node.keyColumns[col] ?? ""}</td>)}{extraColumnNames.map((col) => <td key={col}>{node.extraValues?.[col] ?? ""}</td>)}</tr></tbody>
             </table>
           )}
         />
@@ -56,6 +58,7 @@ export function NewBooksCard({
                 {keyColumnNames.map((col) => (
                   <th key={col}>{col}</th>
                 ))}
+                {extraColumnNames.map((col) => <th key={col}>{col}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -64,6 +67,7 @@ export function NewBooksCard({
                   {keyColumnNames.map((col) => (
                     <td key={col}>{row.keyColumns[col] ?? ""}</td>
                   ))}
+                  {extraColumnNames.map((col) => <td key={col}>{row.extraValues?.[col] ?? ""}</td>)}
                 </tr>
               ))}
             </tbody>

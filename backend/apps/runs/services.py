@@ -111,6 +111,7 @@ class ExecutionResult:
     nested_aggregation_enabled: bool = False
     comparison_sections: list[dict[str, Any]] = field(default_factory=list)
     exception_columns: list[str] = field(default_factory=list)
+    extra_column_display: dict[str, bool] = field(default_factory=dict)
     group_statistics: dict[str, Any] | None = None
 
 
@@ -783,6 +784,7 @@ def execute_comparison(
     nested_aggregation_enabled: bool = False,
     comparison_sections: list[dict[str, Any]] | None = None,
     exception_columns: list[str] | None = None,
+    extra_column_display: dict[str, bool] | None = None,
 ) -> ExecutionResult:
     if filters is None:
         filters = []
@@ -919,10 +921,15 @@ def execute_comparison(
         for section in (comparison_sections or [])
         for column in section.get("extra_columns", [])
     ))
+    display = extra_column_display or {}
+    comparison_extra_columns = list(dict.fromkeys([
+        *section_extra_columns,
+        *((exception_columns or []) if display.get("overall_result_page") or display.get("overall_html_report") or display.get("overall_excel_report") or display.get("new_books_result_page") or display.get("new_books_html_report") or display.get("new_books_excel_report") else []),
+    ]))
     comparison = compare_rows(
         df_a_final, df_b_final, effective_targets, effective_keys,
         aggregation_columns=aggregation_columns or [],
-        extra_columns=section_extra_columns,
+        extra_columns=comparison_extra_columns,
     )
 
     # Phase 2: rule evaluation against comparison (df_b) rows
@@ -934,6 +941,7 @@ def execute_comparison(
         comparison_df=df_a_final,
         aggregation_columns=aggregation_columns or [],
         exception_columns=exception_columns or [],
+        extra_column_display=display,
     )
 
     grp_stats = None

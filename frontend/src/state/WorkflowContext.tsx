@@ -5,6 +5,7 @@ import type {
   HeaderReport,
   PrepareResult,
   RunResult,
+  ExtraColumnDisplay,
 } from "../api/domain";
 
 export interface PreparedDataCache {
@@ -37,6 +38,7 @@ export interface WorkflowState {
   comparisonSections: ComparisonSection[];
   /** Extra columns included in the exception table beyond key + aggregation columns. */
   exceptionColumns: string[];
+  extraColumnDisplay?: ExtraColumnDisplay;
   /** Page-two CSV scan result, reusable while files and columns are unchanged. */
   preparedData?: PreparedDataCache | null;
   selectedRuleIndexes: string[];
@@ -62,6 +64,7 @@ const initialState: WorkflowState = {
   nestedAggregationEnabled: false,
   comparisonSections: [],
   exceptionColumns: [],
+  extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false },
   preparedData: null,
   selectedRuleIndexes: [],
   confirmFullSet: false,
@@ -80,6 +83,7 @@ type Action =
   | { type: "setNestedAggregationEnabled"; enabled: boolean }
   | { type: "setComparisonSections"; sections: ComparisonSection[] }
   | { type: "setExceptionColumns"; columns: string[] }
+  | { type: "setExtraColumnDisplay"; display: ExtraColumnDisplay }
   | { type: "setPreparedData"; cache: PreparedDataCache }
   | { type: "setFilters"; filters: FilterRow[] }
   | { type: "setTargetColumns"; columns: string[] }
@@ -180,6 +184,8 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       };
     case "setExceptionColumns":
       return { ...state, exceptionColumns: action.columns };
+    case "setExtraColumnDisplay":
+      return { ...state, extraColumnDisplay: action.display };
     case "setPreparedData":
       return { ...state, preparedData: action.cache };
     case "setSelectedRules":

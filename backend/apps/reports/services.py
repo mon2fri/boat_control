@@ -489,6 +489,8 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append("</section>")
 
     new_book_count = comparison.get("new_book_count", 0)
+    extra_display = result.get("extra_column_display") or {}
+    selected_extra_columns = list(result.get("exception_columns") or [])
     new_books_grp = grp.get("new_books") or []
     if new_book_count > 0:
         sections.append("<section class='card' id='new-books'>")
@@ -502,12 +504,19 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
             sections.append("<thead><tr>")
             for k in key_columns:
                 sections.append(f"<th>{_escape_html(k)}</th>")
+            if extra_display.get("new_books_html_report"):
+                for column in selected_extra_columns:
+                    sections.append(f"<th>{_escape_html(column)}</th>")
             sections.append("</tr></thead><tbody>")
             for nb in nb_details:
                 sections.append("<tr>")
                 for k in key_columns:
                     val = nb.get("key_columns", {}).get(k, "")
                     sections.append(f"<td>{_escape_html(str(val)) if val is not None else ''}</td>")
+                if extra_display.get("new_books_html_report"):
+                    values = nb.get("extra_values") or {}
+                    for column in selected_extra_columns:
+                        sections.append(f"<td>{_escape_html(values.get(column, ''))}</td>")
                 sections.append("</tr>")
             sections.append("</tbody></table>")
         sections.append("</section>")
@@ -535,10 +544,14 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
             )
             if section_rows:
                 sections.append("<table>")
-                sections.append(_detail_header(key_columns))
+                sections.append(_detail_header(key_columns, extra_columns=selected_extra_columns if extra_display.get("overall_html_report") else None))
                 for row, change in section_rows:
                     sections.append("<tr>")
                     sections.append(_identity_cells(key_columns, row.get("key_columns", {}), row.get("row_index", "")))
+                    if extra_display.get("overall_html_report"):
+                        values = row.get("extra_values") or {}
+                        for column in selected_extra_columns:
+                            sections.append(f"<td>{_escape_html(values.get(column, ''))}</td>")
                     sections.append(f"<td>{_escape_html(change.get('column', ''))}</td>")
                     sections.append(f"<td>{_escape_html(change.get('file_a_value', ''))}</td>")
                     sections.append(f"<td>{_escape_html(change.get('file_b_value', ''))}</td>")
@@ -559,12 +572,16 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         sections.append(_render_group_section("Attribute change aggregation", attr_changes_grp))
         if row_details:
             sections.append("<table>")
-            sections.append(_detail_header(key_columns))
+            sections.append(_detail_header(key_columns, extra_columns=selected_extra_columns if extra_display.get("overall_html_report") else None))
             for row in row_details:
                 key_values = row.get("key_columns", {})
                 for change in row.get("attribute_changes", []):
                     sections.append("<tr>")
                     sections.append(_identity_cells(key_columns, key_values, row.get("row_index", "")))
+                    if extra_display.get("overall_html_report"):
+                        values = row.get("extra_values") or {}
+                        for column in selected_extra_columns:
+                            sections.append(f"<td>{_escape_html(values.get(column, ''))}</td>")
                     sections.append(f"<td>{_escape_html(change.get('column', ''))}</td>")
                     sections.append(f"<td>{_escape_html(change.get('file_a_value', ''))}</td>")
                     sections.append(f"<td>{_escape_html(change.get('file_b_value', ''))}</td>")
@@ -837,6 +854,8 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     changes_sheet = workbook.create_sheet("Attribute Changes")
     changes_sheet["A1"] = "Attribute Changes"
     comparing_columns = result.get("target_columns") or result.get("common_columns") or []
+    extra_display = result.get("extra_column_display") or {}
+    selected_extra_columns = list(result.get("exception_columns") or [])
     changes_sheet["A2"] = "Comparing columns"
     changes_sheet["B2"] = _excel_value(", ".join(str(column) for column in comparing_columns))
     change_headers = [
@@ -844,6 +863,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         "Column",
         "In Baseline",
         "In Comparison",
+        *(selected_extra_columns if extra_display.get("overall_excel_report") else []),
     ]
     change_count = sum(
         len(detail.get("attribute_changes") or []) for detail in comparison.get("row_details") or []
@@ -866,6 +886,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                     change.get("column", ""),
                     change.get("file_a_value", ""),
                     change.get("file_b_value", ""),
+                    *([(detail.get("extra_values") or {}).get(column, "") for column in selected_extra_columns] if extra_display.get("overall_excel_report") else []),
                 ],
             )
             change_row += 1
@@ -877,7 +898,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         nb_sheet["A2"] = "Books only in comparison file (not in baseline)"
         nb_sheet["B2"] = new_book_count
         nb_details = comparison.get("new_book_details") or []
-        nb_headers = [*key_columns]
+        nb_headers = [*key_columns, *(selected_extra_columns if extra_display.get("new_books_excel_report") else [])]
         if len(nb_details) + 4 > _EXCEL_MAX_ROWS:
             raise ValueError("New Books exceeds Excel's 1,048,576-row worksheet limit.")
         _append_row(nb_sheet, 4, nb_headers)
@@ -886,7 +907,11 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
             identity = _excel_identity(
                 key_columns, nb.get("key_columns") or {}, nb.get("row_index", "")
             )
-            _append_row(nb_sheet, nb_row_num, identity)
+            values = [*identity]
+            if extra_display.get("new_books_excel_report"):
+                extras = nb.get("extra_values") or {}
+                values.extend(extras.get(column, "") for column in selected_extra_columns)
+            _append_row(nb_sheet, nb_row_num, values)
             nb_row_num += 1
 
     comparison_sections = result.get("comparison_sections") or []

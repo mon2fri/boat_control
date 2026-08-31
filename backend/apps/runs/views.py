@@ -93,6 +93,7 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
             )
 
         exception_columns = request.data.get("exception_columns", [])
+        extra_column_display = request.data.get("extra_column_display", {})
         if isinstance(exception_columns, list):
             exception_columns = [str(c) for c in exception_columns]
             comp_set = set(comparison_columns)
@@ -110,6 +111,8 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 )
         else:
             exception_columns = []
+        if not isinstance(extra_column_display, dict):
+            extra_column_display = {}
 
         try:
             # Nested aggregation is read independently of comparison sections:
@@ -144,6 +147,10 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 nested_aggregation_enabled=nested_agg_enabled,
                 comparison_sections=comparison_sections,
                 exception_columns=exception_columns,
+                extra_column_display={key: bool(extra_column_display.get(key, False)) for key in (
+                    "overall_result_page", "overall_html_report", "overall_excel_report",
+                    "new_books_result_page", "new_books_html_report", "new_books_excel_report",
+                )},
             )
         except Exception as exc:
             logger.warning("execute_comparison failed: %s", exc)

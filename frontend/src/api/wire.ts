@@ -240,6 +240,10 @@ export const wireRunRequestSchema = z.object({
   filters: z.array(wireFilterRowSchema).optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
   exception_columns: z.array(z.string()).optional(),
+  extra_column_display: z.object({
+    overall_result_page: z.boolean(), overall_html_report: z.boolean(), overall_excel_report: z.boolean(),
+    new_books_result_page: z.boolean(), new_books_html_report: z.boolean(), new_books_excel_report: z.boolean(),
+  }).optional(),
 });
 export type WireRunRequest = z.infer<typeof wireRunRequestSchema>;
 
@@ -362,6 +366,10 @@ export const wireRunResultSchema = z.object({
     extra_columns: z.array(z.string()).optional(),
   })).optional(),
   exception_columns: z.array(z.string()).optional(),
+  extra_column_display: z.object({
+    overall_result_page: z.boolean(), overall_html_report: z.boolean(), overall_excel_report: z.boolean(),
+    new_books_result_page: z.boolean(), new_books_html_report: z.boolean(), new_books_excel_report: z.boolean(),
+  }).optional(),
 });
 
 export const wireRunDocumentSchema = z.object({

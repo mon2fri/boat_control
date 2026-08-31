@@ -21,6 +21,7 @@ export function PreparePage() {
   const handleSessionError = useSessionExpiryDispatcher();
   const familiesQuery = useFamilies();
   const families = familiesQuery.data ?? [];
+  const extraColumnDisplay = state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false };
 
   const header = state.header;
   const comparisonColumns = state.comparisonColumns;
@@ -129,6 +130,7 @@ export function PreparePage() {
     dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
     dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
     dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns });
+    dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay });
 
     for (const w of result.warnings) {
       warnings.push(w.message);
@@ -167,6 +169,7 @@ export function PreparePage() {
               filters: state.filters,
               targetColumns: state.targetColumns,
               exceptionColumns: state.exceptionColumns,
+              extraColumnDisplay,
               nestedAggregationEnabled: state.nestedAggregationEnabled,
               comparisonSections: state.comparisonSections,
             },
@@ -258,6 +261,8 @@ export function PreparePage() {
           families={families}
           selected={state.exceptionColumns}
           onChange={(columns) => dispatch({ type: "setExceptionColumns", columns })}
+          display={extraColumnDisplay}
+          onDisplayChange={(display) => dispatch({ type: "setExtraColumnDisplay", display })}
         />
       </div>
 

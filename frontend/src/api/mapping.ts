@@ -297,6 +297,7 @@ export function mapRunRequestToWire(request: {
   comparisonSections?: ComparisonSection[] | undefined;
   ruleIndexes: string[];
   exceptionColumns?: string[];
+  extraColumnDisplay?: import("./domain").ExtraColumnDisplay;
 }): WireRunRequest {
   return {
     session_id: request.sessionId,
@@ -329,6 +330,14 @@ export function mapRunRequestToWire(request: {
     ...(request.exceptionColumns && request.exceptionColumns.length > 0
       ? { exception_columns: [...request.exceptionColumns] }
       : {}),
+    ...(request.extraColumnDisplay ? { extra_column_display: {
+      overall_result_page: request.extraColumnDisplay.overallResultPage,
+      overall_html_report: request.extraColumnDisplay.overallHtmlReport,
+      overall_excel_report: request.extraColumnDisplay.overallExcelReport,
+      new_books_result_page: request.extraColumnDisplay.newBooksResultPage,
+      new_books_html_report: request.extraColumnDisplay.newBooksHtmlReport,
+      new_books_excel_report: request.extraColumnDisplay.newBooksExcelReport,
+    } } : {}),
   };
 }
 
@@ -539,6 +548,14 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
     ...(result.exception_columns && result.exception_columns.length > 0
       ? { exceptionColumns: [...result.exception_columns] }
       : {}),
+    ...(result.extra_column_display ? { extraColumnDisplay: {
+      overallResultPage: result.extra_column_display.overall_result_page,
+      overallHtmlReport: result.extra_column_display.overall_html_report,
+      overallExcelReport: result.extra_column_display.overall_excel_report,
+      newBooksResultPage: result.extra_column_display.new_books_result_page,
+      newBooksHtmlReport: result.extra_column_display.new_books_html_report,
+      newBooksExcelReport: result.extra_column_display.new_books_excel_report,
+    } } : {}),
   };
 }
 

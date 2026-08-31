@@ -27,6 +27,7 @@ export function buildNestedAggregationTree(
   const recordMap = new Map<string, {
     keyColumns: Record<string, string | null>;
     aggregationValues: Record<string, string | null>;
+    extraValues?: Record<string, string | null>;
     attributes: { column: string; old: string | null; new: string | null }[];
   }>();
 
@@ -40,6 +41,7 @@ export function buildNestedAggregationTree(
       entry = {
         keyColumns: row.keyColumns,
         aggregationValues: row.aggregationValues ?? {},
+        ...(row.extraValues ? { extraValues: row.extraValues } : {}),
         attributes: [],
       };
       recordMap.set(recKey, entry);
@@ -72,6 +74,7 @@ function buildTreeLevel(
     recKey: string;
     keyColumns: Record<string, string | null>;
     aggregationValues: Record<string, string | null>;
+    extraValues?: Record<string, string | null>;
     attributes: { column: string; old: string | null; new: string | null }[];
   }[],
   aggregationColumns: string[],
@@ -90,6 +93,7 @@ function buildTreeLevel(
         label,
         rowKey: rec.recKey,
         keyColumns: rec.keyColumns,
+        ...(rec.extraValues ? { extraValues: rec.extraValues } : {}),
         changeCount: rec.attributes.length,
         attributes: rec.attributes,
       };
