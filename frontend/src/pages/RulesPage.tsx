@@ -47,8 +47,8 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
   useEffect(() => {
     if (!configNotice) return;
     setConfigNoticeFading(false);
-    const fadeTimer = window.setTimeout(() => setConfigNoticeFading(true), 5000);
-    const removeTimer = window.setTimeout(() => setConfigNotice(null), 8000);
+    const fadeTimer = window.setTimeout(() => setConfigNoticeFading(true), 3000);
+    const removeTimer = window.setTimeout(() => setConfigNotice(null), 6000);
     return () => {
       window.clearTimeout(fadeTimer);
       window.clearTimeout(removeTimer);

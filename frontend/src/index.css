@@ -582,11 +582,26 @@ body {
 }
 
 .config-notice {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 1000;
+  max-width: min(420px, calc(100vw - 48px));
+  margin: 0;
+  box-shadow: var(--shadow-card);
   transition: opacity 3s ease;
 }
 
 .config-notice--fading {
   opacity: 0;
+}
+
+@media (max-width: 640px) {
+  .config-notice {
+    top: 12px;
+    right: 12px;
+    max-width: calc(100vw - 24px);
+  }
 }
 
 .card--editorial {

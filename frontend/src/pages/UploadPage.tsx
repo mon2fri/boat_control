@@ -117,6 +117,7 @@ export function UploadPage() {
     dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
     dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
     dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns });
+    dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay });
     if (result.warnings.length > 0) {
       setConfigWarnings(result.warnings.map((w) => w.message));
       setTimeout(() => setConfigWarnings([]), 10000);
@@ -343,6 +344,9 @@ export function UploadPage() {
                     filters: state.filters,
                     targetColumns: state.targetColumns,
                     exceptionColumns: state.exceptionColumns,
+                    ...(state.extraColumnDisplay
+                      ? { extraColumnDisplay: state.extraColumnDisplay }
+                      : {}),
                     nestedAggregationEnabled: state.nestedAggregationEnabled,
                     comparisonSections: state.comparisonSections,
                   },

@@ -354,7 +354,7 @@ describe("RulesPage", () => {
     expect(screen.getByText(/Status active/)).toBeInTheDocument();
     const notice = screen.getByText(/Configuration applied/).closest('[role="status"]') as HTMLElement;
     expect(notice).toBeTruthy();
-    expect(notice.previousElementSibling).toHaveClass("card");
+    expect(notice).toHaveClass("config-notice");
 
     vi.unstubAllGlobals();
   });
