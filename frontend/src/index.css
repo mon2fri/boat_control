@@ -583,7 +583,7 @@ body {
 
 .config-notice {
   position: fixed;
-  top: 24px;
+  top: calc(var(--app-header-height) + 16px);
   right: 24px;
   z-index: 1000;
   max-width: min(420px, calc(100vw - 48px));
@@ -598,7 +598,7 @@ body {
 
 @media (max-width: 640px) {
   .config-notice {
-    top: 12px;
+    top: calc(var(--app-header-height) + 12px);
     right: 12px;
     max-width: calc(100vw - 24px);
   }
