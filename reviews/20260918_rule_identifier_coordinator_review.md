@@ -261,21 +261,4 @@ uv run pytest -q tests/backend/test_rule_identifier_release_review.py tests/back
 - [x] Final integration diff contains no debug code, accidental generated files, secrets, live data,
   or unrelated cleanup.
 
-## Checklist (open)
-
-- [ ] All four worker scopes are complete with no unowned requirement.
-- [ ] No worker modified user-owned unrelated files.
-- [ ] Model and migration state matches committed code; no missing migration is generated.
-- [ ] Canonicalization is deterministic across process restarts and independent installations.
-- [ ] All configured rule definitions remain in SQLite; business-logic edits preserve prior entries.
-- [ ] `Rxxx` remains local and canonical identifiers remain stable across config import/order changes.
-- [ ] Saved configs contain exactly enabled rules and enough authored content to import missing rules.
-- [ ] Import is atomic and never deletes omitted catalog/history records.
-- [ ] Initial list and Next-page database reads follow the exact 50-plus-enabled/10 rule contract.
-- [ ] Run persistence contains stable rule bindings, including zero-violation rules.
-- [ ] Backward compatibility, reports, exports, and browser journeys pass.
-- [ ] Relevant API, operations, migration, and implementation documents match behavior.
-- [ ] `frontend/dist` is rebuilt only after source tests and production build pass.
-- [ ] Final integration diff contains no debug code, accidental generated files, secrets, live data, or unrelated cleanup.
-
 Final status: **READY**
