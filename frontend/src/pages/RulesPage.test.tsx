@@ -9,6 +9,7 @@ import { RulesPage } from "./RulesPage";
 
 const wireRule = {
   rule_id: "R001",
+  enabled: true,
   name: "Region present",
   logic: { format: "value_vs_column", column_name: "region", operator: "neq", target_value: "" },
 };
@@ -160,7 +161,7 @@ describe("RulesPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses POST /rules/replace/ when loading a saved config", async () => {
+  it("does not mutate the catalog during initial render", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") return Promise.resolve(jsonResponse({ rule_id: "R001", message: "Rule deleted." }));
       return Promise.resolve(jsonResponse(rulesList));
@@ -190,6 +191,7 @@ describe("RulesPage", () => {
         wireRule,
         {
           rule_id: "R002",
+          enabled: true,
           name: "Status active",
           logic: { format: "value_vs_column", column_name: "status", operator: "eq", target_value: "active" },
         },
@@ -219,6 +221,9 @@ describe("RulesPage", () => {
       const u = String(url);
       if (init?.method === "POST" && u.includes("/rules/replace/")) {
         return Promise.resolve(jsonResponse(replaceResp));
+      }
+      if (init?.method === "POST" && u.includes("/rules/configs/import/")) {
+        return Promise.resolve(jsonResponse({ imported: 0, reused: 2, enabled: 2, bindings: { R001: "CBR1_00000000000000000000", R002: "CBR1_00000000000000000001" } }));
       }
       if (u.includes("/rules/configs/") && !u.endsWith("/rules/configs/")) {
         return Promise.resolve(jsonResponse(configContent));

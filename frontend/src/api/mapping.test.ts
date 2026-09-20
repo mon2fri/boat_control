@@ -193,6 +193,28 @@ describe("mapRunRequestToWire", () => {
   });
 });
 
+describe("canonical rule catalog mapping", () => {
+  it("retains the canonical identifier and server enablement", () => {
+    const rule = mapWireRule({
+      rule_id: "R007",
+      rule_identifier: "CBR1_0123456789ABCDEFGHJK",
+      enabled: true,
+      enabled_position: 2,
+      name: "Status",
+      conditions: [],
+      logic: { format: "value_vs_column", column_name: "status", operator: "eq", target_value: "active" },
+    });
+    expect(rule.identifier).toBe("CBR1_0123456789ABCDEFGHJK");
+    expect(rule.enabled).toBe(true);
+    expect(rule.enabledPosition).toBe(2);
+  });
+
+  it("preserves an explicit empty enabled run selection", () => {
+    const request = mapRunRequestToWire({ ...baseRequest, ruleIndexes: [] });
+    expect(request.rule_ids).toEqual([]);
+  });
+});
+
 describe("filter row mapping", () => {
   it("serializes multiple values to filter_values", () => {
     const wire = mapFilterRowToWire({

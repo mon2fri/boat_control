@@ -4,7 +4,6 @@ import {
   parseTargetsResponseSchema,
   prepareResponseSchema,
   ruleDraftRequestSchema,
-  ruleMutationResponseSchema,
   replaceRulesResponseSchema,
   reorderRulesResponseSchema,
   rulesListResponseSchema,
@@ -21,6 +20,9 @@ import {
   wireRunMetadataSchema,
   wireRunRequestSchema,
   wireRuleSchema,
+  enablementResponseSchema,
+  ruleImportResponseSchema,
+  ruleSnapshotMutationSchema,
   wireSavedFilterListSchema,
   wireSavedFilterSchema,
   wireSettingsSchema,
@@ -301,9 +303,28 @@ export function parseTargetsInput(
 // --- Rules -----------------------------------------------------------------
 
 export function loadRules(): Promise<DomainRule[]> {
-  return apiRequest("/rules/", { schema: rulesListResponseSchema }).then((response) =>
-    response.rules.map(mapWireRule),
-  );
+  return loadRulesPage().then((page) => page.rules);
+}
+
+export interface RulesPage {
+  rules: DomainRule[];
+  pinnedRuleIds: string[];
+  total: number;
+  revision: number;
+  nextCursor: string | null;
+  hasMore: boolean;
+}
+
+export function loadRulesPage(cursor?: string | null): Promise<RulesPage> {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  return apiRequest(`/rules/${query}`, { schema: rulesListResponseSchema }).then((response) => ({
+    rules: response.rules.map(mapWireRule),
+    pinnedRuleIds: response.pinned_rule_ids,
+    total: response.total,
+    revision: response.revision,
+    nextCursor: response.next_cursor,
+    hasMore: response.has_more,
+  }));
 }
 
 export function getRule(index: string): Promise<DomainRule> {
@@ -312,30 +333,32 @@ export function getRule(index: string): Promise<DomainRule> {
 
 export function createRule(
   draft: Omit<DomainRule, "index"> & { index?: string },
-): Promise<{ ruleId: string; message: string }> {
+): Promise<DomainRule> {
   const body = ruleDraftRequestSchema.parse(mapRuleToWireDraft(draft));
-  return apiRequest("/rules/", { method: "POST", body, schema: ruleMutationResponseSchema }).then(
-    (r) => ({ ruleId: r.rule_id, message: r.message }),
-  );
+  return apiRequest("/rules/", { method: "POST", body, schema: wireRuleSchema }).then(mapWireRule);
 }
 
 export function updateRule(
   index: string,
   draft: Omit<DomainRule, "index"> & { index?: string },
-): Promise<{ ruleId: string; message: string }> {
+): Promise<DomainRule & { previousRuleId?: string; resultingRuleId?: string }> {
   const body = ruleDraftRequestSchema.parse(mapRuleToWireDraft(draft));
   return apiRequest(`/rules/${encodeURIComponent(index)}/`, {
     method: "PUT",
     body,
-    schema: ruleMutationResponseSchema,
-  }).then((r) => ({ ruleId: r.rule_id, message: r.message }));
+    schema: ruleSnapshotMutationSchema,
+  }).then((r) => ({
+    ...mapWireRule(r),
+    ...(r.previous_rule_id ? { previousRuleId: r.previous_rule_id } : {}),
+    ...(r.resulting_rule_id ? { resultingRuleId: r.resulting_rule_id } : {}),
+  }));
 }
 
-export function deleteRule(index: string): Promise<{ ruleId: string; message: string }> {
+export function deleteRule(index: string): Promise<DomainRule> {
   return apiRequest(`/rules/${encodeURIComponent(index)}/`, {
     method: "DELETE",
-    schema: ruleMutationResponseSchema,
-  }).then((r) => ({ ruleId: r.rule_id, message: r.message }));
+    schema: wireRuleSchema,
+  }).then(mapWireRule);
 }
 
 export function replaceRules(
@@ -355,6 +378,22 @@ export function reorderRules(ruleIds: string[]): Promise<{ message: string; rule
     body: { rule_ids: ruleIds },
     schema: reorderRulesResponseSchema,
   }).then((response) => ({ message: response.message, ruleIds: response.rule_ids }));
+}
+
+export function setRulesEnabled(ruleIds: string[], enabled: boolean): Promise<DomainRule[]> {
+  return apiRequest("/rules/enablement/", {
+    method: "POST",
+    body: { rule_ids: ruleIds, enabled },
+    schema: enablementResponseSchema,
+  }).then((response) => response.rules.map(mapWireRule));
+}
+
+export function importRulesConfig(content: unknown): Promise<z.infer<typeof ruleImportResponseSchema>> {
+  return apiRequest("/rules/configs/import/", {
+    method: "POST",
+    body: { content },
+    schema: ruleImportResponseSchema,
+  });
 }
 
 // --- Runs ------------------------------------------------------------------

@@ -239,6 +239,9 @@ export function mapWireRule(rule: WireRule): Rule {
     : null;
   return {
     index: rule.rule_id,
+    identifier: rule.rule_identifier ?? null,
+    enabled: rule.enabled ?? false,
+    enabledPosition: rule.enabled_position ?? null,
     name: rule.name,
     ...(rule.description ? { description: rule.description } : {}),
     conditions,
@@ -429,7 +432,9 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
     ruleViolationAttributeCount: distinctViolationAttributeCount,
     changedRowCount: result.comparison.rows_with_changes,
     changedAttributeCount: result.comparison.total_attribute_changes,
-    newBookCount: result.comparison.new_book_count ?? 0,
+    ...(result.comparison.new_book_count !== undefined
+      ? { newBookCount: result.comparison.new_book_count }
+      : {}),
   };
 
   // Per-rule results.
@@ -443,6 +448,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       const persistedSummary = validation.rule_summaries?.[ruleId];
       return {
         ruleIndex: ruleId,
+        ruleIdentifier: persistedSummary?.rule_identifier ?? sample?.rule_identifier ?? null,
         ruleName: persistedSummary?.name ?? sample?.rule_name ?? ruleId,
         ...(persistedSummary?.description
           ? { ruleDescription: persistedSummary.description }
@@ -558,6 +564,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       newBooksExcelReport: result.extra_column_display.new_books_excel_report,
       exceptionTables: result.extra_column_display.exception_tables,
     } } : {}),
+    ...(result.rule_bindings ? { ruleBindings: { ...result.rule_bindings } } : {}),
   };
 }
 

@@ -143,6 +143,9 @@ export const wireGroupNodeSchema: z.ZodType<WireGroupNode> = z.lazy(() =>
 
 export const wireRuleSchema = z.object({
   rule_id: z.string().regex(/^R\d{3,}$/),
+  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
+  enabled: z.boolean().optional(),
+  enabled_position: z.number().int().positive().nullable().optional(),
   name: z.string(),
   description: z.string().optional(),
   conditions: z.array(wireConditionSchema).optional(),
@@ -158,17 +161,37 @@ export type WireRule = z.infer<typeof wireRuleSchema>;
 export const rulesListResponseSchema = z.object({
   version: z.number().int(),
   rules: z.array(wireRuleSchema),
+  pinned_rule_ids: z.array(z.string()).default([]),
+  total: z.number().int().nonnegative().default(0),
+  revision: z.number().int().nonnegative().default(0),
+  next_cursor: z.string().nullable().default(null),
+  has_more: z.boolean().default(false),
 });
 
-export const ruleMutationResponseSchema = z.object({
-  rule_id: z.string(),
-  message: z.string(),
+export const ruleSnapshotMutationSchema = wireRuleSchema.extend({
+  previous_rule_id: z.string().optional(),
+  resulting_rule_id: z.string().optional(),
 });
+
+/** Legacy mutation acknowledgements remain parseable for old saved-run/API fixtures. */
+export const ruleMutationResponseSchema = z.union([
+  ruleSnapshotMutationSchema,
+  z.object({ rule_id: z.string(), message: z.string() }),
+]);
+
+export const enablementResponseSchema = z.object({ rules: z.array(wireRuleSchema) });
 
 export const replaceRulesResponseSchema = z.object({
   message: z.string(),
   rule_count: z.number(),
   next_index: z.number(),
+});
+
+export const ruleImportResponseSchema = z.object({
+  imported: z.number().int().nonnegative(),
+  reused: z.number().int().nonnegative(),
+  enabled: z.number().int().nonnegative(),
+  bindings: z.record(z.string(), z.string()),
 });
 
 export const reorderRulesResponseSchema = z.object({
@@ -311,6 +334,7 @@ export const wireComparisonSchema = z.object({
 export const wireViolationSchema = z.object({
   row_index: z.number().int(),
   rule_id: z.string(),
+  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
   rule_name: z.string(),
   key_columns: z.record(z.string(), wireScalarSchema),
   details: z.string(),
@@ -338,8 +362,9 @@ export const wireValidationSchema = z.object({
   violating_attributes_by_rule: z.record(z.string(), z.number().int().nonnegative()).optional(),
   rule_summaries: z.record(
     z.string(),
-    z.object({
-      name: z.string(),
+      z.object({
+        name: z.string(),
+        rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
       description: z.string().optional(),
       logic: z.string(),
       condition: z.string().optional(),
@@ -352,6 +377,7 @@ export const wireValidationSchema = z.object({
 export const wireRunResultSchema = z.object({
   comparison: wireComparisonSchema,
   validation: wireValidationSchema,
+  rule_bindings: z.record(z.string(), z.string().nullable()).optional(),
   common_columns: z.array(z.string()),
   target_columns: z.array(z.string()).nullable(),
   key_columns: z.array(z.string()).optional(),

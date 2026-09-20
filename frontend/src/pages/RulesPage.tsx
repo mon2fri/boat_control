@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RuleEditor } from "../features/rules/RuleEditor";
-import { useCreateRule, useDeleteRule, useReorderRules, useRules, useUpdateRule } from "../features/rules/useRules";
+import { useCreateRule, useDeleteRule, useReorderRules, useRules, useSetRulesEnabled, useUpdateRule } from "../features/rules/useRules";
 import { SortableRuleList } from "../features/rules/SortableRuleList";
 import { useFamilies } from "../features/settings/useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { ConfigManager } from "../features/configs/ConfigManager";
-import { resolveRulesConfig, mapRulesToConfigContent } from "../api/configContent";
-import { replaceRules as replaceRulesApi } from "../api/endpoints";
+import { mapRulesToConfigContent } from "../api/configContent";
+import { importRulesConfig } from "../api/endpoints";
 import type { Rule, RuleDraft } from "../api/domain";
 
 const RULES_KEY = ["rules"] as const;
@@ -25,6 +25,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
   const updateRule = useUpdateRule();
   const deleteRule = useDeleteRule();
   const reorderRules = useReorderRules();
+  const setRulesEnabled = useSetRulesEnabled();
 
   const familiesQuery = useFamilies();
   const families = familiesQuery.data ?? [];
@@ -36,8 +37,10 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
   const [configError, setConfigError] = useState<string | null>(null);
   const [isApplyingConfig, setIsApplyingConfig] = useState(false);
-  const initialized = useRef(false);
   const queryClient = useQueryClient();
+  const [catalogPage, setCatalogPage] = useState(0);
+  const [syncedEnabledKey, setSyncedEnabledKey] = useState<string | null>(null);
+  const [paginationNotice, setPaginationNotice] = useState<string | null>(null);
 
   const columns = state.comparisonColumns.length > 0 ? state.comparisonColumns : (state.header?.common ?? []);
   const selected = state.selectedRuleIndexes;
@@ -47,41 +50,49 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     void navigate("/results");
   }
 
+  const catalogPages = rules.pages;
+  const currentServerPage = catalogPages[catalogPage] ?? catalogPages[0];
+  const pinnedIds = new Set(rules.pinnedRuleIds);
+  const pinnedRules = rules.data.filter((rule) => pinnedIds.has(rule.index));
+  const visibleRules = currentServerPage
+    ? [...new Map([...pinnedRules, ...currentServerPage.rules].map((rule) => [rule.index, rule])).values()]
+    : [];
+
   useEffect(() => {
-    if (!initialized.current && rules.data && rules.data.length > 0) {
-      initialized.current = true;
-      dispatch({ type: "setSelectedRules", ruleIndexes: rules.data.map((r) => r.index) });
+    const enabledKey = rules.data.filter((rule) => rule.enabled).map((rule) => rule.index).join(",");
+    if (catalogPages.length === 1 && rules.data.length > 0 && enabledKey !== syncedEnabledKey) {
+      setSyncedEnabledKey(enabledKey);
+      dispatch({
+        type: "setSelectedRules",
+        ruleIndexes: rules.data.filter((rule) => rule.enabled).map((rule) => rule.index),
+      });
     }
-  }, [rules.data, dispatch]);
+  }, [catalogPages.length, rules.data, syncedEnabledKey, dispatch]);
+
+  useEffect(() => {
+    if (!rules.isError || paginationNotice) return;
+    const message = rules.error instanceof Error ? rules.error.message : String(rules.error);
+    if (!message.includes("cursor") && !message.includes("Catalog changed") && !message.includes("409")) return;
+    setPaginationNotice("The catalog changed while paging. The first page was refreshed.");
+    setCatalogPage(0);
+    void queryClient.invalidateQueries({ queryKey: RULES_KEY });
+  }, [rules.isError, rules.error, paginationNotice, queryClient]);
 
   const handleConfigContent = useCallback((content: unknown) => {
     setLoadedConfigData(content);
   }, []);
+  const handleConfigDone = useCallback(() => setConfigLoadName(null), []);
 
-  // Process loaded config content: resolve families, apply rules
+  // Process loaded config content through the backend's atomic catalog import.
   useEffect(() => {
-    if (!loadedConfigData || families.length === 0) return;
-
-    const availableCols = columns;
-    const { drafts, warnings } = resolveRulesConfig(loadedConfigData, families, availableCols);
-
-    const warningMessages = warnings.map((w) => w.message);
-    if (warningMessages.length > 0) {
-      setConfigWarnings(warningMessages);
-      setTimeout(() => setConfigWarnings([]), 10000);
-    }
+    if (!loadedConfigData) return;
 
     setIsApplyingConfig(true);
     setConfigError(null);
-
-    // Replace all rules atomically. This resets IDs to R001...Rxxx.
-    // Even an empty drafts array is sent to clear all rules and reset next_index.
-    replaceRulesApi(drafts)
-      .then(() => {
-        // Reset the first-load guard so the auto-select-all effect below
-        // re-runs when the refreshed rule catalog arrives, picking up every
-        // newly-applied rule's checkbox automatically.
-        initialized.current = false;
+    importRulesConfig(loadedConfigData)
+      .then((result) => {
+        setConfigWarnings([`Configuration applied: ${result.imported} imported, ${result.reused} reused, ${result.enabled} enabled.`]);
+        setCatalogPage(0);
         void queryClient.invalidateQueries({ queryKey: RULES_KEY });
       })
       .catch((err: unknown) => {
@@ -92,29 +103,45 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
         setIsApplyingConfig(false);
         setLoadedConfigData(null);
       });
-  }, [loadedConfigData, families, columns, queryClient]);
+  }, [loadedConfigData, queryClient]);
 
   function toggle(index: string): void {
     const next = selected.includes(index)
       ? selected.filter((i) => i !== index)
       : [...selected, index];
     dispatch({ type: "setSelectedRules", ruleIndexes: next });
+    setRulesEnabled.mutate({ ruleIds: [index], enabled: !selected.includes(index) });
   }
 
-  function toggleAll(ruleIds: string[]): void {
-    dispatch({ type: "setSelectedRules", ruleIndexes: ruleIds });
+  function toggleAll(ruleIds: string[], enabled: boolean): void {
+    const next = enabled
+      ? [...new Set([...selected, ...ruleIds])]
+      : selected.filter((id) => !ruleIds.includes(id));
+    dispatch({ type: "setSelectedRules", ruleIndexes: next });
+    setRulesEnabled.mutate({ ruleIds, enabled });
   }
 
   function handleSave(draft: RuleDraft): void {
     if (editor.mode === "edit") {
       updateRule.mutate(
         { index: editor.rule.index, draft },
-        { onSuccess: () => setEditor({ mode: "closed" }) },
+        {
+          onSuccess: (updated) => {
+            if (updated.resultingRuleId && updated.previousRuleId) {
+              dispatch({
+                type: "setSelectedRules",
+                ruleIndexes: selected
+                  .map((id) => id === updated.previousRuleId ? updated.resultingRuleId! : id),
+              });
+            }
+            setEditor({ mode: "closed" });
+          },
+        },
       );
     } else {
       createRule.mutate(draft, {
         onSuccess: (created) => {
-          dispatch({ type: "setSelectedRules", ruleIndexes: [...selected, created.ruleId] });
+           dispatch({ type: "setSelectedRules", ruleIndexes: [...selected, created.index] });
           setEditor({ mode: "closed" });
         },
       });
@@ -164,7 +191,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                   <p role="status">No rules configured yet. Add one below.</p>
                 ) : (
                   <SortableRuleList
-                    rules={rules.data}
+                    rules={visibleRules}
                     selected={selected}
                     validColumns={columns}
                     disabled={disabled || reorderRules.isPending}
@@ -173,8 +200,25 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                     onEdit={(rule) => setEditor({ mode: "edit", rule })}
                     onDelete={setPendingDelete}
                     onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}
+                    serverPaged
                   />
                 )}
+                <div className="config-inline-row">
+                  <button type="button" className="btn" disabled={catalogPage === 0} onClick={() => setCatalogPage((page) => page - 1)}>Previous</button>
+                  <span>Catalog page {catalogPage + 1}</span>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={rules.isFetchingNextPage || (!rules.hasNextPage && catalogPage >= catalogPages.length - 1)}
+                    onClick={() => {
+                      if (catalogPage < catalogPages.length - 1) setCatalogPage((page) => page + 1);
+                      else void rules.fetchNextPage().then(() => setCatalogPage((page) => page + 1));
+                    }}
+                  >
+                    {rules.isFetchingNextPage ? "Loading…" : "Next page"}
+                  </button>
+                </div>
+                {paginationNotice && <p className="alert alert--warn" role="status">{paginationNotice}</p>}
                 {editor.mode === "closed" && (
                   <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
                     + Add rule
@@ -231,7 +275,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
             configType="rules"
             name={configLoadName}
             onLoad={handleConfigContent}
-            onDone={() => setConfigLoadName(null)}
+            onDone={handleConfigDone}
           />
         )}
 
@@ -303,8 +347,8 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
             {rules.data.length === 0 ? (
               <p role="status">No rules configured yet. Add one below.</p>
             ) : (
-              <SortableRuleList
-                rules={rules.data}
+             <SortableRuleList
+                rules={visibleRules}
                 selected={selected}
                 validColumns={columns}
                 disabled={reorderRules.isPending}
@@ -313,13 +357,30 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                 onEdit={(rule) => setEditor({ mode: "edit", rule })}
                 onDelete={setPendingDelete}
                 onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}
+                serverPaged
               />
             )}
             {editor.mode === "closed" && (
-              <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
+           <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
                 + Add rule
               </button>
             )}
+            <div className="config-inline-row">
+              <button type="button" className="btn" disabled={catalogPage === 0} onClick={() => setCatalogPage((page) => page - 1)}>Previous</button>
+              <span>Catalog page {catalogPage + 1}</span>
+              <button
+                type="button"
+                className="btn"
+                disabled={rules.isFetchingNextPage || (!rules.hasNextPage && catalogPage >= catalogPages.length - 1)}
+                onClick={() => {
+                  if (catalogPage < catalogPages.length - 1) setCatalogPage((page) => page + 1);
+                  else void rules.fetchNextPage().then(() => setCatalogPage((page) => page + 1));
+                }}
+              >
+                {rules.isFetchingNextPage ? "Loading…" : "Next page"}
+              </button>
+            </div>
+            {paginationNotice && <p className="alert alert--warn" role="status">{paginationNotice}</p>}
           </div>
 
           {editor.mode !== "closed" && (
@@ -373,7 +434,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
           configType="rules"
           name={configLoadName}
           onLoad={handleConfigContent}
-          onDone={() => setConfigLoadName(null)}
+          onDone={handleConfigDone}
         />
       )}
 

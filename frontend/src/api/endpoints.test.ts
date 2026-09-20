@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { replaceRules } from "./endpoints";
+import { loadRulesPage, replaceRules, setRulesEnabled } from "./endpoints";
 import type { RuleDraft } from "./domain";
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
@@ -59,5 +59,40 @@ describe("replaceRules", () => {
     expect(emptyBody.rules).toEqual([]);
 
     vi.unstubAllGlobals();
+  });
+});
+
+describe("catalog pagination and enablement", () => {
+  const rule = {
+    rule_id: "R001",
+    rule_identifier: "CBR1_0123456789ABCDEFGHJK",
+    enabled: true,
+    name: "Rule",
+    conditions: [],
+    logic: { format: "value_vs_column", column_name: "status", operator: "eq", target_value: "active" },
+  };
+
+  it("sends the opaque continuation cursor unchanged", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      version: 2,
+      rules: [rule],
+      pinned_rule_ids: ["R001"],
+      total: 51,
+      revision: 4,
+      next_cursor: "opaque-token",
+      has_more: true,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const page = await loadRulesPage("cursor/value");
+    expect(page.nextCursor).toBe("opaque-token");
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("cursor%2Fvalue");
+  });
+
+  it("posts explicit IDs for atomic enablement", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ rules: [rule] }));
+    vi.stubGlobal("fetch", fetchMock);
+    await setRulesEnabled(["R001", "R002"], false);
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ rule_ids: ["R001", "R002"], enabled: false });
   });
 });
