@@ -244,6 +244,7 @@ export function mapWireRule(rule: WireRule): Rule {
   return {
     index: rule.rule_id,
     identifier: rule.rule_identifier ?? null,
+    ...(rule.equivalent_rule_id ? { equivalentRuleId: rule.equivalent_rule_id } : {}),
     enabled: rule.enabled ?? false,
     enabledPosition: rule.enabled_position ?? null,
     name: rule.name,

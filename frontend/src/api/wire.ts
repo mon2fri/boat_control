@@ -144,6 +144,8 @@ export const wireGroupNodeSchema: z.ZodType<WireGroupNode> = z.lazy(() =>
 export const wireRuleSchema = z.object({
   rule_id: z.string().regex(/^R\d{3,}$/),
   rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/),
+  equivalent_rule: z.boolean().optional(),
+  equivalent_rule_id: z.string().optional(),
   enabled: z.boolean(),
   enabled_position: z.number().int().positive().nullable().optional(),
   name: z.string(),

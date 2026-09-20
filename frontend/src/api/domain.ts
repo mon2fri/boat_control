@@ -86,6 +86,7 @@ export interface LogicClause {
 export interface Rule {
   index: string;
   identifier?: string | null;
+  equivalentRuleId?: string;
   enabled?: boolean;
   enabledPosition?: number | null;
   name: string;

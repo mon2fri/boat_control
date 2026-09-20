@@ -147,6 +147,11 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     } else {
       createRule.mutate(draft, {
         onSuccess: (created) => {
+           if (created.equivalentRuleId) {
+             setConfigWarnings([
+               `An equivalent rule already exists as ${created.equivalentRuleId}. The existing rule was kept instead of creating a duplicate.`,
+             ]);
+           }
            dispatch({ type: "setSelectedRules", ruleIndexes: [...selected, created.index] });
           setEditor({ mode: "closed" });
         },

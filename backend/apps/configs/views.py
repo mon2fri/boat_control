@@ -12,6 +12,7 @@ from apps.configs.serializers import (
     ConfigCreateSerializer,
     ConfigListResponseSerializer,
     ConfigUpdateSerializer,
+    RuleConfigSaveSerializer,
 )
 from apps.configs.services import (
     ConfigConflictError,
@@ -144,6 +145,25 @@ class RulesConfigDetailView(BaseConfigDetailView):
         return get_rule_config_dir()
 
     def put(self, request: Request, name: str) -> Response:
+        if "content" not in request.data:
+            serializer = RuleConfigSaveSerializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            try:
+                existing = get_config(self.directory, name)
+                if existing is None:
+                    raise ConfigNotFoundError(f"Configuration '{name}' not found.")
+                version = serializer.validated_data["version"]
+                if existing.version != version:
+                    raise ConfigConflictError(
+                        f"Configuration '{name}' has been modified by another session."
+                    )
+                content = _enabled_rule_payload()
+                config = update_config(self.directory, name, content, version)
+            except (ConfigNotFoundError, ConfigConflictError, ConfigNameError) as exc:
+                status = 409 if isinstance(exc, ConfigConflictError) else 404
+                return Response({"error": str(exc)}, status=status)
+            return Response({"name": config.name, "version": config.version, "content": content})
+
         serializer = ConfigUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         content = serializer.validated_data["content"]

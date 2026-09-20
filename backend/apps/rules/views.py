@@ -6,6 +6,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.rules.identifiers import calculate_rule_identifier
+from apps.rules.models import StoredValidationRule
 from apps.rules.repository import (
     CatalogCorruptionError,
     CatalogError,
@@ -120,8 +122,14 @@ class RulesListView(APIView):  # type: ignore[misc]
             return error
         assert draft is not None
         try:
+            identifier = calculate_rule_identifier(draft)
+            equivalent = StoredValidationRule.objects.filter(identity_id=identifier).first()
             snapshot = create_catalog_rule(draft, enabled=True)
-            return Response(_snapshot_to_dict(snapshot), status=201)
+            response = _snapshot_to_dict(snapshot)
+            if equivalent is not None:
+                response["equivalent_rule"] = True
+                response["equivalent_rule_id"] = equivalent.rule_id
+            return Response(response, status=201)
         except (CatalogError, IdentityCollisionError, CatalogCorruptionError) as exc:
             return _catalog_error(exc)
 

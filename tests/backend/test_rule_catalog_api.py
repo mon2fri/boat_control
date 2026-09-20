@@ -112,3 +112,50 @@ def test_export_reads_enabled_catalog_and_rejects_forged_identifier(tmp_path) ->
     response = client.post("/api/rules/configs/import/", {"rules": [forged]}, format="json")
     assert response.status_code == 400
     assert RuleStoreState.objects.get(singleton_key=1).revision == 1
+
+
+@pytest.mark.django_db
+def test_business_edit_replaces_visible_rule_and_archives_previous_version() -> None:
+    client = APIClient()
+    original = client.post("/api/rules/", draft(), format="json").json()
+    edited = {**draft(target="pending"), "name": "Edited"}
+
+    response = client.put(f"/api/rules/{original['rule_id']}/", edited, format="json")
+
+    assert response.status_code == 200
+    assert response.json()["resulting_rule_id"] != original["rule_id"]
+    assert client.get("/api/rules/").json()["total"] == 1
+    previous = StoredValidationRule.objects.get(rule_id=original["rule_id"])
+    assert previous.archived_at is not None
+
+
+@pytest.mark.django_db
+def test_duplicate_create_returns_equivalent_hint_without_overwriting_existing_metadata() -> None:
+    client = APIClient()
+    first = client.post("/api/rules/", draft(name="First"), format="json").json()
+
+    duplicate = client.post("/api/rules/", draft(name="Second"), format="json")
+
+    assert duplicate.status_code == 201
+    assert duplicate.json()["equivalent_rule"] is True
+    assert duplicate.json()["equivalent_rule_id"] == first["rule_id"]
+    assert client.get(f"/api/rules/{first['rule_id']}/").json()["name"] == "First"
+
+
+@pytest.mark.django_db
+def test_existing_rules_config_save_exports_current_enabled_set(tmp_path) -> None:
+    client = APIClient()
+    with override_settings(RULES_CONFIG_DIR=tmp_path):
+        rule = client.post("/api/rules/", draft(), format="json").json()
+        created = client.post("/api/rules/configs/", {"name": "snapshot"}, format="json")
+        assert created.status_code == 201
+        disabled = client.post(
+            "/api/rules/enablement/",
+            {"rule_ids": [rule["rule_id"]], "enabled": False},
+            format="json",
+        )
+        assert disabled.status_code == 200
+        saved = client.put("/api/rules/configs/snapshot/", {"version": 1}, format="json")
+
+    assert saved.status_code == 200
+    assert saved.json()["content"] == []

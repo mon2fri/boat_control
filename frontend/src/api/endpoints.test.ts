@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { createRule, exportRulesConfig, loadRulesPage, replaceRules, setRulesEnabled } from "./endpoints";
+import { createRule, exportRulesConfig, loadRulesPage, replaceRules, saveRulesConfig, setRulesEnabled } from "./endpoints";
 import type { RuleDraft } from "./domain";
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
@@ -147,5 +147,18 @@ describe("saved rule identifiers", () => {
     const saved = await createRule(makeDraft("Saved rule"));
 
     expect(saved.identifier).toBe("CBR1_0123456789ABCDEFGHJK");
+  });
+});
+
+describe("rules config save", () => {
+  it("saves the committed enabled catalog without sending rendered rule content", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ name: "prod", version: 2, content: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await saveRulesConfig("prod", 1);
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/rules/configs/prod/");
+    expect(JSON.parse(init.body as string)).toEqual({ version: 1 });
   });
 });

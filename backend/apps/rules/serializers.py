@@ -59,6 +59,8 @@ class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
 class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     rule_id = serializers.CharField()
     rule_identifier = serializers.CharField(allow_null=True)
+    equivalent_rule = serializers.BooleanField(required=False)
+    equivalent_rule_id = serializers.CharField(required=False)
     enabled = serializers.BooleanField()
     enabled_position = serializers.IntegerField(allow_null=True, required=False)
     name = serializers.CharField()

@@ -713,6 +713,17 @@ export function updateConfig(
   });
 }
 
+export function saveRulesConfig(
+  name: string,
+  version: number,
+): Promise<{ name: string; version: number; content: unknown }> {
+  return apiRequest(`/rules/configs/${encodeURIComponent(name)}/`, {
+    method: "PUT",
+    body: { version },
+    schema: z.object({ name: z.string(), version: z.number(), content: z.unknown() }),
+  });
+}
+
 // --- Family CRUD ---------------------------------------------------------
 
 export function listFamilies(): Promise<Family[]> {

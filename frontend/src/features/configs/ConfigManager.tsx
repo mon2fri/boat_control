@@ -115,16 +115,14 @@ export function ConfigManager({
                   >
                     Load config
                   </button>
-                  {configType !== "rules" && (
-                    <button
-                      type="button"
-                      className="btn"
-                      disabled={disabled || update.isPending}
-                      onClick={() => setShowSaveToConfigConfirm(true)}
-                    >
-                      Save to config
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={disabled || update.isPending}
+                    onClick={() => setShowSaveToConfigConfirm(true)}
+                  >
+                    Save to config
+                  </button>
                 </>
               )}
 
@@ -134,7 +132,7 @@ export function ConfigManager({
                 disabled={disabled}
                 onClick={() => setShowSavePrompt(true)}
               >
-                Save new config
+                 Save to new config
               </button>
 
               {selectedName && (

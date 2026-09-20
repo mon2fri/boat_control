@@ -227,9 +227,10 @@ def create_catalog_rule(draft: dict[str, Any], enabled: bool = True) -> RuleSnap
             StoredValidationRule.objects.select_for_update().filter(identity=identity).first()
         )
         if existing is not None:
-            if existing.archived_at is not None:
+            was_archived = existing.archived_at is not None
+            if was_archived:
                 existing.archived_at = None
-            existing.authored_payload = copy.deepcopy(draft)
+                existing.authored_payload = copy.deepcopy(draft)
             existing.enabled = enabled
             existing.enabled_position = _enabled_position() if enabled else None
             existing.save()
@@ -271,6 +272,7 @@ def update_catalog_rule(rule_id: str, draft: dict[str, Any]) -> RuleEditResult:
         was_enabled = previous.enabled and previous.archived_at is None
         previous.enabled = False
         previous.enabled_position = None
+        previous.archived_at = timezone.now()
         previous.save()
         if target is None:
             index = state.next_index
