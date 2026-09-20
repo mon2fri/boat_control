@@ -138,6 +138,46 @@ describe("RulesPage", () => {
     vi.unstubAllGlobals();
   });
 
+  it("allows multiple rules to be selected without moving their catalog rows", async () => {
+    const secondRule = {
+      ...wireRule,
+      rule_id: "R002",
+      rule_identifier: "CBR1_11111111111111111111",
+      enabled: false,
+      name: "Status active",
+    };
+    const list = {
+      ...rulesList,
+      rules: [wireRule, secondRule],
+      pinned_rule_ids: ["R001"],
+      total: 2,
+    };
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && String(_url).includes("/rules/enablement/")) {
+        return Promise.resolve(jsonResponse({ rules: [{ ...secondRule, enabled: true }] }));
+      }
+      return Promise.resolve(jsonResponse(list));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Status active/)).toBeInTheDocument());
+    const ruleList = screen.getByRole("list", { name: "Rules" });
+    const before = [...ruleList.querySelectorAll("li")].map((item) => item.textContent);
+    expect(before[0]).toContain("R001");
+    expect(before[1]).toContain("R002");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /R002/ }));
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: /R002/ })).toBeChecked());
+    const after = [...ruleList.querySelectorAll("li")].map((item) => item.textContent);
+    expect(after[0]).toContain("R001");
+    expect(after[1]).toContain("R002");
+    expect(fetchMock.mock.calls.some(([url, init]) =>
+      String(url).includes("/rules/enablement/") && init?.method === "POST",
+    )).toBe(true);
+  });
+
   it("wraps rule selection in a card with run action card below", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(rulesList));
     vi.stubGlobal("fetch", fetchMock);

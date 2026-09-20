@@ -53,14 +53,15 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
   const catalogPages = rules.pages;
   const currentServerPage = catalogPages[catalogPage] ?? catalogPages[0];
   const pinnedIds = new Set(rules.pinnedRuleIds);
-  const pinnedRules = rules.data.filter((rule) => pinnedIds.has(rule.index));
   const visibleRules = currentServerPage
-    ? [...new Map([...pinnedRules, ...currentServerPage.rules].map((rule) => [rule.index, rule])).values()]
+    ? rules.data.filter((rule) =>
+        pinnedIds.has(rule.index) || currentServerPage.rules.some((pageRule) => pageRule.index === rule.index),
+      )
     : [];
 
   useEffect(() => {
     const enabledKey = rules.data.filter((rule) => rule.enabled).map((rule) => rule.index).join(",");
-    if (catalogPages.length === 1 && enabledKey !== syncedEnabledKey) {
+    if (catalogPages.length === 1 && syncedEnabledKey === null) {
       setSyncedEnabledKey(enabledKey);
       dispatch({
         type: "setSelectedRules",
@@ -92,6 +93,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     importRulesConfig(loadedConfigData)
       .then((result) => {
         setConfigWarnings([`Configuration applied: ${result.imported} imported, ${result.reused} reused, ${result.enabled} enabled.`]);
+        setSyncedEnabledKey(null);
         setCatalogPage(0);
         void queryClient.invalidateQueries({ queryKey: RULES_KEY });
       })

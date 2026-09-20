@@ -77,6 +77,12 @@ def test_initial_listing_pins_enabled_and_continuation_is_keyset() -> None:
         )
         assert response.status_code == 201
     client = APIClient()
+    disabled = client.post(
+        "/api/rules/enablement/",
+        {"rule_ids": [f"R{index:03d}" for index in range(2, 53)], "enabled": False},
+        format="json",
+    )
+    assert disabled.status_code == 200
     enabled = client.post(
         "/api/rules/enablement/",
         {"rule_ids": ["R001"], "enabled": True},
@@ -175,3 +181,25 @@ def test_blank_name_is_unnamed_on_create_but_rejected_on_update() -> None:
     )
     assert rejected.status_code == 400
     assert "required when editing" in rejected.json()["error"]
+
+
+@pytest.mark.django_db
+def test_enabling_multiple_rules_preserves_the_other_selected_rules() -> None:
+    client = APIClient()
+    first = client.post("/api/rules/", draft(name="First"), format="json").json()
+    second = client.post(
+        "/api/rules/", draft(name="Second", target="pending"), format="json"
+    ).json()
+
+    disabled = client.post(
+        "/api/rules/enablement/", {"rule_ids": [first["rule_id"]], "enabled": False}, format="json"
+    )
+    assert disabled.status_code == 200
+    enabled = client.post(
+        "/api/rules/enablement/", {"rule_ids": [first["rule_id"]], "enabled": True}, format="json"
+    )
+    assert enabled.status_code == 200
+    listing = client.get("/api/rules/").json()["rules"]
+    assert {rule["rule_id"] for rule in listing if rule["enabled"]} == {
+        first["rule_id"], second["rule_id"]
+    }
