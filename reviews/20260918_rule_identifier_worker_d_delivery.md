@@ -156,7 +156,7 @@ Implemented against the accepted Worker B API:
 - immediate create/update snapshot handling;
 - optimistic single and explicit displayed-ID bulk enablement with rollback;
 - backend atomic config import, empty selection preservation, success counts, and stale-cursor refresh;
-- run request empty `rule_ids` preservation and optional canonical result/binding pass-through;
+- run request empty `rule_ids` preservation and strict new/legacy canonical result mapping;
 - focused endpoint, mapping, selection, pagination, and config-loader regression coverage.
 
 Verification results:
@@ -165,10 +165,8 @@ Verification results:
 - `npm --prefix frontend test -- --run tests/contract.test.ts tests/integration.test.ts`: **2 files, 49 tests passed**
 - `npm --prefix frontend run build`: **passed**; Vite generated rebuilt assets
 - `git diff --check`: **passed**
-- `uv run pytest -q tests/contracts tests/integration`: **17 passed, 3 failed**. The three backend
-  rule tests fail before assertions because their API clients are not marked for database access;
-  pytest-django raises `Database access not allowed` in Worker B's SQLite repository. This is outside
-  Worker D ownership and confirms the integrated backend gate is not releasable from this worktree.
+- The pre-C integration attempt had 17 passes and 3 database-access failures; after cherry-picking C's
+  test-isolation correction, the final integrated contract/integration run passed 20 tests.
 
 ## Final Delivery
 
