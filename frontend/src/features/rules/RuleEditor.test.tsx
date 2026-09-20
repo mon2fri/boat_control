@@ -58,6 +58,25 @@ describe("RuleEditor", () => {
     expect(draft.hideComparison).toBe(true);
   });
 
+  it("shows the canonical identifier while editing an existing rule", () => {
+    setup({
+      rule: {
+        index: "R004",
+        identifier: "CBR1_0123456789ABCDEFGHJK",
+        name: "Existing rule",
+        description: "",
+        conditions: [],
+        conditionJoin: null,
+        conditionGrouping: null,
+        groupTree: null,
+        logic: { id: "logic", format: "value", column: "status", operator: "equals", target: "active" },
+      },
+    });
+
+    expect(screen.getByText("Rule identifier")).toBeInTheDocument();
+    expect(screen.getByText("CBR1_0123456789ABCDEFGHJK")).toBeInTheDocument();
+  });
+
   it("requires a join once there is more than one condition", () => {
     const { onSave } = setup({ columns: ["a", "c1", "c2", "v1", "v2"] });
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "R" } });

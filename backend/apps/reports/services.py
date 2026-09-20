@@ -174,18 +174,23 @@ def _render_exception_rule_summary(validation: dict[str, Any]) -> str:
         violations = violations_by_rule.get(rule_id) or []
         sample = violations[0] if violations else {}
         name = summary.get("name") or sample.get("rule_name") or rule_id
+        identifier = (
+            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        )
         count = row_counts.get(rule_id, len(violations))
         rows.append(
             "<tr>"
             f"<td><span class='rule-id'>{_escape_html(rule_id)}</span>"
             f"{_escape_html(name)}</td>"
             f"<td class='number-cell'>{_escape_html(count)}</td>"
+            f"<td class='canonical-rule-identifier'>{_escape_html(identifier)}</td>"
             "</tr>"
         )
     return (
         "<section class='card'><h2>Exception Rule Summary</h2>"
         "<div class='table-scroll'><table class='result-table exception-rule-table'>"
-        "<thead><tr><th>Rule name</th><th>Exception records</th></tr></thead>"
+        "<thead><tr><th>Rule name</th><th>Exception records</th>"
+        "<th>Rule identifier</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div></section>"
     )
 
@@ -237,6 +242,7 @@ def _render_exception_table(
     headers = [
         *(key_columns or ["Row"]),
         "Rule Index",
+        "Rule identifier",
         *(aggregation_labels.get(column, column) for column in aggregation_columns),
         *exception_columns,
     ]
@@ -256,6 +262,9 @@ def _render_exception_table(
             row_values = [
                 *identity_values,
                 rule_id,
+                violation.get("rule_identifier")
+                or (validation.get("rule_summaries") or {}).get(rule_id, {}).get("rule_identifier")
+                or "Unavailable",
                 *(grouping.get(column, "—") for column in aggregation_columns),
                 *(extras.get(column, "—") for column in exception_columns),
             ]
@@ -374,6 +383,14 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(".result-table th:last-child, .result-table td:last-child { border-right:0; }")
     sections.append(".result-table tbody tr:last-child td { border-bottom:0; }")
     sections.append(".exception-rule-table th:last-child { text-align:right; }")
+    sections.append(
+        ".canonical-rule-identifier { text-align:right; font-family:ui-monospace,monospace; "
+        "font-size:.72rem; color:#64748b; overflow-wrap:anywhere; }"
+    )
+    sections.append(
+        ".result-rule-identifier { float:right; font-family:ui-monospace,monospace; "
+        "font-size:.72rem; color:#64748b; }"
+    )
     sections.append(
         ".exception-table-sort { border:0; background:transparent; color:inherit; cursor:pointer; "
         "font:inherit; font-weight:700; text-transform:uppercase; } "
@@ -627,6 +644,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         summary = rule_summaries.get(rule_id) or {}
         sample = violations[0] if violations else {}
         rule_name = summary.get("name") or sample.get("rule_name") or rule_id
+        rule_identifier = summary.get("rule_identifier") or sample.get("rule_identifier")
         logic = (
             summary.get("logic")
             or sample.get("rule_logic")
@@ -637,7 +655,14 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
             rule_id, len(violations)
         )
         sections.append(f"<section class='card' id='rule-{_escape_html(rule_id)}'>")
-        sections.append(f"<h2>{_escape_html(rule_id)} — {_escape_html(rule_name)}</h2>")
+        identifier_markup = (
+            f"<span class='result-rule-identifier'>{_escape_html(rule_identifier)}</span>"
+            if rule_identifier
+            else ""
+        )
+        sections.append(
+            f"<h2>{_escape_html(rule_id)} — {_escape_html(rule_name)}{identifier_markup}</h2>"
+        )
         if summary.get("description"):
             sections.append(
                 "<p class='rule-description'>"
@@ -847,6 +872,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     next_row += 1
     overall.cell(next_row, 1, "Rule name")
     overall.cell(next_row, 2, "Exception records")
+    overall.cell(next_row, 3, "Rule identifier")
     summaries = validation.get("rule_summaries") or {}
     violations_by_rule = validation.get("violations_by_rule") or {}
     rule_ids = list(dict.fromkeys([*violations_by_rule, *summaries]))
@@ -857,20 +883,27 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         sample = violations[0] if violations else {}
         summary = summaries.get(rule_id) or {}
         rule_name = summary.get("name") or sample.get("rule_name") or rule_id
+        rule_identifier = (
+            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        )
         overall.cell(next_row, 1, _excel_value(rule_name))
         overall.cell(next_row, 2, row_counts.get(rule_id, len(violations)))
+        overall.cell(next_row, 3, _excel_value(rule_identifier))
 
     rule_summary_sheet = workbook.create_sheet("Rule Summary")
     rule_summary_sheet["A1"] = "Rule Summary"
     _append_row(
         rule_summary_sheet,
         3,
-        ["Rule index", "Rule name", "Description", "Exception records"],
+        ["Rule index", "Rule name", "Description", "Exception records", "Rule identifier"],
     )
     for row_number, rule_id in enumerate(rule_ids, start=4):
         violations = violations_by_rule.get(rule_id) or []
         sample = violations[0] if violations else {}
         summary = summaries.get(rule_id) or {}
+        rule_identifier = (
+            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        )
         _append_row(
             rule_summary_sheet,
             row_number,
@@ -879,6 +912,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                 summary.get("name") or sample.get("rule_name") or rule_id,
                 summary.get("description", ""),
                 row_counts.get(rule_id, len(violations)),
+                rule_identifier,
             ],
         )
 
@@ -1039,6 +1073,10 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         expectation = summary.get("logic") or sample.get("rule_logic") or ""
         sheet["A4"] = "Expectation:"
         sheet["B4"] = _excel_value(_humanize_rule_logic(expectation))
+        sheet["A5"] = "Rule identifier:"
+        sheet["B5"] = _excel_value(
+            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        )
 
         extra_columns = list(
             dict.fromkeys(
@@ -1084,6 +1122,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     exc_headers = [
         *(key_columns or ["Row"]),
         "Rule Index",
+        "Rule identifier",
         *(
             agg_labels.get(col, col) for col in agg_columns
         ),
@@ -1110,6 +1149,11 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                         violation.get("row_index", ""),
                     ),
                     _excel_value(rule_id),
+                    _excel_value(
+                        violation.get("rule_identifier")
+                        or (summaries.get(rule_id) or {}).get("rule_identifier")
+                        or "Unavailable"
+                    ),
                     *(
                         _excel_value(grouping.get(col, "")) for col in agg_columns
                     ),

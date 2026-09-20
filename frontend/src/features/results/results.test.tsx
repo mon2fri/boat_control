@@ -182,6 +182,7 @@ describe("result components", () => {
     const region = screen.getByRole("region", { name: "Exception Rule Summary" });
     expect(within(region).getByRole("columnheader", { name: "Rule name" })).toBeInTheDocument();
     expect(within(region).getByRole("columnheader", { name: "Exception records" })).toBeInTheDocument();
+    expect(within(region).getByRole("columnheader", { name: "Rule identifier" })).toBeInTheDocument();
     expect(within(region).getByRole("cell", { name: /Region present/ })).toBeInTheDocument();
     expect(within(region).getByRole("cell", { name: "1,250" })).toBeInTheDocument();
   });
@@ -208,6 +209,15 @@ describe("result components", () => {
   it("shows a provided rule description in the result section", () => {
     render(<RuleResultSection result={ruleResult} />);
     expect(screen.getByText("Ensures every record has an assigned region.")).toBeVisible();
+  });
+
+  it("shows the canonical identifier at the far right of the result card", () => {
+    render(
+      <RuleResultSection
+        result={{ ...ruleResult, ruleIdentifier: "CBR1_0123456789ABCDEFGHJK" }}
+      />,
+    );
+    expect(screen.getByText("CBR1_0123456789ABCDEFGHJK")).toBeVisible();
   });
 
   it("sorts detail rows by any column and toggles direction", () => {

@@ -111,6 +111,8 @@ class TestExportHtml:
         assert "Attribute changes" in result
         assert "Exception Rule Summary" in result
         assert "Exception records" in result
+        assert "Rule identifier" in result
+        assert "CBR1_00000000000000000000" in result
         assert "Checks score eligibility." in result
         assert "Comparing columns" in result
         assert "<span class='tag'>score</span>" in result
@@ -269,23 +271,26 @@ class TestExportExcel:
         )
 
         rule_summary = workbook["Rule Summary"]
-        assert [rule_summary.cell(3, column).value for column in range(1, 5)] == [
+        assert [rule_summary.cell(3, column).value for column in range(1, 6)] == [
             "Rule index",
             "Rule name",
             "Description",
             "Exception records",
+            "Rule identifier",
         ]
-        assert [rule_summary.cell(4, column).value for column in range(1, 5)] == [
+        assert [rule_summary.cell(4, column).value for column in range(1, 6)] == [
             "R001",
             "Test Rule",
             "Checks score eligibility.",
             1,
+            "CBR1_00000000000000000000",
         ]
-        assert [rule_summary.cell(5, column).value for column in range(1, 5)] == [
+        assert [rule_summary.cell(5, column).value for column in range(1, 6)] == [
             "R002",
             "No exception",
             "A rule with no matching exceptions.",
             0,
+            "Unavailable",
         ]
 
         changes = workbook["Attribute Changes"]
@@ -307,7 +312,8 @@ class TestExportExcel:
         assert rule["B3"].value == "Condition 1 AND Condition 2"
         assert rule["A4"].value == "Expectation:"
         assert rule["B4"].value == "score less than '20'"
-        assert rule["A5"].value is None
+        assert rule["A5"].value == "Rule identifier:"
+        assert rule["B5"].value == "CBR1_00000000000000000000"
         assert rule["A6"].value is None
         assert [rule.cell(7, column).value for column in range(1, 5)] == [
             "id",
@@ -414,7 +420,8 @@ class TestExportExcel:
         assert "region" in headers
         assert sheet.cell(4, 1).value == "456"
         assert sheet.cell(4, 2).value == "R001"
-        assert sheet.cell(4, 3).value == "EMEA"
+        assert sheet.cell(4, 3).value == "CBR1_00000000000000000000"
+        assert sheet.cell(4, 4).value == "EMEA"
 
     def test_html_export_includes_configured_exception_table(self, sample_result: dict) -> None:
         sample_result["exception_columns"] = ["region"]

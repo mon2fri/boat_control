@@ -126,6 +126,12 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
       aria-label={rule ? `Edit rule ${rule.index}` : "New rule"}
     >
       <h3 className="card-heading">{rule ? `Edit ${rule.index}` : "New rule"}</h3>
+      {rule?.identifier && (
+        <p className="rule-editor-identifier">
+          <span>Rule identifier</span>
+          <code>{rule.identifier}</code>
+        </p>
+      )}
 
       <details className="rule-semantic-help">
         <summary>How rules work — what does this rule check?</summary>

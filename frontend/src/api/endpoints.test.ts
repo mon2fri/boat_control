@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { exportRulesConfig, loadRulesPage, replaceRules, setRulesEnabled } from "./endpoints";
+import { createRule, exportRulesConfig, loadRulesPage, replaceRules, setRulesEnabled } from "./endpoints";
 import type { RuleDraft } from "./domain";
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
@@ -128,5 +128,24 @@ describe("catalog pagination and enablement", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(String(fetchMock.mock.calls[0]![0])).toContain("/rules/configs/");
     expect(JSON.parse(init.body as string)).toEqual({ name: "prod" });
+  });
+});
+
+describe("saved rule identifiers", () => {
+  it("accepts the server-calculated identifier returned by create", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      rule_id: "R001",
+      rule_identifier: "CBR1_0123456789ABCDEFGHJK",
+      enabled: true,
+      name: "Saved rule",
+      description: "",
+      conditions: [],
+      logic: { format: "value_vs_column", column_name: "status", operator: "eq", target_value: "active" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const saved = await createRule(makeDraft("Saved rule"));
+
+    expect(saved.identifier).toBe("CBR1_0123456789ABCDEFGHJK");
   });
 });
