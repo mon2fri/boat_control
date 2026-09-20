@@ -143,12 +143,12 @@ export const wireGroupNodeSchema: z.ZodType<WireGroupNode> = z.lazy(() =>
 
 export const wireRuleSchema = z.object({
   rule_id: z.string().regex(/^R\d{3,}$/),
-  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
-  enabled: z.boolean().optional(),
+  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/),
+  enabled: z.boolean(),
   enabled_position: z.number().int().positive().nullable().optional(),
   name: z.string(),
-  description: z.string().optional(),
-  conditions: z.array(wireConditionSchema).optional(),
+  description: z.string(),
+  conditions: z.array(wireConditionSchema),
   condition_relation: z.enum(["and", "or"]).optional(),
   grouping: z.array(z.string()).optional(),
   grouping_tree: wireGroupNodeSchema.optional(),
@@ -334,7 +334,7 @@ export const wireComparisonSchema = z.object({
 export const wireViolationSchema = z.object({
   row_index: z.number().int(),
   rule_id: z.string(),
-  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
+  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/),
   rule_name: z.string(),
   key_columns: z.record(z.string(), wireScalarSchema),
   details: z.string(),
@@ -364,9 +364,9 @@ export const wireValidationSchema = z.object({
     z.string(),
       z.object({
         name: z.string(),
-        rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
+        rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/),
       description: z.string().optional(),
-      logic: z.string(),
+      logic: z.string().optional(),
       condition: z.string().optional(),
       condition_grouping: z.string().optional(),
       hide_comparison: z.boolean().optional(),
@@ -377,7 +377,7 @@ export const wireValidationSchema = z.object({
 export const wireRunResultSchema = z.object({
   comparison: wireComparisonSchema,
   validation: wireValidationSchema,
-  rule_bindings: z.record(z.string(), z.string().nullable()).optional(),
+  rule_bindings: z.record(z.string(), z.string()),
   common_columns: z.array(z.string()),
   target_columns: z.array(z.string()).nullable(),
   key_columns: z.array(z.string()).optional(),
@@ -409,6 +409,38 @@ export const wireRunDocumentSchema = z.object({
   result: wireRunResultSchema,
 });
 export type WireRunDocument = z.infer<typeof wireRunDocumentSchema>;
+
+// Persisted documents from before Worker C have no canonical fields. They are
+// accepted only on the explicit legacy load path and never receive guessed IDs.
+const legacyViolationSchema = wireViolationSchema.extend({
+  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
+});
+const legacyValidationSchema = wireValidationSchema.extend({
+  violations_by_rule: z.record(z.string(), z.array(legacyViolationSchema)),
+  rule_summaries: z.record(z.string(), z.object({
+    name: z.string(),
+    rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
+    description: z.string().optional(),
+    logic: z.string().optional(),
+    condition: z.string().optional(),
+    condition_grouping: z.string().optional(),
+    hide_comparison: z.boolean().optional(),
+  })).optional(),
+});
+const legacyRunResultSchema = wireRunResultSchema.extend({
+  validation: legacyValidationSchema,
+  rule_bindings: z.record(z.string(), z.string()).optional(),
+});
+export const legacyWireRunDocumentSchema = z.object({
+  run_id: z.string(),
+  report_name: z.string(),
+  file_a_name: z.string(),
+  file_b_name: z.string(),
+  created_at: z.string(),
+  result: legacyRunResultSchema,
+});
+export type LegacyWireRunDocument = z.infer<typeof legacyWireRunDocumentSchema>;
+export const wireRunDocumentResponseSchema = z.union([wireRunDocumentSchema, legacyWireRunDocumentSchema]);
 
 export const wireRunMetadataSchema = z.object({
   run_id: z.string(),

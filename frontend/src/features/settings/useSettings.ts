@@ -16,6 +16,7 @@ import {
   deleteConfig,
   deleteFamily,
   deleteSavedFilter,
+  exportRulesConfig,
   getConfig,
   getFamily,
   listConfigs,
@@ -80,7 +81,9 @@ export function useCreateConfig(configType: ConfigType) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ name, content }: { name: string; content: unknown }) =>
-      createConfig(configType, name, content),
+      configType === "rules"
+        ? exportRulesConfig(name)
+        : createConfig(configType, name, content),
     onSuccess: () => client.invalidateQueries({ queryKey: configListKey(configType) }),
   });
 }

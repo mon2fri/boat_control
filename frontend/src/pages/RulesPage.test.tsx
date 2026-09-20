@@ -9,12 +9,23 @@ import { RulesPage } from "./RulesPage";
 
 const wireRule = {
   rule_id: "R001",
+  rule_identifier: "CBR1_00000000000000000000",
   enabled: true,
   name: "Region present",
+  description: "",
+  conditions: [],
   logic: { format: "value_vs_column", column_name: "region", operator: "neq", target_value: "" },
 };
 
-const rulesList = { version: 1, rules: [wireRule] };
+const rulesList = {
+  version: 2,
+  rules: [wireRule],
+  pinned_rule_ids: ["R001"],
+  total: 1,
+  revision: 1,
+  next_cursor: null,
+  has_more: false,
+};
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -108,6 +119,25 @@ describe("RulesPage", () => {
     vi.unstubAllGlobals();
   });
 
+  it("rolls an optimistic enablement change back when the server rejects it", async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && String(url).includes("/rules/enablement/")) {
+        return Promise.resolve(jsonResponse({ error: "enablement failed" }, false, 500));
+      }
+      return Promise.resolve(jsonResponse(rulesList));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Region present/)).toBeInTheDocument());
+    const checkbox = screen.getByRole("checkbox", { name: /R001/ });
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) =>
+      String(url).includes("/rules/enablement/") && init?.method === "POST")).toBe(true));
+    await waitFor(() => expect(checkbox).toBeChecked());
+    vi.unstubAllGlobals();
+  });
+
   it("wraps rule selection in a card with run action card below", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(rulesList));
     vi.stubGlobal("fetch", fetchMock);
@@ -184,18 +214,22 @@ describe("RulesPage", () => {
   });
 
   it("checks every rule after a saved config is loaded", async () => {
-    const initialList = { version: 1, rules: [wireRule] };
+    const initialList = { ...rulesList };
     const refreshedList = {
-      version: 1,
+      version: 2,
       rules: [
         wireRule,
         {
           rule_id: "R002",
+          rule_identifier: "CBR1_11111111111111111111",
           enabled: true,
           name: "Status active",
+          description: "",
+          conditions: [],
           logic: { format: "value_vs_column", column_name: "status", operator: "eq", target_value: "active" },
         },
       ],
+      pinned_rule_ids: ["R001", "R002"], total: 2, revision: 2, next_cursor: null, has_more: false,
     };
     const configList = [{ name: "v2", version: 1 }];
     const configContent = {

@@ -107,7 +107,10 @@ describe("grouping tree round-trip", () => {
       // Re-parse as a wire rule shape so the round-trip survives the schema.
       const asWireRule = wireRuleSchema.parse({
         rule_id: rule.index,
+        rule_identifier: "CBR1_00000000000000000000",
+        enabled: true,
         name: rule.name,
+        description: "",
         conditions: draft.conditions,
         grouping_tree: draft.grouping_tree,
         logic: {
@@ -257,7 +260,10 @@ describe("per_grouping tree shapes", () => {
     const draft = ruleDraftRequestSchema.parse(wire);
     const asWireRule = wireRuleSchema.parse({
       rule_id: rule.index,
+      rule_identifier: "CBR1_00000000000000000000",
+      enabled: true,
       name: rule.name,
+      description: "",
       conditions: draft.conditions,
       grouping_tree: draft.grouping_tree,
       logic: {

@@ -46,6 +46,7 @@ function doc(overrides: DocOverrides = {}): WireRunDocument {
             {
               row_index: 0,
               rule_id: "R001",
+              rule_identifier: "CBR1_00000000000000000000",
               rule_name: "Status active",
               key_columns: { id: "1" },
               details: "did not match required state",
@@ -58,6 +59,7 @@ function doc(overrides: DocOverrides = {}): WireRunDocument {
             {
               row_index: 1,
               rule_id: "R001",
+              rule_identifier: "CBR1_00000000000000000000",
               rule_name: "Status active",
               key_columns: { id: "2" },
               details: "did not match required state",
@@ -77,6 +79,7 @@ function doc(overrides: DocOverrides = {}): WireRunDocument {
       common_columns: ["id"],
       target_columns: ["status"],
       filters_applied: [],
+      rule_bindings: { R001: "CBR1_00000000000000000000" },
       ...(nested_aggregation_enabled !== undefined ? { nested_aggregation_enabled } : {}),
       ...(comparison_sections !== undefined ? { comparison_sections } : {}),
       ...(aggregation_columns !== undefined ? { aggregation_columns } : {}),
@@ -125,6 +128,7 @@ describe("mapRunDocumentToResult", () => {
             {
               row_index: 0,
               rule_id: "R001",
+              rule_identifier: "CBR1_00000000000000000000",
               rule_name: "X",
               key_columns: { id: "1" },
               details: "...",
@@ -132,6 +136,7 @@ describe("mapRunDocumentToResult", () => {
             {
               row_index: 0,
               rule_id: "R001",
+              rule_identifier: "CBR1_00000000000000000000",
               rule_name: "X",
               key_columns: { id: "1" },
               details: "...",
@@ -175,6 +180,7 @@ describe("mapRunDocumentToResult", () => {
       violating_attributes_by_rule: { R001: 0 },
       rule_summaries: {
         R001: {
+          rule_identifier: "CBR1_00000000000000000000",
           name: "Low score",
           description: "Flags scores below the review threshold.",
           logic: "score lt '70'",

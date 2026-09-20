@@ -129,10 +129,12 @@
     "requires_confirmation": false
   },
   "rules": {
-    "version": 1,
+    "version": 2,
     "rules": [
       {
         "rule_id": "R006",
+        "rule_identifier": "CBR1_00000000000000000001",
+        "enabled": true,
         "name": "E2E status check",
         "description": "",
         "conditions": [],
@@ -145,6 +147,8 @@
       },
       {
         "rule_id": "R007",
+        "rule_identifier": "CBR1_00000000000000000002",
+        "enabled": true,
         "name": "E2E status check",
         "description": "",
         "conditions": [],
@@ -157,6 +161,8 @@
       },
       {
         "rule_id": "R010",
+        "rule_identifier": "CBR1_00000000000000000003",
+        "enabled": true,
         "name": "E2E status check",
         "description": "",
         "conditions": [],
@@ -169,6 +175,8 @@
       },
       {
         "rule_id": "R011",
+        "rule_identifier": "CBR1_00000000000000000004",
+        "enabled": true,
         "name": "E2E status check",
         "description": "",
         "conditions": [],
@@ -181,6 +189,8 @@
       },
       {
         "rule_id": "R012",
+        "rule_identifier": "CBR1_00000000000000000005",
+        "enabled": true,
         "name": "E2E grouped status check",
         "description": "(region EMEA AND status active) OR name alice \u2014 updated",
         "conditions": [
@@ -208,10 +218,22 @@
         },
         "condition_relation": "and"
       }
-    ]
+    ],
+    "pinned_rule_ids": ["R006", "R007", "R010", "R011", "R012"],
+    "total": 5,
+    "revision": 1,
+    "next_cursor": null,
+    "has_more": false
   },
   "create_rule": {
     "rule_id": "R013",
+    "rule_identifier": "CBR1_00000000000000000006",
+    "enabled": true,
+    "enabled_position": 6,
+    "name": "E2E status check",
+    "description": "",
+    "conditions": [],
+    "logic": {"format": "value_vs_column", "column_name": "status", "operator": "eq", "target_value": "active"},
     "message": "Rule created."
   },
   "grouped_rule": {
@@ -394,6 +416,7 @@
             {
               "row_index": 0,
               "rule_id": "R013",
+              "rule_identifier": "CBR1_00000000000000000006",
               "rule_name": "E2E status check",
               "key_columns": {
                 "id": 1,
@@ -407,6 +430,7 @@
             {
               "row_index": 2,
               "rule_id": "R013",
+              "rule_identifier": "CBR1_00000000000000000006",
               "rule_name": "E2E status check",
               "key_columns": {
                 "id": 3,
@@ -441,7 +465,8 @@
         "status",
         "score"
       ],
-      "filters_applied": []
+        "filters_applied": [],
+        "rule_bindings": {"R013": "CBR1_00000000000000000006"}
     }
   },
   "history": [
@@ -573,6 +598,7 @@
             {
               "row_index": 0,
               "rule_id": "R013",
+              "rule_identifier": "CBR1_00000000000000000006",
               "rule_name": "E2E status check",
               "key_columns": {
                 "id": 1,
@@ -586,6 +612,7 @@
             {
               "row_index": 2,
               "rule_id": "R013",
+              "rule_identifier": "CBR1_00000000000000000006",
               "rule_name": "E2E status check",
               "key_columns": {
                 "id": 3,
@@ -620,7 +647,8 @@
         "status",
         "score"
       ],
-      "filters_applied": []
+          "filters_applied": [],
+          "rule_bindings": {"R013": "CBR1_00000000000000000006"}
     }
   },
   "rename": {

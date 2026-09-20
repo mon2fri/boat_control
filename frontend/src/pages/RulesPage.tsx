@@ -60,7 +60,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
 
   useEffect(() => {
     const enabledKey = rules.data.filter((rule) => rule.enabled).map((rule) => rule.index).join(",");
-    if (catalogPages.length === 1 && rules.data.length > 0 && enabledKey !== syncedEnabledKey) {
+    if (catalogPages.length === 1 && enabledKey !== syncedEnabledKey) {
       setSyncedEnabledKey(enabledKey);
       dispatch({
         type: "setSelectedRules",
@@ -110,7 +110,10 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
       ? selected.filter((i) => i !== index)
       : [...selected, index];
     dispatch({ type: "setSelectedRules", ruleIndexes: next });
-    setRulesEnabled.mutate({ ruleIds: [index], enabled: !selected.includes(index) });
+    setRulesEnabled.mutate(
+      { ruleIds: [index], enabled: !selected.includes(index) },
+      { onError: () => dispatch({ type: "setSelectedRules", ruleIndexes: selected }) },
+    );
   }
 
   function toggleAll(ruleIds: string[], enabled: boolean): void {
@@ -118,7 +121,10 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
       ? [...new Set([...selected, ...ruleIds])]
       : selected.filter((id) => !ruleIds.includes(id));
     dispatch({ type: "setSelectedRules", ruleIndexes: next });
-    setRulesEnabled.mutate({ ruleIds, enabled });
+    setRulesEnabled.mutate(
+      { ruleIds, enabled },
+      { onError: () => dispatch({ type: "setSelectedRules", ruleIndexes: selected }) },
+    );
   }
 
   function handleSave(draft: RuleDraft): void {

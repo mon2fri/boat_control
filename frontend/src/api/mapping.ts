@@ -42,6 +42,7 @@ import type {
   WirePresetSource,
   WireRule,
   WireRunDocument,
+  LegacyWireRunDocument,
   WireRunMetadata,
   WireRunRequest,
   WireSavedFilter,
@@ -53,6 +54,9 @@ import type {
 import type { z } from "zod";
 
 type WireScalar = z.infer<typeof wireScalarSchema>;
+type MappableViolation = Omit<WireViolation, "rule_identifier"> & {
+  rule_identifier?: string | null;
+};
 
 // --- Filter operators ----------------------------------------------------
 
@@ -382,7 +386,7 @@ export function mapAttributeChange(
 }
 
 export function mapViolation(
-  violation: WireViolation,
+  violation: MappableViolation,
   index: number,
 ): DetailRow {
   const column = violation.violating_column ?? violation.rule_id;
@@ -415,14 +419,15 @@ export function mapViolation(
   };
 }
 
-export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
+export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocument): RunResult {
   const result = doc.result;
   const validation = result.validation;
 
   // Prefer the backend's explicit distinct counts; fall back to a local
   // derivation only if the server omitted them.
+  const violationsByRule = validation.violations_by_rule as Record<string, MappableViolation[]>;
   const distinctViolationRowCount =
-    validation.distinct_violating_rows ?? countDistinctViolationRows(validation.violations_by_rule);
+    validation.distinct_violating_rows ?? countDistinctViolationRows(violationsByRule);
   const distinctViolationAttributeCount =
     validation.distinct_violating_attributes ?? validation.total_violations;
 
@@ -438,7 +443,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
   };
 
   // Per-rule results.
-  const ruleResults: RuleResult[] = Object.entries(validation.violations_by_rule).map(
+  const ruleResults: RuleResult[] = Object.entries(violationsByRule).map(
     ([ruleId, violations]) => {
       const perRuleRowCount =
         validation.violating_rows_by_rule?.[ruleId] ?? countDistinctRowsForViolations(violations);
@@ -599,7 +604,7 @@ function mapGroupStatisticsBundle(bundle: WireGroupStatisticsBundle): GroupStati
   };
 }
 
-function describeRuleLogicFromViolations(violations: WireViolation[], ruleId: string): string {
+function describeRuleLogicFromViolations(violations: MappableViolation[], ruleId: string): string {
   if (violations.length === 0) return `${ruleId} — no exception; rule details unavailable for this older run`;
   const first = violations[0]!;
   if (first.rule_logic) return `${ruleId} — ${first.rule_name}: ${first.rule_logic}`;
@@ -622,7 +627,7 @@ function humanizeRuleLogic(summary: string): string {
 
 /** Local fallback for distinct-violating-row counts. The backend should
  *  already provide these; the derivation here only runs when it doesn't. */
-function countDistinctViolationRows(byRule: Record<string, WireViolation[]>): number {
+function countDistinctViolationRows(byRule: Record<string, MappableViolation[]>): number {
   const set = new Set<string>();
   for (const violations of Object.values(byRule)) {
     for (const v of violations) set.add(rowKeyOf(v.key_columns, v.row_index));
@@ -630,7 +635,7 @@ function countDistinctViolationRows(byRule: Record<string, WireViolation[]>): nu
   return set.size;
 }
 
-function countDistinctRowsForViolations(violations: WireViolation[]): number {
+function countDistinctRowsForViolations(violations: MappableViolation[]): number {
   const set = new Set<string>();
   for (const v of violations) set.add(rowKeyOf(v.key_columns, v.row_index));
   return set.size;

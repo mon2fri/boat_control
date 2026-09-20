@@ -15,7 +15,7 @@ import {
   wireFamilyListSchema,
   wireFamilySchema,
   wirePresetListSchema,
-  wireRunDocumentSchema,
+  wireRunDocumentResponseSchema,
   wireRunHistorySchema,
   wireRunMetadataSchema,
   wireRunRequestSchema,
@@ -418,7 +418,7 @@ export function executeRun(
   signal?: AbortSignal,
 ): Promise<RunResult> {
   const body = wireRunRequestSchema.parse(mapRunRequestToWire(request));
-  return apiRequest("/runs/execute/", { method: "POST", body, schema: wireRunDocumentSchema, signal }).then(
+  return apiRequest("/runs/execute/", { method: "POST", body, schema: wireRunDocumentResponseSchema, signal }).then(
     mapRunDocumentToResult,
   );
 }
@@ -430,7 +430,7 @@ export function loadRunHistory(): Promise<RunSummary[]> {
 }
 
 export function loadRun(id: string): Promise<RunResult> {
-  return apiRequest(`/runs/${encodeURIComponent(id)}/`, { schema: wireRunDocumentSchema }).then(
+  return apiRequest(`/runs/${encodeURIComponent(id)}/`, { schema: wireRunDocumentResponseSchema }).then(
     mapRunDocumentToResult,
   );
 }
@@ -685,6 +685,15 @@ export function createConfig(
     body: { name, content },
     schema: z.object({ name: z.string(), version: z.number() }),
   });
+}
+
+/** Export the committed SQLite rule catalog; rendered/paginated browser data is not sent. */
+export function exportRulesConfig(name: string): Promise<{ name: string; version: number }> {
+  return apiRequest("/rules/configs/", {
+    method: "POST",
+    body: { name },
+    schema: z.object({ name: z.string(), version: z.number(), content: z.unknown().optional() }),
+  }).then(({ name: savedName, version }) => ({ name: savedName, version }));
 }
 
 export function updateConfig(
