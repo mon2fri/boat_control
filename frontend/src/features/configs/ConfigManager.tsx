@@ -151,7 +151,6 @@ export function ConfigManager({
             </div>
           </div>
 
-          {create.isSuccess && <p className="alert alert--success" style={{ marginTop: "var(--space)" }}>Saved as new config.</p>}
           {create.isError && (
             <p className="alert alert--error" style={{ marginTop: "var(--space)" }}>
               {create.error?.message?.includes("409") || create.error?.message?.includes("version")
@@ -159,7 +158,6 @@ export function ConfigManager({
                 : create.error?.message ?? "Save failed."}
             </p>
           )}
-          {update.isSuccess && <p className="alert alert--success" style={{ marginTop: "var(--space)" }}>Saved to config.</p>}
           {update.isError && (
             <p className="alert alert--error" style={{ marginTop: "var(--space)" }}>
               {update.error?.message?.includes("409") || update.error?.message?.includes("version")

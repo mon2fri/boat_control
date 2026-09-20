@@ -7,6 +7,7 @@ import { clearUploadSession, listSourceFiles } from "../api/endpoints";
 import { HeaderReview } from "../features/upload/HeaderReview";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
+import { ConfigLoadNotice } from "../features/configs/ConfigLoadNotice";
 import { resolveRowsColumnsConfig, mapWorkflowToRowsColumnsConfig } from "../api/configContent";
 import type { SourceFile } from "../api/domain";
 
@@ -30,6 +31,7 @@ export function UploadPage() {
   const families = familiesQuery.data ?? [];
 
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
+  const [configNotice, setConfigNotice] = useState<string | null>(null);
 
   const header = useHeaderReport((report) => {
     dispatch({ type: "setHeader", header: report });
@@ -371,9 +373,14 @@ export function UploadPage() {
               configType="rows-and-columns"
               name={configLoadName}
               onLoad={handleConfigLoad}
-              onDone={() => setConfigLoadName(null)}
+               onDone={() => {
+                 setConfigLoadName(null);
+                 setConfigNotice("Configuration loaded.");
+               }}
             />
           )}
+
+          <ConfigLoadNotice message={configNotice} />
 
           <div className="card">
             {state.comparisonColumns.length === 0 && (
