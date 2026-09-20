@@ -42,6 +42,7 @@ import type {
   WirePresetSource,
   WireRule,
   WireRunDocument,
+  LegacyWireRunDocument,
   WireRunMetadata,
   WireRunRequest,
   WireSavedFilter,
@@ -53,6 +54,9 @@ import type {
 import type { z } from "zod";
 
 type WireScalar = z.infer<typeof wireScalarSchema>;
+type MappableViolation = Omit<WireViolation, "rule_identifier"> & {
+  rule_identifier?: string | null;
+};
 
 // --- Filter operators ----------------------------------------------------
 
@@ -239,6 +243,10 @@ export function mapWireRule(rule: WireRule): Rule {
     : null;
   return {
     index: rule.rule_id,
+    identifier: rule.rule_identifier ?? null,
+    ...(rule.equivalent_rule_id ? { equivalentRuleId: rule.equivalent_rule_id } : {}),
+    enabled: rule.enabled ?? false,
+    enabledPosition: rule.enabled_position ?? null,
     name: rule.name,
     ...(rule.description ? { description: rule.description } : {}),
     conditions,
@@ -270,7 +278,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
   return {
     name: rule.name,
     ...(rule.description ? { description: rule.description } : {}),
-    conditions: rule.conditions.map(mapConditionToWire),
+    conditions: (rule.conditions ?? []).map(mapConditionToWire),
     ...(rule.conditionJoin && rule.conditionJoin !== "per_grouping"
       ? { condition_relation: rule.conditionJoin }
       : {}),
@@ -297,6 +305,7 @@ export function mapRunRequestToWire(request: {
   comparisonSections?: ComparisonSection[] | undefined;
   ruleIndexes: string[];
   exceptionColumns?: string[];
+  extraColumnDisplay?: import("./domain").ExtraColumnDisplay;
 }): WireRunRequest {
   return {
     session_id: request.sessionId,
@@ -329,6 +338,15 @@ export function mapRunRequestToWire(request: {
     ...(request.exceptionColumns && request.exceptionColumns.length > 0
       ? { exception_columns: [...request.exceptionColumns] }
       : {}),
+    ...(request.extraColumnDisplay ? { extra_column_display: {
+      overall_result_page: request.extraColumnDisplay.overallResultPage,
+      overall_html_report: request.extraColumnDisplay.overallHtmlReport,
+      overall_excel_report: request.extraColumnDisplay.overallExcelReport,
+      new_books_result_page: request.extraColumnDisplay.newBooksResultPage,
+      new_books_html_report: request.extraColumnDisplay.newBooksHtmlReport,
+      new_books_excel_report: request.extraColumnDisplay.newBooksExcelReport,
+      exception_tables: request.extraColumnDisplay.exceptionTables,
+    } } : {}),
   };
 }
 
@@ -369,7 +387,7 @@ export function mapAttributeChange(
 }
 
 export function mapViolation(
-  violation: WireViolation,
+  violation: MappableViolation,
   index: number,
 ): DetailRow {
   const column = violation.violating_column ?? violation.rule_id;
@@ -402,14 +420,15 @@ export function mapViolation(
   };
 }
 
-export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
+export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocument): RunResult {
   const result = doc.result;
   const validation = result.validation;
 
   // Prefer the backend's explicit distinct counts; fall back to a local
   // derivation only if the server omitted them.
+  const violationsByRule = validation.violations_by_rule as Record<string, MappableViolation[]>;
   const distinctViolationRowCount =
-    validation.distinct_violating_rows ?? countDistinctViolationRows(validation.violations_by_rule);
+    validation.distinct_violating_rows ?? countDistinctViolationRows(violationsByRule);
   const distinctViolationAttributeCount =
     validation.distinct_violating_attributes ?? validation.total_violations;
 
@@ -419,11 +438,13 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
     ruleViolationAttributeCount: distinctViolationAttributeCount,
     changedRowCount: result.comparison.rows_with_changes,
     changedAttributeCount: result.comparison.total_attribute_changes,
-    newBookCount: result.comparison.new_book_count ?? 0,
+    ...(result.comparison.new_book_count !== undefined
+      ? { newBookCount: result.comparison.new_book_count }
+      : {}),
   };
 
   // Per-rule results.
-  const ruleResults: RuleResult[] = Object.entries(validation.violations_by_rule).map(
+  const ruleResults: RuleResult[] = Object.entries(violationsByRule).map(
     ([ruleId, violations]) => {
       const perRuleRowCount =
         validation.violating_rows_by_rule?.[ruleId] ?? countDistinctRowsForViolations(violations);
@@ -433,6 +454,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
       const persistedSummary = validation.rule_summaries?.[ruleId];
       return {
         ruleIndex: ruleId,
+        ruleIdentifier: persistedSummary?.rule_identifier ?? sample?.rule_identifier ?? null,
         ruleName: persistedSummary?.name ?? sample?.rule_name ?? ruleId,
         ...(persistedSummary?.description
           ? { ruleDescription: persistedSummary.description }
@@ -539,6 +561,16 @@ export function mapRunDocumentToResult(doc: WireRunDocument): RunResult {
     ...(result.exception_columns && result.exception_columns.length > 0
       ? { exceptionColumns: [...result.exception_columns] }
       : {}),
+    ...(result.extra_column_display ? { extraColumnDisplay: {
+      overallResultPage: result.extra_column_display.overall_result_page,
+      overallHtmlReport: result.extra_column_display.overall_html_report,
+      overallExcelReport: result.extra_column_display.overall_excel_report,
+      newBooksResultPage: result.extra_column_display.new_books_result_page,
+      newBooksHtmlReport: result.extra_column_display.new_books_html_report,
+      newBooksExcelReport: result.extra_column_display.new_books_excel_report,
+      exceptionTables: result.extra_column_display.exception_tables,
+    } } : {}),
+    ...(result.rule_bindings ? { ruleBindings: { ...result.rule_bindings } } : {}),
   };
 }
 
@@ -573,7 +605,7 @@ function mapGroupStatisticsBundle(bundle: WireGroupStatisticsBundle): GroupStati
   };
 }
 
-function describeRuleLogicFromViolations(violations: WireViolation[], ruleId: string): string {
+function describeRuleLogicFromViolations(violations: MappableViolation[], ruleId: string): string {
   if (violations.length === 0) return `${ruleId} — no exception; rule details unavailable for this older run`;
   const first = violations[0]!;
   if (first.rule_logic) return `${ruleId} — ${first.rule_name}: ${first.rule_logic}`;
@@ -596,7 +628,7 @@ function humanizeRuleLogic(summary: string): string {
 
 /** Local fallback for distinct-violating-row counts. The backend should
  *  already provide these; the derivation here only runs when it doesn't. */
-function countDistinctViolationRows(byRule: Record<string, WireViolation[]>): number {
+function countDistinctViolationRows(byRule: Record<string, MappableViolation[]>): number {
   const set = new Set<string>();
   for (const violations of Object.values(byRule)) {
     for (const v of violations) set.add(rowKeyOf(v.key_columns, v.row_index));
@@ -604,7 +636,7 @@ function countDistinctViolationRows(byRule: Record<string, WireViolation[]>): nu
   return set.size;
 }
 
-function countDistinctRowsForViolations(violations: WireViolation[]): number {
+function countDistinctRowsForViolations(violations: MappableViolation[]): number {
   const set = new Set<string>();
   for (const v of violations) set.add(rowKeyOf(v.key_columns, v.row_index));
   return set.size;

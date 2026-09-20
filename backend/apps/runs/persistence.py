@@ -114,6 +114,8 @@ def save_run(
         run_id = _generate_run_id()
         effective_name = report_name or _default_report_name(file_a_name, file_b_name)
         safe_name = _sanitize_report_name(effective_name)
+        comparison = asdict(result.comparison)
+        new_book_details = comparison.pop("new_book_rows")
 
         run_data: dict[str, Any] = {
             "run_id": run_id,
@@ -129,7 +131,13 @@ def save_run(
                 )
             ),
             "result": {
-                "comparison": asdict(result.comparison),
+                # The public wire contract calls these ``new_book_details``.
+                # Keep the internal dataclass name separate so persistence and
+                # every report reader agree on the same field.
+                "comparison": {
+                    **comparison,
+                    "new_book_details": new_book_details,
+                },
                 "validation": {
                     "total_violations": result.validation.total_violations,
                     "distinct_violating_rows": result.validation.distinct_violating_rows,
@@ -145,6 +153,7 @@ def save_run(
                     "violating_attributes_by_rule": result.validation.violating_attributes_by_rule,
                     "rule_summaries": result.validation.rule_summaries,
                 },
+                "rule_bindings": result.rule_bindings,
                 "common_columns": result.common_columns,
                 "target_columns": result.target_columns,
                 "key_columns": result.key_columns,
@@ -154,6 +163,7 @@ def save_run(
                 "nested_aggregation_enabled": result.nested_aggregation_enabled,
                 "comparison_sections": result.comparison_sections,
                 "exception_columns": result.exception_columns,
+                "extra_column_display": result.extra_column_display,
                 "group_statistics": result.group_statistics,
             },
         }
@@ -257,11 +267,17 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                         result["comparison_sections"] = []
                     if "exception_columns" not in result:
                         result["exception_columns"] = []
+                    if "rule_bindings" not in result:
+                        # Legacy runs cannot be linked safely from their local Rxxx IDs.
+                        result["rule_bindings"] = {}
                     comparison = result.get("comparison", {})
                     if "new_book_count" not in comparison:
                         comparison["new_book_count"] = 0
                     if "new_book_details" not in comparison:
-                        comparison["new_book_details"] = []
+                        # Migrate the brief internal field name used by the
+                        # initial implementation, rather than dropping real
+                        # new-book rows on load.
+                        comparison["new_book_details"] = comparison.pop("new_book_rows", [])
                     gs = result.get("group_statistics")
                     if gs and "new_books" not in gs:
                         gs["new_books"] = []

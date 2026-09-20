@@ -174,18 +174,23 @@ def _render_exception_rule_summary(validation: dict[str, Any]) -> str:
         violations = violations_by_rule.get(rule_id) or []
         sample = violations[0] if violations else {}
         name = summary.get("name") or sample.get("rule_name") or rule_id
+        identifier = (
+            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        )
         count = row_counts.get(rule_id, len(violations))
         rows.append(
             "<tr>"
             f"<td><span class='rule-id'>{_escape_html(rule_id)}</span>"
             f"{_escape_html(name)}</td>"
             f"<td class='number-cell'>{_escape_html(count)}</td>"
+            f"<td class='canonical-rule-identifier'>{_escape_html(identifier)}</td>"
             "</tr>"
         )
     return (
         "<section class='card'><h2>Exception Rule Summary</h2>"
         "<div class='table-scroll'><table class='result-table exception-rule-table'>"
-        "<thead><tr><th>Rule name</th><th>Exception records</th></tr></thead>"
+        "<thead><tr><th>Rule name</th><th>Exception records</th>"
+        "<th>Rule identifier</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div></section>"
     )
 
@@ -237,6 +242,7 @@ def _render_exception_table(
     headers = [
         *(key_columns or ["Row"]),
         "Rule Index",
+        "Rule identifier",
         *(aggregation_labels.get(column, column) for column in aggregation_columns),
         *exception_columns,
     ]
@@ -256,6 +262,9 @@ def _render_exception_table(
             row_values = [
                 *identity_values,
                 rule_id,
+                violation.get("rule_identifier")
+                or (validation.get("rule_summaries") or {}).get(rule_id, {}).get("rule_identifier")
+                or "Unavailable",
                 *(grouping.get(column, "—") for column in aggregation_columns),
                 *(extras.get(column, "—") for column in exception_columns),
             ]
@@ -375,6 +384,14 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(".result-table tbody tr:last-child td { border-bottom:0; }")
     sections.append(".exception-rule-table th:last-child { text-align:right; }")
     sections.append(
+        ".canonical-rule-identifier { text-align:right; font-family:ui-monospace,monospace; "
+        "font-size:.72rem; color:#64748b; overflow-wrap:anywhere; }"
+    )
+    sections.append(
+        ".result-rule-identifier { float:right; font-family:ui-monospace,monospace; "
+        "font-size:.72rem; color:#64748b; }"
+    )
+    sections.append(
         ".exception-table-sort { border:0; background:transparent; color:inherit; cursor:pointer; "
         "font:inherit; font-weight:700; text-transform:uppercase; } "
         ".exception-table-filter { display:block; width:100%; margin-top:5px; }"
@@ -489,11 +506,13 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append("</section>")
 
     new_book_count = comparison.get("new_book_count", 0)
+    extra_display = result.get("extra_column_display") or {}
+    selected_extra_columns = list(result.get("exception_columns") or [])
     new_books_grp = grp.get("new_books") or []
     if new_book_count > 0:
         sections.append("<section class='card' id='new-books'>")
         sections.append("<h2>New Books</h2>")
-        sections.append(_metric("Books only in comparison file", new_book_count))
+        sections.append(_metric("new books found", new_book_count))
         if new_books_grp:
             sections.append(_render_group_section("New Books aggregation", new_books_grp))
         nb_details = comparison.get("new_book_details") or []
@@ -502,44 +521,120 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
             sections.append("<thead><tr>")
             for k in key_columns:
                 sections.append(f"<th>{_escape_html(k)}</th>")
+            if extra_display.get("new_books_html_report"):
+                for column in selected_extra_columns:
+                    sections.append(f"<th>{_escape_html(column)}</th>")
             sections.append("</tr></thead><tbody>")
             for nb in nb_details:
                 sections.append("<tr>")
                 for k in key_columns:
                     val = nb.get("key_columns", {}).get(k, "")
                     sections.append(f"<td>{_escape_html(str(val)) if val is not None else ''}</td>")
+                if extra_display.get("new_books_html_report"):
+                    values = nb.get("extra_values") or {}
+                    for column in selected_extra_columns:
+                        sections.append(f"<td>{_escape_html(values.get(column, ''))}</td>")
                 sections.append("</tr>")
             sections.append("</tbody></table>")
         sections.append("</section>")
 
+    row_details = comparison.get("row_details") or []
+
     sections.append(_render_exception_rule_summary(validation))
 
-    sections.append("<section class='card' id='changes'>")
-    sections.append("<h2>Attribute changes</h2>")
-    sections.append(
-        "<p class='section-logic'><code>In Baseline ≠ In Comparison</code> "
-        "on shared target columns.</p>"
-    )
-    sections.append(_render_comparing_columns(result))
-    attr_changes_grp = grp.get("attribute_changes") or []
-    sections.append(_render_group_section("Attribute change aggregation", attr_changes_grp))
-    row_details = comparison.get("row_details") or []
-    if row_details:
-        sections.append("<table>")
-        sections.append(_detail_header(key_columns))
-        for row in row_details:
-            key_values = row.get("key_columns", {})
-            for change in row.get("attribute_changes", []):
-                sections.append("<tr>")
-                sections.append(_identity_cells(key_columns, key_values, row.get("row_index", "")))
-                sections.append(f"<td>{_escape_html(change.get('column', ''))}</td>")
-                sections.append(f"<td>{_escape_html(change.get('file_a_value', ''))}</td>")
-                sections.append(f"<td>{_escape_html(change.get('file_b_value', ''))}</td>")
-                sections.append("</tr>")
-        sections.append("</table>")
+    comparison_sections = result.get("comparison_sections") or []
+    if comparison_sections:
+        for section in comparison_sections:
+            section_name = section.get("name") or "Attribute Comparing Section"
+            section_columns = set(section.get("columns") or [])
+            section_rows = [
+                (row, change)
+                for row in row_details
+                for change in row.get("attribute_changes", [])
+                if change.get("column") in section_columns
+            ]
+            sections.append("<section class='card'>")
+            sections.append(f"<h2>{_escape_html(section_name)}</h2>")
+            sections.append(
+                "<p class='section-logic'><code>In Baseline ≠ In Comparison</code> "
+                f"— {len(section_columns)} column{'s' if len(section_columns) != 1 else ''}</p>"
+            )
+            if section_rows:
+                sections.append("<table>")
+                sections.append(
+                    _detail_header(
+                        key_columns,
+                        extra_columns=(
+                            selected_extra_columns
+                            if extra_display.get("overall_html_report")
+                            else None
+                        ),
+                    )
+                )
+                for row, change in section_rows:
+                    sections.append("<tr>")
+                    sections.append(
+                        _identity_cells(
+                            key_columns,
+                            row.get("key_columns", {}),
+                            row.get("row_index", ""),
+                        )
+                    )
+                    if extra_display.get("overall_html_report"):
+                        values = row.get("extra_values") or {}
+                        for column in selected_extra_columns:
+                            sections.append(f"<td>{_escape_html(values.get(column, ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('column', ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('file_a_value', ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('file_b_value', ''))}</td>")
+                    sections.append("</tr>")
+                sections.append("</table>")
+            else:
+                sections.append(f"<p>No books with {_escape_html(section_name)}</p>")
+            sections.append("</section>")
     else:
-        sections.append("<p>No detail rows.</p>")
-    sections.append("</section>")
+        sections.append("<section class='card' id='changes'>")
+        sections.append("<h2>Attribute changes</h2>")
+        sections.append(
+            "<p class='section-logic'><code>In Baseline ≠ In Comparison</code> "
+            "on shared target columns.</p>"
+        )
+        sections.append(_render_comparing_columns(result))
+        attr_changes_grp = grp.get("attribute_changes") or []
+        sections.append(_render_group_section("Attribute change aggregation", attr_changes_grp))
+        if row_details:
+            sections.append("<table>")
+            sections.append(
+                _detail_header(
+                    key_columns,
+                    extra_columns=(
+                        selected_extra_columns
+                        if extra_display.get("overall_html_report")
+                        else None
+                    ),
+                )
+            )
+            for row in row_details:
+                key_values = row.get("key_columns", {})
+                for change in row.get("attribute_changes", []):
+                    sections.append("<tr>")
+                    sections.append(
+                        _identity_cells(
+                            key_columns, key_values, row.get("row_index", "")
+                        )
+                    )
+                    if extra_display.get("overall_html_report"):
+                        values = row.get("extra_values") or {}
+                        for column in selected_extra_columns:
+                            sections.append(f"<td>{_escape_html(values.get(column, ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('column', ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('file_a_value', ''))}</td>")
+                    sections.append(f"<td>{_escape_html(change.get('file_b_value', ''))}</td>")
+                    sections.append("</tr>")
+            sections.append("</table>")
+        else:
+            sections.append("<p>No detail rows.</p>")
+        sections.append("</section>")
 
     violations_by_rule = validation.get("violations_by_rule") or {}
     rule_summaries = validation.get("rule_summaries") or {}
@@ -549,6 +644,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         summary = rule_summaries.get(rule_id) or {}
         sample = violations[0] if violations else {}
         rule_name = summary.get("name") or sample.get("rule_name") or rule_id
+        rule_identifier = summary.get("rule_identifier") or sample.get("rule_identifier")
         logic = (
             summary.get("logic")
             or sample.get("rule_logic")
@@ -559,7 +655,14 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
             rule_id, len(violations)
         )
         sections.append(f"<section class='card' id='rule-{_escape_html(rule_id)}'>")
-        sections.append(f"<h2>{_escape_html(rule_id)} — {_escape_html(rule_name)}</h2>")
+        identifier_markup = (
+            f"<span class='result-rule-identifier'>{_escape_html(rule_identifier)}</span>"
+            if rule_identifier
+            else ""
+        )
+        sections.append(
+            f"<h2>{_escape_html(rule_id)} — {_escape_html(rule_name)}{identifier_markup}</h2>"
+        )
         if summary.get("description"):
             sections.append(
                 "<p class='rule-description'>"
@@ -705,7 +808,10 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     overall.append(["Overall Results"])
     overall.append(["Report name", _excel_value(report_name)])
     overall.append(
-        ["Books after filters", comparison.get("total_rows_a", 0) + comparison.get("total_rows_b", 0)]
+        [
+            "Books after filters",
+            comparison.get("total_rows_a", 0) + comparison.get("total_rows_b", 0),
+        ]
     )
     overall.append(
         [
@@ -731,7 +837,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     else:
         overall.append(["No filtering applied"])
 
-    aggregation_start_row = overall.max_row + 2
+    aggregation_start_row = overall.max_row + 1
     aggregation_bottom_row = aggregation_start_row
     overall_aggregations = group_statistics.get("overall") or []
     if overall_aggregations and 2 + (len(overall_aggregations) - 1) * 3 > _EXCEL_MAX_COLUMNS:
@@ -766,6 +872,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     next_row += 1
     overall.cell(next_row, 1, "Rule name")
     overall.cell(next_row, 2, "Exception records")
+    overall.cell(next_row, 3, "Rule identifier")
     summaries = validation.get("rule_summaries") or {}
     violations_by_rule = validation.get("violations_by_rule") or {}
     rule_ids = list(dict.fromkeys([*violations_by_rule, *summaries]))
@@ -776,20 +883,27 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         sample = violations[0] if violations else {}
         summary = summaries.get(rule_id) or {}
         rule_name = summary.get("name") or sample.get("rule_name") or rule_id
+        rule_identifier = (
+            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        )
         overall.cell(next_row, 1, _excel_value(rule_name))
         overall.cell(next_row, 2, row_counts.get(rule_id, len(violations)))
+        overall.cell(next_row, 3, _excel_value(rule_identifier))
 
     rule_summary_sheet = workbook.create_sheet("Rule Summary")
     rule_summary_sheet["A1"] = "Rule Summary"
     _append_row(
         rule_summary_sheet,
         3,
-        ["Rule index", "Rule name", "Description", "Exception records"],
+        ["Rule index", "Rule name", "Description", "Exception records", "Rule identifier"],
     )
     for row_number, rule_id in enumerate(rule_ids, start=4):
         violations = violations_by_rule.get(rule_id) or []
         sample = violations[0] if violations else {}
         summary = summaries.get(rule_id) or {}
+        rule_identifier = (
+            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        )
         _append_row(
             rule_summary_sheet,
             row_number,
@@ -798,12 +912,15 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                 summary.get("name") or sample.get("rule_name") or rule_id,
                 summary.get("description", ""),
                 row_counts.get(rule_id, len(violations)),
+                rule_identifier,
             ],
         )
 
     changes_sheet = workbook.create_sheet("Attribute Changes")
     changes_sheet["A1"] = "Attribute Changes"
     comparing_columns = result.get("target_columns") or result.get("common_columns") or []
+    extra_display = result.get("extra_column_display") or {}
+    selected_extra_columns = list(result.get("exception_columns") or [])
     changes_sheet["A2"] = "Comparing columns"
     changes_sheet["B2"] = _excel_value(", ".join(str(column) for column in comparing_columns))
     change_headers = [
@@ -811,6 +928,11 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         "Column",
         "In Baseline",
         "In Comparison",
+        *(
+            [f"{column}(Latest Value)" for column in selected_extra_columns]
+            if extra_display.get("overall_excel_report")
+            else []
+        ),
     ]
     change_count = sum(
         len(detail.get("attribute_changes") or []) for detail in comparison.get("row_details") or []
@@ -833,6 +955,14 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                     change.get("column", ""),
                     change.get("file_a_value", ""),
                     change.get("file_b_value", ""),
+                    *(
+                        [
+                            (detail.get("extra_values") or {}).get(column, "")
+                            for column in selected_extra_columns
+                        ]
+                        if extra_display.get("overall_excel_report")
+                        else []
+                    ),
                 ],
             )
             change_row += 1
@@ -844,7 +974,13 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         nb_sheet["A2"] = "Books only in comparison file (not in baseline)"
         nb_sheet["B2"] = new_book_count
         nb_details = comparison.get("new_book_details") or []
-        nb_headers = [*key_columns]
+        aggregation_columns = list(result.get("aggregation_columns") or [])
+        aggregation_labels = result.get("aggregation_column_labels") or {}
+        nb_headers = [
+            *key_columns,
+            *(aggregation_labels.get(column, column) for column in aggregation_columns),
+            *(selected_extra_columns if extra_display.get("new_books_excel_report") else []),
+        ]
         if len(nb_details) + 4 > _EXCEL_MAX_ROWS:
             raise ValueError("New Books exceeds Excel's 1,048,576-row worksheet limit.")
         _append_row(nb_sheet, 4, nb_headers)
@@ -853,7 +989,13 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
             identity = _excel_identity(
                 key_columns, nb.get("key_columns") or {}, nb.get("row_index", "")
             )
-            _append_row(nb_sheet, nb_row_num, identity)
+            values = [*identity]
+            grouping_values = nb.get("grouping_values") or {}
+            values.extend(grouping_values.get(column, "") for column in aggregation_columns)
+            if extra_display.get("new_books_excel_report"):
+                extras = nb.get("extra_values") or {}
+                values.extend(extras.get(column, "") for column in selected_extra_columns)
+            _append_row(nb_sheet, nb_row_num, values)
             nb_row_num += 1
 
     comparison_sections = result.get("comparison_sections") or []
@@ -884,6 +1026,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                 sections_sheet.cell(next_row + 3, column_offset + 1, header)
 
             section_row = next_row + 4
+            record_count = 0
             for detail in comparison.get("row_details") or []:
                 identity = _excel_identity(
                     key_columns, detail.get("key_columns") or {}, detail.get("row_index", "")
@@ -893,7 +1036,8 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                         continue
                     if section_row > _EXCEL_MAX_ROWS:
                         raise ValueError(
-                            "An Attribute Comparing Section exceeds Excel's 1,048,576-row worksheet limit."
+                            "An Attribute Comparing Section exceeds Excel's "
+                            "1,048,576-row worksheet limit."
                         )
                     _append_row(
                         sections_sheet,
@@ -906,6 +1050,11 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                         ],
                     )
                     section_row += 1
+                    record_count += 1
+
+            if record_count == 0:
+                sections_sheet.cell(section_row, 1, "There is 0 record for this table.")
+                section_row += 1
 
             # Keep one blank row between adjacent section tables.
             next_row = section_row + 1
@@ -924,6 +1073,10 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         expectation = summary.get("logic") or sample.get("rule_logic") or ""
         sheet["A4"] = "Expectation:"
         sheet["B4"] = _excel_value(_humanize_rule_logic(expectation))
+        sheet["A5"] = "Rule identifier:"
+        sheet["B5"] = _excel_value(
+            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        )
 
         extra_columns = list(
             dict.fromkeys(
@@ -969,6 +1122,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     exc_headers = [
         *(key_columns or ["Row"]),
         "Rule Index",
+        "Rule identifier",
         *(
             agg_labels.get(col, col) for col in agg_columns
         ),
@@ -995,6 +1149,11 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                         violation.get("row_index", ""),
                     ),
                     _excel_value(rule_id),
+                    _excel_value(
+                        violation.get("rule_identifier")
+                        or (summaries.get(rule_id) or {}).get("rule_identifier")
+                        or "Unavailable"
+                    ),
                     *(
                         _excel_value(grouping.get(col, "")) for col in agg_columns
                     ),

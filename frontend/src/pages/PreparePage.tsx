@@ -7,6 +7,7 @@ import { ComparisonSectionEditor } from "../features/targets/ComparisonSectionEd
 import { ExceptionColumnPicker } from "../features/targets/ExceptionColumnPicker";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
+import { ConfigLoadNotice } from "../features/configs/ConfigLoadNotice";
 import { useFamilies } from "../features/settings/useSettings";
 import { prepareFilters } from "../api/endpoints";
 import type { PrepareResult } from "../api/domain";
@@ -21,6 +22,7 @@ export function PreparePage() {
   const handleSessionError = useSessionExpiryDispatcher();
   const familiesQuery = useFamilies();
   const families = familiesQuery.data ?? [];
+  const extraColumnDisplay = state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true };
 
   const header = state.header;
   const comparisonColumns = state.comparisonColumns;
@@ -48,6 +50,7 @@ export function PreparePage() {
   const [loadingElapsedMs, setLoadingElapsedMs] = useState(0);
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const [discardWarnings, setDiscardWarnings] = useState<string[]>([]);
+  const [configNotice, setConfigNotice] = useState<string | null>(null);
 
   const totalRows = (prepare.data?.totalRowsA ?? 0) + (prepare.data?.totalRowsB ?? 0);
   const progressPercent = prepare.status === "ready"
@@ -129,6 +132,7 @@ export function PreparePage() {
     dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
     dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
     dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns });
+    dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay });
 
     for (const w of result.warnings) {
       warnings.push(w.message);
@@ -167,6 +171,7 @@ export function PreparePage() {
               filters: state.filters,
               targetColumns: state.targetColumns,
               exceptionColumns: state.exceptionColumns,
+              extraColumnDisplay,
               nestedAggregationEnabled: state.nestedAggregationEnabled,
               comparisonSections: state.comparisonSections,
             },
@@ -184,9 +189,14 @@ export function PreparePage() {
           configType="rows-and-columns"
           name={configLoadName}
           onLoad={handleConfigLoad}
-          onDone={() => setConfigLoadName(null)}
+          onDone={() => {
+            setConfigLoadName(null);
+            setConfigNotice("Configuration loaded.");
+          }}
         />
       )}
+
+      <ConfigLoadNotice message={configNotice} />
 
       {discardWarnings.length > 0 && (
         <div className="alert alert--warn" role="alert">
@@ -258,6 +268,8 @@ export function PreparePage() {
           families={families}
           selected={state.exceptionColumns}
           onChange={(columns) => dispatch({ type: "setExceptionColumns", columns })}
+          display={extraColumnDisplay}
+          onDisplayChange={(display) => dispatch({ type: "setExtraColumnDisplay", display })}
         />
       </div>
 

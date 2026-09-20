@@ -14,3 +14,7 @@ class ConfigCreateSerializer(serializers.Serializer):  # type: ignore[misc]
 class ConfigUpdateSerializer(serializers.Serializer):  # type: ignore[misc]
     content = serializers.JSONField()
     version = serializers.IntegerField(min_value=1)
+
+
+class RuleConfigSaveSerializer(serializers.Serializer):  # type: ignore[misc]
+    version = serializers.IntegerField(min_value=1)

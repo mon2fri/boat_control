@@ -143,9 +143,14 @@ export const wireGroupNodeSchema: z.ZodType<WireGroupNode> = z.lazy(() =>
 
 export const wireRuleSchema = z.object({
   rule_id: z.string().regex(/^R\d{3,}$/),
+  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/),
+  equivalent_rule: z.boolean().optional(),
+  equivalent_rule_id: z.string().optional(),
+  enabled: z.boolean(),
+  enabled_position: z.number().int().positive().nullable().optional(),
   name: z.string(),
-  description: z.string().optional(),
-  conditions: z.array(wireConditionSchema).optional(),
+  description: z.string(),
+  conditions: z.array(wireConditionSchema),
   condition_relation: z.enum(["and", "or"]).optional(),
   grouping: z.array(z.string()).optional(),
   grouping_tree: wireGroupNodeSchema.optional(),
@@ -158,17 +163,37 @@ export type WireRule = z.infer<typeof wireRuleSchema>;
 export const rulesListResponseSchema = z.object({
   version: z.number().int(),
   rules: z.array(wireRuleSchema),
+  pinned_rule_ids: z.array(z.string()).default([]),
+  total: z.number().int().nonnegative().default(0),
+  revision: z.number().int().nonnegative().default(0),
+  next_cursor: z.string().nullable().default(null),
+  has_more: z.boolean().default(false),
 });
 
-export const ruleMutationResponseSchema = z.object({
-  rule_id: z.string(),
-  message: z.string(),
+export const ruleSnapshotMutationSchema = wireRuleSchema.extend({
+  previous_rule_id: z.string().optional(),
+  resulting_rule_id: z.string().optional(),
 });
+
+/** Legacy mutation acknowledgements remain parseable for old saved-run/API fixtures. */
+export const ruleMutationResponseSchema = z.union([
+  ruleSnapshotMutationSchema,
+  z.object({ rule_id: z.string(), message: z.string() }),
+]);
+
+export const enablementResponseSchema = z.object({ rules: z.array(wireRuleSchema) });
 
 export const replaceRulesResponseSchema = z.object({
   message: z.string(),
   rule_count: z.number(),
   next_index: z.number(),
+});
+
+export const ruleImportResponseSchema = z.object({
+  imported: z.number().int().nonnegative(),
+  reused: z.number().int().nonnegative(),
+  enabled: z.number().int().nonnegative(),
+  bindings: z.record(z.string(), z.string()),
 });
 
 export const reorderRulesResponseSchema = z.object({
@@ -240,6 +265,11 @@ export const wireRunRequestSchema = z.object({
   filters: z.array(wireFilterRowSchema).optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
   exception_columns: z.array(z.string()).optional(),
+  extra_column_display: z.object({
+    overall_result_page: z.boolean(), overall_html_report: z.boolean(), overall_excel_report: z.boolean(),
+    new_books_result_page: z.boolean(), new_books_html_report: z.boolean(), new_books_excel_report: z.boolean(),
+    exception_tables: z.boolean(),
+  }).optional(),
 });
 export type WireRunRequest = z.infer<typeof wireRunRequestSchema>;
 
@@ -306,6 +336,7 @@ export const wireComparisonSchema = z.object({
 export const wireViolationSchema = z.object({
   row_index: z.number().int(),
   rule_id: z.string(),
+  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/),
   rule_name: z.string(),
   key_columns: z.record(z.string(), wireScalarSchema),
   details: z.string(),
@@ -333,10 +364,11 @@ export const wireValidationSchema = z.object({
   violating_attributes_by_rule: z.record(z.string(), z.number().int().nonnegative()).optional(),
   rule_summaries: z.record(
     z.string(),
-    z.object({
-      name: z.string(),
+      z.object({
+        name: z.string(),
+        rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/),
       description: z.string().optional(),
-      logic: z.string(),
+      logic: z.string().optional(),
       condition: z.string().optional(),
       condition_grouping: z.string().optional(),
       hide_comparison: z.boolean().optional(),
@@ -347,6 +379,7 @@ export const wireValidationSchema = z.object({
 export const wireRunResultSchema = z.object({
   comparison: wireComparisonSchema,
   validation: wireValidationSchema,
+  rule_bindings: z.record(z.string(), z.string()),
   common_columns: z.array(z.string()),
   target_columns: z.array(z.string()).nullable(),
   key_columns: z.array(z.string()).optional(),
@@ -362,6 +395,11 @@ export const wireRunResultSchema = z.object({
     extra_columns: z.array(z.string()).optional(),
   })).optional(),
   exception_columns: z.array(z.string()).optional(),
+  extra_column_display: z.object({
+    overall_result_page: z.boolean(), overall_html_report: z.boolean(), overall_excel_report: z.boolean(),
+    new_books_result_page: z.boolean(), new_books_html_report: z.boolean(), new_books_excel_report: z.boolean(),
+    exception_tables: z.boolean(),
+  }).optional(),
 });
 
 export const wireRunDocumentSchema = z.object({
@@ -373,6 +411,38 @@ export const wireRunDocumentSchema = z.object({
   result: wireRunResultSchema,
 });
 export type WireRunDocument = z.infer<typeof wireRunDocumentSchema>;
+
+// Persisted documents from before Worker C have no canonical fields. They are
+// accepted only on the explicit legacy load path and never receive guessed IDs.
+const legacyViolationSchema = wireViolationSchema.extend({
+  rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
+});
+const legacyValidationSchema = wireValidationSchema.extend({
+  violations_by_rule: z.record(z.string(), z.array(legacyViolationSchema)),
+  rule_summaries: z.record(z.string(), z.object({
+    name: z.string(),
+    rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/).nullable().optional(),
+    description: z.string().optional(),
+    logic: z.string().optional(),
+    condition: z.string().optional(),
+    condition_grouping: z.string().optional(),
+    hide_comparison: z.boolean().optional(),
+  })).optional(),
+});
+const legacyRunResultSchema = wireRunResultSchema.extend({
+  validation: legacyValidationSchema,
+  rule_bindings: z.record(z.string(), z.string()).optional(),
+});
+export const legacyWireRunDocumentSchema = z.object({
+  run_id: z.string(),
+  report_name: z.string(),
+  file_a_name: z.string(),
+  file_b_name: z.string(),
+  created_at: z.string(),
+  result: legacyRunResultSchema,
+});
+export type LegacyWireRunDocument = z.infer<typeof legacyWireRunDocumentSchema>;
+export const wireRunDocumentResponseSchema = z.union([wireRunDocumentSchema, legacyWireRunDocumentSchema]);
 
 export const wireRunMetadataSchema = z.object({
   run_id: z.string(),

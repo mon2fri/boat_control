@@ -21,6 +21,47 @@ const families: Family[] = [
 ];
 
 describe("ordered-list family compression round-trip", () => {
+  it("preserves a wire-format condition relation when loading an exported catalog config", () => {
+    const { drafts } = resolveRulesConfig([
+      {
+        rule_id: "R004",
+        name: "Two conditions",
+        condition_relation: "or",
+        conditions: [
+          { column_name: "name", operator: "eq", filter_value: "A" },
+          { column_name: "status", operator: "eq", filter_value: "active" },
+        ],
+        logic: {
+          format: "value_vs_column",
+          column_name: "score",
+          operator: "gt",
+          target_value: "10",
+        },
+      },
+    ], [], ["name", "status", "score"]);
+
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.conditions).toHaveLength(2);
+    expect(drafts[0]?.conditionJoin).toBe("or");
+  });
+
+  it("round-trips extra columns and their three display destinations", () => {
+    const extraColumnDisplay = {
+      overallResultPage: true, overallHtmlReport: true, overallExcelReport: true,
+      newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false,
+      exceptionTables: true,
+    };
+    const config = mapWorkflowToRowsColumnsConfig({
+      comparisonColumns: ["status", "region"], keyColumns: [], aggregationColumns: [],
+      filters: [], targetColumns: [], exceptionColumns: ["region"], extraColumnDisplay,
+      nestedAggregationEnabled: false, comparisonSections: [],
+    }, families);
+
+    expect(config.extraColumns).toEqual([{ kind: "column", name: "region" }]);
+    expect(resolveRowsColumnsConfig(config, families, ["status", "region"]).extraColumnDisplay)
+      .toEqual(extraColumnDisplay);
+  });
+
   it("serializes aggregationColumns as explicit column refs, not family refs", () => {
     const state = {
       comparisonColumns: [],
@@ -266,6 +307,30 @@ describe("rules config grouping-tree round-trip", () => {
         { kind: "leaf", conditionId: "c2" },
       ],
     });
+  });
+
+  it("assigns an AND relation when one family condition expands into several conditions", () => {
+    const { drafts } = resolveRulesConfig([
+      {
+        name: "Family condition",
+        conditions: [
+          {
+            column_name: { kind: "column_family", name: "Name Family" },
+            operator: "equals",
+            filter_values: ["A"],
+          },
+        ],
+        logic: {
+          format: "value_vs_column",
+          column_name: "score",
+          operator: "greater_than",
+          target_value: "10",
+        },
+      },
+    ], families, ["name", "status", "score"]);
+
+    expect(drafts[0]?.conditions).toHaveLength(2);
+    expect(drafts[0]?.conditionJoin).toBe("and");
   });
 
   it("loads legacy grouping trees whose leaves contain old client IDs", () => {

@@ -16,6 +16,7 @@ import {
   deleteConfig,
   deleteFamily,
   deleteSavedFilter,
+  exportRulesConfig,
   getConfig,
   getFamily,
   listConfigs,
@@ -23,7 +24,8 @@ import {
   listPresetSources,
   listSavedFilters,
   loadSettings,
-  saveSettings,
+    saveSettings,
+    saveRulesConfig,
   updateConfig,
   updateFamily,
   updateSavedFilter,
@@ -80,7 +82,9 @@ export function useCreateConfig(configType: ConfigType) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ name, content }: { name: string; content: unknown }) =>
-      createConfig(configType, name, content),
+      configType === "rules"
+        ? exportRulesConfig(name)
+        : createConfig(configType, name, content),
     onSuccess: () => client.invalidateQueries({ queryKey: configListKey(configType) }),
   });
 }
@@ -89,7 +93,9 @@ export function useUpdateConfig(configType: ConfigType) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ name, content, version }: { name: string; content: unknown; version: number }) =>
-      updateConfig(configType, name, content, version),
+      configType === "rules"
+        ? saveRulesConfig(name, version)
+        : updateConfig(configType, name, content, version),
     onSuccess: (_, vars) => {
       void client.invalidateQueries({ queryKey: configListKey(configType) });
       void client.invalidateQueries({ queryKey: configDetailKey(configType, vars.name) });

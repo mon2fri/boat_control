@@ -49,6 +49,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
   if (state.exceptionColumns.length > 0) {
     request.exceptionColumns = state.exceptionColumns;
   }
+  request.extraColumnDisplay = state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true };
   return request;
 }
 
@@ -95,6 +96,7 @@ export function ResultsPage() {
         dispatch({ type: "setKeyColumns", columns: result.keyColumns ?? [] });
         // Always restore exception columns (including empty array).
         dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns ?? [] });
+        dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true } });
       })
       .catch(() => {
         // Surface a quiet failure by leaving the result empty; the page's
@@ -172,6 +174,7 @@ export function ResultsPage() {
           aggregationColumns={state.aggregationColumns}
           aggregationColumnLabels={state.aggregationColumnLabels}
           exceptionColumns={state.exceptionColumns}
+          extraColumnDisplay={state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true }}
           nestedAggregationEnabled={state.nestedAggregationEnabled}
           commonColumns={state.header?.common ?? []}
           onRunAnother={() => setShowStartOverConfirm(true)}
@@ -202,6 +205,7 @@ interface ResultViewProps {
   aggregationColumns: string[];
   aggregationColumnLabels: Record<string, string>;
   exceptionColumns: string[];
+  extraColumnDisplay: import("../api/domain").ExtraColumnDisplay;
   nestedAggregationEnabled: boolean;
   commonColumns: string[];
   onRunAnother: () => void;
@@ -218,6 +222,7 @@ function ResultView({
   aggregationColumns,
   aggregationColumnLabels,
   exceptionColumns,
+  extraColumnDisplay,
   nestedAggregationEnabled,
   commonColumns,
   onRunAnother,
@@ -225,6 +230,7 @@ function ResultView({
   onViewHistory,
   onRename,
 }: ResultViewProps) {
+  const overallExtraLabels = Object.fromEntries(exceptionColumns.map((column) => [column, `${column}(Latest Value)`]));
   return (
     <div className="result-content results-layer-content" data-export-source="result">
       <div className="results-header results-layer-header">
@@ -261,6 +267,8 @@ function ResultView({
             aggregationColumns={aggregationColumns}
             aggregationColumnLabels={aggregationColumnLabels}
             keyColumnNames={keyColumns}
+            extraColumnNames={extraColumnDisplay.overallResultPage ? exceptionColumns : []}
+            extraColumnLabels={overallExtraLabels}
           />
         ) : result.groupStatistics?.overall && result.groupStatistics.overall.length > 0 ? (
           <GroupStatisticsPanel stats={result.groupStatistics.overall} columnLabels={aggregationColumnLabels} />
@@ -273,10 +281,10 @@ function ResultView({
         aggregationColumns={aggregationColumns}
         aggregationColumnLabels={aggregationColumnLabels}
         keyColumnNames={keyColumns}
+        nestedAggregationEnabled={nestedAggregationEnabled}
+        extraColumnNames={extraColumnDisplay.newBooksResultPage ? exceptionColumns : []}
         {...(result.groupStatistics?.newBooks && { groupStatistics: result.groupStatistics.newBooks })}
       />
-
-      <ExceptionRuleSummary rules={result.ruleResults} />
 
       {result.comparisonSections && result.comparisonSections.length > 0
         ? result.comparisonSections.map((section) => {
@@ -319,6 +327,7 @@ function ResultView({
                   exportRows={sectionChanges}
                   sectionColumns={section.columns}
                   extraColumnNames={section.extraColumns ?? []}
+                  emptyMessage={`No books with ${section.name}`}
                 />
               </section>
             );
@@ -341,6 +350,8 @@ function ResultView({
                 aggregationColumns={aggregationColumns}
                 aggregationColumnLabels={aggregationColumnLabels}
                 keyColumnNames={keyColumns}
+                extraColumnNames={extraColumnDisplay.overallResultPage ? exceptionColumns : []}
+                extraColumnLabels={overallExtraLabels}
               />
             ) : result.groupStatistics?.attributeChanges && result.groupStatistics.attributeChanges.length > 0 ? (
               <GroupStatisticsPanel stats={result.groupStatistics.attributeChanges} columnLabels={aggregationColumnLabels} />
@@ -350,10 +361,14 @@ function ResultView({
               kind="changed"
               caption="Attribute change details"
               keyColumnNames={keyColumns}
+              extraColumnNames={extraColumnDisplay.overallResultPage ? exceptionColumns : []}
+              extraColumnLabels={overallExtraLabels}
               exportRows={result.changeDetails}
             />
           </section>
         )}
+
+      <ExceptionRuleSummary rules={result.ruleResults} />
 
       {result.ruleResults.map((rule) => {
         const ruleGroupStats = result.groupStatistics?.validationRules?.[rule.ruleIndex];
@@ -372,7 +387,7 @@ function ResultView({
         ruleResults={result.ruleResults}
         keyColumnNames={keyColumns}
         aggregationColumnLabels={aggregationColumnLabels}
-        exceptionColumns={exceptionColumns}
+        exceptionColumns={extraColumnDisplay.exceptionTables ? exceptionColumns : []}
       />
 
       <div className="card results-actions results-layer-actions" data-export-exclude>

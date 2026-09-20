@@ -18,6 +18,8 @@ interface StaticProps {
   hasMore?: boolean;
   keyColumnNames?: string[];
   extraColumnNames?: string[];
+  /** Display labels for extra columns; keys remain source column names. */
+  extraColumnLabels?: Record<string, string>;
   hideComparison?: boolean;
   emptyMessage?: string;
   /** Optional column filters shown as filterable headers. */
@@ -76,6 +78,7 @@ export function DetailTable({
   hasMore = false,
   keyColumnNames = [],
   extraColumnNames: configuredExtraColumnNames,
+  extraColumnLabels = {},
   hideComparison = false,
   emptyMessage = "No detail rows.",
   columnFilters = [],
@@ -188,7 +191,7 @@ export function DetailTable({
         return cf ? (
           <FilterableTh
             key={name}
-            label={name}
+            label={extraColumnLabels[name] ?? name}
             sortKey={`extra_${name}`}
             sort={sort}
             onSort={toggleSort}
@@ -198,7 +201,7 @@ export function DetailTable({
             forceRenderOptions={exportMode}
           />
         ) : (
-          <SortableTh key={name} label={name} sortKey={`extra_${name}`} sort={sort} onSort={toggleSort} />
+          <SortableTh key={name} label={extraColumnLabels[name] ?? name} sortKey={`extra_${name}`} sort={sort} onSort={toggleSort} />
         );
       })}
       {!hideComparison && (() => {

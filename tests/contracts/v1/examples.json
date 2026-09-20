@@ -68,10 +68,12 @@
       "invalid_columns": ["bad_col"]
     },
     "rules_list_response": {
-      "version": 1,
+      "version": 2,
       "rules": [
         {
           "rule_id": "R001",
+          "rule_identifier": "CBR1_00000000000000000000",
+          "enabled": true,
           "name": "Status Check",
           "description": "Validates status field",
           "conditions": [
@@ -85,14 +87,35 @@
             "target_value": "active"
           }
         }
-      ]
+      ],
+      "pinned_rule_ids": ["R001"],
+      "total": 1,
+      "revision": 1,
+      "next_cursor": null,
+      "has_more": false
     },
     "rule_create_response": {
       "rule_id": "R001",
-      "message": "Rule created."
+      "rule_identifier": "CBR1_00000000000000000000",
+      "enabled": true,
+      "enabled_position": 1,
+      "name": "Status Check",
+      "description": "Validates status field",
+      "conditions": [],
+      "logic": {
+        "format": "value_vs_column",
+        "column_name": "status",
+        "operator": "eq",
+        "target_value": "active",
+        "target_values": [],
+        "comparison_mode": "comparison_vs_baseline"
+      }
     },
     "rule_detail_response": {
       "rule_id": "R001",
+      "rule_identifier": "CBR1_00000000000000000000",
+      "enabled": true,
+      "enabled_position": 1,
       "name": "Status Check",
       "description": "Validates status field",
       "conditions": [
@@ -155,6 +178,7 @@
               {
                 "row_index": 10,
                 "rule_id": "R001",
+                "rule_identifier": "CBR1_00000000000000000000",
                 "rule_name": "Status Check",
                 "key_columns": {"id": "100"},
                 "violating_column": "status",
@@ -166,14 +190,22 @@
           },
           "violation_count_by_rule": {"R001": 30, "R002": 20},
           "violating_rows_by_rule": {"R001": 25, "R002": 20},
-          "violating_attributes_by_rule": {"R001": 35, "R002": 25}
+          "violating_attributes_by_rule": {"R001": 35, "R002": 25},
+          "rule_summaries": {
+            "R001": {"rule_identifier": "CBR1_00000000000000000000", "name": "Status Check"},
+            "R002": {"rule_identifier": "CBR1_11111111111111111111", "name": "Second Check"}
+          }
         },
         "common_columns": ["id", "name", "status", "score"],
         "target_columns": ["score", "status"],
         "key_columns": ["id"],
         "filters_applied": [
           {"column": "status", "operator": "eq", "filter_value": "active"}
-        ]
+        ],
+        "rule_bindings": {
+          "R001": "CBR1_00000000000000000000",
+          "R002": "CBR1_11111111111111111111"
+        }
       }
     },
     "history_response": [
@@ -201,19 +233,21 @@
           "total_attribute_changes": 3,
           "row_details": []
         },
-        "validation": {
+          "validation": {
           "total_violations": 0,
           "distinct_violating_rows": 0,
           "distinct_violating_attributes": 0,
           "violations_by_rule": {},
           "violation_count_by_rule": {},
           "violating_rows_by_rule": {},
-          "violating_attributes_by_rule": {}
+          "violating_attributes_by_rule": {},
+          "rule_summaries": {}
         },
         "common_columns": ["id", "name"],
         "target_columns": ["id", "name"],
         "key_columns": ["id"],
-        "filters_applied": []
+          "filters_applied": [],
+          "rule_bindings": {}
       }
     },
     "rename_response": {

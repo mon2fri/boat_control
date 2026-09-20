@@ -41,8 +41,8 @@ class LogicClauseSerializer(serializers.Serializer):  # type: ignore[misc]
 
 
 class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
-    name = serializers.CharField()
-    description = serializers.CharField(required=False, default="")
+    name = serializers.CharField(allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True, default="")
     conditions = ConditionSerializer(many=True, required=False, default=list)
     condition_relation = serializers.ChoiceField(
         choices=["and", "or"], required=False, allow_null=True
@@ -58,6 +58,11 @@ class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
 
 class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     rule_id = serializers.CharField()
+    rule_identifier = serializers.CharField(allow_null=True)
+    equivalent_rule = serializers.BooleanField(required=False)
+    equivalent_rule_id = serializers.CharField(required=False)
+    enabled = serializers.BooleanField()
+    enabled_position = serializers.IntegerField(allow_null=True, required=False)
     name = serializers.CharField()
     description = serializers.CharField()
     conditions = ConditionSerializer(many=True)
@@ -76,6 +81,11 @@ class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
 class RulesListResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     version = serializers.IntegerField()
     rules = RuleResponseSerializer(many=True)
+    pinned_rule_ids = serializers.ListField(child=serializers.CharField(), required=False)
+    total = serializers.IntegerField(required=False)
+    revision = serializers.IntegerField(required=False)
+    next_cursor = serializers.CharField(allow_null=True, required=False)
+    has_more = serializers.BooleanField(required=False)
 
 
 class ReplaceRulesSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -92,3 +102,8 @@ class ReorderRulesSerializer(serializers.Serializer):  # type: ignore[misc]
         if len(value) != len(set(value)):
             raise serializers.ValidationError("Rule IDs must be unique.")
         return value
+
+
+class EnablementSerializer(serializers.Serializer):  # type: ignore[misc]
+    rule_ids = serializers.ListField(child=serializers.CharField(), allow_empty=True)
+    enabled = serializers.BooleanField()

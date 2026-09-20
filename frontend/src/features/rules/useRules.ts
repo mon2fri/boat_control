@@ -1,11 +1,27 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createRule, deleteRule, loadRules, reorderRules, updateRule } from "../../api/endpoints";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { createRule, deleteRule, loadRulesPage, reorderRules, setRulesEnabled, updateRule } from "../../api/endpoints";
 import type { Rule, RuleDraft } from "../../api/domain";
 
 const RULES_KEY = ["rules"] as const;
 
 export function useRules() {
-  return useQuery({ queryKey: RULES_KEY, queryFn: () => loadRules() });
+  const query = useInfiniteQuery({
+    queryKey: RULES_KEY,
+    queryFn: ({ pageParam }) => loadRulesPage(pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.hasMore ? page.nextCursor : undefined,
+  });
+  const pages = query.data?.pages ?? [];
+  const rules = [...new Map(pages.flatMap((page) => page.rules).map((rule) => [rule.index, rule])).values()];
+  const first = pages[0];
+  return {
+    ...query,
+    data: rules,
+    pages,
+    total: first?.total ?? 0,
+    revision: first?.revision ?? 0,
+    pinnedRuleIds: first?.pinnedRuleIds ?? [],
+  };
 }
 
 export function useCreateRule() {
@@ -29,6 +45,48 @@ export function useDeleteRule() {
   return useMutation({
     mutationFn: (index: string) => deleteRule(index),
     onSuccess: () => client.invalidateQueries({ queryKey: RULES_KEY }),
+  });
+}
+
+export function useSetRulesEnabled() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ruleIds, enabled }: { ruleIds: string[]; enabled: boolean }) =>
+      setRulesEnabled(ruleIds, enabled),
+    onMutate: async ({ ruleIds, enabled }) => {
+      await client.cancelQueries({ queryKey: RULES_KEY });
+      const previous = client.getQueryData(RULES_KEY);
+      client.setQueryData(RULES_KEY, (current: any) => {
+        if (!current) return current;
+        return {
+          ...current,
+          pages: current.pages.map((page: any) => ({
+            ...page,
+            rules: page.rules.map((rule: Rule) =>
+              ruleIds.includes(rule.index) ? { ...rule, enabled } : rule,
+            ),
+          })),
+        };
+      });
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) client.setQueryData(RULES_KEY, context.previous);
+    },
+    onSuccess: (updated) => {
+      client.setQueryData(RULES_KEY, (current: any) => {
+        if (!current) return current;
+        const byId = new Map(updated.map((rule) => [rule.index, rule]));
+        return {
+          ...current,
+          pages: current.pages.map((page: any) => ({
+            ...page,
+            rules: page.rules.map((rule: Rule) => byId.get(rule.index) ?? rule),
+          })),
+        };
+      });
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: RULES_KEY }),
   });
 }
 

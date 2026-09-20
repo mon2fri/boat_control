@@ -1,197 +1,229 @@
 from __future__ import annotations
 
-import threading
 from typing import Any
 
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.rules.identifiers import calculate_rule_identifier
+from apps.rules.models import StoredValidationRule
+from apps.rules.repository import (
+    CatalogCorruptionError,
+    CatalogError,
+    IdentityCollisionError,
+    InvalidCursorError,
+    StaleCursorError,
+    archive_catalog_rule,
+    create_catalog_rule,
+    get_catalog_rule,
+    list_catalog_rules,
+    reorder_enabled_rules,
+    set_rules_disabled,
+    set_rules_enabled,
+    update_catalog_rule,
+)
 from apps.rules.serializers import (
+    EnablementSerializer,
     ReorderRulesSerializer,
-    ReplaceRulesSerializer,
     RuleSerializer,
 )
-from apps.rules.services import (
-    RulesFile,
-    _serialize_grouping_tree,
-    create_rule,
-    delete_rule,
-    load_rules,
-    reorder_rules,
-    replace_rules,
-    save_rules,
-    update_rule,
-)
-
-_rules_lock = threading.Lock()
+from apps.rules.services import validate_rule
 
 
-def _rules_to_dict(rules_file: RulesFile) -> dict[str, Any]:
-    rules_data: list[dict[str, Any]] = []
-    for rule in rules_file.rules:
-        rule_dict: dict[str, Any] = {
-            "rule_id": rule.rule_id,
-            "name": rule.name,
-            "description": rule.description,
-            "conditions": [
-                {
-                    "column_name": c.column_name,
-                    "operator": c.operator,
-                    "filter_value": c.filter_value,
-                    "filter_values": list(c.filter_values or (c.filter_value,)),
-                }
-                for c in rule.conditions
-            ],
-            "logic": {
-                "format": rule.logic.format,
-                "column_name": rule.logic.column_name,
-                "operator": rule.logic.operator,
-                "target_value": rule.logic.target_value,
-                **(
-                    {"target_values": list(rule.logic.target_values)}
-                    if rule.logic.target_values
-                    else {}
-                ),
-                "comparison_mode": rule.logic.comparison_mode,
-            },
-            "extra_columns": list(rule.extra_columns),
-            "hide_comparison": rule.hide_comparison,
-        }
-        if rule.condition_relation:
-            rule_dict["condition_relation"] = rule.condition_relation
-        tree = _serialize_grouping_tree(rule.grouping_tree)
-        if tree is not None:
-            rule_dict["grouping_tree"] = tree
-        rules_data.append(rule_dict)
-    return {"version": rules_file.version, "rules": rules_data}
+def _snapshot_to_dict(snapshot: Any) -> dict[str, Any]:
+    rule = snapshot.rule
+    result: dict[str, Any] = {
+        "rule_id": rule.rule_id,
+        "rule_identifier": snapshot.rule_identifier,
+        "enabled": snapshot.enabled,
+        "enabled_position": getattr(snapshot, "enabled_position", None),
+        "name": rule.name,
+        "description": rule.description,
+        "conditions": [
+            {
+                "column_name": condition.column_name,
+                "operator": condition.operator,
+                "filter_value": condition.filter_value,
+                "filter_values": list(condition.filter_values or (condition.filter_value,)),
+            }
+            for condition in rule.conditions
+        ],
+        "logic": {
+            "format": rule.logic.format,
+            "column_name": rule.logic.column_name,
+            "operator": rule.logic.operator,
+            "target_value": rule.logic.target_value,
+            "target_values": list(rule.logic.target_values),
+            "comparison_mode": rule.logic.comparison_mode,
+        },
+        "extra_columns": list(rule.extra_columns),
+        "hide_comparison": rule.hide_comparison,
+    }
+    if rule.condition_relation is not None:
+        result["condition_relation"] = rule.condition_relation
+    if rule.grouping is not None:
+        result["grouping"] = rule.grouping
+    if rule.grouping_tree is not None:
+        result["grouping_tree"] = _serialize_grouping_tree(rule.grouping_tree)
+    return result
+
+
+def _serialize_grouping_tree(node: Any) -> Any:
+    if node is None:
+        return None
+    if hasattr(node, "condition_id"):
+        return {"kind": "leaf", "conditionId": node.condition_id}
+    return {
+        "kind": node.kind,
+        "children": [_serialize_grouping_tree(child) for child in node.children],
+    }
+
+
+def _validated_draft(
+    data: Any, *, allow_blank_name: bool
+) -> tuple[dict[str, Any] | None, Response | None]:
+    serializer = RuleSerializer(data=data)
+    serializer.is_valid(raise_exception=True)
+    draft = dict(serializer.validated_data)
+    if not str(draft.get("name", "")).strip():
+        if not allow_blank_name:
+            return None, Response(
+                {"error": "Rule name is required when editing a rule."}, status=400
+            )
+        draft["name"] = "Unnamed"
+    validation = validate_rule(draft)
+    if not validation.valid:
+        return None, Response({"error": "; ".join(validation.errors)}, status=400)
+    return draft, None
+
+
+def _catalog_error(exc: Exception) -> Response:
+    if isinstance(exc, (StaleCursorError, InvalidCursorError)):
+        return Response({"error": str(exc), "code": type(exc).__name__}, status=409)
+    if isinstance(exc, CatalogError):
+        return Response({"error": str(exc)}, status=400)
+    return Response({"error": str(exc)}, status=500)
 
 
 class RulesListView(APIView):  # type: ignore[misc]
     def get(self, request: Request) -> Response:
-        rules_file = load_rules()
-        return Response(_rules_to_dict(rules_file))
+        try:
+            page = list_catalog_rules(request.query_params.get("cursor"))
+        except Exception as exc:
+            return _catalog_error(exc)
+        return Response(
+            {
+                "version": 2,
+                "rules": [_snapshot_to_dict(item) for item in page.rules],
+                "pinned_rule_ids": list(page.pinned_rule_ids),
+                "total": page.total_count,
+                "revision": page.revision,
+                "next_cursor": page.next_cursor,
+                "has_more": page.has_more,
+            }
+        )
 
     def post(self, request: Request) -> Response:
-        serializer = RuleSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        with _rules_lock:
-            rules_file = load_rules()
-            try:
-                new_file, rule = create_rule(rules_file, serializer.validated_data)
-                save_rules(new_file)
-                return Response(
-                    {"rule_id": rule.rule_id, "message": "Rule created."},
-                    status=201,
-                )
-            except ValueError as e:
-                return Response({"error": str(e)}, status=400)
+        draft, error = _validated_draft(request.data, allow_blank_name=True)
+        if error:
+            return error
+        assert draft is not None
+        try:
+            identifier = calculate_rule_identifier(draft)
+            equivalent = StoredValidationRule.objects.filter(identity_id=identifier).first()
+            snapshot = create_catalog_rule(draft, enabled=True)
+            response = _snapshot_to_dict(snapshot)
+            if equivalent is not None:
+                response["equivalent_rule"] = True
+                response["equivalent_rule_id"] = equivalent.rule_id
+            return Response(response, status=201)
+        except (CatalogError, IdentityCollisionError, CatalogCorruptionError) as exc:
+            return _catalog_error(exc)
 
 
 class RuleDetailView(APIView):  # type: ignore[misc]
     def get(self, request: Request, rule_id: str) -> Response:
-        rules_file = load_rules()
-        for rule in rules_file.rules:
-            if rule.rule_id == rule_id:
-                data: dict[str, Any] = {
-                    "rule_id": rule.rule_id,
-                    "name": rule.name,
-                    "description": rule.description,
-                    "conditions": [
-                        {
-                            "column_name": c.column_name,
-                            "operator": c.operator,
-                            "filter_value": c.filter_value,
-                            "filter_values": list(c.filter_values or (c.filter_value,)),
-                        }
-                        for c in rule.conditions
-                    ],
-                    "logic": {
-                        "format": rule.logic.format,
-                        "column_name": rule.logic.column_name,
-                        "operator": rule.logic.operator,
-                        "target_value": rule.logic.target_value,
-                        "comparison_mode": rule.logic.comparison_mode,
-                    },
-                    "extra_columns": list(rule.extra_columns),
-                    "hide_comparison": rule.hide_comparison,
-                }
-                if rule.condition_relation:
-                    data["condition_relation"] = rule.condition_relation
-                tree = _serialize_grouping_tree(rule.grouping_tree)
-                if tree is not None:
-                    data["grouping_tree"] = tree
-                return Response(data)
-        return Response({"error": f"Rule {rule_id} not found."}, status=404)
+        try:
+            return Response(_snapshot_to_dict(get_catalog_rule(rule_id)))
+        except CatalogError as exc:
+            return Response({"error": str(exc)}, status=404)
 
     def put(self, request: Request, rule_id: str) -> Response:
-        serializer = RuleSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        with _rules_lock:
-            rules_file = load_rules()
-            try:
-                new_file = update_rule(rules_file, rule_id, serializer.validated_data)
-                save_rules(new_file)
-                return Response({"rule_id": rule_id, "message": "Rule updated."})
-            except ValueError as e:
-                return Response({"error": str(e)}, status=400)
+        draft, error = _validated_draft(request.data, allow_blank_name=False)
+        if error:
+            return error
+        assert draft is not None
+        try:
+            result = update_catalog_rule(rule_id, draft)
+            return Response(
+                {
+                    **_snapshot_to_dict(result.rule),
+                    "previous_rule_id": result.previous_rule_id,
+                    "resulting_rule_id": result.rule.rule.rule_id,
+                }
+            )
+        except CatalogError as exc:
+            return _catalog_error(exc)
 
     def delete(self, request: Request, rule_id: str) -> Response:
-        with _rules_lock:
-            rules_file = load_rules()
-            try:
-                new_file = delete_rule(rules_file, rule_id)
-                save_rules(new_file)
-                return Response({"rule_id": rule_id, "message": "Rule deleted."})
-            except ValueError as e:
-                return Response({"error": str(e)}, status=404)
+        try:
+            return Response(_snapshot_to_dict(archive_catalog_rule(rule_id)))
+        except CatalogError as exc:
+            return Response({"error": str(exc)}, status=404)
 
 
-class ReplaceRulesView(APIView):  # type: ignore[misc]
-    """Replace the entire rule collection atomically.
-
-    Accepts a list of rule drafts. All current rules are removed and new
-    rules are assigned sequential IDs starting at R001. If validation fails
-    for any draft the existing rules are left untouched.
-    """
-
+class EnablementView(APIView):  # type: ignore[misc]
     def post(self, request: Request) -> Response:
-        serializer = ReplaceRulesSerializer(data=request.data)
+        serializer = EnablementSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        with _rules_lock:
-            try:
-                rule_drafts = serializer.validated_data["rules"]
-                new_file = replace_rules(rule_drafts)
-                return Response(
-                    {
-                        "message": "Rules replaced.",
-                        "rule_count": len(new_file.rules),
-                        "next_index": new_file.next_index,
-                    },
-                    status=200,
-                )
-            except ValueError as e:
-                return Response({"error": str(e)}, status=400)
+        ids = serializer.validated_data["rule_ids"]
+        try:
+            rules = (
+                set_rules_enabled(ids)
+                if serializer.validated_data["enabled"]
+                else set_rules_disabled(ids)
+            )
+            return Response({"rules": [_snapshot_to_dict(rule) for rule in rules]})
+        except CatalogError as exc:
+            return _catalog_error(exc)
 
 
 class ReorderRulesView(APIView):  # type: ignore[misc]
     def post(self, request: Request) -> Response:
         serializer = ReorderRulesSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        with _rules_lock:
-            rules_file = load_rules()
-            try:
-                reordered = reorder_rules(
-                    rules_file,
-                    serializer.validated_data["rule_ids"],
-                )
-                save_rules(reordered)
-                return Response({
+        try:
+            rules = reorder_enabled_rules(serializer.validated_data["rule_ids"])
+            return Response(
+                {
                     "message": "Rules reordered.",
-                    "rule_ids": [rule.rule_id for rule in reordered.rules],
-                })
-            except ValueError as e:
-                return Response({"error": str(e)}, status=400)
+                    "rule_ids": [rule.rule.rule_id for rule in rules],
+                    "rules": [_snapshot_to_dict(rule) for rule in rules],
+                }
+            )
+        except CatalogError as exc:
+            return _catalog_error(exc)
+
+
+class ReplaceRulesView(APIView):  # type: ignore[misc]
+    """Compatibility route: apply a validated configuration without deleting history."""
+
+    def post(self, request: Request) -> Response:
+        from apps.configs.views import _import_rule_content
+
+        try:
+            result = _import_rule_content(request.data.get("rules", []))
+            from apps.rules.models import RuleStoreState
+
+            state = RuleStoreState.objects.get(singleton_key=1)
+            return Response(
+                {
+                    "message": "Rules replaced.",
+                    "rule_count": result["enabled"],
+                    "next_index": state.next_index,
+                    **result,
+                }
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)

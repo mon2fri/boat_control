@@ -11,12 +11,14 @@ export function buildNestedAggregationTree(
   details: DetailRow[],
   aggregationColumns: string[],
   keyColumnNames: string[],
+  detailKinds: DetailRow["kind"][] = ["changed"],
 ): NestedAggNode[] {
   if (aggregationColumns.length === 0 || details.length === 0) return [];
 
-  // Defensive filter: exclude rule-exception rows. Only genuine attribute
-  // changes (kind === "changed") should appear in the change tree.
-  const changedDetails = details.filter((d) => d.kind === "changed");
+  // Callers explicitly choose which result rows belong in the tree. The
+  // default remains genuine attribute changes, while New Books can reuse the
+  // same aggregation hierarchy for comparison-only records.
+  const changedDetails = details.filter((d) => detailKinds.includes(d.kind));
   if (changedDetails.length === 0) return [];
 
   // Group detail rows by their record key. Each record yields one entry
@@ -25,16 +27,21 @@ export function buildNestedAggregationTree(
   const recordMap = new Map<string, {
     keyColumns: Record<string, string | null>;
     aggregationValues: Record<string, string | null>;
+    extraValues?: Record<string, string | null>;
     attributes: { column: string; old: string | null; new: string | null }[];
   }>();
 
   for (const row of changedDetails) {
-    const recKey = row.rowKey.split("#")[0] ?? row.rowKey;
+    // Attribute-change rows share a base key and need coalescing, whereas an
+    // added book is already one complete record. Retaining its full key keeps
+    // every comparison-only book as a separate leaf in the New Books tree.
+    const recKey = row.kind === "added" ? row.rowKey : (row.rowKey.split("#")[0] ?? row.rowKey);
     let entry = recordMap.get(recKey);
     if (!entry) {
       entry = {
         keyColumns: row.keyColumns,
         aggregationValues: row.aggregationValues ?? {},
+        ...(row.extraValues ? { extraValues: row.extraValues } : {}),
         attributes: [],
       };
       recordMap.set(recKey, entry);
@@ -67,6 +74,7 @@ function buildTreeLevel(
     recKey: string;
     keyColumns: Record<string, string | null>;
     aggregationValues: Record<string, string | null>;
+    extraValues?: Record<string, string | null>;
     attributes: { column: string; old: string | null; new: string | null }[];
   }[],
   aggregationColumns: string[],
@@ -85,6 +93,7 @@ function buildTreeLevel(
         label,
         rowKey: rec.recKey,
         keyColumns: rec.keyColumns,
+        ...(rec.extraValues ? { extraValues: rec.extraValues } : {}),
         changeCount: rec.attributes.length,
         attributes: rec.attributes,
       };

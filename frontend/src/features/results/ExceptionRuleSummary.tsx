@@ -22,6 +22,7 @@ export function ExceptionRuleSummary({ rules }: Props) {
               <div className="detail-grid-row" role="row">
                 <div role="columnheader">Rule name</div>
                 <div role="columnheader">Exception records</div>
+                <div role="columnheader">Rule identifier</div>
               </div>
             </div>
             <div className="detail-grid-body" role="rowgroup">
@@ -33,6 +34,9 @@ export function ExceptionRuleSummary({ rules }: Props) {
                   </div>
                   <div role="cell" className="exception-record-count">
                     {rule.violationRowCount.toLocaleString()}
+                  </div>
+                  <div role="cell" className="exception-rule-identifier">
+                    {rule.ruleIdentifier ?? "Legacy run: unavailable"}
                   </div>
                 </div>
               ))}

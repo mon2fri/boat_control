@@ -7,6 +7,7 @@ import { DetailTable, sortDetailRows } from "./DetailTable";
 import { GroupStatisticsPanel } from "./GroupStatisticsPanel";
 import { ExceptionRuleSummary } from "./ExceptionRuleSummary";
 import { ComparisonColumnList } from "./ComparisonColumnList";
+import { NewBooksCard } from "./NewBooksCard";
 import type { RunResult, RuleResult } from "../../api/domain";
 
 const ruleResult: RuleResult = {
@@ -41,6 +42,37 @@ const result: RunResult = {
 };
 
 describe("result components", () => {
+  it("uses the overall aggregation mode for New Books and retains its detail rows", () => {
+    const props = {
+      newBookCount: 2,
+      newBookDetails: ["new-1", "new-2"].map((id, index) => ({
+        rowKey: `newbook#0#${index}`,
+        keyColumns: { id },
+        column: "",
+        file1Value: null,
+        file2Value: null,
+        aggregationValues: { status: "active" },
+        kind: "added" as const,
+      })),
+      aggregationColumns: ["status"],
+      aggregationColumnLabels: {},
+      keyColumnNames: ["id"],
+      groupStatistics: [{ column: "status", uniqueCount: 2, attributeCount: 2, rows: [] }],
+    };
+
+    const { rerender } = render(<NewBooksCard {...props} nestedAggregationEnabled />);
+    expect(screen.getByText("new books found")).toBeInTheDocument();
+    expect(screen.getByText(/active/)).toBeInTheDocument();
+    expect(screen.getByText(/2 sub-nodes/)).toBeInTheDocument();
+    expect(screen.queryByRole("cell", { name: "new-1" })).not.toBeInTheDocument();
+
+    rerender(<NewBooksCard {...props} nestedAggregationEnabled={false} />);
+    expect(screen.getByRole("button", { name: /Exception records: 2/ })).toBeInTheDocument();
+    expect(screen.queryByText(/active.*sub-node/)).not.toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "new-1" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "new-2" })).toBeInTheDocument();
+  });
+
   it("renders all five overall counts with their values", () => {
     render(<OverallSummaryCards summary={result.overall} />);
     const region = screen.getByLabelText("Overall result summary");
@@ -150,6 +182,7 @@ describe("result components", () => {
     const region = screen.getByRole("region", { name: "Exception Rule Summary" });
     expect(within(region).getByRole("columnheader", { name: "Rule name" })).toBeInTheDocument();
     expect(within(region).getByRole("columnheader", { name: "Exception records" })).toBeInTheDocument();
+    expect(within(region).getByRole("columnheader", { name: "Rule identifier" })).toBeInTheDocument();
     expect(within(region).getByRole("cell", { name: /Region present/ })).toBeInTheDocument();
     expect(within(region).getByRole("cell", { name: "1,250" })).toBeInTheDocument();
   });
@@ -176,6 +209,15 @@ describe("result components", () => {
   it("shows a provided rule description in the result section", () => {
     render(<RuleResultSection result={ruleResult} />);
     expect(screen.getByText("Ensures every record has an assigned region.")).toBeVisible();
+  });
+
+  it("shows the canonical identifier at the far right of the result card", () => {
+    render(
+      <RuleResultSection
+        result={{ ...ruleResult, ruleIdentifier: "CBR1_0123456789ABCDEFGHJK" }}
+      />,
+    );
+    expect(screen.getByText("CBR1_0123456789ABCDEFGHJK")).toBeVisible();
   });
 
   it("sorts detail rows by any column and toggles direction", () => {

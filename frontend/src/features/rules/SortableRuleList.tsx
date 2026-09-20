@@ -8,10 +8,11 @@ interface Props {
   validColumns: string[];
   disabled?: boolean;
   onToggle: (ruleId: string) => void;
-  onToggleAll: (ruleIds: string[]) => void;
+  onToggleAll: (ruleIds: string[], enabled: boolean) => void;
   onEdit: (rule: Rule) => void;
   onDelete: (rule: Rule) => void;
   onReorder: (ruleIds: string[]) => void;
+  serverPaged?: boolean;
 }
 
 type KeyboardDrag = {
@@ -40,6 +41,7 @@ export function SortableRuleList({
   onEdit,
   onDelete,
   onReorder,
+  serverPaged = false,
 }: Props) {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [keyboardDrag, setKeyboardDrag] = useState<KeyboardDrag>(null);
@@ -48,14 +50,15 @@ export function SortableRuleList({
   const draggedRuleRef = useRef<string | null>(null);
   const valid = new Set(validColumns);
 
-  const totalPages = Math.ceil(rules.length / PAGE_SIZE);
+  const totalPages = serverPaged ? 1 : Math.ceil(rules.length / PAGE_SIZE);
   const effectivePage = Math.min(currentPage, Math.max(0, totalPages - 1));
   const paginatedRules = useMemo(() => {
+    if (serverPaged) return rules;
     const start = effectivePage * PAGE_SIZE;
     return rules.slice(start, start + PAGE_SIZE);
-  }, [rules, effectivePage]);
+  }, [rules, effectivePage, serverPaged]);
 
-  const allSelected = rules.length > 0 && rules.every((r) => selected.includes(r.index));
+  const allSelected = paginatedRules.length > 0 && paginatedRules.every((r) => selected.includes(r.index));
 
   const announce = useCallback((message: string) => {
     setAnnouncement("");
@@ -103,11 +106,7 @@ export function SortableRuleList({
   }
 
   function handleToggleAll() {
-    if (allSelected) {
-      onToggleAll([]);
-    } else {
-      onToggleAll(rules.map((r) => r.index));
-    }
+    onToggleAll(paginatedRules.map((r) => r.index), !allSelected);
   }
 
   return (
@@ -121,12 +120,12 @@ export function SortableRuleList({
               type="checkbox"
               checked={allSelected}
               ref={(el) => {
-                if (el) el.indeterminate = !allSelected && rules.some((r) => selected.includes(r.index));
+                if (el) el.indeterminate = !allSelected && paginatedRules.some((r) => selected.includes(r.index));
               }}
               onChange={handleToggleAll}
               disabled={disabled}
             />
-            Select all
+            Select displayed
           </label>
         </div>
       )}

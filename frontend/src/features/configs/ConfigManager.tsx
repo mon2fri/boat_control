@@ -8,6 +8,8 @@ interface ConfigManagerProps {
   currentContent: unknown;
   disabled?: boolean;
   hasUnsavedChanges?: boolean;
+  /** Some config types replace committed server state even without editor dirtiness. */
+  confirmBeforeLoad?: boolean;
   /** Title displayed on the card heading. */
   title?: string;
 }
@@ -22,6 +24,7 @@ export function ConfigManager({
   currentContent,
   disabled,
   hasUnsavedChanges,
+  confirmBeforeLoad = false,
   title,
 }: ConfigManagerProps) {
   const configs = useConfigs(configType);
@@ -43,7 +46,7 @@ export function ConfigManager({
 
   function handleLoad(name: string): void {
     if (!name) return;
-    if (hasUnsavedChanges) {
+    if (hasUnsavedChanges || confirmBeforeLoad) {
       setPendingLoadName(name);
     } else {
       setSelectedName(name);
@@ -132,7 +135,7 @@ export function ConfigManager({
                 disabled={disabled}
                 onClick={() => setShowSavePrompt(true)}
               >
-                Save new config
+                 Save to new config
               </button>
 
               {selectedName && (
@@ -148,7 +151,6 @@ export function ConfigManager({
             </div>
           </div>
 
-          {create.isSuccess && <p className="alert alert--success" style={{ marginTop: "var(--space)" }}>Saved as new config.</p>}
           {create.isError && (
             <p className="alert alert--error" style={{ marginTop: "var(--space)" }}>
               {create.error?.message?.includes("409") || create.error?.message?.includes("version")
@@ -156,7 +158,6 @@ export function ConfigManager({
                 : create.error?.message ?? "Save failed."}
             </p>
           )}
-          {update.isSuccess && <p className="alert alert--success" style={{ marginTop: "var(--space)" }}>Saved to config.</p>}
           {update.isError && (
             <p className="alert alert--error" style={{ marginTop: "var(--space)" }}>
               {update.error?.message?.includes("409") || update.error?.message?.includes("version")

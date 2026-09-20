@@ -3,10 +3,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.settings.serializers import SettingsSerializer
-from apps.settings.services import load_settings, update_settings
+from apps.settings.services import AppSettings, load_settings, update_settings
 
 
-def _settings_response(app_settings):  # type: ignore[no-untyped-def]
+def _settings_response(app_settings: AppSettings) -> dict[str, object]:
     return {
         "application_name": app_settings.application_name,
         "default_remote_path": app_settings.default_remote_path,

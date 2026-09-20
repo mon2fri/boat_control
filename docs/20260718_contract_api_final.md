@@ -602,6 +602,7 @@ Executes comparison and validation, auto-saves the result.
           {
             "row_index": 10,
             "rule_id": "R001",
+            "rule_identifier": "CBR1_00000000000000000000",
             "rule_name": "Status Check",
             "key_columns": {"id": "100"},
             "violating_column": "status",
@@ -613,14 +614,21 @@ Executes comparison and validation, auto-saves the result.
       },
       "violation_count_by_rule": {"R001": 30, "R002": 20},
       "violating_rows_by_rule": {"R001": 25, "R002": 20},
-      "violating_attributes_by_rule": {"R001": 35, "R002": 25}
+      "violating_attributes_by_rule": {"R001": 35, "R002": 25},
+      "rule_summaries": {
+        "R001": {"rule_identifier": "CBR1_00000000000000000000", "name": "Status Check"}
+      }
     },
     "common_columns": ["id", "name", "status", "score"],
     "target_columns": ["score", "status"],
     "key_columns": ["id"],
     "filters_applied": [
       {"column": "status", "operator": "eq", "filter_value": "active"}
-    ]
+    ],
+    "rule_bindings": {
+      "R001": "CBR1_00000000000000000000",
+      "R002": "CBR1_11111111111111111111"
+    }
   }
 }
 ```
@@ -665,6 +673,10 @@ Returns the full run document.
 
 **Response 200:** Same shape as execute response.
 
+New runs persist the selected `Rxxx` to `CBR1_...` `rule_bindings`, including
+selected rules with zero violations. Legacy documents may omit canonical identifiers;
+the server exposes those as unavailable rather than inferring them from `Rxxx`.
+
 ---
 
 ## 16. Paginated details
@@ -708,6 +720,7 @@ Returns paginated comparison or violation details.
     {
       "row_index": 10,
       "rule_id": "R001",
+      "rule_identifier": "CBR1_00000000000000000000",
       "rule_name": "Status Check",
       "key_columns": {"id": "100"},
       "violating_column": "status",

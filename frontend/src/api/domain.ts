@@ -85,6 +85,10 @@ export interface LogicClause {
 
 export interface Rule {
   index: string;
+  identifier?: string | null;
+  equivalentRuleId?: string;
+  enabled?: boolean;
+  enabledPosition?: number | null;
   name: string;
   description?: string;
   conditions: Condition[];
@@ -143,6 +147,18 @@ export interface RunRequest {
   confirmFullSet: boolean;
   /** Extra columns selected for the cross-rule exception table. */
   exceptionColumns?: string[];
+  /** Places where selected extra columns are shown outside the exception table. */
+  extraColumnDisplay?: ExtraColumnDisplay;
+}
+
+export interface ExtraColumnDisplay {
+  overallResultPage: boolean;
+  overallHtmlReport: boolean;
+  overallExcelReport: boolean;
+  newBooksResultPage: boolean;
+  newBooksHtmlReport: boolean;
+  newBooksExcelReport: boolean;
+  exceptionTables: boolean;
 }
 
 export interface OverallSummary {
@@ -181,6 +197,7 @@ export interface RuleResult {
   violationAttributeCount: number;
   details: DetailRow[];
   hideComparison?: boolean;
+  ruleIdentifier?: string | null;
 }
 
 export interface RunResult {
@@ -210,6 +227,8 @@ export interface RunResult {
   keyColumns?: string[];
   /** Extra columns selected for the cross-rule exception table; persisted with the run. */
   exceptionColumns?: string[];
+  extraColumnDisplay?: ExtraColumnDisplay;
+  ruleBindings?: Record<string, string | null>;
 }
 
 export interface RunSummary {
@@ -326,6 +345,7 @@ export type NestedAggNode =
       label: string;
       rowKey: string;
       keyColumns: Record<string, string | null>;
+      extraValues?: Record<string, string | null>;
       changeCount: number;
       attributes: { column: string; old: string | null; new: string | null }[];
     };

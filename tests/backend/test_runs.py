@@ -85,7 +85,7 @@ class TestApplyFilters:
         assert filtered_b.collect().height == 3
 
     def test_multi_value_neq_excludes_any_selected(self, csv_a: Path, csv_b: Path) -> None:
-        """`neq` with multiple values: keep rows whose value is NOT EQUAL to ANY selected (= not in)."""
+        """`neq` with multiple values keeps rows not in the selected list."""
         import polars as pl
 
         df_a = pl.scan_csv(csv_a)
@@ -96,7 +96,9 @@ class TestApplyFilters:
         _, filtered_b = apply_filters(df_a, df_b, filters)
         assert filtered_b.collect().height == 0
         # Selecting neq ['inactive', 'pending'] (neither is in csv_b) keeps all rows.
-        filters = [{"column": "status", "operator": "neq", "filter_values": ["inactive", "pending"]}]
+        filters = [
+            {"column": "status", "operator": "neq", "filter_values": ["inactive", "pending"]}
+        ]
         _, filtered_b = apply_filters(df_a, df_b, filters)
         assert filtered_b.collect().height == 3
 
@@ -121,7 +123,8 @@ class TestApplyFilters:
 
         df_a = pl.scan_csv(csv_a)
         df_b = pl.scan_csv(csv_b)
-        # csv_b names: alice, bob, dave. Selecting ncontains ['ali', 'bob'] drops both alice (contains 'ali') and bob (contains 'bob'), keeps dave.
+        # csv_b names: alice, bob, dave. Selecting ncontains ['ali', 'bob']
+        # drops alice and bob, leaving dave.
         filters = [{"column": "name", "operator": "ncontains", "filter_values": ["ali", "bob"]}]
         _, filtered_b = apply_filters(df_a, df_b, filters)
         result_names = sorted(filtered_b.collect()["name"].to_list())
@@ -551,6 +554,32 @@ class TestValidateRows:
 
 
 class TestExecuteComparison:
+    def test_selected_zero_violation_rule_has_binding(
+        self, csv_a: Path, csv_b: Path, rules_file: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from dataclasses import replace
+
+        loaded = load_rules(rules_file)
+        selected = replace(loaded.rules[0], rule_identifier="CBR1_00000000000000000000")
+        monkeypatch.setattr(
+            "apps.runs.services.load_rules",
+            lambda: replace(loaded, rules=[selected]),
+        )
+
+        result = execute_comparison(
+            path_a=csv_a,
+            path_b=csv_b,
+            target_columns=["status"],
+            key_columns=["id"],
+            rule_ids=["R001"],
+        )
+
+        assert result.validation.violations_by_rule["R001"] == []
+        assert result.rule_bindings == {"R001": "CBR1_00000000000000000000"}
+        assert result.validation.rule_summaries["R001"]["rule_identifier"] == (
+            "CBR1_00000000000000000000"
+        )
+
     def test_full_execution(self, csv_a: Path, csv_b: Path, rules_file: Path) -> None:
         result = execute_comparison(
             path_a=csv_a,
@@ -565,6 +594,46 @@ class TestExecuteComparison:
         assert result.comparison.total_rows_a == 2
         assert result.comparison.total_rows_b == 3
         assert "score" in result.target_columns
+
+
+@pytest.mark.django_db
+def test_execute_uses_enabled_catalog_snapshot(
+    csv_a: Path, csv_b: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from apps.rules.repository import create_catalog_rule
+    from django.conf import settings
+    from django.core.management import call_command
+
+    legacy_file = tmp_path / "empty-rules.yaml"
+    legacy_file.write_text("version: 1\nnext_index: 1\nrules: []\n")
+    monkeypatch.setattr(settings, "RULES_FILE", legacy_file)
+    call_command("migrate_rules_to_db", verbosity=0)
+    snapshot = create_catalog_rule(
+        {
+            "name": "Catalog status",
+            "description": "",
+            "conditions": [],
+            "logic": {
+                "format": "value_vs_column",
+                "column_name": "status",
+                "operator": "eq",
+                "target_value": "active",
+            },
+        }
+    )
+
+    result = execute_comparison(
+        path_a=csv_a,
+        path_b=csv_b,
+        target_columns=["status"],
+        key_columns=["id"],
+        rule_ids=[snapshot.rule.rule_id],
+    )
+
+    assert result.rule_bindings == {snapshot.rule.rule_id: snapshot.rule.rule_identifier}
+    assert result.validation.rule_summaries[snapshot.rule.rule_id]["rule_identifier"] == (
+        snapshot.rule.rule_identifier
+    )
 
     def test_empty_rule_ids_skips_validation(
         self, csv_a: Path, csv_b: Path, rules_file: Path

@@ -13,7 +13,9 @@ from apps.runs.persistence import (
 from apps.runs.services import (
     ComparisonResult,
     ExecutionResult,
+    NewBookRow,
     ValidationResult,
+    ValidationViolation,
 )
 from django.test import TestCase
 from django.test.utils import override_settings
@@ -75,6 +77,50 @@ class TestDefaultReportName:
 
 
 class TestSaveAndLoadRun:
+    def test_round_trips_bindings_and_violation_identifier(
+        self, mock_result: ExecutionResult, tmp_path: Path
+    ) -> None:
+        from dataclasses import replace
+
+        violation = ValidationViolation(
+            row_index=1,
+            rule_id="R001",
+            rule_identifier="CBR1_00000000000000000000",
+            rule_name="Status",
+            key_columns={"id": "1"},
+            details="bad",
+            violating_column="status",
+            violating_value="inactive",
+            rule_logic="status equals 'active'",
+        )
+        validation = replace(
+            mock_result.validation,
+            total_violations=1,
+            violations_by_rule={"R001": [violation]},
+            violation_count_by_rule={"R001": 1},
+            rule_summaries={
+                "R001": {
+                    "name": "Status",
+                    "rule_identifier": "CBR1_00000000000000000000",
+                }
+            },
+        )
+        result = replace(
+            mock_result,
+            validation=validation,
+            rule_bindings={"R001": "CBR1_00000000000000000000"},
+        )
+        with override_settings(RESULTS_DIR=str(tmp_path / "results")):
+            meta = save_run(result, "a.csv", "b.csv")
+            loaded = load_run(meta.run_id)
+
+        assert loaded is not None
+        stored = loaded["result"]
+        assert stored["rule_bindings"] == {"R001": "CBR1_00000000000000000000"}
+        assert stored["validation"]["violations_by_rule"]["R001"][0]["rule_identifier"] == (
+            "CBR1_00000000000000000000"
+        )
+
     def test_save_creates_file(self, mock_result: ExecutionResult) -> None:
         meta = save_run(mock_result, "a.csv", "b.csv")
         assert meta.run_id
@@ -85,6 +131,32 @@ class TestSaveAndLoadRun:
         data = load_run(meta.run_id)
         assert data is not None
         assert data["run_id"] == meta.run_id
+
+    def test_preserves_new_book_details(self, mock_result: ExecutionResult, tmp_path: Path) -> None:
+        from dataclasses import replace
+
+        with override_settings(RESULTS_DIR=str(tmp_path / "results")):
+            result = replace(
+                mock_result,
+                comparison=replace(
+                    mock_result.comparison,
+                    new_book_count=1,
+                    new_book_rows=[NewBookRow(row_index=7, key_columns={"id": "new-1"})],
+                ),
+            )
+            meta = save_run(result, "a.csv", "b.csv")
+            data = load_run(meta.run_id)
+            assert data is not None
+            comparison = data["result"]["comparison"]
+            assert comparison["new_book_details"] == [
+                {
+                    "row_index": 7,
+                    "key_columns": {"id": "new-1"},
+                    "grouping_values": {},
+                    "extra_values": {},
+                },
+            ]
+            assert "new_book_rows" not in comparison
 
     def test_list_runs_returns_all(self, mock_result: ExecutionResult) -> None:
         save_run(mock_result, "a.csv", "b.csv")
@@ -141,6 +213,7 @@ class TestSaveAndLoadRun:
             assert data["result"]["nested_aggregation_enabled"] is False
             assert data["result"]["comparison_sections"] == []
             assert data["result"]["aggregation_column_labels"] == {}
+            assert data["result"]["rule_bindings"] == {}
 
 
 class TestRenameRun:
