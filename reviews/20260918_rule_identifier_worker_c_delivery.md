@@ -41,7 +41,7 @@ their absence is recorded as a dependency and no interface has been inferred.
   - `30dcc87` from accepted Worker A `b4163cf`: transactional catalog repository
   - `d6210a9` from accepted Worker B `299730e`: SQLite catalog APIs and migration
 - Worker C implementation commit: `330d0c9 feat: propagate canonical rule identifiers through runs`
-- Delivery review commit: `3b124b7 docs: complete worker C rule identifier delivery`
+- Delivery review commits: `3b124b7` and `4c2a4dd`.
 
 ## Owned-File Inventory
 
