@@ -4,10 +4,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from apps.rules.models import RuleStoreState, StoredValidationRule
 from django.core.management import call_command
 from django.test import override_settings
-
-from apps.rules.models import RuleStoreState, StoredValidationRule
 
 
 @pytest.mark.django_db
