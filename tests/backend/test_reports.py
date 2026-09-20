@@ -37,6 +37,7 @@ def sample_result() -> dict:
                     {
                         "row_index": 5,
                         "rule_id": "R001",
+                        "rule_identifier": "CBR1_00000000000000000000",
                         "rule_name": "Test Rule",
                         "key_columns": {"id": "456"},
                         "details": "Violated R001",
@@ -52,6 +53,7 @@ def sample_result() -> dict:
             "violating_attributes_by_rule": {"R001": 1},
             "rule_summaries": {
                 "R001": {
+                    "rule_identifier": "CBR1_00000000000000000000",
                     "name": "Test Rule",
                     "description": "Checks score eligibility.",
                     "logic": "score lt '20'",
@@ -73,6 +75,20 @@ def sample_result() -> dict:
 
 
 class TestExportHtml:
+    def test_legacy_result_without_identifier_still_renders(self, sample_result: dict) -> None:
+        sample_result["validation"]["violations_by_rule"]["R001"][0].pop(
+            "rule_identifier", None
+        )
+        sample_result["validation"]["rule_summaries"]["R001"].pop(
+            "rule_identifier", None
+        )
+
+        rendered = export_html(sample_result, "Legacy Report")
+
+        assert "Legacy Report" in rendered
+        assert "R001 — Test Rule" in rendered
+        assert "data-rule-identifier" not in rendered
+
     def test_comparison_section_without_changes_names_the_empty_state(
         self, sample_result: dict
     ) -> None:

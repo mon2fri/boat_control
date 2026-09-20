@@ -523,6 +523,8 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
 
     row_details = comparison.get("row_details") or []
 
+    sections.append(_render_exception_rule_summary(validation))
+
     comparison_sections = result.get("comparison_sections") or []
     if comparison_sections:
         for section in comparison_sections:
@@ -542,10 +544,25 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
             )
             if section_rows:
                 sections.append("<table>")
-                sections.append(_detail_header(key_columns, extra_columns=selected_extra_columns if extra_display.get("overall_html_report") else None))
+                sections.append(
+                    _detail_header(
+                        key_columns,
+                        extra_columns=(
+                            selected_extra_columns
+                            if extra_display.get("overall_html_report")
+                            else None
+                        ),
+                    )
+                )
                 for row, change in section_rows:
                     sections.append("<tr>")
-                    sections.append(_identity_cells(key_columns, row.get("key_columns", {}), row.get("row_index", "")))
+                    sections.append(
+                        _identity_cells(
+                            key_columns,
+                            row.get("key_columns", {}),
+                            row.get("row_index", ""),
+                        )
+                    )
                     if extra_display.get("overall_html_report"):
                         values = row.get("extra_values") or {}
                         for column in selected_extra_columns:
@@ -570,12 +587,25 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         sections.append(_render_group_section("Attribute change aggregation", attr_changes_grp))
         if row_details:
             sections.append("<table>")
-            sections.append(_detail_header(key_columns, extra_columns=selected_extra_columns if extra_display.get("overall_html_report") else None))
+            sections.append(
+                _detail_header(
+                    key_columns,
+                    extra_columns=(
+                        selected_extra_columns
+                        if extra_display.get("overall_html_report")
+                        else None
+                    ),
+                )
+            )
             for row in row_details:
                 key_values = row.get("key_columns", {})
                 for change in row.get("attribute_changes", []):
                     sections.append("<tr>")
-                    sections.append(_identity_cells(key_columns, key_values, row.get("row_index", "")))
+                    sections.append(
+                        _identity_cells(
+                            key_columns, key_values, row.get("row_index", "")
+                        )
+                    )
                     if extra_display.get("overall_html_report"):
                         values = row.get("extra_values") or {}
                         for column in selected_extra_columns:
@@ -588,8 +618,6 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         else:
             sections.append("<p>No detail rows.</p>")
         sections.append("</section>")
-
-    sections.append(_render_exception_rule_summary(validation))
 
     violations_by_rule = validation.get("violations_by_rule") or {}
     rule_summaries = validation.get("rule_summaries") or {}
@@ -755,7 +783,10 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     overall.append(["Overall Results"])
     overall.append(["Report name", _excel_value(report_name)])
     overall.append(
-        ["Books after filters", comparison.get("total_rows_a", 0) + comparison.get("total_rows_b", 0)]
+        [
+            "Books after filters",
+            comparison.get("total_rows_a", 0) + comparison.get("total_rows_b", 0),
+        ]
     )
     overall.append(
         [
@@ -781,7 +812,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     else:
         overall.append(["No filtering applied"])
 
-    aggregation_start_row = overall.max_row + 2
+    aggregation_start_row = overall.max_row + 1
     aggregation_bottom_row = aggregation_start_row
     overall_aggregations = group_statistics.get("overall") or []
     if overall_aggregations and 2 + (len(overall_aggregations) - 1) * 3 > _EXCEL_MAX_COLUMNS:
@@ -890,7 +921,14 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                     change.get("column", ""),
                     change.get("file_a_value", ""),
                     change.get("file_b_value", ""),
-                    *([(detail.get("extra_values") or {}).get(column, "") for column in selected_extra_columns] if extra_display.get("overall_excel_report") else []),
+                    *(
+                        [
+                            (detail.get("extra_values") or {}).get(column, "")
+                            for column in selected_extra_columns
+                        ]
+                        if extra_display.get("overall_excel_report")
+                        else []
+                    ),
                 ],
             )
             change_row += 1
@@ -964,7 +1002,8 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                         continue
                     if section_row > _EXCEL_MAX_ROWS:
                         raise ValueError(
-                            "An Attribute Comparing Section exceeds Excel's 1,048,576-row worksheet limit."
+                            "An Attribute Comparing Section exceeds Excel's "
+                            "1,048,576-row worksheet limit."
                         )
                     _append_row(
                         sections_sheet,

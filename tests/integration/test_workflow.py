@@ -11,6 +11,8 @@ from django.conf import settings
 from django.test.utils import override_settings
 from rest_framework.test import APIClient  # type: ignore[import-untyped]
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def api_client() -> APIClient:

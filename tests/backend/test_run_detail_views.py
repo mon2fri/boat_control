@@ -5,7 +5,6 @@ comparison section's paginated table only shows its own rows.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -16,6 +15,7 @@ from apps.runs.services import (
     ExecutionResult,
     RowComparison,
     ValidationResult,
+    ValidationViolation,
 )
 from django.test import override_settings
 from rest_framework.test import APIClient  # type: ignore[import-untyped]
@@ -138,3 +138,37 @@ def test_invalid_section_returns_400(
     with override_settings(RESULTS_DIR=str(tmp_path / "results")):
         response = APIClient().get(f"/api/runs/{run_id}/details/?section=invalid")
         assert response.status_code == 400
+
+
+def test_violation_detail_preserves_rule_identifiers(
+    mock_result_with_details: ExecutionResult, tmp_path: Path
+) -> None:
+    violation = ValidationViolation(
+        row_index=0,
+        rule_id="R001",
+        rule_identifier="CBR1_00000000000000000000",
+        rule_name="Status",
+        key_columns={"id": "1"},
+        details="bad",
+        violating_column="status",
+        violating_value="inactive",
+        rule_logic="status equals 'active'",
+    )
+    from dataclasses import replace
+
+    result = replace(
+        mock_result_with_details,
+        validation=replace(
+            mock_result_with_details.validation,
+            total_violations=1,
+            violations_by_rule={"R001": [violation]},
+        ),
+    )
+    run_id = _save_and_get_run_id(result, tmp_path)
+    with override_settings(RESULTS_DIR=str(tmp_path / "results")):
+        response = APIClient().get(f"/api/runs/{run_id}/details/?section=violations")
+
+    assert response.status_code == 200
+    detail = response.json()["details"][0]
+    assert detail["rule_id"] == "R001"
+    assert detail["rule_identifier"] == "CBR1_00000000000000000000"

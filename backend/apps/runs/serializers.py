@@ -41,8 +41,12 @@ class RowComparisonSerializer(serializers.Serializer):  # type: ignore[misc]
 class NewBookRowSerializer(serializers.Serializer):  # type: ignore[misc]
     row_index = serializers.IntegerField()
     key_columns = serializers.DictField(child=serializers.JSONField())
-    grouping_values = serializers.DictField(child=serializers.JSONField(), required=False, default=dict)
-    extra_values = serializers.DictField(child=serializers.JSONField(), required=False, default=dict)
+    grouping_values = serializers.DictField(
+        child=serializers.JSONField(), required=False, default=dict
+    )
+    extra_values = serializers.DictField(
+        child=serializers.JSONField(), required=False, default=dict
+    )
 
 
 class ComparisonResultSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -68,6 +72,7 @@ class ValidationViolationSerializer(serializers.Serializer):  # type: ignore[mis
         child=serializers.JSONField(), required=False, default=dict
     )
     rule_logic = serializers.CharField(required=False)
+    rule_identifier = serializers.CharField(required=False, allow_null=True)
 
 
 class ValidationResultSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -90,3 +95,6 @@ class ExecutionResultSerializer(serializers.Serializer):  # type: ignore[misc]
         child=serializers.CharField(), required=False, default=dict
     )
     exception_columns = serializers.ListField(child=serializers.CharField(), default=list)
+    rule_bindings = serializers.DictField(
+        child=serializers.CharField(), required=False, default=dict
+    )

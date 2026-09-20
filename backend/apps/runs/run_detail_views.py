@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -9,7 +10,7 @@ from rest_framework.views import APIView
 from apps.runs.persistence import load_run
 
 
-def _flatten_rows(result: dict, section: str) -> list[dict]:
+def _flatten_rows(result: dict[str, Any], section: str) -> list[dict[str, Any]]:
     """Flatten stored result rows into a uniform list for filtering/pagination."""
     comparison = result.get("comparison", {})
     validation = result.get("validation", {})
@@ -37,7 +38,7 @@ def _flatten_rows(result: dict, section: str) -> list[dict]:
 
     raw_violations = validation.get("violations_by_rule", {})
     rows = []
-    for _rule_id, violations in raw_violations.items():
+    for rule_id, violations in raw_violations.items():
         for v in violations:
             key_cols = v.get("key_columns", {})
             rows.append(
@@ -52,14 +53,17 @@ def _flatten_rows(result: dict, section: str) -> list[dict]:
                     "violating_column": v.get("violating_column", ""),
                     "violating_value": v.get("violating_value"),
                     "extra_values": v.get("extra_values", {}),
+                    "rule_id": v.get("rule_id", rule_id),
+                    "rule_name": v.get("rule_name"),
+                    "rule_identifier": v.get("rule_identifier"),
                 }
             )
     return rows
 
 
 def _apply_detail_filters(
-    rows: list[dict], filters: dict[str, list[str]]
-) -> list[dict]:
+    rows: list[dict[str, Any]], filters: dict[str, list[str]]
+) -> list[dict[str, Any]]:
     """Filter rows by key, extra, and column params (AND across fields, OR within)."""
     if not filters:
         return rows
@@ -85,7 +89,9 @@ def _apply_detail_filters(
     return result
 
 
-def _compute_facets(rows: list[dict], key_columns: list[str]) -> dict[str, list[str]]:
+def _compute_facets(
+    rows: list[dict[str, Any]], key_columns: list[str]
+) -> dict[str, list[str]]:
     """Compute distinct available values for each filterable field."""
     facets: dict[str, set[str]] = defaultdict(set)
     for r in rows:

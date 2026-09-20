@@ -36,14 +36,16 @@ Or with inline result data:
 - No external resource dependencies
 - Safe HTML escaping for all user content
 - Includes summary, attribute changes, and validation violations
-- Limited to first 1000 change rows and 500 violation rows
+- Reads the persisted run snapshot, including canonical rule identifiers when present
+- Preserves local `Rxxx` grouping and historical rule summaries for legacy runs
 
 ### CSV Export
 
 - Standard CSV format with formula injection prevention
 - Values starting with `=`, `+`, `-`, `@`, `\t`, `\r` prefixed with `'`
 - Includes summary metrics, changes, and violations
-- Limited to first 5000 change rows and 5000 violation rows
+- Reads the persisted run snapshot, including canonical rule identifiers when present
+- Preserves local `Rxxx` grouping and historical rule summaries for legacy runs
 
 ## Security
 
