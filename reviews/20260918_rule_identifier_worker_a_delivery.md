@@ -4,7 +4,9 @@ Status: COMPLETE
 
 The worker branch is `work/cbri-worker-a` in the isolated worktree
 `C:\Users\zwj80\Documents\codings\boat_control-worktrees\worker-a`. The implementation commit is
-`a287880` (`feat: add canonical rule identity catalog foundation`). No live database, frontend,
+`a287880` (`feat: add canonical rule identity catalog foundation`) and `b4163cf`
+(`feat: add transactional rule catalog repository`), followed by documentation commit `0286dae`.
+No live database, frontend,
 HTTP, run, report, contract, or launcher files are included.
 
 ## Changed Files
