@@ -93,7 +93,8 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     importRulesConfig(loadedConfigData)
       .then((result) => {
         setConfigWarnings([`Configuration applied: ${result.imported} imported, ${result.reused} reused, ${result.enabled} enabled.`]);
-        setSyncedEnabledKey(null);
+        dispatch({ type: "setSelectedRules", ruleIndexes: Object.keys(result.bindings) });
+        setSyncedEnabledKey("config-import");
         setCatalogPage(0);
         void queryClient.invalidateQueries({ queryKey: RULES_KEY });
       })
@@ -105,7 +106,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
         setIsApplyingConfig(false);
         setLoadedConfigData(null);
       });
-  }, [loadedConfigData, queryClient]);
+  }, [loadedConfigData, queryClient, dispatch]);
 
   function toggle(index: string): void {
     const next = selected.includes(index)
