@@ -159,3 +159,19 @@ def test_existing_rules_config_save_exports_current_enabled_set(tmp_path) -> Non
 
     assert saved.status_code == 200
     assert saved.json()["content"] == []
+
+
+@pytest.mark.django_db
+def test_blank_name_is_unnamed_on_create_but_rejected_on_update() -> None:
+    client = APIClient()
+    created = client.post("/api/rules/", {**draft(), "name": ""}, format="json")
+    assert created.status_code == 201, created.content
+    assert created.json()["name"] == "Unnamed"
+
+    rejected = client.put(
+        f"/api/rules/{created.json()['rule_id']}/",
+        {**draft(), "name": ""},
+        format="json",
+    )
+    assert rejected.status_code == 400
+    assert "required when editing" in rejected.json()["error"]

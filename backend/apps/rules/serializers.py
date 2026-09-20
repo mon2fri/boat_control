@@ -41,7 +41,7 @@ class LogicClauseSerializer(serializers.Serializer):  # type: ignore[misc]
 
 
 class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
-    name = serializers.CharField()
+    name = serializers.CharField(allow_blank=True)
     description = serializers.CharField(required=False, allow_blank=True, default="")
     conditions = ConditionSerializer(many=True, required=False, default=list)
     condition_relation = serializers.ChoiceField(

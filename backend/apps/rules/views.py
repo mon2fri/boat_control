@@ -80,10 +80,18 @@ def _serialize_grouping_tree(node: Any) -> Any:
     }
 
 
-def _validated_draft(data: Any) -> tuple[dict[str, Any] | None, Response | None]:
+def _validated_draft(
+    data: Any, *, allow_blank_name: bool
+) -> tuple[dict[str, Any] | None, Response | None]:
     serializer = RuleSerializer(data=data)
     serializer.is_valid(raise_exception=True)
     draft = dict(serializer.validated_data)
+    if not str(draft.get("name", "")).strip():
+        if not allow_blank_name:
+            return None, Response(
+                {"error": "Rule name is required when editing a rule."}, status=400
+            )
+        draft["name"] = "Unnamed"
     validation = validate_rule(draft)
     if not validation.valid:
         return None, Response({"error": "; ".join(validation.errors)}, status=400)
@@ -117,7 +125,7 @@ class RulesListView(APIView):  # type: ignore[misc]
         )
 
     def post(self, request: Request) -> Response:
-        draft, error = _validated_draft(request.data)
+        draft, error = _validated_draft(request.data, allow_blank_name=True)
         if error:
             return error
         assert draft is not None
@@ -142,7 +150,7 @@ class RuleDetailView(APIView):  # type: ignore[misc]
             return Response({"error": str(exc)}, status=404)
 
     def put(self, request: Request, rule_id: str) -> Response:
-        draft, error = _validated_draft(request.data)
+        draft, error = _validated_draft(request.data, allow_blank_name=False)
         if error:
             return error
         assert draft is not None

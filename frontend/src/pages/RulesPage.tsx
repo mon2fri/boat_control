@@ -153,7 +153,12 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
              ]);
            }
            dispatch({ type: "setSelectedRules", ruleIndexes: [...selected, created.index] });
-          setEditor({ mode: "closed" });
+           if (draft.name.trim()) {
+             setEditor({ mode: "closed" });
+           } else {
+             setConfigWarnings(["Rule saved as Unnamed. Enter a rule name and save again."]);
+             setEditor({ mode: "edit", rule: created });
+           }
         },
       });
     }
@@ -242,6 +247,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
           <div>
             {editor.mode !== "closed" ? (
               <RuleEditor
+                key={editor.mode === "edit" ? editor.rule.index : "create"}
                 {...(editor.mode === "edit" ? { rule: editor.rule } : {})}
                 columns={columns}
                 columnValues={columnValues}
@@ -396,6 +402,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
 
           {editor.mode !== "closed" && (
             <RuleEditor
+              key={editor.mode === "edit" ? editor.rule.index : "create"}
               {...(editor.mode === "edit" ? { rule: editor.rule } : {})}
               columns={columns}
               columnValues={columnValues}
