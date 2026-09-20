@@ -581,6 +581,14 @@ body {
   position: relative;
 }
 
+.config-notice {
+  transition: opacity 3s ease;
+}
+
+.config-notice--fading {
+  opacity: 0;
+}
+
 .card--editorial {
   border-top: 3px solid var(--color-accent);
 }

@@ -35,12 +35,25 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const [loadedConfigData, setLoadedConfigData] = useState<unknown>(null);
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
+  const [configNotice, setConfigNotice] = useState<string | null>(null);
+  const [configNoticeFading, setConfigNoticeFading] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
   const [isApplyingConfig, setIsApplyingConfig] = useState(false);
   const queryClient = useQueryClient();
   const [catalogPage, setCatalogPage] = useState(0);
   const [syncedEnabledKey, setSyncedEnabledKey] = useState<string | null>(null);
   const [paginationNotice, setPaginationNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!configNotice) return;
+    setConfigNoticeFading(false);
+    const fadeTimer = window.setTimeout(() => setConfigNoticeFading(true), 5000);
+    const removeTimer = window.setTimeout(() => setConfigNotice(null), 8000);
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, [configNotice]);
 
   const columns = state.comparisonColumns.length > 0 ? state.comparisonColumns : (state.header?.common ?? []);
   const selected = state.selectedRuleIndexes;
@@ -92,7 +105,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     setConfigError(null);
     importRulesConfig(loadedConfigData)
       .then((result) => {
-        setConfigWarnings([`Configuration applied: ${result.imported} imported, ${result.reused} reused, ${result.enabled} enabled.`]);
+        setConfigNotice(`Configuration applied: ${result.imported} imported, ${result.reused} reused, ${result.enabled} enabled.`);
         dispatch({ type: "setSelectedRules", ruleIndexes: Object.keys(result.bindings) });
         setSyncedEnabledKey("config-import");
         setCatalogPage(0);
@@ -185,15 +198,22 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
             <h3 id="rules-title" className="section-heading">Validation rules</h3>
             <p className="section-hint">Define rules to validate rows after comparison.</p>
           </div>
-          <ConfigManager
-            configType="rules"
-            currentContent={mapRulesToConfigContent(rules.data ?? [], families)}
-            onLoad={(name) => setConfigLoadName(name)}
-            disabled={disabled || rules.isPending || isApplyingConfig}
-            hasUnsavedChanges={editor.mode !== "closed"}
-            confirmBeforeLoad
-            title="Load config for rules"
-          />
+          <div className="config-manager-stack">
+            <ConfigManager
+              configType="rules"
+              currentContent={mapRulesToConfigContent(rules.data ?? [], families)}
+              onLoad={(name) => setConfigLoadName(name)}
+              disabled={disabled || rules.isPending || isApplyingConfig}
+              hasUnsavedChanges={editor.mode !== "closed"}
+              confirmBeforeLoad
+              title="Load config for rules"
+            />
+            {configNotice && (
+              <div className={`alert alert--warn config-notice${configNoticeFading ? " config-notice--fading" : ""}`} role="status">
+                {configNotice}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="rules-layout">
@@ -442,15 +462,22 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
         </div>
       </div>
 
-      <ConfigManager
-        configType="rules"
-        currentContent={mapRulesToConfigContent(rules.data ?? [], families)}
-        onLoad={(name) => setConfigLoadName(name)}
-        disabled={rules.isPending || isApplyingConfig}
-        hasUnsavedChanges={editor.mode !== "closed"}
-        confirmBeforeLoad
-        title="Load config for rules"
-      />
+      <div className="config-manager-stack">
+        <ConfigManager
+          configType="rules"
+          currentContent={mapRulesToConfigContent(rules.data ?? [], families)}
+          onLoad={(name) => setConfigLoadName(name)}
+          disabled={rules.isPending || isApplyingConfig}
+          hasUnsavedChanges={editor.mode !== "closed"}
+          confirmBeforeLoad
+          title="Load config for rules"
+        />
+        {configNotice && (
+          <div className={`alert alert--warn config-notice${configNoticeFading ? " config-notice--fading" : ""}`} role="status">
+            {configNotice}
+          </div>
+        )}
+      </div>
 
       {configLoadName && (
         <ConfigLoader

@@ -352,6 +352,9 @@ describe("RulesPage", () => {
 
     // And the page should now show the second rule's checkbox as well.
     expect(screen.getByText(/Status active/)).toBeInTheDocument();
+    const notice = screen.getByText(/Configuration applied/).closest('[role="status"]') as HTMLElement;
+    expect(notice).toBeTruthy();
+    expect(notice.previousElementSibling).toHaveClass("card");
 
     vi.unstubAllGlobals();
   });
