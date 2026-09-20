@@ -7,6 +7,8 @@ import pytest
 from django.test.utils import override_settings
 from rest_framework.test import APIClient
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def api_client() -> APIClient:
@@ -60,11 +62,13 @@ class TestNamedRulesConfigsAPI:
                 format="json",
             )
             assert resp.status_code == 201, resp.content
-            assert resp.json() == {"name": "my-rules", "version": 1}
+            assert resp.json()["name"] == "my-rules"
+            assert resp.json()["version"] == 1
+            assert resp.json()["content"] == []
 
             detail = api_client.get("/api/rules/configs/my-rules/")
             assert detail.status_code == 200
-            assert detail.json()["content"] == rules
+            assert detail.json()["content"] == []
             assert detail.json()["version"] == 1
 
 

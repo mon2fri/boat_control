@@ -50,6 +50,7 @@ class RuleSnapshot:
     rule_identifier: str
     catalog_position: int
     enabled: bool
+    enabled_position: int | None
     archived_at: datetime | None
 
 
@@ -75,6 +76,15 @@ class RuleImportResult:
     imported: int
     reused: int
     bindings: dict[str, str]
+
+
+def list_enabled_catalog_rules() -> tuple[RuleSnapshot, ...]:
+    rows = (
+        StoredValidationRule.objects.select_related("identity")
+        .filter(enabled=True, archived_at__isnull=True)
+        .order_by("enabled_position")
+    )
+    return tuple(materialize_catalog_rule(row) for row in rows)
 
 
 _RULE_ID = re.compile(r"^R(\d+)$")
@@ -194,6 +204,7 @@ def materialize_catalog_rule(row: StoredValidationRule) -> RuleSnapshot:
         rule_identifier=identifier,
         catalog_position=row.catalog_position,
         enabled=row.enabled,
+        enabled_position=row.enabled_position,
         archived_at=row.archived_at,
     )
 
@@ -303,11 +314,31 @@ def set_rules_enabled(rule_ids: list[str]) -> tuple[RuleSnapshot, ...]:
         if len(rows) != len(set(rule_ids)) or len(rule_ids) != len(set(rule_ids)):
             raise CatalogError("One or more rule IDs do not exist")
         requested = set(rule_ids)
-        for row in StoredValidationRule.objects.select_for_update().filter(
-            archived_at__isnull=True
-        ):
+        if any(row.archived_at is not None for row in rows):
+            raise CatalogError("Archived rules must be unarchived before enabling")
+        rows_to_update = list(
+            StoredValidationRule.objects.select_for_update().filter(archived_at__isnull=True)
+        )
+        for row in rows_to_update:
+            row.enabled_position = None
+            row.save(update_fields=["enabled_position", "updated_at"])
+        for row in rows_to_update:
             row.enabled = row.rule_id in requested
             row.enabled_position = rule_ids.index(row.rule_id) + 1 if row.enabled else None
+            row.save(update_fields=["enabled", "enabled_position", "updated_at"])
+        _bump(state)
+        return tuple(materialize_catalog_rule(_get_row(rule_id)) for rule_id in rule_ids)
+
+
+def set_rules_disabled(rule_ids: list[str]) -> tuple[RuleSnapshot, ...]:
+    with transaction.atomic():
+        state = _state()
+        rows = list(StoredValidationRule.objects.select_for_update().filter(rule_id__in=rule_ids))
+        if len(rows) != len(set(rule_ids)) or len(rule_ids) != len(set(rule_ids)):
+            raise CatalogError("One or more rule IDs do not exist")
+        for row in rows:
+            row.enabled = False
+            row.enabled_position = None
             row.save(update_fields=["enabled", "enabled_position", "updated_at"])
         _bump(state)
         return tuple(materialize_catalog_rule(_get_row(rule_id)) for rule_id in rule_ids)

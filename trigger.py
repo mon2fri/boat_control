@@ -91,6 +91,15 @@ def main() -> int:
                 "--noinput",
             ]
         )
+        info("Migrating legacy rules into the local catalog when needed...")
+        run(
+            [
+                str(python),
+                str(BACKEND_DIR / "manage.py"),
+                "migrate_rules_to_db",
+                "--settings=boat_control.settings",
+            ]
+        )
 
     command = [
         str(python),

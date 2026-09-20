@@ -17,7 +17,8 @@ Then open <http://127.0.0.1:5173/>. Django runs behind the Vite development prox
 `http://127.0.0.1:8000` and is also available to devices on the same subnet at
 `http://<this-computer's-LAN-IP>:8000`. Press `Ctrl+C` once to stop both servers.
 
-The launcher applies database migrations automatically. It also installs Python or frontend
+The launcher applies database migrations and performs the one-time legacy rule-catalog migration
+automatically. It also installs Python or frontend
 dependencies when their local installation directories do not exist.
 
 ## Deploy to a machine without npm

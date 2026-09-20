@@ -21,6 +21,8 @@ from apps.rules.services import (
 from django.test.utils import override_settings
 from rest_framework.test import APIClient
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def rules_path(tmp_path: Path) -> Path:
@@ -600,7 +602,8 @@ class TestReplaceRulesApi:
             assert resp.json()["rule_count"] == 0
 
             list_resp = api_client.get("/api/rules/")
-            assert list_resp.json()["rules"] == []
+            assert len(list_resp.json()["rules"]) == 1
+            assert list_resp.json()["rules"][0]["enabled"] is False
 
 
 def test_reorder_rules_persists_complete_requested_order(
@@ -638,7 +641,7 @@ def test_reorder_rules_persists_complete_requested_order(
         assert response.json()["rule_ids"] == ["R003", "R001", "R002"]
         assert [
             rule["rule_id"] for rule in api_client.get("/api/rules/").json()["rules"]
-        ] == ["R003", "R001", "R002"]
+        ] == ["R001", "R002", "R003"]
 
 
 def test_reorder_rules_rejects_incomplete_order(sample_rule_data: dict) -> None:

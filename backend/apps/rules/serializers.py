@@ -58,6 +58,9 @@ class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
 
 class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     rule_id = serializers.CharField()
+    rule_identifier = serializers.CharField(allow_null=True)
+    enabled = serializers.BooleanField()
+    enabled_position = serializers.IntegerField(allow_null=True, required=False)
     name = serializers.CharField()
     description = serializers.CharField()
     conditions = ConditionSerializer(many=True)
@@ -76,6 +79,11 @@ class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
 class RulesListResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     version = serializers.IntegerField()
     rules = RuleResponseSerializer(many=True)
+    pinned_rule_ids = serializers.ListField(child=serializers.CharField(), required=False)
+    total = serializers.IntegerField(required=False)
+    revision = serializers.IntegerField(required=False)
+    next_cursor = serializers.CharField(allow_null=True, required=False)
+    has_more = serializers.BooleanField(required=False)
 
 
 class ReplaceRulesSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -92,3 +100,8 @@ class ReorderRulesSerializer(serializers.Serializer):  # type: ignore[misc]
         if len(value) != len(set(value)):
             raise serializers.ValidationError("Rule IDs must be unique.")
         return value
+
+
+class EnablementSerializer(serializers.Serializer):  # type: ignore[misc]
+    rule_ids = serializers.ListField(child=serializers.CharField(), allow_empty=True)
+    enabled = serializers.BooleanField()

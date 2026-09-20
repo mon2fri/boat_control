@@ -1,0 +1,114 @@
+from __future__ import annotations
+
+import pytest
+from apps.rules.models import RuleStoreState, StoredValidationRule
+from django.test import override_settings
+from rest_framework.test import APIClient
+
+
+def draft(name: str = "Status", target: str = "active") -> dict:
+    return {
+        "name": name,
+        "description": "status rule",
+        "conditions": [],
+        "logic": {
+            "format": "value_vs_column",
+            "column_name": "status",
+            "operator": "eq",
+            "target_value": target,
+        },
+    }
+
+
+@pytest.mark.django_db
+def test_create_update_archive_and_enablement_are_catalog_operations() -> None:
+    client = APIClient()
+    created = client.post("/api/rules/", draft(), format="json")
+    assert created.status_code == 201, created.content
+    rule = created.json()
+    assert rule["rule_id"] == "R001"
+    assert rule["rule_identifier"].startswith("CBR1_")
+    assert rule["enabled"] is True
+
+    metadata_edit = {**draft(), "name": "Renamed"}
+    updated = client.put(f"/api/rules/{rule['rule_id']}/", metadata_edit, format="json")
+    assert updated.status_code == 200
+    assert updated.json()["rule_id"] == rule["rule_id"]
+    assert updated.json()["rule_identifier"] == rule["rule_identifier"]
+
+    disabled = client.post(
+        "/api/rules/enablement/",
+        {"rule_ids": [rule["rule_id"]], "enabled": False},
+        format="json",
+    )
+    assert disabled.status_code == 200
+    assert disabled.json()["rules"][0]["enabled"] is False
+
+    archived = client.delete(f"/api/rules/{rule['rule_id']}/")
+    assert archived.status_code == 200
+    assert StoredValidationRule.objects.get(rule_id=rule["rule_id"]).archived_at is not None
+
+
+@pytest.mark.django_db
+def test_import_reuses_identity_and_empty_import_disables_without_deleting() -> None:
+    client = APIClient()
+    first = client.post("/api/rules/", draft("First"), format="json").json()
+    imported = client.post(
+        "/api/rules/configs/import/",
+        {"rules": [draft("First")]},
+        format="json",
+    )
+    assert imported.status_code == 200, imported.content
+    assert imported.json()["reused"] == 1
+    assert imported.json()["bindings"][first["rule_id"]] == first["rule_identifier"]
+
+    empty = client.post("/api/rules/configs/import/", {"rules": []}, format="json")
+    assert empty.status_code == 200
+    assert empty.json()["enabled"] == 0
+    assert StoredValidationRule.objects.filter(archived_at__isnull=True).count() == 1
+    assert StoredValidationRule.objects.filter(enabled=True).count() == 0
+
+
+@pytest.mark.django_db
+def test_initial_listing_pins_enabled_and_continuation_is_keyset() -> None:
+    for index in range(52):
+        response = APIClient().post(
+            "/api/rules/", draft(f"Rule {index}", target=str(index)), format="json"
+        )
+        assert response.status_code == 201
+    client = APIClient()
+    enabled = client.post(
+        "/api/rules/enablement/",
+        {"rule_ids": ["R001"], "enabled": True},
+        format="json",
+    )
+    assert enabled.status_code == 200
+    page = client.get("/api/rules/").json()
+    assert len(page["rules"]) == 50
+    assert page["total"] == 52
+    assert page["has_more"] is True
+    assert page["next_cursor"]
+
+    next_page = client.get(f"/api/rules/?cursor={page['next_cursor']}")
+    assert next_page.status_code == 200
+    assert len(next_page.json()["rules"]) == 2
+    assert next_page.json()["has_more"] is False
+
+
+@pytest.mark.django_db
+def test_export_reads_enabled_catalog_and_rejects_forged_identifier(tmp_path) -> None:
+    client = APIClient()
+    with override_settings(RULES_CONFIG_DIR=tmp_path):
+        created = client.post("/api/rules/", draft(), format="json").json()
+        export = client.post(
+            "/api/rules/configs/",
+            {"name": "snapshot"},
+            format="json",
+        )
+    assert export.status_code == 201
+    assert export.json()["content"][0]["rule_identifier"] == created["rule_identifier"]
+
+    forged = {**draft(), "rule_identifier": "CBR1_00000000000000000000"}
+    response = client.post("/api/rules/configs/import/", {"rules": [forged]}, format="json")
+    assert response.status_code == 400
+    assert RuleStoreState.objects.get(singleton_key=1).revision == 1
