@@ -14,8 +14,20 @@ aggregationColumns:
   name: status
 - kind: column
   name: region
+aggregationColumnLabels: {}
 filters: []
 targetColumns: []
+exceptionColumns:
+- kind: column
+  name: name
+- kind: column
+  name: status
+- kind: column
+  name: region
+- kind: column
+  name: id
+- kind: column
+  name: score
 nestedAggregationEnabled: false
 comparisonSections:
 - id: cs-1
@@ -25,6 +37,7 @@ comparisonSections:
     name: region
   - kind: column
     name: status
+  extraColumns: []
 - id: cs-2
   name: asdfadf
   columns:
@@ -32,4 +45,5 @@ comparisonSections:
     name: name
   - kind: column
     name: status
-_version: 3
+  extraColumns: []
+_version: 4
