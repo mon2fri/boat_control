@@ -8,6 +8,8 @@ interface ConfigManagerProps {
   currentContent: unknown;
   disabled?: boolean;
   hasUnsavedChanges?: boolean;
+  /** Some config types replace committed server state even without editor dirtiness. */
+  confirmBeforeLoad?: boolean;
   /** Title displayed on the card heading. */
   title?: string;
 }
@@ -22,6 +24,7 @@ export function ConfigManager({
   currentContent,
   disabled,
   hasUnsavedChanges,
+  confirmBeforeLoad = false,
   title,
 }: ConfigManagerProps) {
   const configs = useConfigs(configType);
@@ -43,7 +46,7 @@ export function ConfigManager({
 
   function handleLoad(name: string): void {
     if (!name) return;
-    if (hasUnsavedChanges) {
+    if (hasUnsavedChanges || confirmBeforeLoad) {
       setPendingLoadName(name);
     } else {
       setSelectedName(name);

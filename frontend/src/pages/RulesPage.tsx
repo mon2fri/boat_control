@@ -191,6 +191,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
             onLoad={(name) => setConfigLoadName(name)}
             disabled={disabled || rules.isPending || isApplyingConfig}
             hasUnsavedChanges={editor.mode !== "closed"}
+            confirmBeforeLoad
             title="Load config for rules"
           />
         </div>
@@ -447,6 +448,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
         onLoad={(name) => setConfigLoadName(name)}
         disabled={rules.isPending || isApplyingConfig}
         hasUnsavedChanges={editor.mode !== "closed"}
+        confirmBeforeLoad
         title="Load config for rules"
       />
 

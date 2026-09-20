@@ -334,6 +334,8 @@ describe("RulesPage", () => {
     fireEvent.change(select!, { target: { value: "v2" } });
     const loadButton = screen.getByRole("button", { name: /Load config/ });
     fireEvent.click(loadButton);
+    const loadDialog = screen.getByRole("alertdialog", { name: /Discard unsaved changes/ });
+    fireEvent.click(within(loadDialog).getByRole("button", { name: /Discard and load/ }));
 
     // After the replace + invalidate completes, the workflow state must
     // include both rule indexes — proving that loading a config selects
