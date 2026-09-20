@@ -71,6 +71,39 @@ class TestNamedRulesConfigsAPI:
             assert detail.json()["content"] == []
             assert detail.json()["version"] == 1
 
+    def test_saved_rules_config_can_be_loaded_and_imported(
+        self, api_client: APIClient, tmp_rules_dir: Path
+    ) -> None:
+        rule = {
+            "name": "Active status",
+            "description": "",
+            "conditions": [],
+            "logic": {
+                "format": "value_vs_column",
+                "column_name": "status",
+                "operator": "eq",
+                "target_value": "active",
+                "target_values": [],
+                "comparison_mode": "comparison_vs_baseline",
+            },
+            "extra_columns": [],
+            "hide_comparison": False,
+        }
+        with override_settings(RULES_CONFIG_DIR=tmp_rules_dir):
+            created = api_client.post("/api/rules/", rule, format="json")
+            assert created.status_code == 201, created.content
+            saved = api_client.post(
+                "/api/rules/configs/", {"name": "0920a"}, format="json"
+            )
+            assert saved.status_code == 201
+            loaded = api_client.get("/api/rules/configs/0920a/")
+            assert loaded.status_code == 200
+            imported = api_client.post(
+                "/api/rules/configs/import/", {"content": loaded.json()["content"]}, format="json"
+            )
+
+        assert imported.status_code == 200, imported.content
+
 
 class TestNamedFiltersConfigsAPI:
     def test_create_and_list(self, api_client: APIClient, tmp_filters_dir: Path) -> None:
