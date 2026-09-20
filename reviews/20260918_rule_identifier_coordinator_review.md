@@ -1,6 +1,8 @@
 # 2026-09-18 Canonical rule identifier — coordinator review
 
-Status: **Gate 2 passed; Gate 3 in progress** — baseline isolated, Workers A/B integrated. Not READY.
+Status: **READY** — final 20260918 release review completed from `c607f2b` plus the
+coordinator's final verification fixes. This is a release-gate disposition; it does not perform or
+claim the user's eventual merge/release operation.
 
 ## Baseline inventory
 
@@ -176,30 +178,88 @@ The frontend config-save path now uses the backend SQLite-authoritative export o
 run bindings/identifier fixtures are consumed rather than inferred. Gate 3 implementation evidence
 is complete, subject to Gate 4 release verification below.
 
-## Gate 4 — release verification
+## Gate 4 — final release verification
 
-Passing checks:
+Passing checks from the final integration worktree:
 
 - `uv run python backend/manage.py makemigrations --check --dry-run`: no changes detected.
 - `uv run python backend/manage.py migrate --check`: passed.
 - `uv run python backend/manage.py check`: passed.
-- `uv run pytest -q tests/backend tests/contracts tests/integration`: **273 passed**.
+- `uv run pytest -q tests/backend tests/contracts tests/integration`: **277 passed**.
 - `npm --prefix frontend test -- --run`: **413 passed**.
 - `npm --prefix frontend run build`: passed.
+- `uv run ruff check backend tests`: passed.
+- `uv run mypy backend`: passed, 70 source files.
+- `git diff --check`: passed after normalizing generated `frontend/dist` line endings.
 
-Release blockers:
+Coordinator final fixes:
 
-1. `uv run mypy backend` fails on three existing errors outside the changed identifier/run/report
-   scope: two untyped-call errors in `backend/apps/settings/views.py` and one `Any` return error in
-   `backend/apps/families/resolver.py`. This is a required Gate 4 command and cannot be deferred.
-2. The production build rewrites `frontend/dist/index.html` with CRLF/trailing-whitespace changes,
-   so `git diff --check` fails until the generated artifact is normalized and committed consistently.
-3. The focused adversarial migration scenarios listed by the coordinator (populated legacy copy,
-   intentionally empty/disabled store, external edit/import, >50 pagination, and old run document)
-   still require explicit recorded evidence from the integration worktree.
+- Typed `_settings_response` and the value-family return in `backend/apps/settings/views.py` and
+  `backend/apps/families/resolver.py`, removing the three full-mypy failures without changing
+  runtime behavior.
+- Fixed atomic configuration import ordering in `backend/apps/rules/repository.py`: old enabled
+  positions are cleared before applying the imported enabled set, preventing a partial unique-order
+  collision when a business-logic edit imports a new identity.
+- Added `tests/backend/test_rule_identifier_release_review.py` with repeatable release scenarios.
 
-Final status remains **NOT READY**. No worker is accepted as release-complete until these blockers
-are independently cleared or the required command results are corrected.
+## Final UI/UX and functional evidence
+
+The following commands were run from `work/cbri-integration`:
+
+- `npm --prefix frontend test -- --run`: **47 files, 413 tests passed**.
+- Targeted UI journey command using `src/...` paths: **5 files, 51 tests passed**. This covered the
+  Rules page, rule list selection/pagination, wire mapping, the upload-to-results journey, and config
+  manager interactions.
+- `npm --prefix frontend run build`: passed; Vite rebuilt the tested production assets. The committed
+  `frontend/dist` artifact was normalized afterward and `git diff --check` passed.
+
+Functional identifier scenarios:
+
+- Equivalent condition and grouping reorder, same-operator reassociation, multi-value order and
+  duplicate-value normalization: `tests/backend/test_rule_identifiers.py` passed.
+- Non-equivalent threshold redundancy, exact string changes, duplicate predicates, mixed topology,
+  and logic format changes: `tests/backend/test_rule_identifiers.py` passed.
+- Create/save, presentation edit stability, business-logic edit versioning, enable/disable, import,
+  export, and read-only identifiers: `tests/backend/test_rule_catalog_api.py` and
+  `test_rule_identifier_release_review.py` passed.
+- External edit/import creates a new identity, disables the prior version, and rejects a forged
+  identifier atomically: `test_external_import_versions_rule_and_invalid_import_is_atomic` passed.
+- Empty enabled configuration preserves the catalog while exporting zero enabled rules, and the
+  initialized empty migration does not re-import later legacy-file edits: release-review tests passed.
+- More than 50 rules, an enabled rule outside the first page, deduplication, 10-rule continuation,
+  and pinned enabled visibility: repository/API release-review tests passed.
+- Populated legacy migration preserves `Rxxx`, order, `next_index`, enablement, and idempotence:
+  `uv run pytest -q tests/backend/test_rule_migration.py` passed.
+- New validation runs persist bindings and identifiers, reports/details preserve them, and old run
+  documents load with absent identity rather than guessed identity: persistence, run-detail, report,
+  contract, and integration tests passed.
+- HTML/Excel report rendering for legacy and identifier-bearing results passed in
+  `tests/backend/test_reports.py`.
+
+Exact final focused command:
+
+```text
+uv run pytest -q tests/backend/test_rule_identifier_release_review.py tests/backend/test_rule_identifiers.py tests/backend/test_rule_repository.py tests/backend/test_rule_migration.py tests/backend/test_persistence.py tests/backend/test_reports.py
+50 passed
+```
+
+## Final checklist disposition
+
+- [x] All four worker scopes are complete with no unowned requirement.
+- [x] No worker modified user-owned unrelated files.
+- [x] Model and migration state matches committed code; no missing migration is generated.
+- [x] Canonicalization is deterministic across process restarts and independent installations.
+- [x] All configured rule definitions remain in SQLite; business-logic edits preserve prior entries.
+- [x] `Rxxx` remains local and canonical identifiers remain stable across config import/order changes.
+- [x] Saved configs contain exactly enabled rules and enough authored content to import missing rules.
+- [x] Import is atomic and never deletes omitted catalog/history rows.
+- [x] Initial list and Next-page database reads follow the exact 50-plus-enabled/10 rule contract.
+- [x] Run persistence contains stable rule bindings, including zero-violation rules.
+- [x] Backward compatibility, reports, exports, and browser-journey tests pass.
+- [x] Relevant API, operations, migration, and implementation documents match behavior.
+- [x] `frontend/dist` was rebuilt only after source tests and production build passed.
+- [x] Final integration diff contains no debug code, accidental generated files, secrets, live data,
+  or unrelated cleanup.
 
 ## Checklist (open)
 
@@ -218,4 +278,4 @@ are independently cleared or the required command results are corrected.
 - [ ] `frontend/dist` is rebuilt only after source tests and production build pass.
 - [ ] Final integration diff contains no debug code, accidental generated files, secrets, live data, or unrelated cleanup.
 
-Final status: **NOT READY**
+Final status: **READY**

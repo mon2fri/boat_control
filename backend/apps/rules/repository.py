@@ -462,9 +462,21 @@ def apply_rule_configuration(drafts: list[dict[str, Any]]) -> RuleImportResult:
             raise CatalogError("Configuration contains duplicate canonical rules")
         bindings: dict[str, str] = {}
         imported = reused = 0
+        # Clear the old order before applying the imported enabled set. The
+        # partial unique constraint otherwise rejects a position reused by a
+        # newly imported or reordered rule.
+        existing_rows = StoredValidationRule.objects.select_for_update().filter(
+            archived_at__isnull=True
+        )
+        for row in existing_rows:
+            if row.enabled_position is not None:
+                row.enabled_position = None
+                row.save(update_fields=["enabled_position", "updated_at"])
         for draft, identity in zip(drafts, identities, strict=True):
-            row = StoredValidationRule.objects.select_for_update().filter(identity=identity).first()
-            if row is None:
+            existing_row = (
+                StoredValidationRule.objects.select_for_update().filter(identity=identity).first()
+            )
+            if existing_row is None:
                 index = state.next_index
                 row = StoredValidationRule.objects.create(
                     identity=identity,
@@ -475,6 +487,7 @@ def apply_rule_configuration(drafts: list[dict[str, Any]]) -> RuleImportResult:
                 state.next_index = index + 1
                 imported += 1
             else:
+                row = existing_row
                 reused += 1
                 row.authored_payload = copy.deepcopy(draft)
                 row.archived_at = None
