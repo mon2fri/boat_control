@@ -41,7 +41,7 @@ their absence is recorded as a dependency and no interface has been inferred.
   - `30dcc87` from accepted Worker A `b4163cf`: transactional catalog repository
   - `d6210a9` from accepted Worker B `299730e`: SQLite catalog APIs and migration
 - Worker C implementation commit: `330d0c9 feat: propagate canonical rule identifiers through runs`
-- Delivery review commit: pending this review update
+- Delivery review commit: `3b124b7 docs: complete worker C rule identifier delivery`
 
 ## Owned-File Inventory
 
@@ -66,7 +66,7 @@ Worker C owns the following areas after the Gate 2 contract freeze:
 Frontend source remains unchanged. Worker A/B catalog implementation remains outside
 this worker's implementation scope.
 
-## Current Evidence and Risks
+## Baseline Evidence Before Implementation
 
 - `backend/apps/runs/services.py:63-74` defines `ValidationViolation` without a
   canonical identifier; `:301-309` creates summaries without one; `:837-841`
@@ -139,9 +139,8 @@ Exact committed fixture excerpt:
 Worker D should map `rule_bindings` as `Record<string, string>` and treat
 `validation_violation.rule_identifier` as nullable/optional for legacy documents.
 
-The proposal intentionally does not specify catalog snapshot fields, rule import
-bindings, serializer strictness, or Worker B rule response shapes. Those require the
-accepted Worker A/B artifacts and Gate 2 freeze.
+The former pre-Gate-2 proposal is superseded by the implemented fields and accepted
+catalog interfaces above; there are no unresolved Worker C wire-shape proposals.
 
 ## Gate 2 Decisions Consumed
 
@@ -189,7 +188,7 @@ No frontend file was changed.
 All result/database activity used pytest-isolated databases and temporary result paths.
 The generated prepare-cache artifact was removed and no live saved runs were modified.
 
-## Next Action After Gate 2
+## Final Disposition
 
 Worker C is complete. No required follow-up remains in this scope.
 
