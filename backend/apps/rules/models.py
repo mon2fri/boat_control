@@ -25,6 +25,13 @@ class StoredValidationRule(models.Model):
     enabled = models.BooleanField(default=False, db_index=True)
     enabled_position = models.PositiveBigIntegerField(null=True, blank=True)
     archived_at = models.DateTimeField(null=True, blank=True)
+    superseded_by = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="supersedes",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

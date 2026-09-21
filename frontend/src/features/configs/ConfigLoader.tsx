@@ -4,7 +4,7 @@ import { useEffect } from "react";
 interface ConfigLoaderProps {
   configType: "rules" | "filters" | "rows-and-columns";
   name: string;
-  onLoad: (content: unknown) => void;
+  onLoad: (content: unknown, name: string) => void;
   onDone: () => void;
 }
 
@@ -13,7 +13,7 @@ export function ConfigLoader({ configType, name, onLoad, onDone }: ConfigLoaderP
 
   useEffect(() => {
     if (query.data) {
-      onLoad(query.data.content);
+      onLoad(query.data.content, name);
       onDone();
     }
   }, [query.data, onLoad, onDone]);

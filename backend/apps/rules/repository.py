@@ -36,6 +36,14 @@ class CatalogCorruptionError(CatalogError):
     """A persisted catalog row no longer matches its protected identity."""
 
 
+class RuleConfigConflict(CatalogError):
+    """A config refers to a deleted or superseded catalog rule."""
+
+    def __init__(self, conflicts: list[dict[str, Any]]) -> None:
+        self.conflicts = conflicts
+        super().__init__("Configuration contains deleted or modified rules")
+
+
 class StaleCursorError(CatalogError):
     """A pagination cursor was created against an older catalog revision."""
 
@@ -52,6 +60,7 @@ class RuleSnapshot:
     enabled: bool
     enabled_position: int | None
     archived_at: datetime | None
+    superseded_by_rule_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -206,6 +215,7 @@ def materialize_catalog_rule(row: StoredValidationRule) -> RuleSnapshot:
         enabled=row.enabled,
         enabled_position=row.enabled_position,
         archived_at=row.archived_at,
+        superseded_by_rule_id=row.superseded_by.rule_id if row.superseded_by_id else None,
     )
 
 
@@ -292,6 +302,8 @@ def update_catalog_rule(rule_id: str, draft: dict[str, Any]) -> RuleEditResult:
             target.enabled = was_enabled
             target.enabled_position = position if was_enabled else None
             target.save()
+        previous.superseded_by = target
+        previous.save(update_fields=["superseded_by", "updated_at"])
         _bump(state)
         return RuleEditResult(rule_id, materialize_catalog_rule(target))
 
@@ -376,6 +388,54 @@ def archive_catalog_rule(rule_id: str) -> RuleSnapshot:
         return materialize_catalog_rule(row)
 
 
+def configuration_conflicts(drafts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    conflicts: list[dict[str, Any]] = []
+    for position, draft in enumerate(drafts, start=1):
+        identity = _register_identity_in_transaction(draft)
+        row = (
+            StoredValidationRule.objects.select_related("identity", "superseded_by")
+            .filter(identity=identity)
+            .first()
+        )
+        if row is None or row.archived_at is None:
+            continue
+        replacement = row.superseded_by
+        conflicts.append(
+            {
+                "kind": "modified" if replacement is not None else "deleted",
+                "position": position,
+                "rule_id": row.rule_id,
+                "rule_identifier": identity.identifier,
+                "name": str(draft.get("name", "(unnamed)")),
+                "description": str(draft.get("description", "")),
+                **(
+                    {
+                        "replacement_rule_id": replacement.rule_id,
+                        "replacement_rule_identifier": replacement.identity_id,
+                        "replacement_name": str(replacement.authored_payload.get("name", "")),
+                        "replacement_payload": copy.deepcopy(replacement.authored_payload),
+                    }
+                    if replacement is not None
+                    else {}
+                ),
+            }
+        )
+    return conflicts
+
+
+def reinstate_catalog_rule(rule_id: str) -> RuleSnapshot:
+    with transaction.atomic():
+        state = _state()
+        row = _get_row(rule_id, lock=True)
+        row.archived_at = None
+        row.superseded_by = None
+        row.enabled = True
+        row.enabled_position = _enabled_position()
+        row.save()
+        _bump(state)
+        return materialize_catalog_rule(row)
+
+
 def _cursor(revision: int, position: int, pinned: list[str]) -> str:
     raw = json.dumps(
         {"revision": revision, "position": position, "pinned": pinned}, separators=(",", ":")
@@ -413,7 +473,7 @@ def list_catalog_rules(cursor: str | None = None, page_size: int = 10) -> RulePa
         first = list(
             StoredValidationRule.objects.select_related("identity")
             .filter(archived_at__isnull=True)
-            .order_by("catalog_position")[:50]
+            .order_by("catalog_position")[:page_size]
         )
         rows = {row.rule_id: row for row in first}
         rows.update({row.rule_id: row for row in pinned})
@@ -452,12 +512,25 @@ def list_catalog_rules(cursor: str | None = None, page_size: int = 10) -> RulePa
     )
 
 
-def apply_rule_configuration(drafts: list[dict[str, Any]]) -> RuleImportResult:
+def apply_rule_configuration(
+    drafts: list[dict[str, Any]], *, config_name: str | None = None
+) -> RuleImportResult:
     with transaction.atomic():
         state = _state()
         identities = [_register_identity_in_transaction(draft) for draft in drafts]
-        if len({identity.identifier for identity in identities}) != len(identities):
-            raise CatalogError("Configuration contains duplicate canonical rules")
+        first_positions: dict[str, int] = {}
+        for position, identity in enumerate(identities, start=1):
+            previous = first_positions.get(identity.identifier)
+            if previous is not None:
+                previous_name = str(drafts[previous - 1].get("name", "(unnamed)"))
+                current_name = str(drafts[position - 1].get("name", "(unnamed)"))
+                label = f"'{config_name}'" if config_name else "the selected configuration"
+                raise CatalogError(
+                    f"Configuration {label} contains duplicate canonical rule "
+                    f"{identity.identifier}: '{previous_name}' and '{current_name}' "
+                    f"at entries {previous} and {position}"
+                )
+            first_positions[identity.identifier] = position
         bindings: dict[str, str] = {}
         imported = reused = 0
         # Clear the old order before applying the imported enabled set. The

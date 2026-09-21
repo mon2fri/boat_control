@@ -681,6 +681,10 @@ export function resolveConfigRule(
 }
 
 /** Detect whether config content is old-format domain Rule[] or new ConfigRule[]. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function isDomainRulesFormat(content: unknown[]): boolean {
   if (content.length === 0) return true;
   const first = content[0] as Record<string, unknown>;
@@ -696,7 +700,13 @@ export function resolveRulesConfig(
   const warnings: ConfigLoadWarning[] = [];
   const drafts: RuleDraft[] = [];
 
-  const arr = Array.isArray(content) ? content : [];
+  const arr = Array.isArray(content)
+    ? content
+    : isRecord(content) && Array.isArray(content.items)
+      ? content.items
+      : isRecord(content) && Array.isArray(content.rules)
+        ? content.rules
+        : [];
   if (arr.length === 0) return { drafts, warnings };
 
   // Old format (domain Rule[]): ignore family references, return as-is

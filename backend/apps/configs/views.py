@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from django.conf import settings
+from rest_framework import serializers
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -26,7 +27,14 @@ from apps.configs.services import (
     update_config,
 )
 from apps.rules.identifiers import calculate_rule_identifier
-from apps.rules.repository import apply_rule_configuration, list_enabled_catalog_rules
+from apps.rules.repository import (
+    CatalogError,
+    RuleConfigConflict,
+    apply_rule_configuration,
+    configuration_conflicts,
+    list_enabled_catalog_rules,
+    reinstate_catalog_rule,
+)
 from apps.rules.serializers import RuleSerializer
 from apps.rules.services import validate_rule
 from apps.settings.services import (
@@ -175,7 +183,7 @@ class RulesConfigDetailView(BaseConfigDetailView):
                 raise ConfigConflictError(
                     f"Configuration '{name}' has been modified by another session."
                 )
-            result = _import_rule_content(content)
+            result = _import_rule_content(content, config_name=name)
             config = update_config(
                 self.directory, name, content, serializer.validated_data["version"]
             )
@@ -194,9 +202,22 @@ class RulesConfigDetailView(BaseConfigDetailView):
 class RuleConfigImportView(APIView):  # type: ignore[misc]
     def post(self, request: Request) -> Response:
         content = request.data.get("content", request.data.get("rules", []))
+        config_name = request.data.get("config_name")
+        decisions = request.data.get("decisions")
         try:
-            return Response(_import_rule_content(content))
-        except ValueError as exc:
+            return Response(
+                _import_rule_content(
+                    content,
+                    config_name=config_name,
+                    decisions=decisions,
+                    persist_config=bool(decisions),
+                )
+            )
+        except serializers.ValidationError as exc:
+            return Response({"error": str(exc.detail)}, status=400)
+        except RuleConfigConflict as exc:
+            return Response({"error": str(exc), "conflicts": exc.conflicts}, status=409)
+        except (CatalogError, ValueError) as exc:
             return Response({"error": str(exc)}, status=400)
 
 
@@ -237,8 +258,20 @@ def _rule_snapshot_payload(snapshot: Any) -> dict[str, Any]:
     return payload
 
 
-def _import_rule_content(content: Any) -> dict[str, Any]:
-    drafts = content.get("rules", []) if isinstance(content, dict) else content
+def _import_rule_content(
+    content: Any,
+    *,
+    config_name: str | None = None,
+    decisions: dict[str, str] | None = None,
+    persist_config: bool = False,
+) -> dict[str, Any]:
+    if isinstance(content, dict):
+        if isinstance(content.get("items"), list):
+            drafts = content["items"]
+        else:
+            drafts = content.get("rules", [])
+    else:
+        drafts = content
     if not isinstance(drafts, list):
         raise ValueError("Rule configuration must contain a rules array.")
     for index, raw_draft in enumerate(drafts, start=1):
@@ -259,7 +292,39 @@ def _import_rule_content(content: Any) -> dict[str, Any]:
         validation = validate_rule(draft)
         if not validation.valid:
             raise ValueError(f"Rule {index} invalid: {'; '.join(validation.errors)}")
-    result = apply_rule_configuration(validated)
+    conflicts = configuration_conflicts(validated)
+    if conflicts and not isinstance(decisions, dict):
+        raise RuleConfigConflict(conflicts)
+    if conflicts:
+        resolved: list[dict[str, Any]] = []
+        by_identifier = {item["rule_identifier"]: item for item in conflicts}
+        for draft in validated:
+            identifier = calculate_rule_identifier(draft)
+            conflict = by_identifier.get(identifier)
+            if conflict is None:
+                resolved.append(draft)
+                continue
+            decision = decisions.get(identifier)
+            if decision == "remove":
+                continue
+            if decision == "reinstate" or decision == "maintain_original":
+                reinstate_catalog_rule(conflict["rule_id"])
+                resolved.append(draft)
+                continue
+            if decision == "accept_updated" and conflict.get("replacement_rule_id"):
+                resolved.append(dict(conflict["replacement_payload"]))
+                continue
+            raise RuleConfigConflict([conflict])
+        validated = resolved
+    result = apply_rule_configuration(validated, config_name=config_name)
+    if persist_config and config_name:
+        existing = get_config(get_rule_config_dir(), config_name)
+        if existing is not None:
+            persisted = [
+                {"rule_identifier": calculate_rule_identifier(draft), **draft}
+                for draft in validated
+            ]
+            update_config(get_rule_config_dir(), config_name, persisted, existing.version)
     return {
         "imported": result.imported,
         "reused": result.reused,

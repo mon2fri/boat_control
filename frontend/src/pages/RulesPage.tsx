@@ -12,6 +12,7 @@ import { ConfigManager } from "../features/configs/ConfigManager";
 import { mapRuleToWireDraft } from "../api/mapping";
 import { mapRulesToConfigContent, resolveRulesConfig } from "../api/configContent";
 import { importRulesConfig } from "../api/endpoints";
+import { ApiError } from "../api/client";
 import type { Rule, RuleDraft } from "../api/domain";
 
 const RULES_KEY = ["rules"] as const;
@@ -33,12 +34,16 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
 
   const [editor, setEditor] = useState<EditorState>({ mode: "closed" });
   const [pendingDelete, setPendingDelete] = useState<Rule | null>(null);
+  const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const [loadedConfigData, setLoadedConfigData] = useState<unknown>(null);
+  const [loadedConfigName, setLoadedConfigName] = useState<string | null>(null);
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
   const [configNotice, setConfigNotice] = useState<string | null>(null);
   const [configNoticeFading, setConfigNoticeFading] = useState(false);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [ruleConflicts, setRuleConflicts] = useState<Array<Record<string, unknown>> | null>(null);
+  const [conflictDecisions, setConflictDecisions] = useState<Record<string, string>>({});
   const [isApplyingConfig, setIsApplyingConfig] = useState(false);
   const queryClient = useQueryClient();
   const [catalogPage, setCatalogPage] = useState(0);
@@ -107,6 +112,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
 
   const totalCatalogPages = Math.max(catalogPages.length, Math.ceil(rules.total / 10), 1);
   const hasNextCatalogPage = catalogPage + 1 < totalCatalogPages;
+  const activeConflict = ruleConflicts?.[0];
 
   function goToNextCatalogPage(): void {
     if (catalogPage + 1 < catalogPages.length) {
@@ -121,8 +127,9 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     });
   }
 
-  const handleConfigContent = useCallback((content: unknown) => {
+  const handleConfigContent = useCallback((content: unknown, name: string) => {
     setLoadedConfigData(content);
+    setLoadedConfigName(name);
   }, []);
   const handleConfigDone = useCallback(() => setConfigLoadName(null), []);
 
@@ -136,23 +143,59 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     if (resolved.warnings.length > 0) {
       setConfigWarnings(resolved.warnings.map((warning) => warning.message));
     }
-    importRulesConfig(resolved.drafts.map(mapRuleToWireDraft))
+    importRulesConfig(resolved.drafts.map(mapRuleToWireDraft), loadedConfigName)
       .then((result) => {
         setConfigNotice(`Configuration applied: ${result.imported} imported, ${result.reused} reused, ${result.enabled} enabled.`);
         dispatch({ type: "setSelectedRules", ruleIndexes: Object.keys(result.bindings) });
-        setSyncedEnabledKey("config-import");
-        setCatalogPage(0);
-        void queryClient.invalidateQueries({ queryKey: RULES_KEY });
+         setSyncedEnabledKey("config-import");
+         setCatalogPage(0);
+         void queryClient.invalidateQueries({ queryKey: RULES_KEY });
+         setLoadedConfigData(null);
+         setLoadedConfigName(null);
       })
       .catch((err: unknown) => {
+        if (
+          err instanceof ApiError &&
+          err.status === 409 &&
+          typeof err.detail === "object" &&
+          err.detail !== null &&
+          Array.isArray((err.detail as { conflicts?: unknown }).conflicts)
+        ) {
+          setRuleConflicts((err.detail as { conflicts: Array<Record<string, unknown>> }).conflicts);
+          setConflictDecisions({});
+          setIsApplyingConfig(false);
+          return;
+        }
         const message = err instanceof Error ? err.message : "Failed to apply rule configuration.";
         setConfigError(message);
-      })
-      .finally(() => {
-        setIsApplyingConfig(false);
         setLoadedConfigData(null);
-      });
-  }, [loadedConfigData, families, columns, queryClient, dispatch]);
+        setLoadedConfigName(null);
+      })
+      .finally(() => setIsApplyingConfig(false));
+  }, [loadedConfigData, loadedConfigName, families, columns, queryClient, dispatch]);
+
+  function resolveRuleConflict(decision: string, identifier: string): void {
+    if (!loadedConfigData || !loadedConfigName) return;
+    const decisions = { ...conflictDecisions, [identifier]: decision };
+    setConflictDecisions(decisions);
+    const remaining = (ruleConflicts ?? []).filter((item) => !decisions[String(item.rule_identifier)]);
+    if (remaining.length > 0) {
+      setRuleConflicts(remaining);
+      return;
+    }
+    setRuleConflicts(null);
+    setIsApplyingConfig(true);
+    const resolved = resolveRulesConfig(loadedConfigData, families, columns);
+    importRulesConfig(resolved.drafts.map(mapRuleToWireDraft), loadedConfigName, decisions)
+      .then(() => {
+        setConfigNotice("Configuration applied with the selected rule decisions.");
+        void queryClient.invalidateQueries({ queryKey: RULES_KEY });
+        setLoadedConfigData(null);
+        setLoadedConfigName(null);
+      })
+      .catch((error: unknown) => setConfigError(error instanceof Error ? error.message : "Failed to apply rule configuration."))
+      .finally(() => setIsApplyingConfig(false));
+  }
 
   function toggle(index: string): void {
     const next = selected.includes(index)
@@ -369,14 +412,48 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
             {configError}
           </p>
         )}
+        {activeConflict && (
+          <ConfirmDialog
+            title={activeConflict.kind === "deleted" ? "Rule was deleted" : "Rule was modified"}
+            open
+            cancelLabel={activeConflict.kind === "deleted" ? "Remove from Config" : "Maintain Original Rule"}
+            confirmLabel={activeConflict.kind === "deleted" ? "Reinstate Rule" : "Accept Updated Rule"}
+            onCancel={() => resolveRuleConflict(activeConflict.kind === "deleted" ? "remove" : "maintain_original", String(activeConflict.rule_identifier))}
+            onConfirm={() => resolveRuleConflict(activeConflict.kind === "deleted" ? "reinstate" : "accept_updated", String(activeConflict.rule_identifier))}
+          >
+            <p>
+              <strong>{String(activeConflict.name ?? "Unnamed rule")}</strong>
+              {String(activeConflict.description ?? "") && `: ${String(activeConflict.description)}`}
+            </p>
+          </ConfirmDialog>
+        )}
         </fieldset>
 
         <ConfirmDialog
           title="Delete rule?"
-          open={pendingDelete !== null}
-          confirmLabel="Delete"
+          open={pendingDelete !== null && !deleteAllConfirm}
+          cancelLabel="Cancel"
+          confirmLabel="Delete Rule"
           confirmTone="danger"
           onCancel={() => setPendingDelete(null)}
+          onConfirm={() => setDeleteAllConfirm(true)}
+        >
+          <p>
+            Delete rule <strong>{pendingDelete?.index}</strong> ({pendingDelete?.name})? This cannot
+            be undone.
+          </p>
+        </ConfirmDialog>
+
+        <ConfirmDialog
+          title="Delete rule for all configurations?"
+          open={pendingDelete !== null && deleteAllConfirm}
+          cancelLabel="Cancel"
+          confirmLabel="Delete for ALL Configs"
+          confirmTone="danger"
+          onCancel={() => {
+            setDeleteAllConfirm(false);
+            setPendingDelete(null);
+          }}
           onConfirm={() => {
             if (pendingDelete) {
               const index = pendingDelete.index;
@@ -388,12 +465,13 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                   }),
               });
             }
+            setDeleteAllConfirm(false);
             setPendingDelete(null);
           }}
         >
           <p>
-            Delete rule <strong>{pendingDelete?.index}</strong> ({pendingDelete?.name})? This cannot
-            be undone.
+            Delete <strong>{pendingDelete?.name}</strong> from the database and all configurations?
+            This cannot be undone automatically.
           </p>
         </ConfirmDialog>
       </section>
@@ -529,12 +607,46 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
         </div>
       )}
 
+      {activeConflict && (
+        <ConfirmDialog
+          title={activeConflict.kind === "deleted" ? "Rule was deleted" : "Rule was modified"}
+          open
+          cancelLabel={activeConflict.kind === "deleted" ? "Remove from Config" : "Maintain Original Rule"}
+          confirmLabel={activeConflict.kind === "deleted" ? "Reinstate Rule" : "Accept Updated Rule"}
+          onCancel={() => resolveRuleConflict(activeConflict.kind === "deleted" ? "remove" : "maintain_original", String(activeConflict.rule_identifier))}
+          onConfirm={() => resolveRuleConflict(activeConflict.kind === "deleted" ? "reinstate" : "accept_updated", String(activeConflict.rule_identifier))}
+        >
+          <p>
+            <strong>{String(activeConflict.name ?? "Unnamed rule")}</strong>
+            {String(activeConflict.description ?? "") && `: ${String(activeConflict.description)}`}
+          </p>
+        </ConfirmDialog>
+      )}
+
       <ConfirmDialog
         title="Delete rule?"
-        open={pendingDelete !== null}
-        confirmLabel="Delete"
+        open={pendingDelete !== null && !deleteAllConfirm}
+        cancelLabel="Cancel"
+        confirmLabel="Delete Rule"
         confirmTone="danger"
         onCancel={() => setPendingDelete(null)}
+        onConfirm={() => setDeleteAllConfirm(true)}
+      >
+        <p>
+          Delete rule <strong>{pendingDelete?.index}</strong> ({pendingDelete?.name})? This cannot
+          be undone.
+        </p>
+      </ConfirmDialog>
+      <ConfirmDialog
+        title="Delete rule for all configurations?"
+        open={pendingDelete !== null && deleteAllConfirm}
+        cancelLabel="Cancel"
+        confirmLabel="Delete for ALL Configs"
+        confirmTone="danger"
+        onCancel={() => {
+          setDeleteAllConfirm(false);
+          setPendingDelete(null);
+        }}
         onConfirm={() => {
           if (pendingDelete) {
             const index = pendingDelete.index;
@@ -546,12 +658,13 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                 }),
             });
           }
+          setDeleteAllConfirm(false);
           setPendingDelete(null);
         }}
       >
         <p>
-          Delete rule <strong>{pendingDelete?.index}</strong> ({pendingDelete?.name})? This cannot
-          be undone.
+          Delete <strong>{pendingDelete?.name}</strong> from the database and all configurations?
+          This cannot be undone automatically.
         </p>
       </ConfirmDialog>
     </section>

@@ -98,7 +98,9 @@ describe("RulesPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("alertdialog", { name: /Delete rule/ });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Rule" }));
+    const globalDialog = screen.getByRole("alertdialog", { name: /Delete rule for all configurations/ });
+    fireEvent.click(within(globalDialog).getByRole("button", { name: "Delete for ALL Configs" }));
 
     await waitFor(() =>
       expect(
@@ -209,7 +211,9 @@ describe("RulesPage", () => {
     // Delete the single rule
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("alertdialog", { name: /Delete rule/ });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Rule" }));
+    const globalDialog = screen.getByRole("alertdialog", { name: /Delete rule for all configurations/ });
+    fireEvent.click(within(globalDialog).getByRole("button", { name: "Delete for ALL Configs" }));
 
     await waitFor(() =>
       expect(

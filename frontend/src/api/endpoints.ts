@@ -388,10 +388,18 @@ export function setRulesEnabled(ruleIds: string[], enabled: boolean): Promise<Do
   }).then((response) => response.rules.map(mapWireRule));
 }
 
-export function importRulesConfig(content: unknown): Promise<z.infer<typeof ruleImportResponseSchema>> {
+export function importRulesConfig(
+  content: unknown,
+  configName?: string | null,
+  decisions?: Record<string, string>,
+): Promise<z.infer<typeof ruleImportResponseSchema>> {
   return apiRequest("/rules/configs/import/", {
     method: "POST",
-    body: { content },
+    body: {
+      content,
+      ...(configName ? { config_name: configName } : {}),
+      ...(decisions ? { decisions } : {}),
+    },
     schema: ruleImportResponseSchema,
   });
 }
