@@ -105,6 +105,24 @@ def main() -> int:
         print("Preserved the existing .config. Root config/ and data/ were not touched.")
     return 0
 
+r"""
+From the project root:
+python .\scripts\copy_release_from_zip.py "C:\releases\boat-control.zip"
+This copies:
+backend/
+frontend/dist/
+trigger.py
+pyproject.toml
+It preserves .config, config/, and data/.
+To also replace .config:
+python .\scripts\copy_release_from_zip.py `
+  "C:\releases\boat-control.zip" `
+  --copy-project-config
+For a different destination root:
+python .\scripts\copy_release_from_zip.py `
+  "C:\releases\boat-control.zip" `
+  --project-root "C:\boat-control"
+"""
 
 if __name__ == "__main__":
     raise SystemExit(main())

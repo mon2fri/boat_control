@@ -68,3 +68,15 @@ finally {
         Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
     }
 }
+#   From the project root:
+#   .\scripts\copy_release_from_zip.ps1 `
+#     -ZipPath "C:\releases\boat-control.zip"
+#   To also replace .config:
+#   .\scripts\copy_release_from_zip.ps1 `
+#  -ZipPath "C:\releases\boat-control.zip" `
+#  -CopyProjectConfig
+#For a different destination root:
+#   .\scripts\copy_release_from_zip.ps1 `
+#     -ZipPath "C:\releases\boat-control.zip" `
+#     -ProjectRoot "C:\boat-control"
+#   The script never modifies config/ or data/.
