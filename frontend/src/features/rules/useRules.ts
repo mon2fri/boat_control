@@ -1,4 +1,5 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { createRule, deleteRule, loadRulesPage, reorderRules, setRulesEnabled, updateRule } from "../../api/endpoints";
 import type { Rule, RuleDraft } from "../../api/domain";
 
@@ -11,6 +12,15 @@ export function useRules() {
     initialPageParam: null as string | null,
     getNextPageParam: (page) => page.hasMore ? page.nextCursor : undefined,
   });
+  const loadedPageCount = query.data?.pages.length ?? 0;
+
+  // Load the first five ten-rule pages so normal navigation starts with a
+  // 50-rule buffer, while retaining cursor pagination for larger catalogs.
+  useEffect(() => {
+    if (loadedPageCount >= 5 || !query.hasNextPage || query.isFetchingNextPage) return;
+    void query.fetchNextPage();
+  }, [loadedPageCount, query.hasNextPage, query.isFetchingNextPage, query.fetchNextPage]);
+
   const pages = query.data?.pages ?? [];
   const rules = [...new Map(pages.flatMap((page) => page.rules).map((rule) => [rule.index, rule])).values()];
   const first = pages[0];

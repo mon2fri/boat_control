@@ -25,6 +25,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+import yaml
+
 PROJECT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = PROJECT_DIR / "backend"
 FRONTEND_DIST = PROJECT_DIR / "frontend" / "dist"
@@ -67,6 +69,17 @@ def require_release_files() -> None:
         )
 
 
+def skip_migrations() -> bool:
+    with open(PROJECT_DIR / ".config", encoding="utf-8") as file:
+        config = yaml.safe_load(file) or {}
+    if not isinstance(config, dict):
+        raise SystemExit("[trigger] .config must contain a YAML object.")
+    value = config.get("skip_migrations", False)
+    if not isinstance(value, bool):
+        raise SystemExit("[trigger] .config skip_migrations must be true or false.")
+    return value
+
+
 def run(command: Sequence[str]) -> None:
     info("$ " + " ".join(command))
     completed = subprocess.run(command, cwd=PROJECT_DIR)
@@ -80,7 +93,7 @@ def main() -> int:
     host = os.environ.get("BOAT_CONTROL_HOST", "127.0.0.1")
     port = os.environ.get("BOAT_CONTROL_PORT", "8001")
 
-    if os.environ.get("BOAT_CONTROL_SKIP_MIGRATIONS") != "1":
+    if not skip_migrations():
         info("Applying local database migrations...")
         run(
             [
@@ -91,7 +104,7 @@ def main() -> int:
                 "--noinput",
             ]
         )
-        info("Migrating legacy rules into the local catalog when needed...")
+        info("Synchronizing config/rules/rules.yaml with the local catalog...")
         run(
             [
                 str(python),

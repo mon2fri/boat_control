@@ -91,7 +91,7 @@ def test_export_uses_enabled_catalog_not_rendered_page(tmp_path) -> None:
 
 
 @pytest.mark.django_db
-def test_empty_migration_is_initialized_and_never_reimports_later_file_edits(tmp_path) -> None:
+def test_migration_reconciles_later_file_edits(tmp_path) -> None:
     legacy = tmp_path / "rules.yaml"
     legacy.write_text(
         yaml.safe_dump({"version": 1, "next_index": 1, "rules": []}), encoding="utf-8"
@@ -104,4 +104,6 @@ def test_empty_migration_is_initialized_and_never_reimports_later_file_edits(tmp
         call_command("migrate_rules_to_db")
 
     assert RuleStoreState.objects.get(singleton_key=1).initialized is True
-    assert StoredValidationRule.objects.count() == 0
+    rows = list(StoredValidationRule.objects.filter(archived_at__isnull=True))
+    assert len(rows) == 1
+    assert rows[0].authored_payload["name"] == draft()["name"]

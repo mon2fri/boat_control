@@ -6,7 +6,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.rules.models import RuleStoreState, StoredValidationRule
-from apps.rules.repository import register_rule_identity
+from apps.rules.repository import apply_rule_configuration, register_rule_identity
 from apps.rules.services import RulesFile, _serialize_grouping_tree, load_rules
 from apps.settings.services import get_rules_file
 
@@ -46,14 +46,9 @@ def _payload(rule: Any) -> dict[str, Any]:
 
 
 class Command(BaseCommand):
-    help = "Import the legacy active rules file into the SQLite rule catalog once."
+    help = "Synchronize the active rules file into the SQLite rule catalog."
 
     def handle(self, *args: Any, **options: Any) -> None:
-        state = RuleStoreState.objects.filter(singleton_key=1).first()
-        if state is not None and state.initialized:
-            self.stdout.write("Rule catalog already initialized; nothing to do.")
-            return
-
         legacy_path = get_rules_file()
         try:
             rules_file: RulesFile = load_rules(legacy_path)
@@ -65,33 +60,48 @@ class Command(BaseCommand):
 
         try:
             with transaction.atomic():
-                state, _ = RuleStoreState.objects.select_for_update().get_or_create(
-                    singleton_key=1,
-                    defaults={"next_index": rules_file.next_index},
-                )
-                if state.initialized:
-                    self.stdout.write("Rule catalog already initialized; nothing to do.")
-                    return
-                if StoredValidationRule.objects.exists():
-                    raise CommandError("Uninitialized rule catalog already contains rows.")
-                for position, (legacy_rule, draft) in enumerate(
-                    zip(rules_file.rules, drafts, strict=True), start=1
-                ):
-                    identity = register_rule_identity(draft)
-                    StoredValidationRule.objects.create(
-                        identity=identity,
-                        rule_id=legacy_rule.rule_id,
-                        catalog_position=position,
-                        authored_payload=draft,
-                        enabled=True,
-                        enabled_position=position,
+                state = RuleStoreState.objects.select_for_update().filter(singleton_key=1).first()
+                if state is None or not state.initialized:
+                    state, _ = RuleStoreState.objects.select_for_update().get_or_create(
+                        singleton_key=1,
+                        defaults={"next_index": rules_file.next_index},
                     )
-                state.next_index = rules_file.next_index
-                state.initialized = True
-                state.revision += 1
-                state.save(update_fields=["next_index", "initialized", "revision"])
+                    if StoredValidationRule.objects.exists():
+                        raise CommandError("Uninitialized rule catalog already contains rows.")
+                    for position, (legacy_rule, draft) in enumerate(
+                        zip(rules_file.rules, drafts, strict=True), start=1
+                    ):
+                        identity = register_rule_identity(draft)
+                        StoredValidationRule.objects.create(
+                            identity=identity,
+                            rule_id=legacy_rule.rule_id,
+                            catalog_position=position,
+                            authored_payload=draft,
+                            enabled=True,
+                            enabled_position=position,
+                        )
+                    state.next_index = rules_file.next_index
+                    state.initialized = True
+                    state.revision += 1
+                    state.save(update_fields=["next_index", "initialized", "revision"])
+                    imported = len(drafts)
+                    reused = 0
+                    enabled = len(drafts)
+                else:
+                    result = apply_rule_configuration(drafts)
+                    state = RuleStoreState.objects.select_for_update().get(singleton_key=1)
+                    state.next_index = max(state.next_index, rules_file.next_index)
+                    state.save(update_fields=["next_index"])
+                    imported = result.imported
+                    reused = result.reused
+                    enabled = result.enabled
         except CommandError:
             raise
         except Exception as exc:
             raise CommandError(f"Could not migrate rules atomically: {exc}") from exc
-        self.stdout.write(self.style.SUCCESS(f"Migrated {len(drafts)} rule(s) to SQLite."))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"Synchronized {enabled} rule(s) from {legacy_path} to SQLite "
+                f"({imported} imported, {reused} reused)."
+            )
+        )

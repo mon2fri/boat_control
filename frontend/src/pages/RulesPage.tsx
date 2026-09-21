@@ -9,7 +9,8 @@ import { useFamilies } from "../features/settings/useSettings";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { ConfigManager } from "../features/configs/ConfigManager";
-import { mapRulesToConfigContent } from "../api/configContent";
+import { mapRuleToWireDraft } from "../api/mapping";
+import { mapRulesToConfigContent, resolveRulesConfig } from "../api/configContent";
 import { importRulesConfig } from "../api/endpoints";
 import type { Rule, RuleDraft } from "../api/domain";
 
@@ -92,6 +93,20 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     void queryClient.invalidateQueries({ queryKey: RULES_KEY });
   }, [rules.isError, rules.error, paginationNotice, queryClient]);
 
+  useEffect(() => {
+    // Keep four complete pages ahead of the current page. Each request adds
+    // the next ten rules; the query hook handles the initial 50-rule buffer.
+    const requiredPages = catalogPage + 5;
+    if (
+      catalogPages.length >= requiredPages ||
+      !rules.hasNextPage ||
+      rules.isFetchingNextPage
+    ) return;
+    void rules.fetchNextPage();
+  }, [catalogPage, catalogPages.length, rules.hasNextPage, rules.isFetchingNextPage, rules.fetchNextPage]);
+
+  const totalCatalogPages = Math.max(1, Math.ceil(rules.total / 10));
+
   const handleConfigContent = useCallback((content: unknown) => {
     setLoadedConfigData(content);
   }, []);
@@ -103,7 +118,11 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
 
     setIsApplyingConfig(true);
     setConfigError(null);
-    importRulesConfig(loadedConfigData)
+    const resolved = resolveRulesConfig(loadedConfigData, families, columns);
+    if (resolved.warnings.length > 0) {
+      setConfigWarnings(resolved.warnings.map((warning) => warning.message));
+    }
+    importRulesConfig(resolved.drafts.map(mapRuleToWireDraft))
       .then((result) => {
         setConfigNotice(`Configuration applied: ${result.imported} imported, ${result.reused} reused, ${result.enabled} enabled.`);
         dispatch({ type: "setSelectedRules", ruleIndexes: Object.keys(result.bindings) });
@@ -119,7 +138,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
         setIsApplyingConfig(false);
         setLoadedConfigData(null);
       });
-  }, [loadedConfigData, queryClient, dispatch]);
+  }, [loadedConfigData, families, columns, queryClient, dispatch]);
 
   function toggle(index: string): void {
     const next = selected.includes(index)
@@ -245,7 +264,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                 )}
                 <div className="config-inline-row">
                   <button type="button" className="btn" disabled={catalogPage === 0} onClick={() => setCatalogPage((page) => page - 1)}>Previous</button>
-                  <span>Catalog page {catalogPage + 1}</span>
+                  <span>Page {catalogPage + 1} of {totalCatalogPages}</span>
                   <button
                     type="button"
                     className="btn"
@@ -408,7 +427,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
             )}
             <div className="config-inline-row">
               <button type="button" className="btn" disabled={catalogPage === 0} onClick={() => setCatalogPage((page) => page - 1)}>Previous</button>
-              <span>Catalog page {catalogPage + 1}</span>
+              <span>Page {catalogPage + 1} of {totalCatalogPages}</span>
               <button
                 type="button"
                 className="btn"

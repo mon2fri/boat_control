@@ -4,7 +4,9 @@ Copy this project content to the target machine:
 
 - `backend/` — Django application source.
 - `frontend/dist/` — prebuilt browser application.
-- `config/` — rules, filters, and rows-and-columns configuration.
+- `config/` — rules, filters, and rows-and-columns configuration. Keep the
+  complete `config/rules/` directory: `rules.yaml` is synchronized into the
+  SQLite catalog at startup and the other YAML files are named configurations.
 - `.config` — application settings.
 - `data/` — keep this when existing run history, reports, uploads, or the
   SQLite database must be retained. Otherwise create an empty, writable
@@ -32,5 +34,10 @@ python -m pip install .
 python trigger.py
 ```
 
-`trigger.py` only starts the application. It does not install dependencies,
-run npm, start Vite, or make external package requests.
+Set `skip_migrations: false` in `.config` for normal startup. The launcher
+applies database migrations and synchronizes `config/rules/rules.yaml`; set it
+to `true` only when those operations are managed separately. The rules screen
+uses ten-rule pages, preloads up to 50 rules, and maintains a four-page buffer.
+
+`trigger.py` does not install dependencies, run npm, start Vite, or make
+external package requests.
