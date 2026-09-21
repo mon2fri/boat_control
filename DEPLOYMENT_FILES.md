@@ -41,3 +41,24 @@ uses ten-rule pages, preloads up to 50 rules, and maintains a four-page buffer.
 
 `trigger.py` does not install dependencies, run npm, start Vite, or make
 external package requests.
+
+## Copy a ZIP release
+
+From the project root, run the helper with the ZIP path. It copies only
+`backend/`, `frontend/dist/`, `trigger.py`, and `pyproject.toml`; the remote
+`.config` is preserved by default, and root `config/` and `data/` are never
+touched:
+
+```powershell
+.\scripts\copy_release_from_zip.ps1 -ZipPath "C:\releases\boat-control.zip"
+```
+
+To replace the remote `.config` as well, pass `-CopyProjectConfig` explicitly.
+
+The equivalent Python helper is also available:
+
+```powershell
+python .\scripts\copy_release_from_zip.py "C:\releases\boat-control.zip"
+```
+
+Use `--copy-project-config` to replace `.config` explicitly.

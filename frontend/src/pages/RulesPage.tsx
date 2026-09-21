@@ -105,7 +105,21 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     void rules.fetchNextPage();
   }, [catalogPage, catalogPages.length, rules.hasNextPage, rules.isFetchingNextPage, rules.fetchNextPage]);
 
-  const totalCatalogPages = Math.max(1, Math.ceil(rules.total / 10));
+  const totalCatalogPages = Math.max(catalogPages.length, Math.ceil(rules.total / 10), 1);
+  const hasNextCatalogPage = catalogPage + 1 < totalCatalogPages;
+
+  function goToNextCatalogPage(): void {
+    if (catalogPage + 1 < catalogPages.length) {
+      setCatalogPage((page) => page + 1);
+      return;
+    }
+    if (!rules.hasNextPage || rules.isFetchingNextPage) return;
+    void rules.fetchNextPage().then((result) => {
+      if ((result.data?.pages.length ?? 0) > catalogPage + 1) {
+        setCatalogPage((page) => page + 1);
+      }
+    });
+  }
 
   const handleConfigContent = useCallback((content: unknown) => {
     setLoadedConfigData(content);
@@ -268,11 +282,8 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                   <button
                     type="button"
                     className="btn"
-                    disabled={rules.isFetchingNextPage || (!rules.hasNextPage && catalogPage >= catalogPages.length - 1)}
-                    onClick={() => {
-                      if (catalogPage < catalogPages.length - 1) setCatalogPage((page) => page + 1);
-                      else void rules.fetchNextPage().then(() => setCatalogPage((page) => page + 1));
-                    }}
+                    disabled={rules.isFetchingNextPage || !hasNextCatalogPage}
+                    onClick={goToNextCatalogPage}
                   >
                     {rules.isFetchingNextPage ? "Loading…" : "Next page"}
                   </button>
@@ -431,11 +442,8 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
               <button
                 type="button"
                 className="btn"
-                disabled={rules.isFetchingNextPage || (!rules.hasNextPage && catalogPage >= catalogPages.length - 1)}
-                onClick={() => {
-                  if (catalogPage < catalogPages.length - 1) setCatalogPage((page) => page + 1);
-                  else void rules.fetchNextPage().then(() => setCatalogPage((page) => page + 1));
-                }}
+                disabled={rules.isFetchingNextPage || !hasNextCatalogPage}
+                onClick={goToNextCatalogPage}
               >
                 {rules.isFetchingNextPage ? "Loading…" : "Next page"}
               </button>
