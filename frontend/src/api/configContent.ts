@@ -98,6 +98,17 @@ export interface ConfigLoadResult {
   warnings: ConfigLoadWarning[];
 }
 
+const CONFIG_TO_DOMAIN_OPERATOR: Record<string, LogicOperator> = {
+  eq: "equals",
+  neq: "not_equals",
+  contains: "contains",
+  ncontains: "not_contains",
+  gt: "greater_than",
+  lt: "less_than",
+  gte: "greater_than",
+  lte: "less_than",
+};
+
 function nullOrUndefined(v: unknown): v is null | undefined {
   return v === null || v === undefined;
 }
@@ -493,7 +504,7 @@ export function resolveConfigRuleCondition(
     const c: Condition = {
       id: `c${idx}`,
       column: col,
-      operator: cond.operator as LogicOperator,
+      operator: CONFIG_TO_DOMAIN_OPERATOR[cond.operator] ?? (cond.operator as LogicOperator),
     };
     if (conditionValues.length > 0) c.values = [...conditionValues];
     return c;
@@ -623,7 +634,10 @@ export function resolveConfigRule(
     id: "l0",
     format: rule.logic.format === "value_vs_column" ? "value" : "column" as const,
     column: lr.column,
-    operator: lr.column === lr.target ? "equals" : rule.logic.operator as LogicOperator,
+    operator:
+      lr.column === lr.target
+        ? "equals"
+        : CONFIG_TO_DOMAIN_OPERATOR[rule.logic.operator] ?? (rule.logic.operator as LogicOperator),
     target: lr.target,
     ...(lr.comparisonMode ? { columnComparisonMode: lr.comparisonMode } : {}),
   };
@@ -712,14 +726,39 @@ export function resolveRulesConfig(
   // Old format (domain Rule[]): ignore family references, return as-is
   if (isDomainRulesFormat(arr)) {
     for (const item of arr) {
-      const rule = item as Rule;
+      const rule = item as unknown as Record<string, any>;
+      const wireLogic = rule.logic?.column_name !== undefined;
+      const conditions = wireLogic
+        ? (rule.conditions ?? []).map((condition: Record<string, any>, index: number) => ({
+            id: `c${index}`,
+            column: condition.column_name ?? "",
+            operator: CONFIG_TO_DOMAIN_OPERATOR[condition.operator ?? ""] ?? "equals",
+            values: condition.filter_values ?? (condition.filter_value ? [condition.filter_value] : []),
+            value: condition.filter_value ?? "",
+          }))
+        : Array.isArray(rule.conditions)
+          ? rule.conditions
+          : [];
+      const logic = wireLogic
+        ? {
+            id: "l0",
+            format: rule.logic!.format === "value_vs_column" ? "value" as const : "column" as const,
+            column: rule.logic!.column_name!,
+            operator: CONFIG_TO_DOMAIN_OPERATOR[rule.logic!.operator ?? ""] ?? "equals",
+            target: rule.logic!.target_value ?? "",
+            ...(rule.logic!.target_values?.length ? { values: rule.logic!.target_values } : {}),
+            ...(rule.logic!.comparison_mode
+              ? { columnComparisonMode: rule.logic!.comparison_mode }
+              : {}),
+          }
+        : rule.logic;
       const draft: RuleDraft = {
-        name: rule.name,
+        name: String(rule.name ?? ""),
         conditionGrouping: rule.conditionGrouping ?? null,
         conditionJoin: rule.conditionJoin ?? null,
-        conditions: rule.conditions,
+        conditions,
         groupTree: rule.groupTree ?? null,
-        logic: rule.logic,
+        logic: logic!,
       };
       if (rule.description) draft.description = rule.description;
       if (rule.index !== undefined) draft.index = rule.index;

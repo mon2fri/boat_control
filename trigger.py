@@ -91,7 +91,7 @@ def main() -> int:
     require_release_files()
     python = deployed_python()
     host = os.environ.get("BOAT_CONTROL_HOST", "127.0.0.1")
-    port = os.environ.get("BOAT_CONTROL_PORT", "8001")
+    port = os.environ.get("BOAT_CONTROL_PORT", "45303")
 
     if not skip_migrations():
         info("Applying local database migrations...")

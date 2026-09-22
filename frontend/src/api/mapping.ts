@@ -278,7 +278,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
   return {
     name: rule.name,
     ...(rule.description ? { description: rule.description } : {}),
-    conditions: rule.conditions.map(mapConditionToWire),
+    conditions: (rule.conditions ?? []).map(mapConditionToWire),
     ...(rule.conditionJoin && rule.conditionJoin !== "per_grouping"
       ? { condition_relation: rule.conditionJoin }
       : {}),
