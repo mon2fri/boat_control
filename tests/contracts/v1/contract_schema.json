@@ -157,10 +157,15 @@
       "route": "/api/rules/",
       "response_200": {
         "type": "object",
-        "required": ["version", "rules"],
+        "required": ["version", "rules", "pinned_rule_ids", "total", "revision", "next_cursor", "has_more"],
         "properties": {
-          "version": {"type": "integer", "const": 1},
-          "rules": {"type": "array", "items": {"$ref": "#/definitions/rule"}}
+          "version": {"type": "integer", "const": 2},
+          "rules": {"type": "array", "items": {"$ref": "#/definitions/rule"}},
+          "pinned_rule_ids": {"type": "array", "items": {"type": "string"}},
+          "total": {"type": "integer", "minimum": 0},
+          "revision": {"type": "integer", "minimum": 0},
+          "next_cursor": {"type": "string", "nullable": true},
+          "has_more": {"type": "boolean"}
         }
       }
     },
@@ -169,12 +174,7 @@
       "route": "/api/rules/",
       "request": {"$ref": "#/definitions/rule_draft"},
       "response_201": {
-        "type": "object",
-        "required": ["rule_id", "message"],
-        "properties": {
-          "rule_id": {"type": "string", "pattern": "^R\\d{3,}$"},
-          "message": {"type": "string"}
-        }
+        "$ref": "#/definitions/rule"
       }
     },
     "rule_detail": {
@@ -188,24 +188,14 @@
       "route": "/api/rules/<rule_id>/",
       "request": {"$ref": "#/definitions/rule_draft"},
       "response_200": {
-        "type": "object",
-        "required": ["rule_id", "message"],
-        "properties": {
-          "rule_id": {"type": "string"},
-          "message": {"type": "string"}
-        }
+        "$ref": "#/definitions/rule"
       }
     },
     "rule_delete": {
       "method": "DELETE",
       "route": "/api/rules/<rule_id>/",
       "response_200": {
-        "type": "object",
-        "required": ["rule_id", "message"],
-        "properties": {
-          "rule_id": {"type": "string"},
-          "message": {"type": "string"}
-        }
+        "$ref": "#/definitions/rule"
       }
     },
     "execute": {
@@ -375,9 +365,11 @@
     },
     "rule": {
       "type": "object",
-      "required": ["rule_id", "name", "description", "conditions", "logic"],
+      "required": ["rule_id", "rule_identifier", "enabled", "name", "description", "conditions", "logic"],
       "properties": {
         "rule_id": {"type": "string", "pattern": "^R\\d{3,}$"},
+        "rule_identifier": {"type": "string", "pattern": "^CBR1_[0-9A-Z]{20}$"},
+        "enabled": {"type": "boolean"},
         "name": {"type": "string"},
         "description": {"type": "string"},
         "conditions": {"type": "array", "items": {"$ref": "#/definitions/condition"}},
@@ -423,6 +415,7 @@
       "properties": {
         "row_index": {"type": "integer"},
         "rule_id": {"type": "string"},
+        "rule_identifier": {"type": "string", "nullable": true},
         "rule_name": {"type": "string"},
         "key_columns": {"type": "object"},
         "violating_column": {"type": "string"},
@@ -441,19 +434,21 @@
         "violations_by_rule": {"type": "object", "additionalProperties": {"type": "array", "items": {"$ref": "#/definitions/validation_violation"}}},
         "violation_count_by_rule": {"type": "object", "additionalProperties": {"type": "integer"}},
         "violating_rows_by_rule": {"type": "object", "additionalProperties": {"type": "integer"}},
-        "violating_attributes_by_rule": {"type": "object", "additionalProperties": {"type": "integer"}}
+        "violating_attributes_by_rule": {"type": "object", "additionalProperties": {"type": "integer"}},
+        "rule_summaries": {"type": "object", "additionalProperties": {"type": "object"}}
       }
     },
     "run_result": {
       "type": "object",
-      "required": ["comparison", "validation", "common_columns", "target_columns", "key_columns", "filters_applied"],
+      "required": ["comparison", "validation", "common_columns", "target_columns", "key_columns", "filters_applied", "rule_bindings"],
       "properties": {
         "comparison": {"$ref": "#/definitions/comparison_result"},
         "validation": {"$ref": "#/definitions/validation_result"},
         "common_columns": {"type": "array", "items": {"type": "string"}},
         "target_columns": {"type": "array", "items": {"type": "string"}},
         "key_columns": {"type": "array", "items": {"type": "string"}},
-        "filters_applied": {"type": "array", "items": {"$ref": "#/definitions/filter_row"}}
+        "filters_applied": {"type": "array", "items": {"$ref": "#/definitions/filter_row"}},
+        "rule_bindings": {"type": "object", "additionalProperties": {"type": "string"}}
       }
     },
     "run_document": {

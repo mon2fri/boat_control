@@ -29,8 +29,44 @@ describe("RuleEditor", () => {
     const { onSave } = setup();
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByText("Name is required.")).toBeInTheDocument();
     expect(screen.getByText("Logic needs a column.")).toBeInTheDocument();
+  });
+
+  it("allows a new blank-name rule to be saved for backend naming", () => {
+    const { onSave } = setup({ columns: ["status"] });
+    const logicColumn = screen.getByRole("searchbox", { name: "COLUMN in COMPARISON" });
+    fireEvent.focus(logicColumn);
+    fireEvent.change(logicColumn, { target: { value: "status" } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: "status" }));
+    const valueSearch = screen.getByRole("searchbox", { name: "Value" });
+    fireEvent.focus(valueSearch);
+    fireEvent.change(valueSearch, { target: { value: "active" } });
+    fireEvent.keyDown(valueSearch, { key: "Enter" });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: "" }));
+  });
+
+  it("rejects a blank name when editing an existing rule", () => {
+    const { onSave } = setup({
+      rule: {
+        index: "R001",
+        identifier: "CBR1_0123456789ABCDEFGHJK",
+        name: "Existing",
+        description: "",
+        conditions: [],
+        conditionJoin: null,
+        conditionGrouping: null,
+        groupTree: null,
+        logic: { id: "logic", format: "value", column: "status", operator: "equals", target: "active" },
+      },
+      columns: ["status"],
+    });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText("Rule name is required when editing a rule.")).toBeInTheDocument();
   });
 
   it("saves a valid value-against-column rule", () => {
@@ -56,6 +92,26 @@ describe("RuleEditor", () => {
     expect(draft.logic).toMatchObject({ format: "value", column: "region" });
     expect(draft.extraColumns).toEqual(["region"]);
     expect(draft.hideComparison).toBe(true);
+  });
+
+  it("shows the canonical identifier while editing an existing rule", () => {
+    setup({
+      rule: {
+        index: "R004",
+        identifier: "CBR1_0123456789ABCDEFGHJK",
+        name: "Existing rule",
+        description: "",
+        conditions: [],
+        conditionJoin: null,
+        conditionGrouping: null,
+        groupTree: null,
+        logic: { id: "logic", format: "value", column: "status", operator: "equals", target: "active" },
+      },
+    });
+
+    expect(screen.getByText("Rule Identifier:")).toBeInTheDocument();
+    expect(screen.getByText("CBR1_0123456789ABCDEFGHJK")).toBeInTheDocument();
+    expect(screen.getByText("CBR1_0123456789ABCDEFGHJK").closest(".rule-editor-header")).not.toBeNull();
   });
 
   it("requires a join once there is more than one condition", () => {

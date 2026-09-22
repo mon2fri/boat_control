@@ -20,11 +20,15 @@ const wireUpload = {
 };
 
 const rulesList = {
-  version: 1,
+  version: 2,
   rules: [
     {
       rule_id: "R001",
+      rule_identifier: "CBR1_00000000000000000000",
+      enabled: true,
       name: "Region present",
+      description: "",
+      conditions: [],
       logic: { format: "value_vs_column", column_name: "region", operator: "neq", target_value: "" },
     },
   ],
@@ -75,6 +79,7 @@ const runDoc = {
     common_columns: ["id", "region", "status"],
     target_columns: null,
     filters_applied: [],
+    rule_bindings: { R001: "CBR1_00000000000000000000" },
   },
 };
 

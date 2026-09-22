@@ -48,6 +48,7 @@ fi
 
 echo "Applying database migrations..."
 uv run python backend/manage.py migrate --settings=boat_control.settings --noinput
+uv run python backend/manage.py migrate_rules_to_db --settings=boat_control.settings
 
 echo "Starting Django on all network interfaces at http://0.0.0.0:8000"
 uv run python backend/manage.py runserver 0.0.0.0:8000 \

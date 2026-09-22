@@ -225,7 +225,7 @@ describe("ConfigManager", () => {
 
     renderManager();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save new config" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save to new config" }));
 
     const dialog = screen.getByRole("alertdialog", { name: "Save new config" });
     fireEvent.change(within(dialog).getByPlaceholderText("my-config"), { target: { value: "test-rules" } });

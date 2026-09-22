@@ -17,7 +17,9 @@ Then open <http://127.0.0.1:5173/>. Django runs behind the Vite development prox
 `http://127.0.0.1:8000` and is also available to devices on the same subnet at
 `http://<this-computer's-LAN-IP>:8000`. Press `Ctrl+C` once to stop both servers.
 
-The launcher applies database migrations automatically. It also installs Python or frontend
+The launcher applies database migrations and synchronizes the active
+`config/rules/rules.yaml` file into the SQLite rule catalog automatically. It
+also installs Python or frontend
 dependencies when their local installation directories do not exist.
 
 ## Deploy to a machine without npm
@@ -36,8 +38,10 @@ Copy the following release contents to the target machine:
 
 - `backend/` — Django application code;
 - `frontend/dist/` — required prebuilt browser assets;
-- `.config` — application settings;
-- `config/` — rules, filters, and rows-and-columns configurations;
+- `.config` — application settings, including `skip_migrations: false`;
+- `config/` — rules, filters, and rows-and-columns configurations. Keep the
+  complete `config/rules/` directory: `rules.yaml` is synchronized into the
+  catalog at startup and the other YAML files are named configurations;
 - `data/` — existing SQLite database, saved results, and uploads when those
   must be retained (otherwise deploy empty writable `data/` directories);
 - `trigger.py` — target-machine launcher; and
@@ -80,3 +84,8 @@ By default it listens on `0.0.0.0:8000`. The launcher uses a local `.venv`
 when present, otherwise the Python interpreter used to run `trigger.py`.
 Set `BOAT_CONTROL_PYTHON` to override it, or set
 `BOAT_CONTROL_HOST` and `BOAT_CONTROL_PORT` to change the bind address.
+
+Set `skip_migrations: true` in `.config` only when database migrations and
+rule synchronization are intentionally managed outside the launcher. The
+rules screen displays ten rules per page, preloads up to 50 rules at startup,
+and keeps four pages buffered while navigating larger catalogs.

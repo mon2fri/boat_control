@@ -9,11 +9,23 @@ import { RulesPage } from "./RulesPage";
 
 const wireRule = {
   rule_id: "R001",
+  rule_identifier: "CBR1_00000000000000000000",
+  enabled: true,
   name: "Region present",
+  description: "",
+  conditions: [],
   logic: { format: "value_vs_column", column_name: "region", operator: "neq", target_value: "" },
 };
 
-const rulesList = { version: 1, rules: [wireRule] };
+const rulesList = {
+  version: 2,
+  rules: [wireRule],
+  pinned_rule_ids: ["R001"],
+  total: 1,
+  revision: 1,
+  next_cursor: null,
+  has_more: false,
+};
 
 function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -74,6 +86,34 @@ function renderPageWithProbe(): {
 afterEach(() => vi.restoreAllMocks());
 
 describe("RulesPage", () => {
+  it("shows ten rules per page and navigates to the next ten rules", async () => {
+    const bufferedRules = Array.from({ length: 10 }, (_, index) => ({
+      ...wireRule,
+      rule_id: `R${String(index + 2).padStart(3, "0")}`,
+      rule_identifier: `CBR1_${String(index + 1).padStart(20, "0")}`,
+      enabled: false,
+      name: `Rule ${index + 2}`,
+    }));
+    const firstPage = {
+      ...rulesList,
+      rules: [wireRule, ...bufferedRules],
+      total: 11,
+      next_cursor: null,
+      has_more: false,
+    };
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse(firstPage)));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await waitFor(() => expect(screen.getAllByRole("checkbox", { name: /R\d{3}/ })).toHaveLength(10));
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: /R011/ })).toBeInTheDocument());
+    expect(screen.queryByRole("checkbox", { name: /R001/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
   it("confirms before deleting a rule and calls the delete endpoint", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") return Promise.resolve(jsonResponse({ rule_id: "R001", message: "Rule deleted." }));
@@ -86,7 +126,9 @@ describe("RulesPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("alertdialog", { name: /Delete rule/ });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Rule" }));
+    const globalDialog = screen.getByRole("alertdialog", { name: /Delete rule for all configurations/ });
+    fireEvent.click(within(globalDialog).getByRole("button", { name: "Delete for ALL Configs" }));
 
     await waitFor(() =>
       expect(
@@ -105,6 +147,65 @@ describe("RulesPage", () => {
       expect(screen.getByRole("alert")).toHaveTextContent(/Could not load rules/),
     );
     vi.unstubAllGlobals();
+  });
+
+  it("rolls an optimistic enablement change back when the server rejects it", async () => {
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && String(url).includes("/rules/enablement/")) {
+        return Promise.resolve(jsonResponse({ error: "enablement failed" }, false, 500));
+      }
+      return Promise.resolve(jsonResponse(rulesList));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Region present/)).toBeInTheDocument());
+    const checkbox = screen.getByRole("checkbox", { name: /R001/ });
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, init]) =>
+      String(url).includes("/rules/enablement/") && init?.method === "POST")).toBe(true));
+    await waitFor(() => expect(checkbox).toBeChecked());
+    vi.unstubAllGlobals();
+  });
+
+  it("allows multiple rules to be selected without moving their catalog rows", async () => {
+    const secondRule = {
+      ...wireRule,
+      rule_id: "R002",
+      rule_identifier: "CBR1_11111111111111111111",
+      enabled: false,
+      name: "Status active",
+    };
+    const list = {
+      ...rulesList,
+      rules: [wireRule, secondRule],
+      pinned_rule_ids: ["R001"],
+      total: 2,
+    };
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && String(_url).includes("/rules/enablement/")) {
+        return Promise.resolve(jsonResponse({ rules: [{ ...secondRule, enabled: true }] }));
+      }
+      return Promise.resolve(jsonResponse(list));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText(/Status active/)).toBeInTheDocument());
+    const ruleList = screen.getByRole("list", { name: "Rules" });
+    const before = [...ruleList.querySelectorAll("li")].map((item) => item.textContent);
+    expect(before[0]).toContain("R001");
+    expect(before[1]).toContain("R002");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /R002/ }));
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: /R002/ })).toBeChecked());
+    const after = [...ruleList.querySelectorAll("li")].map((item) => item.textContent);
+    expect(after[0]).toContain("R001");
+    expect(after[1]).toContain("R002");
+    expect(fetchMock.mock.calls.some(([url, init]) =>
+      String(url).includes("/rules/enablement/") && init?.method === "POST",
+    )).toBe(true);
   });
 
   it("wraps rule selection in a card with run action card below", async () => {
@@ -138,7 +239,9 @@ describe("RulesPage", () => {
     // Delete the single rule
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     const dialog = screen.getByRole("alertdialog", { name: /Delete rule/ });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete Rule" }));
+    const globalDialog = screen.getByRole("alertdialog", { name: /Delete rule for all configurations/ });
+    fireEvent.click(within(globalDialog).getByRole("button", { name: "Delete for ALL Configs" }));
 
     await waitFor(() =>
       expect(
@@ -160,7 +263,7 @@ describe("RulesPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses POST /rules/replace/ when loading a saved config", async () => {
+  it("does not mutate the catalog during initial render", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") return Promise.resolve(jsonResponse({ rule_id: "R001", message: "Rule deleted." }));
       return Promise.resolve(jsonResponse(rulesList));
@@ -183,17 +286,22 @@ describe("RulesPage", () => {
   });
 
   it("checks every rule after a saved config is loaded", async () => {
-    const initialList = { version: 1, rules: [wireRule] };
+    const initialList = { ...rulesList };
     const refreshedList = {
-      version: 1,
+      version: 2,
       rules: [
         wireRule,
         {
           rule_id: "R002",
+          rule_identifier: "CBR1_11111111111111111111",
+          enabled: true,
           name: "Status active",
+          description: "",
+          conditions: [],
           logic: { format: "value_vs_column", column_name: "status", operator: "eq", target_value: "active" },
         },
       ],
+      pinned_rule_ids: ["R001", "R002"], total: 2, revision: 2, next_cursor: null, has_more: false,
     };
     const configList = [{ name: "v2", version: 1 }];
     const configContent = {
@@ -219,6 +327,9 @@ describe("RulesPage", () => {
       const u = String(url);
       if (init?.method === "POST" && u.includes("/rules/replace/")) {
         return Promise.resolve(jsonResponse(replaceResp));
+      }
+      if (init?.method === "POST" && u.includes("/rules/configs/import/")) {
+        return Promise.resolve(jsonResponse({ imported: 0, reused: 2, enabled: 2, bindings: { R001: "CBR1_00000000000000000000", R002: "CBR1_00000000000000000001" } }));
       }
       if (u.includes("/rules/configs/") && !u.endsWith("/rules/configs/")) {
         return Promise.resolve(jsonResponse(configContent));
@@ -255,6 +366,8 @@ describe("RulesPage", () => {
     fireEvent.change(select!, { target: { value: "v2" } });
     const loadButton = screen.getByRole("button", { name: /Load config/ });
     fireEvent.click(loadButton);
+    const loadDialog = screen.getByRole("alertdialog", { name: /Discard unsaved changes/ });
+    fireEvent.click(within(loadDialog).getByRole("button", { name: /Discard and load/ }));
 
     // After the replace + invalidate completes, the workflow state must
     // include both rule indexes — proving that loading a config selects
@@ -271,6 +384,9 @@ describe("RulesPage", () => {
 
     // And the page should now show the second rule's checkbox as well.
     expect(screen.getByText(/Status active/)).toBeInTheDocument();
+    const notice = screen.getByText(/Configuration applied/).closest('[role="status"]') as HTMLElement;
+    expect(notice).toBeTruthy();
+    expect(notice).toHaveClass("config-notice");
 
     vi.unstubAllGlobals();
   });

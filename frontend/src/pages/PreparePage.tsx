@@ -7,6 +7,7 @@ import { ComparisonSectionEditor } from "../features/targets/ComparisonSectionEd
 import { ExceptionColumnPicker } from "../features/targets/ExceptionColumnPicker";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
+import { ConfigLoadNotice } from "../features/configs/ConfigLoadNotice";
 import { useFamilies } from "../features/settings/useSettings";
 import { prepareFilters } from "../api/endpoints";
 import type { PrepareResult } from "../api/domain";
@@ -49,6 +50,7 @@ export function PreparePage() {
   const [loadingElapsedMs, setLoadingElapsedMs] = useState(0);
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const [discardWarnings, setDiscardWarnings] = useState<string[]>([]);
+  const [configNotice, setConfigNotice] = useState<string | null>(null);
 
   const totalRows = (prepare.data?.totalRowsA ?? 0) + (prepare.data?.totalRowsB ?? 0);
   const progressPercent = prepare.status === "ready"
@@ -187,9 +189,14 @@ export function PreparePage() {
           configType="rows-and-columns"
           name={configLoadName}
           onLoad={handleConfigLoad}
-          onDone={() => setConfigLoadName(null)}
+          onDone={() => {
+            setConfigLoadName(null);
+            setConfigNotice("Configuration loaded.");
+          }}
         />
       )}
+
+      <ConfigLoadNotice message={configNotice} />
 
       {discardWarnings.length > 0 && (
         <div className="alert alert--warn" role="alert">

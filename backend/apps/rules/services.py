@@ -101,6 +101,7 @@ class Rule:
     logic: LogicClause
     extra_columns: tuple[str, ...] = ()
     hide_comparison: bool = False
+    rule_identifier: str | None = None
 
 
 @dataclass(frozen=True)
@@ -214,6 +215,28 @@ def _format_rule_id(index: int) -> str:
 
 
 def load_rules(path: Path | None = None) -> RulesFile:
+    if path is None:
+        # The explicit-path form remains a legacy/config parser. Live execution
+        # reads the committed catalog so changing a YAML artifact cannot alter a run.
+        from apps.rules.models import RuleStoreState
+        from apps.rules.repository import list_enabled_catalog_rules
+
+        try:
+            initialized = RuleStoreState.objects.filter(
+                singleton_key=1, initialized=True
+            ).exists()
+            if initialized:
+                snapshots = list_enabled_catalog_rules()
+                state = RuleStoreState.objects.get(singleton_key=1)
+                return RulesFile(
+                    version=2,
+                    rules=[snapshot.rule for snapshot in snapshots],
+                    next_index=state.next_index,
+                )
+        except RuntimeError as exc:
+            if "Database access not allowed" not in str(exc):
+                raise
+
     target = path or get_rules_file()
     if not target.exists():
         return RulesFile(version=1, rules=[], next_index=1)

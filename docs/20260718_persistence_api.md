@@ -26,6 +26,12 @@ Loads a specific run's full result data.
 
 **Response (200):** Full execution result JSON.
 
+New result documents persist a `rule_bindings` map from each run-local `Rxxx` to
+its canonical `CBR1_...` identifier, plus `rule_identifier` on violations and rule
+summaries. These values are snapshots from execution and do not follow later catalog
+edits. Old documents without identifiers remain readable without identity guessing;
+their unavailable identifiers are absent/null according to the wire contract.
+
 ### `PUT /api/runs/<run_id>/rename/`
 
 Renames a run's report name.

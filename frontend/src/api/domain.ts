@@ -85,6 +85,10 @@ export interface LogicClause {
 
 export interface Rule {
   index: string;
+  identifier?: string | null;
+  equivalentRuleId?: string;
+  enabled?: boolean;
+  enabledPosition?: number | null;
   name: string;
   description?: string;
   conditions: Condition[];
@@ -193,6 +197,7 @@ export interface RuleResult {
   violationAttributeCount: number;
   details: DetailRow[];
   hideComparison?: boolean;
+  ruleIdentifier?: string | null;
 }
 
 export interface RunResult {
@@ -223,6 +228,7 @@ export interface RunResult {
   /** Extra columns selected for the cross-rule exception table; persisted with the run. */
   exceptionColumns?: string[];
   extraColumnDisplay?: ExtraColumnDisplay;
+  ruleBindings?: Record<string, string | null>;
 }
 
 export interface RunSummary {

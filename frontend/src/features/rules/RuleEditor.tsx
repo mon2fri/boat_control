@@ -95,7 +95,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
   const needsJoin = draft.conditions.length > 1;
   const canGroup = draft.conditions.length >= 3;
 
-  const validation = validateDraft(draft, needsJoin);
+  const validation = validateDraft(draft, needsJoin, Boolean(rule));
   const logicPreview = previewLogicDescription(draft);
 
   function patch(next: Partial<DraftState>): void {
@@ -125,7 +125,15 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
       noValidate
       aria-label={rule ? `Edit rule ${rule.index}` : "New rule"}
     >
-      <h3 className="card-heading">{rule ? `Edit ${rule.index}` : "New rule"}</h3>
+      <div className="rule-editor-header">
+        <h3 className="card-heading">{rule ? `Edit ${rule.index}` : "New rule"}</h3>
+        {rule?.identifier && (
+          <p className="rule-editor-identifier">
+            <span>Rule Identifier:</span>
+            <code>{rule.identifier}</code>
+          </p>
+        )}
+      </div>
 
       <details className="rule-semantic-help">
         <summary>How rules work — what does this rule check?</summary>
@@ -535,9 +543,9 @@ interface ValidationResult {
   errors: string[];
 }
 
-function validateDraft(draft: DraftState, needsJoin: boolean): ValidationResult {
+function validateDraft(draft: DraftState, needsJoin: boolean, isEditing: boolean): ValidationResult {
   const errors: string[] = [];
-  if (!draft.name.trim()) errors.push("Name is required.");
+  if (isEditing && !draft.name.trim()) errors.push("Rule name is required when editing a rule.");
   if (needsJoin && draft.conditionJoin === null) {
     errors.push("Choose AND, OR, or PER GROUPING to combine multiple conditions.");
   }

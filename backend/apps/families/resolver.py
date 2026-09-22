@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from apps.families.services import get_family
 
@@ -299,7 +299,7 @@ def get_value_family_values(value_family_name: str) -> list[str]:
     family = get_family(value_family_name)
     if family is None or family.get("kind") != "value":
         return []
-    return family.get("values", [])
+    return cast(list[str], family.get("values", []))
 
 
 def get_column_family_union_values(

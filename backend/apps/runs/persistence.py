@@ -153,6 +153,7 @@ def save_run(
                     "violating_attributes_by_rule": result.validation.violating_attributes_by_rule,
                     "rule_summaries": result.validation.rule_summaries,
                 },
+                "rule_bindings": result.rule_bindings,
                 "common_columns": result.common_columns,
                 "target_columns": result.target_columns,
                 "key_columns": result.key_columns,
@@ -266,6 +267,9 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                         result["comparison_sections"] = []
                     if "exception_columns" not in result:
                         result["exception_columns"] = []
+                    if "rule_bindings" not in result:
+                        # Legacy runs cannot be linked safely from their local Rxxx IDs.
+                        result["rule_bindings"] = {}
                     comparison = result.get("comparison", {})
                     if "new_book_count" not in comparison:
                         comparison["new_book_count"] = 0

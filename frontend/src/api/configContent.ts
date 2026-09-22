@@ -98,6 +98,17 @@ export interface ConfigLoadResult {
   warnings: ConfigLoadWarning[];
 }
 
+const CONFIG_TO_DOMAIN_OPERATOR: Record<string, LogicOperator> = {
+  eq: "equals",
+  neq: "not_equals",
+  contains: "contains",
+  ncontains: "not_contains",
+  gt: "greater_than",
+  lt: "less_than",
+  gte: "greater_than",
+  lte: "less_than",
+};
+
 function nullOrUndefined(v: unknown): v is null | undefined {
   return v === null || v === undefined;
 }
@@ -493,7 +504,7 @@ export function resolveConfigRuleCondition(
     const c: Condition = {
       id: `c${idx}`,
       column: col,
-      operator: cond.operator as LogicOperator,
+      operator: CONFIG_TO_DOMAIN_OPERATOR[cond.operator] ?? (cond.operator as LogicOperator),
     };
     if (conditionValues.length > 0) c.values = [...conditionValues];
     return c;
@@ -623,7 +634,10 @@ export function resolveConfigRule(
     id: "l0",
     format: rule.logic.format === "value_vs_column" ? "value" : "column" as const,
     column: lr.column,
-    operator: lr.column === lr.target ? "equals" : rule.logic.operator as LogicOperator,
+    operator:
+      lr.column === lr.target
+        ? "equals"
+        : CONFIG_TO_DOMAIN_OPERATOR[rule.logic.operator] ?? (rule.logic.operator as LogicOperator),
     target: lr.target,
     ...(lr.comparisonMode ? { columnComparisonMode: lr.comparisonMode } : {}),
   };
@@ -653,6 +667,11 @@ export function resolveConfigRule(
   if (rule.description) resolved.description = rule.description;
   if (rule.condition_relation) {
     resolved.conditionJoin = rule.condition_relation as Rule["conditionJoin"];
+  } else if (resolvedConditions.length > 1) {
+    // One saved column-family condition may expand to multiple concrete
+    // conditions. Keep the same default used when reading a wire rule so the
+    // resolved draft remains executable when sent back to the catalog.
+    resolved.conditionJoin = "and";
   }
   if (rule.grouping_tree) {
     const savedTree = rule.grouping_tree as GroupNode;
@@ -681,6 +700,10 @@ export function resolveConfigRule(
 }
 
 /** Detect whether config content is old-format domain Rule[] or new ConfigRule[]. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function isDomainRulesFormat(content: unknown[]): boolean {
   if (content.length === 0) return true;
   const first = content[0] as Record<string, unknown>;
@@ -696,20 +719,54 @@ export function resolveRulesConfig(
   const warnings: ConfigLoadWarning[] = [];
   const drafts: RuleDraft[] = [];
 
-  const arr = Array.isArray(content) ? content : [];
+  const arr = Array.isArray(content)
+    ? content
+    : isRecord(content) && Array.isArray(content.items)
+      ? content.items
+      : isRecord(content) && Array.isArray(content.rules)
+        ? content.rules
+        : [];
   if (arr.length === 0) return { drafts, warnings };
 
   // Old format (domain Rule[]): ignore family references, return as-is
   if (isDomainRulesFormat(arr)) {
     for (const item of arr) {
-      const rule = item as Rule;
+      const rule = item as unknown as Record<string, any>;
+      const wireLogic = rule.logic?.column_name !== undefined;
+      const conditions = wireLogic
+        ? (rule.conditions ?? []).map((condition: Record<string, any>, index: number) => ({
+            id: `c${index}`,
+            column: condition.column_name ?? "",
+            operator: CONFIG_TO_DOMAIN_OPERATOR[condition.operator ?? ""] ?? "equals",
+            values: condition.filter_values ?? (condition.filter_value ? [condition.filter_value] : []),
+            value: condition.filter_value ?? "",
+          }))
+        : Array.isArray(rule.conditions)
+          ? rule.conditions
+          : [];
+      const logic = wireLogic
+        ? {
+            id: "l0",
+            format: rule.logic!.format === "value_vs_column" ? "value" as const : "column" as const,
+            column: rule.logic!.column_name!,
+            operator: CONFIG_TO_DOMAIN_OPERATOR[rule.logic!.operator ?? ""] ?? "equals",
+            target: rule.logic!.target_value ?? "",
+            ...(rule.logic!.target_values?.length ? { values: rule.logic!.target_values } : {}),
+            ...(rule.logic!.comparison_mode
+              ? { columnComparisonMode: rule.logic!.comparison_mode }
+              : {}),
+          }
+        : rule.logic;
       const draft: RuleDraft = {
-        name: rule.name,
+        name: String(rule.name ?? ""),
         conditionGrouping: rule.conditionGrouping ?? null,
-        conditionJoin: rule.conditionJoin ?? null,
-        conditions: rule.conditions,
-        groupTree: rule.groupTree ?? null,
-        logic: rule.logic,
+        // Exported catalog configs use wire names. Preserve those fields when
+        // treating the export as a legacy/domain config; otherwise a valid
+        // two-condition rule is sent back without its AND/OR relationship.
+        conditionJoin: rule.conditionJoin ?? rule.condition_relation ?? null,
+        conditions,
+        groupTree: rule.groupTree ?? rule.grouping_tree ?? null,
+        logic: logic!,
       };
       if (rule.description) draft.description = rule.description;
       if (rule.index !== undefined) draft.index = rule.index;

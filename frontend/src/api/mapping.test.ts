@@ -18,7 +18,7 @@ import {
   mapWireFilterRow,
   mapWireRule,
 } from "./mapping";
-import { ruleDraftRequestSchema, wireRunRequestSchema, wireRunDocumentSchema } from "./wire";
+import { ruleDraftRequestSchema, wireRunRequestSchema, legacyWireRunDocumentSchema } from "./wire";
 
 const baseRequest = {
   sessionId: "s1",
@@ -193,6 +193,29 @@ describe("mapRunRequestToWire", () => {
   });
 });
 
+describe("canonical rule catalog mapping", () => {
+  it("retains the canonical identifier and server enablement", () => {
+    const rule = mapWireRule({
+      rule_id: "R007",
+      rule_identifier: "CBR1_0123456789ABCDEFGHJK",
+      enabled: true,
+      enabled_position: 2,
+      name: "Status",
+      description: "",
+      conditions: [],
+      logic: { format: "value_vs_column", column_name: "status", operator: "eq", target_value: "active" },
+    });
+    expect(rule.identifier).toBe("CBR1_0123456789ABCDEFGHJK");
+    expect(rule.enabled).toBe(true);
+    expect(rule.enabledPosition).toBe(2);
+  });
+
+  it("preserves an explicit empty enabled run selection", () => {
+    const request = mapRunRequestToWire({ ...baseRequest, ruleIndexes: [] });
+    expect(request.rule_ids).toEqual([]);
+  });
+});
+
 describe("filter row mapping", () => {
   it("serializes multiple values to filter_values", () => {
     const wire = mapFilterRowToWire({
@@ -300,7 +323,10 @@ describe("rule condition mapping", () => {
   it("reopens a saved grouping tree in PER GROUPING mode", () => {
     const rule = mapWireRule({
       rule_id: "R001",
+      rule_identifier: "CBR1_00000000000000000000",
+      enabled: true,
       name: "Grouped",
+      description: "",
       conditions: [
         { column_name: "a", operator: "eq", filter_values: ["1"] },
         { column_name: "b", operator: "eq", filter_values: ["2"] },
@@ -371,7 +397,7 @@ describe("rule condition mapping", () => {
 
   describe("mapRunDocumentToResult — exceptionColumns", () => {
     it("maps exception_columns from the wire result", () => {
-      const wireDoc = wireRunDocumentSchema.parse({
+      const wireDoc = legacyWireRunDocumentSchema.parse({
         run_id: "r1",
         report_name: "test",
         file_a_name: "a.csv",
@@ -391,7 +417,7 @@ describe("rule condition mapping", () => {
     });
 
     it("defaults to undefined when exception_columns is absent", () => {
-      const wireDoc = wireRunDocumentSchema.parse({
+      const wireDoc = legacyWireRunDocumentSchema.parse({
         run_id: "r1",
         report_name: "test",
         file_a_name: "a.csv",

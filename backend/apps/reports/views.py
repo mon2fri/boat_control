@@ -34,6 +34,7 @@ class ExportView(APIView):  # type: ignore[misc]
         if result_data is None:
             return HttpResponse("No result data provided.", status=400, content_type="text/plain")
 
+        content: str | bytes
         if fmt == "html":
             content = export_html(result_data, report_name, created_at)
             response = HttpResponse(content, content_type="text/html")

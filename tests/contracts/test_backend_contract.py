@@ -14,6 +14,7 @@ from rest_framework.test import APIClient  # type: ignore[import-untyped]
 from tests.contracts import CONTRACT_VERSION
 
 FIXTURES_DIR = Path(__file__).parent / "v1"
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
@@ -185,14 +186,17 @@ class TestRulesContract:
         assert resp.status_code == 201
         create_data = resp.json()
         assert "rule_id" in create_data
-        assert "message" in create_data
         assert create_data["rule_id"].startswith("R")
+        assert create_data["rule_identifier"].startswith("CBR1_")
+        assert create_data["enabled"] is True
 
         rule_id = create_data["rule_id"]
         resp = api_client.get(f"/api/rules/{rule_id}/")
         assert resp.status_code == 200
         detail = resp.json()
         assert detail["rule_id"] == rule_id
+        assert detail["rule_identifier"].startswith("CBR1_")
+        assert detail["enabled"] is True
         assert "name" in detail
         assert "logic" in detail
         assert "conditions" in detail
@@ -227,6 +231,7 @@ class TestExecuteContract:
         assert expected.issubset(result.keys())
         # key_columns is included when provided in the request
         assert isinstance(result.get("key_columns", []), list)
+        assert result["rule_bindings"] == {}
 
         comparison = result["comparison"]
         expected = {

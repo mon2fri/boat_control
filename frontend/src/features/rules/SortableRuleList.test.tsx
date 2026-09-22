@@ -122,16 +122,16 @@ describe("SortableRuleList", () => {
     expect(screen.queryByText(/Page 2 of 1/)).not.toBeInTheDocument();
   });
 
-  it("selects and deselects every rule, including rules on other pages", () => {
+  it("selects and deselects only the displayed rules", () => {
     const manyRules = Array.from({ length: 12 }, (_, index) =>
       rule(`R${String(index + 1).padStart(3, "0")}`, `Rule ${index + 1}`),
     );
     const onToggleAll = vi.fn();
     const { rerender } = renderList(manyRules, { selected: [], onToggleAll });
 
-    const checkbox = screen.getByRole("checkbox", { name: "Select all" });
+    const checkbox = screen.getByRole("checkbox", { name: "Select displayed" });
     fireEvent.click(checkbox);
-    expect(onToggleAll).toHaveBeenLastCalledWith(manyRules.map((item) => item.index));
+    expect(onToggleAll).toHaveBeenLastCalledWith(manyRules.slice(0, 10).map((item) => item.index), true);
 
     // Rerender in the fully selected state to exercise the inverse action.
     rerender(
@@ -146,7 +146,7 @@ describe("SortableRuleList", () => {
         onReorder={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select all" }));
-    expect(onToggleAll).toHaveBeenLastCalledWith([]);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select displayed" }));
+    expect(onToggleAll).toHaveBeenLastCalledWith(manyRules.slice(0, 10).map((item) => item.index), false);
   });
 });

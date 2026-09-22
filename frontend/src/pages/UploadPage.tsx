@@ -7,6 +7,7 @@ import { clearUploadSession, listSourceFiles } from "../api/endpoints";
 import { HeaderReview } from "../features/upload/HeaderReview";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
+import { ConfigLoadNotice } from "../features/configs/ConfigLoadNotice";
 import { resolveRowsColumnsConfig, mapWorkflowToRowsColumnsConfig } from "../api/configContent";
 import type { SourceFile } from "../api/domain";
 
@@ -30,6 +31,7 @@ export function UploadPage() {
   const families = familiesQuery.data ?? [];
 
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
+  const [configNotice, setConfigNotice] = useState<string | null>(null);
 
   const header = useHeaderReport((report) => {
     dispatch({ type: "setHeader", header: report });
@@ -117,6 +119,7 @@ export function UploadPage() {
     dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
     dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
     dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns });
+    dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay });
     if (result.warnings.length > 0) {
       setConfigWarnings(result.warnings.map((w) => w.message));
       setTimeout(() => setConfigWarnings([]), 10000);
@@ -343,6 +346,9 @@ export function UploadPage() {
                     filters: state.filters,
                     targetColumns: state.targetColumns,
                     exceptionColumns: state.exceptionColumns,
+                    ...(state.extraColumnDisplay
+                      ? { extraColumnDisplay: state.extraColumnDisplay }
+                      : {}),
                     nestedAggregationEnabled: state.nestedAggregationEnabled,
                     comparisonSections: state.comparisonSections,
                   },
@@ -367,9 +373,14 @@ export function UploadPage() {
               configType="rows-and-columns"
               name={configLoadName}
               onLoad={handleConfigLoad}
-              onDone={() => setConfigLoadName(null)}
+               onDone={() => {
+                 setConfigLoadName(null);
+                 setConfigNotice("Configuration loaded.");
+               }}
             />
           )}
+
+          <ConfigLoadNotice message={configNotice} />
 
           <div className="card">
             {state.comparisonColumns.length === 0 && (
