@@ -37,7 +37,7 @@ from apps.rules.repository import (
     reinstate_catalog_rule,
 )
 from apps.rules.serializers import RuleSerializer
-from apps.rules.services import validate_rule
+from apps.rules.services import _serialize_grouping_tree, validate_rule
 from apps.settings.services import (
     get_filter_config_dir,
     get_rows_and_columns_config_dir,
@@ -256,6 +256,11 @@ def _rule_snapshot_payload(snapshot: Any) -> dict[str, Any]:
         payload["condition_relation"] = rule.condition_relation
     if rule.grouping is not None:
         payload["grouping"] = rule.grouping
+    if rule.grouping_tree is not None:
+        # The tree is the executable grouping expression.  Omitting it on
+        # export turns a rule such as ``c0 AND (c1 OR c2)`` into a flat AND
+        # when the config is loaded again.
+        payload["grouping_tree"] = _serialize_grouping_tree(rule.grouping_tree)
     return payload
 
 

@@ -146,6 +146,46 @@ def test_export_reads_enabled_catalog_and_rejects_forged_identifier(tmp_path) ->
 
 
 @pytest.mark.django_db
+def test_export_and_import_preserve_grouping_tree_identity(tmp_path) -> None:
+    client = APIClient()
+    grouped = {
+        "name": "BAU contributor grouping",
+        "conditions": [
+            {"column_name": "REGULATORY_TMT", "operator": "eq", "filter_value": "TRADING"},
+            {"column_name": "VAR_FULL_REVAL_KEY_CONTRIBUTORY", "operator": "eq", "filter_value": "Yes"},
+            {"column_name": "SPEAR_BOOK_KEY_CONTRIBUTORY", "operator": "eq", "filter_value": "Yes"},
+        ],
+        "grouping_tree": {
+            "kind": "and",
+            "children": [
+                {"kind": "leaf", "conditionId": "c0"},
+                {
+                    "kind": "or",
+                    "children": [
+                        {"kind": "leaf", "conditionId": "c1"},
+                        {"kind": "leaf", "conditionId": "c2"},
+                    ],
+                },
+            ],
+        },
+        "logic": {"format": "value_vs_column", "column_name": "SA_CONTRIBUTORY", "operator": "eq", "target_value": "Yes"},
+    }
+    created = client.post("/api/rules/", grouped, format="json")
+    assert created.status_code == 201, created.content
+
+    with override_settings(RULES_CONFIG_DIR=tmp_path):
+        exported = client.post("/api/rules/configs/", {"name": "grouped"}, format="json")
+        assert exported.status_code == 201, exported.content
+        content = exported.json()["content"]
+
+    assert content[0]["grouping_tree"] == grouped["grouping_tree"]
+    imported = client.post("/api/rules/configs/import/", {"rules": content}, format="json")
+    assert imported.status_code == 200, imported.content
+    assert imported.json()["reused"] == 1
+    assert imported.json()["bindings"][created.json()["rule_id"]] == created.json()["rule_identifier"]
+
+
+@pytest.mark.django_db
 def test_business_edit_replaces_visible_rule_and_archives_previous_version() -> None:
     client = APIClient()
     original = client.post("/api/rules/", draft(), format="json").json()
