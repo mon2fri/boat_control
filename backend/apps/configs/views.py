@@ -27,6 +27,7 @@ from apps.configs.services import (
     update_config,
 )
 from apps.rules.identifiers import calculate_rule_identifier
+from apps.rules.models import StoredValidationRule
 from apps.rules.repository import (
     CatalogError,
     RuleConfigConflict,
@@ -288,10 +289,15 @@ def _import_rule_content(
     serializer = RuleSerializer(data=drafts, many=True)
     serializer.is_valid(raise_exception=True)
     validated = [dict(item) for item in serializer.validated_data]
-    for index, draft in enumerate(validated, start=1):
+    for raw_draft, draft in zip(drafts, validated, strict=True):
         validation = validate_rule(draft)
         if not validation.valid:
-            raise ValueError(f"Rule {index} invalid: {'; '.join(validation.errors)}")
+            identifier = calculate_rule_identifier(draft)
+            stored = StoredValidationRule.objects.filter(identity_id=identifier).first()
+            rule_id = stored.rule_id if stored is not None else raw_draft.get("rule_id", "new")
+            name = str(draft.get("name") or raw_draft.get("name") or "Unnamed rule")
+            message = "; ".join(validation.errors)
+            raise ValueError(f"{name}({rule_id}, {identifier}: {message})")
     conflicts = configuration_conflicts(validated)
     if conflicts and not isinstance(decisions, dict):
         raise RuleConfigConflict(conflicts)

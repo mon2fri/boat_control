@@ -458,7 +458,7 @@ def _decode_cursor(value: str) -> dict[str, Any]:
         raise InvalidCursorError("Invalid catalog cursor") from exc
 
 
-def list_catalog_rules(cursor: str | None = None, page_size: int = 10) -> RulePage:
+def list_catalog_rules(cursor: str | None = None, page_size: int = 50) -> RulePage:
     if page_size <= 0 or page_size > 50:
         raise InvalidCursorError("page_size must be between 1 and 50")
     state = RuleStoreState.objects.filter(singleton_key=1).first()

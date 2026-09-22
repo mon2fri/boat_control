@@ -109,8 +109,9 @@ describe("RuleEditor", () => {
       },
     });
 
-    expect(screen.getByText("Rule identifier")).toBeInTheDocument();
+    expect(screen.getByText("Rule Identifier:")).toBeInTheDocument();
     expect(screen.getByText("CBR1_0123456789ABCDEFGHJK")).toBeInTheDocument();
+    expect(screen.getByText("CBR1_0123456789ABCDEFGHJK").closest(".rule-editor-header")).not.toBeNull();
   });
 
   it("requires a join once there is more than one condition", () => {

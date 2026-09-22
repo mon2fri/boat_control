@@ -53,9 +53,10 @@ export function SortableRuleList({
   const totalPages = serverPaged ? 1 : Math.ceil(rules.length / PAGE_SIZE);
   const effectivePage = Math.min(currentPage, Math.max(0, totalPages - 1));
   const paginatedRules = useMemo(() => {
+    if (serverPaged) return rules;
     const start = effectivePage * PAGE_SIZE;
     return rules.slice(start, start + PAGE_SIZE);
-  }, [rules, effectivePage]);
+  }, [rules, effectivePage, serverPaged]);
 
   const allSelected = paginatedRules.length > 0 && paginatedRules.every((r) => selected.includes(r.index));
 

@@ -667,6 +667,11 @@ export function resolveConfigRule(
   if (rule.description) resolved.description = rule.description;
   if (rule.condition_relation) {
     resolved.conditionJoin = rule.condition_relation as Rule["conditionJoin"];
+  } else if (resolvedConditions.length > 1) {
+    // One saved column-family condition may expand to multiple concrete
+    // conditions. Keep the same default used when reading a wire rule so the
+    // resolved draft remains executable when sent back to the catalog.
+    resolved.conditionJoin = "and";
   }
   if (rule.grouping_tree) {
     const savedTree = rule.grouping_tree as GroupNode;
@@ -755,9 +760,12 @@ export function resolveRulesConfig(
       const draft: RuleDraft = {
         name: String(rule.name ?? ""),
         conditionGrouping: rule.conditionGrouping ?? null,
-        conditionJoin: rule.conditionJoin ?? null,
+        // Exported catalog configs use wire names. Preserve those fields when
+        // treating the export as a legacy/domain config; otherwise a valid
+        // two-condition rule is sent back without its AND/OR relationship.
+        conditionJoin: rule.conditionJoin ?? rule.condition_relation ?? null,
         conditions,
-        groupTree: rule.groupTree ?? null,
+        groupTree: rule.groupTree ?? rule.grouping_tree ?? null,
         logic: logic!,
       };
       if (rule.description) draft.description = rule.description;

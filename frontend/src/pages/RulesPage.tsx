@@ -16,6 +16,8 @@ import { ApiError } from "../api/client";
 import type { Rule, RuleDraft } from "../api/domain";
 
 const RULES_KEY = ["rules"] as const;
+const INITIAL_CATALOG_PAGE_SIZE = 50;
+const CONTINUATION_CATALOG_PAGE_SIZE = 10;
 
 type EditorState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; rule: Rule };
 
@@ -71,12 +73,10 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
 
   const catalogPages = rules.pages;
   const currentServerPage = catalogPages[catalogPage] ?? catalogPages[0];
-  const pinnedIds = new Set(rules.pinnedRuleIds);
-  const visibleRules = currentServerPage
-    ? rules.data.filter((rule) =>
-        pinnedIds.has(rule.index) || currentServerPage.rules.some((pageRule) => pageRule.index === rule.index),
-      )
-    : [];
+  // A catalog page already includes all enabled rules when appropriate.  Do
+  // not merge the loaded catalog here: that made every subsequent page start
+  // with the enabled rows from page one.
+  const visibleRules = currentServerPage?.rules ?? [];
 
   useEffect(() => {
     const enabledKey = rules.data.filter((rule) => rule.enabled).map((rule) => rule.index).join(",");
@@ -98,20 +98,11 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     void queryClient.invalidateQueries({ queryKey: RULES_KEY });
   }, [rules.isError, rules.error, paginationNotice, queryClient]);
 
-  useEffect(() => {
-    // Keep four complete pages ahead of the current page. Each request adds
-    // the next ten rules; the query hook handles the initial 50-rule buffer.
-    const requiredPages = catalogPage + 5;
-    if (
-      catalogPages.length >= requiredPages ||
-      !rules.hasNextPage ||
-      rules.isFetchingNextPage
-    ) return;
-    void rules.fetchNextPage();
-  }, [catalogPage, catalogPages.length, rules.hasNextPage, rules.isFetchingNextPage, rules.fetchNextPage]);
-
-  const totalCatalogPages = Math.max(catalogPages.length, Math.ceil(rules.total / 10), 1);
-  const hasNextCatalogPage = catalogPage + 1 < totalCatalogPages;
+  const totalCatalogPages = Math.max(
+    catalogPages.length,
+    1 + Math.ceil(Math.max(0, rules.total - INITIAL_CATALOG_PAGE_SIZE) / CONTINUATION_CATALOG_PAGE_SIZE),
+  );
+  const hasNextCatalogPage = catalogPage + 1 < catalogPages.length || rules.hasNextPage;
   const activeConflict = ruleConflicts?.[0];
 
   function goToNextCatalogPage(): void {

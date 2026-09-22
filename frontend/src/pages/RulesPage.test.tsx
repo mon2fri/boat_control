@@ -86,6 +86,44 @@ function renderPageWithProbe(): {
 afterEach(() => vi.restoreAllMocks());
 
 describe("RulesPage", () => {
+  it("renders the distinct server result after moving to the next catalog page", async () => {
+    const secondPageRule = {
+      ...wireRule,
+      rule_id: "R011",
+      rule_identifier: "CBR1_11111111111111111111",
+      enabled: false,
+      name: "Eleventh rule",
+    };
+    const firstPage = {
+      ...rulesList,
+      rules: [wireRule],
+      total: 52,
+      next_cursor: "page-two",
+      has_more: true,
+    };
+    const secondPage = {
+      ...rulesList,
+      rules: [secondPageRule],
+      pinned_rule_ids: ["R001"],
+      total: 52,
+      next_cursor: null,
+      has_more: false,
+    };
+    const fetchMock = vi.fn((url: string) => Promise.resolve(
+      jsonResponse(String(url).includes("cursor=page-two") ? secondPage : firstPage),
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: /R001/ })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: /R011/ })).toBeInTheDocument());
+    expect(screen.queryByRole("checkbox", { name: /R001/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Page 2 of 2")).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
   it("confirms before deleting a rule and calls the delete endpoint", async () => {
     const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
       if (init?.method === "DELETE") return Promise.resolve(jsonResponse({ rule_id: "R001", message: "Rule deleted." }));

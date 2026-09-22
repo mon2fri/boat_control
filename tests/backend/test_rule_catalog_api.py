@@ -70,6 +70,31 @@ def test_import_reuses_identity_and_empty_import_disables_without_deleting() -> 
 
 
 @pytest.mark.django_db
+def test_invalid_import_identifies_the_rule_by_name_catalog_id_and_identifier() -> None:
+    client = APIClient()
+    valid = {
+        "name": "Two checks",
+        "conditions": [
+            {"column_name": "region", "operator": "eq", "filter_value": "APAC"},
+            {"column_name": "status", "operator": "eq", "filter_value": "active"},
+        ],
+        "condition_relation": "and",
+        "logic": {"format": "value_vs_column", "column_name": "score", "operator": "gt", "target_value": "10"},
+    }
+    created = client.post("/api/rules/", valid, format="json")
+    assert created.status_code == 201, created.content
+
+    invalid = {key: value for key, value in valid.items() if key != "condition_relation"}
+    response = client.post("/api/rules/configs/import/", {"rules": [invalid]}, format="json")
+
+    assert response.status_code == 400
+    assert response.json()["error"] == (
+        f"Two checks({created.json()['rule_id']}, {created.json()['rule_identifier']}: "
+        "condition_relation is required when there are 2+ conditions.)"
+    )
+
+
+@pytest.mark.django_db
 def test_initial_listing_pins_enabled_and_continuation_is_keyset() -> None:
     for index in range(52):
         response = APIClient().post(
