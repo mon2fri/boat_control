@@ -16,7 +16,6 @@ import { ApiError } from "../api/client";
 import type { Rule, RuleDraft } from "../api/domain";
 
 const RULES_KEY = ["rules"] as const;
-const INITIAL_CATALOG_PAGE_SIZE = 50;
 const CONTINUATION_CATALOG_PAGE_SIZE = 10;
 
 type EditorState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; rule: Rule };
@@ -72,11 +71,13 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
   }
 
   const catalogPages = rules.pages;
-  const currentServerPage = catalogPages[catalogPage] ?? catalogPages[0];
-  // A catalog page already includes all enabled rules when appropriate.  Do
-  // not merge the loaded catalog here: that made every subsequent page start
-  // with the enabled rows from page one.
-  const visibleRules = currentServerPage?.rules ?? [];
+  const firstRuleIndex = catalogPage * CONTINUATION_CATALOG_PAGE_SIZE;
+  // The initial response is a 50-rule cache, but the selection panel always
+  // presents a navigable ten-rule page to the user.
+  const visibleRules = rules.data.slice(
+    firstRuleIndex,
+    firstRuleIndex + CONTINUATION_CATALOG_PAGE_SIZE,
+  );
 
   useEffect(() => {
     const enabledKey = rules.data.filter((rule) => rule.enabled).map((rule) => rule.index).join(",");
@@ -98,21 +99,22 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     void queryClient.invalidateQueries({ queryKey: RULES_KEY });
   }, [rules.isError, rules.error, paginationNotice, queryClient]);
 
-  const totalCatalogPages = Math.max(
-    catalogPages.length,
-    1 + Math.ceil(Math.max(0, rules.total - INITIAL_CATALOG_PAGE_SIZE) / CONTINUATION_CATALOG_PAGE_SIZE),
-  );
-  const hasNextCatalogPage = catalogPage + 1 < catalogPages.length || rules.hasNextPage;
+  const totalCatalogPages = Math.max(1, Math.ceil(rules.total / CONTINUATION_CATALOG_PAGE_SIZE));
+  const hasNextCatalogPage = catalogPage + 1 < totalCatalogPages;
   const activeConflict = ruleConflicts?.[0];
 
   function goToNextCatalogPage(): void {
-    if (catalogPage + 1 < catalogPages.length) {
+    const nextFirstRuleIndex = (catalogPage + 1) * CONTINUATION_CATALOG_PAGE_SIZE;
+    if (rules.data.length > nextFirstRuleIndex) {
       setCatalogPage((page) => page + 1);
       return;
     }
     if (!rules.hasNextPage || rules.isFetchingNextPage) return;
     void rules.fetchNextPage().then((result) => {
-      if ((result.data?.pages.length ?? 0) > catalogPage + 1) {
+      const loadedRuleCount = new Set(
+        result.data?.pages.flatMap((page) => page.rules.map((rule) => rule.index)) ?? [],
+      ).size;
+      if (loadedRuleCount > nextFirstRuleIndex) {
         setCatalogPage((page) => page + 1);
       }
     });

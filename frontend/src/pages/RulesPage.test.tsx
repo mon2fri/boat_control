@@ -86,36 +86,26 @@ function renderPageWithProbe(): {
 afterEach(() => vi.restoreAllMocks());
 
 describe("RulesPage", () => {
-  it("renders the distinct server result after moving to the next catalog page", async () => {
-    const secondPageRule = {
+  it("shows ten rules per page and navigates to the next ten rules", async () => {
+    const bufferedRules = Array.from({ length: 10 }, (_, index) => ({
       ...wireRule,
-      rule_id: "R011",
-      rule_identifier: "CBR1_11111111111111111111",
+      rule_id: `R${String(index + 2).padStart(3, "0")}`,
+      rule_identifier: `CBR1_${String(index + 1).padStart(20, "0")}`,
       enabled: false,
-      name: "Eleventh rule",
-    };
+      name: `Rule ${index + 2}`,
+    }));
     const firstPage = {
       ...rulesList,
-      rules: [wireRule],
-      total: 52,
-      next_cursor: "page-two",
-      has_more: true,
-    };
-    const secondPage = {
-      ...rulesList,
-      rules: [secondPageRule],
-      pinned_rule_ids: ["R001"],
-      total: 52,
+      rules: [wireRule, ...bufferedRules],
+      total: 11,
       next_cursor: null,
       has_more: false,
     };
-    const fetchMock = vi.fn((url: string) => Promise.resolve(
-      jsonResponse(String(url).includes("cursor=page-two") ? secondPage : firstPage),
-    ));
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse(firstPage)));
     vi.stubGlobal("fetch", fetchMock);
 
     renderPage();
-    await waitFor(() => expect(screen.getByRole("checkbox", { name: /R001/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByRole("checkbox", { name: /R\d{3}/ })).toHaveLength(10));
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
 
     await waitFor(() => expect(screen.getByRole("checkbox", { name: /R011/ })).toBeInTheDocument());
