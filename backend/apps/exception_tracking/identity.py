@@ -94,7 +94,7 @@ def parse_as_of_date(value: object) -> date:
             "As-of date must be an ISO calendar date (YYYY-MM-DD)."
         )
 
-    text = value.strip()
+    text = value
     if ISO_DATE_PATTERN.fullmatch(text) is None:
         raise InvalidAsOfDateError(
             f"As-of date '{value}' must use the ISO calendar format YYYY-MM-DD."

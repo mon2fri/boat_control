@@ -54,7 +54,6 @@ def test_canonical_rule_identifier_rejects_guessed_or_local_ids(value: object) -
 def test_parse_as_of_date_accepts_date_and_strict_iso_text() -> None:
     assert parse_as_of_date(date(2026, 10, 30)) == date(2026, 10, 30)
     assert parse_as_of_date("2026-10-30") == date(2026, 10, 30)
-    assert parse_as_of_date(" 2026-10-30 ") == date(2026, 10, 30)
 
 
 @pytest.mark.parametrize(
@@ -65,6 +64,8 @@ def test_parse_as_of_date_accepts_date_and_strict_iso_text() -> None:
         "2026-02-30",
         "2026-10-30T00:00:00",
         "2026-10-30; DROP TABLE exceptions_20261030",
+        " 2026-10-30",
+        "2026-10-30 ",
         "",
         None,
         20261030,
