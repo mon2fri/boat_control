@@ -1,0 +1,17 @@
+version: 1
+next_index: 2
+rules:
+  - rule_id: R001
+    name: Status must be active
+    description: Sample rule for exception tracking UI validation.
+    conditions: []
+    logic:
+      format: value_vs_column
+      column_name: status
+      operator: eq
+      target_value: active
+      target_values:
+        - active
+      comparison_mode: comparison_vs_baseline
+    extra_columns: []
+    hide_comparison: false
