@@ -379,6 +379,13 @@ def _runs_for_date(as_of_date: date) -> list[dict[str, Any]]:
 
     runs: list[dict[str, Any]] = []
     for meta in metadata:
+        indexed_date = getattr(meta, "as_of_date", None)
+        if indexed_date:
+            try:
+                if parse_iso_date(indexed_date) != as_of_date:
+                    continue
+            except (TypeError, ValueError):
+                pass
         try:
             run_data = load_run(meta.run_id)
         except Exception:  # pragma: no cover - corrupt run must not block export
