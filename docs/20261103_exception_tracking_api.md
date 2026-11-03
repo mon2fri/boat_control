@@ -106,8 +106,8 @@ frozen parameters and column keys.
 ```
 
 Default page size is 50; selectable sizes are 50, 100, 200 and 500. Without an
-explicit sort, rows are ordered New, NotCommented, Commented and then by
-Exception ID.
+explicit sort, rows use the uncommented group (New + NotCommented) before
+Commented, with Exception ID ordering inside each group.
 
 ### `GET /api/exception-tracking/export/?as_of_date=2026-10-30`
 

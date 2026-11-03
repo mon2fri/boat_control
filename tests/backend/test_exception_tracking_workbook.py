@@ -114,8 +114,8 @@ def test_orders_new_then_not_commented_then_commented_with_stable_ids() -> None:
     sheet = load_workbook(io.BytesIO(content))["Exceptions"]
     assert [sheet.cell(row, 1).value for row in range(2, 6)] == [
         "A_ID",
-        "D_ID",
         "B_ID",
+        "D_ID",
         "C_ID",
     ]
 

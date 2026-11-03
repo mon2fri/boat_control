@@ -163,7 +163,7 @@ def _detail_text(value: Any) -> str:
     return str(value)
 
 
-_STATUS_RANK = {"New": 0, "NotCommented": 1, "Commented": 2}
+_STATUS_RANK = {"New": 0, "NotCommented": 0, "Commented": 1}
 
 
 def _status_rank(value: object) -> int:

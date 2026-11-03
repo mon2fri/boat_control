@@ -93,13 +93,12 @@ documents.
 
 Commentary templates always contain every exception for the date:
 
-1. `New`
-2. `NotCommented`
-3. `Commented`
+1. `New` and `NotCommented` (uncommented group)
+2. `Commented`
 
-Within each status group, rows are ordered by `Exception ID` ascending.
-Commentary is always prefilled from the tracking store. Both download entry
-points (`?as_of_date=` and `?run_id=`) use this same all-row workbook and order.
+Rows within each group are ordered by `Exception ID` ascending. Commentary is
+always prefilled from the tracking store. Both download entry points
+(`?as_of_date=` and `?run_id=`) use this same all-row workbook and order.
 
 ## Tracking list API
 
@@ -112,8 +111,8 @@ is sliced.
 | --- | --- | --- |
 | `offset` | `0` | integer >= 0 |
 | `limit` | `50` | one of `50`, `100`, `200`, `500` |
-| `sort` | unset | column key; unset uses New, NotCommented, Commented then Exception ID |
-| `order` | `asc` | `asc` or `desc`; status order uses the rank New < NotCommented < Commented |
+| `sort` | unset | column key; unset uses the uncommented group (New + NotCommented) then Commented, each by Exception ID |
+| `order` | `asc` | `asc` or `desc`; status order uses New/NotCommented < Commented |
 | `filter_<column-key>` | unset | comma-separated values; OR within a key, AND across keys |
 
 Column keys:
