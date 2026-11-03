@@ -32,7 +32,9 @@ RESERVED_HEADERS = frozenset(
     {
         "exception id",
         "exception status",
+        "status",
         "commentary",
+        "exception commentary",
         "rule index",
         "exception rule identifier",
         "key columns",
@@ -40,6 +42,8 @@ RESERVED_HEADERS = frozenset(
         "exception as-of date",
         "exception first seen as-of date",
         "exception last seen as-of date",
+        "exception first seen timestamp",
+        "exception last seen timestamp",
     }
 )
 

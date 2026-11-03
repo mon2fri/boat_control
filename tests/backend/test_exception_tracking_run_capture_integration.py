@@ -268,13 +268,13 @@ def test_real_capture_persists_commentary_template_selection_and_rule_index(
             client,
             session_id,
             "2026-10-30",
-            commentary_template_columns=["status"],
+            commentary_template_columns=["id"],
         )
         repository = ExceptionTrackingRepository(get_exception_tracking_path())
         records = repository.list_exceptions(date(2026, 10, 30))
 
-    assert executed["result"]["commentary_template_columns"] == ["status"]
+    assert executed["result"]["commentary_template_columns"] == ["id"]
     assert len(records) == 1
     assert records[0].exception_rule_index == "R001"
-    assert records[0].exception_extra_values == {"status": "inactive"}
-    assert repository.get_extra_columns(date(2026, 10, 30)) == ("status",)
+    assert records[0].exception_extra_values == {"id": "1"}
+    assert repository.get_extra_columns(date(2026, 10, 30)) == ("id",)

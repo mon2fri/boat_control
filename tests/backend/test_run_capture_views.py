@@ -300,22 +300,22 @@ def test_execute_carries_ordered_commentary_template_selection(
             "/api/runs/execute/",
             _payload(
                 as_of_date="2026-10-30",
-                commentary_template_columns=["status"],
+                commentary_template_columns=["id"],
             ),
             format="json",
         )
         loaded = load_run(response.json()["run_id"])
 
     assert response.status_code == 200
-    assert patch_capture[0]["template_columns"] == ["status"]
-    assert response.json()["result"]["commentary_template_columns"] == ["status"]
+    assert patch_capture[0]["template_columns"] == ["id"]
+    assert response.json()["result"]["commentary_template_columns"] == ["id"]
     assert loaded is not None
-    assert loaded["result"]["commentary_template_columns"] == ["status"]
+    assert loaded["result"]["commentary_template_columns"] == ["id"]
     assert (
         loaded["result"]["validation"]["violations_by_rule"]["R001"][0][
             "detail_values"
         ]
-        == {"status": "inactive"}
+        == {"id": "1"}
     )
 
 
@@ -323,7 +323,7 @@ def test_execute_carries_ordered_commentary_template_selection(
     ("selection", "message"),
     [
         (["unknown"], "Invalid commentary template columns: unknown"),
-        (["status", "status"], "duplicate column 'status'"),
+        (["id", "id"], "duplicate column 'id'"),
         (["Rule Index"], "reserved template header 'Rule Index'"),
         ("status", "ordered list of column names"),
     ],

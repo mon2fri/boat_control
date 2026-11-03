@@ -1155,5 +1155,5 @@ class TestCommentaryTemplateColumns:
                 path_b=csv_b,
                 target_columns=["status"],
                 key_columns=["id"],
-                commentary_template_columns=["status", "Status"],
+                commentary_template_columns=["id", "ID"],
             )

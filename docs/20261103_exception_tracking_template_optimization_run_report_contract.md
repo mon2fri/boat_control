@@ -45,7 +45,9 @@ shape for the frontend to resolve.
   selection; the file is not rewritten on read.
 - Invalid values return HTTP 400: non-list, empty names, duplicate names
   (case-insensitive after whitespace normalization), unsupported reference
-  kinds, or names reserved by the standard tracking/template headers.
+  kinds, or names reserved by the standard tracking/template headers (including
+  `Status`, `Exception Status`, `Commentary`, `Rule Index` and the timestamp/date
+  headers).
 - Other config fields, including `extraColumns`, are preserved unchanged.
 
 Example:
