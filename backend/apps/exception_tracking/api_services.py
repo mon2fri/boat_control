@@ -271,7 +271,9 @@ def _unique_names(values: Iterable[Any]) -> list[str]:
     return result
 
 
-def list_template_detail_columns(repository: Any) -> list[str]:
+def list_template_detail_columns(
+    repository: Any, as_of_date: date | None = None
+) -> list[str]:
     """Read the ordered Extra Columns for Commentary Template selection."""
     for method_name in (
         "list_template_detail_columns",
@@ -280,16 +282,23 @@ def list_template_detail_columns(repository: Any) -> list[str]:
         "list_template_columns",
         "get_template_columns",
         "get_commentary_template_columns",
+        "get_detail_columns",
     ):
         method = getattr(repository, method_name, None)
-        if callable(method):
-            try:
-                return _unique_names(method())
-            except (OSError, ValueError) as exc:
-                raise TrackingAPIError(
-                    str(exc),
-                    code="tracking_database_unavailable",
-                ) from exc
+        if not callable(method):
+            continue
+        try:
+            if as_of_date is not None:
+                try:
+                    return _unique_names(method(as_of_date))
+                except TypeError:
+                    pass
+            return _unique_names(method())
+        except (OSError, ValueError) as exc:
+            raise TrackingAPIError(
+                str(exc),
+                code="tracking_database_unavailable",
+            ) from exc
 
     # Compatibility fallback for an older repository that persists detail
     # values but does not yet expose the ordered metadata method.
@@ -314,7 +323,7 @@ def export_commentary(
 ) -> bytes:
     repo = repository or get_repository()
     records = list_exceptions(as_of_date, repo)
-    detail_columns = list_template_detail_columns(repo)
+    detail_columns = list_template_detail_columns(repo, as_of_date)
     detail_values = {
         record["exception_id"]: record.get("detail_values") or {}
         for record in records

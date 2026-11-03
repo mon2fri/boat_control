@@ -78,7 +78,9 @@ class ExceptionListView(APIView):  # type: ignore[misc]
             )
             repository = api_services.get_repository()
             records = api_services.list_exceptions(as_of_date, repository)
-            detail_columns = api_services.list_template_detail_columns(repository)
+            detail_columns = api_services.list_template_detail_columns(
+                repository, as_of_date
+            )
             offset, limit, sort_key, order = normalize_query(
                 offset=request.query_params.get("offset"),
                 limit=request.query_params.get("limit"),
