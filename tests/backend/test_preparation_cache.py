@@ -2,11 +2,14 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+import pytest
 from apps.files.filter_services import ColumnValueInfo, FilterPreparationResult
 from apps.files.preparation_cache import (
     _legacy_cache_path,
+    delete_for_upload,
     load_preparation,
     save_preparation,
+    upload_is_referenced,
 )
 from apps.files.services import delete_upload
 from django.test.utils import override_settings
@@ -128,3 +131,37 @@ def test_upload_housekeeping_preserves_preparation_cache(tmp_path: Path) -> None
         assert len(list(cache.glob("*.json"))) == 2
         path_b.write_text("id\n1\n")
         assert load_preparation(path_b, path_c, ["id"]) == _result()
+
+
+def test_cache_reads_use_utf8_on_gbk_hosts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path_a = tmp_path / "a.csv"
+    path_b = tmp_path / "b.csv"
+    path_a.write_bytes(b"id\n1\n")
+    path_b.write_bytes(b"id\n2\n")
+    result = _result()
+    result.column_values["id"][:] = [
+        ColumnValueInfo(value="“reviewed”", display="“reviewed”", in_file_a=True, in_file_b=True)
+    ]
+    original_read_text = Path.read_text
+
+    def gbk_read_text(self: Path, encoding: str | None = None, **kwargs: object) -> str:
+        return original_read_text(self, encoding=encoding or "gbk")
+
+    with override_settings(PREPARE_CACHE_DIR=tmp_path / "cache"):
+        save_preparation(path_a, path_b, ["id"], result)
+        monkeypatch.setattr(Path, "read_text", gbk_read_text)
+        assert upload_is_referenced(path_a)
+        assert load_preparation(path_a, path_b, ["id"]) == result
+        assert delete_for_upload(path_a) == 1
+        assert not upload_is_referenced(path_a)
+
+
+def test_malformed_utf8_cache_does_not_break_reference_checks(tmp_path: Path) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "broken.json").write_bytes(b"\xff")
+    with override_settings(PREPARE_CACHE_DIR=cache):
+        assert not upload_is_referenced(tmp_path / "a.csv")
+        assert delete_for_upload(tmp_path / "a.csv") == 0
