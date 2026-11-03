@@ -16,6 +16,7 @@ Lists all saved runs in reverse chronological order.
     "file_b_name": "file_b.csv",
     "created_at": "2026-07-18T12:00:00+00:00",
     "as_of_date": "2026-06-30",
+    "new_exceptions_only": true,
     "file_path": "/path/to/results/abc123def456_file_a_vs_file_b.json"
   }
 ]
@@ -23,7 +24,8 @@ Lists all saved runs in reverse chronological order.
 
 `as_of_date` is the ISO calendar date used for exception tracking. It is `null`
 for historical runs created before exception tracking; those runs remain
-readable and are never retroactively tracked.
+readable and are never retroactively tracked. `new_exceptions_only` is the saved
+display/report scope and defaults to `true` for older index entries.
 
 ### `GET /api/runs/<run_id>/`
 

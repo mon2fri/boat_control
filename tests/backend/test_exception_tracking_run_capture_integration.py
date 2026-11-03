@@ -96,17 +96,26 @@ def _upload(client: APIClient, date_text: str) -> str:
     return str(response.json()["session_id"])
 
 
-def _execute(client: APIClient, session_id: str, as_of_date: str) -> dict[str, Any]:
+def _execute(
+    client: APIClient,
+    session_id: str,
+    as_of_date: str,
+    *,
+    commentary_template_columns: list[str] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "session_id": session_id,
+        "comparison_columns": ["id", "status"],
+        "target_columns": ["status"],
+        "key_columns": ["id"],
+        "rule_ids": ["R001"],
+        "as_of_date": as_of_date,
+    }
+    if commentary_template_columns is not None:
+        payload["commentary_template_columns"] = commentary_template_columns
     response = client.post(
         "/api/runs/execute/",
-        {
-            "session_id": session_id,
-            "comparison_columns": ["id", "status"],
-            "target_columns": ["status"],
-            "key_columns": ["id"],
-            "rule_ids": ["R001"],
-            "as_of_date": as_of_date,
-        },
+        payload,
         format="json",
     )
     assert response.status_code == 200, response.content
@@ -230,3 +239,42 @@ def test_real_capture_second_date_is_not_commented_and_legacy_export_is_rejected
         loaded = load_run(second["run_id"])
         assert loaded is not None
         assert loaded["as_of_date"] == "2026-10-30"
+
+
+
+def test_real_capture_persists_commentary_template_selection_and_rule_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import inspect
+
+    from apps.exception_tracking.repository import ExceptionTrackingRepository
+    from apps.exception_tracking.store import capture_exceptions
+    from apps.settings.services import get_exception_tracking_path
+
+    if "extra_columns" not in inspect.signature(capture_exceptions).parameters:
+        pytest.skip("Worker A extra_columns capture contract is not integrated yet")
+
+    monkeypatch.setattr(
+        "apps.runs.services.load_rules",
+        lambda: RulesFile(version=1, rules=[_rule()], next_index=2),
+    )
+    client = APIClient()
+    with override_settings(
+        UPLOADS_DIR=tmp_path / "uploads",
+        RESULTS_DIR=tmp_path / "results",
+    ):
+        session_id = _upload(client, "2026-10-30")
+        executed = _execute(
+            client,
+            session_id,
+            "2026-10-30",
+            commentary_template_columns=["status"],
+        )
+        repository = ExceptionTrackingRepository(get_exception_tracking_path())
+        records = repository.list_exceptions(date(2026, 10, 30))
+
+    assert executed["result"]["commentary_template_columns"] == ["status"]
+    assert len(records) == 1
+    assert records[0].exception_rule_index == "R001"
+    assert records[0].exception_extra_values == {"status": "inactive"}
+    assert repository.get_extra_columns(date(2026, 10, 30)) == ("status",)

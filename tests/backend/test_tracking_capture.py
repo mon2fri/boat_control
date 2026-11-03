@@ -28,6 +28,7 @@ def make_result(
     violations_by_rule: dict[str, list[ValidationViolation]] | None = None,
     rule_bindings: dict[str, str] | None = None,
     rule_summaries: dict[str, dict[str, Any]] | None = None,
+    commentary_template_columns: list[str] | None = None,
 ) -> ExecutionResult:
     violations = violations_by_rule or {}
     validation = ValidationResult(
@@ -56,6 +57,7 @@ def make_result(
         key_columns=key_columns if key_columns is not None else ["id"],
         filters_applied=[],
         rule_bindings=rule_bindings or {},
+        commentary_template_columns=commentary_template_columns or [],
     )
 
 
@@ -65,6 +67,7 @@ def violation(
     rule_identifier: str | None = "CBR1_00000000000000000000",
     key_columns: dict[str, Any] | None = None,
     row_index: int = 0,
+    detail_values: dict[str, str] | None = None,
 ) -> ValidationViolation:
     return ValidationViolation(
         row_index=row_index,
@@ -76,6 +79,7 @@ def violation(
         violating_value="inactive",
         rule_logic="status equals 'active'",
         rule_identifier=rule_identifier,
+        detail_values=detail_values or {},
     )
 
 
@@ -90,9 +94,15 @@ class FakeStore:
         occurrences: list[dict[str, object]],
         *,
         db_path: Path | None = None,
+        extra_columns: list[str] | None = None,
     ) -> object:
         self.calls.append(
-            {"as_of_date": as_of_date, "occurrences": occurrences, "db_path": db_path}
+            {
+                "as_of_date": as_of_date,
+                "occurrences": occurrences,
+                "db_path": db_path,
+                "extra_columns": extra_columns,
+            }
         )
         if self.error is not None:
             raise self.error
@@ -120,6 +130,8 @@ class TestBuildOccurrences:
                 "exception_rule_identifier": "CBR1_00000000000000000000",
                 "key_columns": (("region", "EMEA"), ("id", "42")),
                 "exception_timestamp": captured_at,
+                "exception_rule_index": "R001",
+                "exception_extra_values": {},
             }
         ]
 
@@ -134,6 +146,33 @@ class TestBuildOccurrences:
         occurrence = build_occurrences(result)[0]
 
         assert occurrence["key_columns"] == (("id", "42"), ("region", "EMEA"))
+
+    def test_captures_ordered_commentary_template_values_and_rule_index(self) -> None:
+        result = make_result(
+            commentary_template_columns=["Region", "Score", "Missing"],
+            violations_by_rule={
+                "R001": [
+                    violation(
+                        row_index=7,
+                        detail_values={"Region": "EMEA", "Score": 42},
+                    )
+                ]
+            },
+        )
+
+        occurrence = build_occurrences(result)[0]
+
+        assert occurrence["exception_rule_index"] == "R001"
+        assert occurrence["exception_extra_values"] == {
+            "Region": "EMEA",
+            "Score": "42",
+            "Missing": "",
+        }
+        assert list(occurrence["exception_extra_values"]) == [
+            "Region",
+            "Score",
+            "Missing",
+        ]
 
     def test_duplicate_rule_and_key_collapse_to_one_exception(self) -> None:
         first = violation(key_columns={"id": "1"})
@@ -300,6 +339,7 @@ class TestCaptureRunExceptions:
             captured_at=captured_at,
             db_path=db_path,
             store=store,
+            template_columns=["Region"],
         )
 
         assert captured == {"captured": 1}
@@ -307,6 +347,7 @@ class TestCaptureRunExceptions:
         call = store.calls[0]
         assert call["as_of_date"] == date(2026, 10, 30)
         assert call["db_path"] == db_path
+        assert call["extra_columns"] == ["Region"]
         assert call["occurrences"][0]["exception_timestamp"] == captured_at
 
     def test_empty_run_still_calls_store_to_create_date_table(self, tmp_path: Path) -> None:
@@ -345,6 +386,56 @@ class TestCaptureRunExceptions:
                 db_path=tmp_path / "tracking.db",
                 store=FakeStore(),
             )
+
+    def test_nonempty_selection_requires_worker_a_extra_columns_contract(
+        self, tmp_path: Path
+    ) -> None:
+        class LegacyStore:
+            def capture_exceptions(
+                self,
+                as_of_date: date,
+                occurrences: list[dict[str, object]],
+                *,
+                db_path: Path | None = None,
+            ) -> object:
+                return {"captured": len(occurrences)}
+
+        with pytest.raises(ExceptionTrackingDependencyError, match="extra_columns"):
+            capture_run_exceptions(
+                make_result(
+                    violations_by_rule={"R001": [violation()]},
+                    commentary_template_columns=["Region"],
+                ),
+                date(2026, 10, 30),
+                db_path=tmp_path / "tracking.db",
+                store=LegacyStore(),
+            )
+
+    def test_empty_selection_remains_backward_compatible_with_legacy_store(
+        self, tmp_path: Path
+    ) -> None:
+        class LegacyStore:
+            def __init__(self) -> None:
+                self.called = False
+
+            def capture_exceptions(
+                self,
+                as_of_date: date,
+                occurrences: list[dict[str, object]],
+                *,
+                db_path: Path | None = None,
+            ) -> object:
+                self.called = True
+                return {"captured": len(occurrences)}
+
+        store = LegacyStore()
+        capture_run_exceptions(
+            make_result(violations_by_rule={"R001": [violation()]}),
+            date(2026, 10, 30),
+            db_path=tmp_path / "tracking.db",
+            store=store,
+        )
+        assert store.called is True
 
 
 class TestDependencyErrors:

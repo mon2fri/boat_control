@@ -8,3 +8,4 @@ class ExportRequestSerializer(serializers.Serializer):  # type: ignore[misc]
     result_data = serializers.JSONField(required=False, allow_null=True)
     report_name = serializers.CharField(required=False, default="export")
     format = serializers.ChoiceField(choices=["html", "excel"])
+    new_exceptions_only = serializers.BooleanField(required=False, allow_null=True, default=None)

@@ -30,6 +30,8 @@ def _session(tmp_path: Path, as_of_date: str | None = None) -> SimpleNamespace:
         file_a_name="a.csv",
         file_b_name="b.csv",
         common_columns=["id", "status"],
+        columns_a=["id", "status"],
+        columns_b=["id", "status"],
         as_of_date=as_of_date,
     )
 
@@ -44,6 +46,20 @@ def _rule() -> Rule:
         grouping=None,
         grouping_tree=None,
         logic=LogicClause("value_vs_column", "status", "eq", "active"),
+        rule_identifier=RULE_IDENTIFIER,
+    )
+
+
+def _never_matching_rule() -> Rule:
+    return Rule(
+        rule_id="R001",
+        name="Status must match an impossible value",
+        description="",
+        conditions=[],
+        condition_relation=None,
+        grouping=None,
+        grouping_tree=None,
+        logic=LogicClause("value_vs_column", "status", "eq", "missing"),
         rule_identifier=RULE_IDENTIFIER,
     )
 
@@ -74,17 +90,23 @@ def patch_capture(
         as_of_date: date,
         *,
         captured_at: datetime | None = None,
+        template_columns: list[str] | None = None,
     ) -> object:
         capture_calls.append(
             {
                 "result": result,
                 "as_of_date": as_of_date,
                 "captured_at": captured_at,
+                "template_columns": template_columns,
             }
         )
         return {"captured": result.validation.total_violations}
 
     monkeypatch.setattr("apps.runs.views.capture_run_exceptions", fake_capture)
+    monkeypatch.setattr(
+        "apps.runs.views.enrich_execution_result",
+        lambda result, _as_of_date: result,
+    )
     return capture_calls
 
 
@@ -264,3 +286,207 @@ def test_same_date_rerun_is_accepted_and_captured_again(
         date(2026, 10, 30),
     ]
     assert len(runs) == 2
+
+
+def test_execute_carries_ordered_commentary_template_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    patch_capture: list[dict[str, Any]],
+    isolated_rules: None,
+) -> None:
+    monkeypatch.setattr("apps.runs.views.get_session", lambda _: _session(tmp_path))
+    with override_settings(RESULTS_DIR=tmp_path / "results"):
+        response = APIClient().post(
+            "/api/runs/execute/",
+            _payload(
+                as_of_date="2026-10-30",
+                commentary_template_columns=["status"],
+            ),
+            format="json",
+        )
+        loaded = load_run(response.json()["run_id"])
+
+    assert response.status_code == 200
+    assert patch_capture[0]["template_columns"] == ["status"]
+    assert response.json()["result"]["commentary_template_columns"] == ["status"]
+    assert loaded is not None
+    assert loaded["result"]["commentary_template_columns"] == ["status"]
+    assert (
+        loaded["result"]["validation"]["violations_by_rule"]["R001"][0][
+            "detail_values"
+        ]
+        == {"status": "inactive"}
+    )
+
+
+@pytest.mark.parametrize(
+    ("selection", "message"),
+    [
+        (["unknown"], "Invalid commentary template columns: unknown"),
+        (["status", "status"], "duplicate column 'status'"),
+        (["Rule Index"], "reserved template header 'Rule Index'"),
+        ("status", "ordered list of column names"),
+    ],
+)
+def test_execute_rejects_invalid_commentary_template_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    patch_capture: list[dict[str, Any]],
+    isolated_rules: None,
+    selection: object,
+    message: str,
+) -> None:
+    monkeypatch.setattr("apps.runs.views.get_session", lambda _: _session(tmp_path))
+    with override_settings(RESULTS_DIR=tmp_path / "results"):
+        response = APIClient().post(
+            "/api/runs/execute/",
+            _payload(
+                as_of_date="2026-10-30",
+                commentary_template_columns=selection,
+            ),
+            format="json",
+        )
+        runs = list_runs()
+
+    assert response.status_code == 400
+    assert message in response.json()["error"]
+    assert patch_capture == []
+    assert runs == []
+
+
+def _rich_enrichment(result: Any, _as_of_date: date) -> Any:
+    from dataclasses import replace
+
+    enriched: dict[str, list[Any]] = {}
+    for rule_id, violations in result.validation.violations_by_rule.items():
+        rows = []
+        for violation in violations:
+            status = "Commented" if violation.key_columns.get("id") == "2" else "New"
+            rows.append(
+                replace(
+                    violation,
+                    exception_id=f"EXC_{violation.key_columns.get('id')}",
+                    exception_status=status,
+                )
+            )
+        enriched[rule_id] = rows
+    return replace(
+        result,
+        validation=replace(result.validation, violations_by_rule=enriched),
+    )
+
+
+def test_new_exceptions_only_filters_response_but_persists_all_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    patch_capture: list[dict[str, Any]],
+    isolated_rules: None,
+) -> None:
+    # Both rows violate the rule; fake tracking marks row 1 New and row 2 Commented.
+    monkeypatch.setattr(
+        "apps.runs.services.load_rules",
+        lambda: RulesFile(version=1, rules=[_never_matching_rule()], next_index=2),
+    )
+    monkeypatch.setattr("apps.runs.views.get_session", lambda _: _session(tmp_path))
+    monkeypatch.setattr("apps.runs.views.enrich_execution_result", _rich_enrichment)
+    with override_settings(RESULTS_DIR=tmp_path / "results"):
+        response = APIClient().post(
+            "/api/runs/execute/",
+            _payload(as_of_date="2026-10-30"),
+            format="json",
+        )
+        run_id = response.json()["run_id"]
+        stored = load_run(run_id)
+        filtered = APIClient().get(f"/api/runs/{run_id}/")
+        unfiltered = APIClient().get(
+            f"/api/runs/{run_id}/?new_exceptions_only=false"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"]["new_exceptions_only"] is True
+    visible = response.json()["result"]["validation"]["violations_by_rule"]["R001"]
+    assert [item["key_columns"]["id"] for item in visible] == ["1"]
+    assert response.json()["result"]["validation"]["total_violations"] == 1
+    # All exceptions are persisted before the display filter.
+    assert stored is not None
+    assert len(stored["result"]["validation"]["violations_by_rule"]["R001"]) == 2
+    assert filtered.status_code == 200
+    assert filtered.json()["result"]["validation"]["total_violations"] == 1
+    assert unfiltered.status_code == 200
+    assert unfiltered.json()["result"]["validation"]["total_violations"] == 2
+
+
+def test_new_exceptions_only_false_returns_all_and_persists_false(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    patch_capture: list[dict[str, Any]],
+    isolated_rules: None,
+) -> None:
+    monkeypatch.setattr(
+        "apps.runs.services.load_rules",
+        lambda: RulesFile(version=1, rules=[_never_matching_rule()], next_index=2),
+    )
+    monkeypatch.setattr("apps.runs.views.get_session", lambda _: _session(tmp_path))
+    monkeypatch.setattr("apps.runs.views.enrich_execution_result", _rich_enrichment)
+    with override_settings(RESULTS_DIR=tmp_path / "results"):
+        response = APIClient().post(
+            "/api/runs/execute/",
+            _payload(as_of_date="2026-10-30", new_exceptions_only=False),
+            format="json",
+        )
+        stored = load_run(response.json()["run_id"])
+
+    assert response.status_code == 200
+    assert response.json()["result"]["new_exceptions_only"] is False
+    assert response.json()["result"]["validation"]["total_violations"] == 2
+    assert stored is not None
+    assert stored["result"]["new_exceptions_only"] is False
+    assert len(stored["result"]["validation"]["violations_by_rule"]["R001"]) == 2
+
+
+def test_new_exceptions_only_can_produce_an_empty_visible_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    patch_capture: list[dict[str, Any]],
+    isolated_rules: None,
+) -> None:
+    from dataclasses import replace
+
+    def all_commented(result: Any, _as_of_date: date) -> Any:
+        enriched = {
+            rule_id: [
+                replace(
+                    violation,
+                    exception_id=f"EXC_{violation.key_columns.get('id')}",
+                    exception_status="Commented",
+                )
+                for violation in violations
+            ]
+            for rule_id, violations in result.validation.violations_by_rule.items()
+        }
+        return replace(
+            result,
+            validation=replace(result.validation, violations_by_rule=enriched),
+        )
+
+    monkeypatch.setattr(
+        "apps.runs.services.load_rules",
+        lambda: RulesFile(version=1, rules=[_never_matching_rule()], next_index=2),
+    )
+    monkeypatch.setattr("apps.runs.views.get_session", lambda _: _session(tmp_path))
+    monkeypatch.setattr("apps.runs.views.enrich_execution_result", all_commented)
+    with override_settings(RESULTS_DIR=tmp_path / "results"):
+        response = APIClient().post(
+            "/api/runs/execute/",
+            _payload(as_of_date="2026-10-30"),
+            format="json",
+        )
+        stored = load_run(response.json()["run_id"])
+
+    assert response.status_code == 200
+    validation = response.json()["result"]["validation"]
+    assert validation["total_violations"] == 0
+    assert validation["distinct_violating_rows"] == 0
+    assert validation["violations_by_rule"]["R001"] == []
+    assert stored is not None
+    assert len(stored["result"]["validation"]["violations_by_rule"]["R001"]) == 2

@@ -30,6 +30,15 @@ Or with inline result data:
 
 ## Export Formats
 
+### New Exceptions Only scope
+
+`POST /api/reports/export/` accepts an optional boolean
+`new_exceptions_only`. When omitted for a saved run, the run's stored scope is
+used (new runs default to checked). Checked exports contain `New` and
+`NotCommented` exceptions and omit `Commented` ones; unchecked exports contain
+all exceptions. Counts and sections are recomputed for the exported scope. The
+commentary template endpoint is unaffected and always contains all exceptions.
+
 ### Commentary Template (results page)
 
 The result page downloads the same commentary XLSX workbook as the Exception

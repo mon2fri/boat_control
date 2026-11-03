@@ -32,6 +32,7 @@ class RunMetadata:
     created_at: str
     file_path: str
     as_of_date: str | None = None
+    new_exceptions_only: bool = True
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ def _load_index() -> RunsIndex:
             created_at=r["created_at"],
             file_path=r["file_path"],
             as_of_date=r.get("as_of_date"),
+            new_exceptions_only=bool(r.get("new_exceptions_only", True)),
         )
         for r in data.get("runs", [])
     ]
@@ -90,6 +92,7 @@ def _save_index(index: RunsIndex) -> None:
                 "created_at": r.created_at,
                 "file_path": r.file_path,
                 "as_of_date": r.as_of_date,
+                "new_exceptions_only": r.new_exceptions_only,
             }
             for r in index.runs
         ]
@@ -180,6 +183,8 @@ def save_run(
                 "exception_columns": result.exception_columns,
                 "extra_column_display": result.extra_column_display,
                 "group_statistics": result.group_statistics,
+                "commentary_template_columns": result.commentary_template_columns,
+                "new_exceptions_only": result.new_exceptions_only,
             },
         }
 
@@ -203,6 +208,7 @@ def save_run(
             created_at=created_at_text,
             file_path=str(file_path),
             as_of_date=run_data["as_of_date"],
+            new_exceptions_only=result.new_exceptions_only,
         )
 
         index = _load_index()
@@ -252,6 +258,7 @@ def rename_run(run_id: str, new_report_name: str) -> RunMetadata:
                     created_at=meta.created_at,
                     file_path=str(new_path),
                     as_of_date=meta.as_of_date,
+                    new_exceptions_only=meta.new_exceptions_only,
                 )
                 index.runs[i] = updated
                 _save_index(index)
@@ -292,6 +299,21 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                     if "rule_bindings" not in result:
                         # Legacy runs cannot be linked safely from their local Rxxx IDs.
                         result["rule_bindings"] = {}
+                    if "commentary_template_columns" not in result:
+                        result["commentary_template_columns"] = []
+                    if "new_exceptions_only" not in result:
+                        result["new_exceptions_only"] = True
+                    validation = result.get("validation") or {}
+                    if isinstance(validation, dict):
+                        for violations in (validation.get("violations_by_rule") or {}).values():
+                            if not isinstance(violations, list):
+                                continue
+                            for violation in violations:
+                                if not isinstance(violation, dict):
+                                    continue
+                                violation.setdefault("detail_values", {})
+                                violation.setdefault("exception_id", None)
+                                violation.setdefault("exception_status", None)
                     comparison = result.get("comparison", {})
                     if "new_book_count" not in comparison:
                         comparison["new_book_count"] = 0

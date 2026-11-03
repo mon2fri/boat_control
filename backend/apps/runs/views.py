@@ -12,7 +12,13 @@ from apps.files.sessions import get_session
 from apps.runs.as_of_date import AsOfDateError, resolve_as_of_date
 from apps.runs.persistence import save_run
 from apps.runs.services import execute_comparison
+from apps.runs.template_columns import TemplateColumnError, validate_concrete_columns
 from apps.runs.tracking_capture import ExceptionCaptureError, capture_run_exceptions
+from apps.runs.tracking_context import (
+    enrich_execution_result,
+    parse_new_exceptions_only,
+    resolve_run_document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +135,33 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
             extra_column_display = {}
 
         try:
+            commentary_template_columns = validate_concrete_columns(
+                request.data.get("commentary_template_columns", [])
+            )
+            available_columns = set(
+                getattr(session, "columns_a", [])
+            ) | set(getattr(session, "columns_b", []))
+            missing_template_columns = [
+                column
+                for column in commentary_template_columns
+                if column not in available_columns
+            ]
+            if missing_template_columns:
+                return Response(
+                    {
+                        "error": "Invalid commentary template columns: "
+                        + ", ".join(missing_template_columns)
+                    },
+                    status=400,
+                )
+            new_exceptions_only = parse_new_exceptions_only(
+                request.data.get("new_exceptions_only"),
+                default=True,
+            )
+        except (TemplateColumnError, ValueError) as exc:
+            return Response({"error": str(exc)}, status=400)
+
+        try:
             # Nested aggregation is read independently of comparison sections:
             # a user can opt into the tree view without defining any sections.
             nested_agg_enabled = bool(request.data.get("nested_aggregation_enabled", False))
@@ -167,6 +200,8 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                     "exception_tables",
                 )},
                 as_of_date=as_of_date,
+                commentary_template_columns=commentary_template_columns,
+                new_exceptions_only=new_exceptions_only,
             )
         except Exception as exc:
             logger.warning("execute_comparison failed: %s", exc)
@@ -188,7 +223,9 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 result,
                 as_of_date,
                 captured_at=captured_at,
+                template_columns=commentary_template_columns,
             )
+            result = enrich_execution_result(result, as_of_date)
         except ExceptionCaptureError as exc:
             logger.exception("Exception tracking capture failed for run")
             return Response(
@@ -214,4 +251,12 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
         from apps.runs.persistence import load_run
 
         full_data = load_run(meta.run_id)
-        return Response(full_data)
+        if full_data is None:
+            return Response({"error": "Saved run could not be loaded."}, status=500)
+        return Response(
+            resolve_run_document(
+                full_data,
+                new_exceptions_only=new_exceptions_only,
+                refresh=False,
+            )
+        )

@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.runs.persistence import load_run
+from apps.runs.tracking_context import parse_new_exceptions_only, resolve_run_document
 
 
 def _flatten_rows(result: dict[str, Any], section: str) -> list[dict[str, Any]]:
@@ -131,6 +132,19 @@ class RunPaginatedDetailView(APIView):  # type: ignore[misc]
             return Response({"error": "offset and limit must be integers"}, status=400)
 
         result = run_data.get("result", {})
+        try:
+            new_exceptions_only = parse_new_exceptions_only(
+                request.query_params.get("new_exceptions_only"),
+                default=bool(result.get("new_exceptions_only", True)),
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        run_data = resolve_run_document(
+            run_data,
+            new_exceptions_only=new_exceptions_only,
+            refresh=True,
+        )
+        result = run_data.get("result", {})
         key_columns = result.get("key_columns", [])
 
         all_rows = _flatten_rows(result, section)
@@ -141,7 +155,7 @@ class RunPaginatedDetailView(APIView):  # type: ignore[misc]
         # Parse filter params: key_<col>, extra_<col>, or column=val1,val2
         detail_filters: dict[str, list[str]] = {}
         for param_key in request.query_params:
-            if param_key in ("section", "offset", "limit", "columns"):
+            if param_key in ("section", "offset", "limit", "columns", "new_exceptions_only"):
                 continue
             raw = request.query_params.get(param_key, "")
             values = [v.strip() for v in raw.split(",") if v.strip()]

@@ -175,6 +175,56 @@ def test_violation_detail_preserves_rule_identifiers(
     assert detail["key_columns"] == {"id": "1"}
 
 
+def test_paginated_violations_respect_new_exceptions_only_scope(
+    mock_result_with_details: ExecutionResult, tmp_path: Path
+) -> None:
+    from dataclasses import replace
+
+    def violation(key: str, status: str) -> ValidationViolation:
+        return ValidationViolation(
+            row_index=0 if key == "1" else 1,
+            rule_id="R001",
+            rule_identifier="CBR1_00000000000000000000",
+            rule_name="Status",
+            key_columns={"id": key},
+            details="bad",
+            violating_column="status",
+            violating_value="inactive",
+            rule_logic="status equals 'active'",
+            exception_id=f"EXC_{key}",
+            exception_status=status,
+        )
+
+    validation = ValidationResult(
+        total_violations=2,
+        distinct_violating_rows=2,
+        distinct_violating_attributes=2,
+        violations_by_rule={
+            "R001": [violation("1", "New"), violation("2", "Commented")]
+        },
+        violation_count_by_rule={"R001": 2},
+        violating_rows_by_rule={"R001": 2},
+        violating_attributes_by_rule={"R001": 2},
+        rule_summaries={"R001": {"name": "Status"}},
+    )
+    result = replace(mock_result_with_details, validation=validation)
+    run_id = _save_and_get_run_id(result, tmp_path)
+    with override_settings(RESULTS_DIR=str(tmp_path / "results")):
+        default_response = APIClient().get(
+            f"/api/runs/{run_id}/details/?section=violations"
+        )
+        all_response = APIClient().get(
+            f"/api/runs/{run_id}/details/?section=violations&new_exceptions_only=false"
+        )
+
+    assert default_response.status_code == 200
+    assert default_response.json()["total"] == 1
+    assert default_response.json()["details"][0]["key_columns"]["id"] == "1"
+    assert all_response.status_code == 200
+    assert all_response.json()["total"] == 2
+    assert "new_exceptions_only" not in all_response.json()["available_filters"]
+
+
 def test_paginated_violation_pages_preserve_identity_inputs(
     mock_result_with_details: ExecutionResult, tmp_path: Path
 ) -> None:
@@ -188,10 +238,6 @@ def test_paginated_violation_pages_preserve_identity_inputs(
             rule_identifier=rule_identifier,
             rule_name="Status",
             key_columns={"id": identifier, "region": region},
-            details="bad",
-            violating_column="status",
-            violating_value="inactive",
-            rule_logic="status equals 'active'",
         )
         for index, identifier, region in ((0, "A", "EMEA"), (1, "B", "APAC"))
     ]

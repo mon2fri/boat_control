@@ -19,6 +19,7 @@ documented in ``docs/20261103_exception_tracking_run_capture.md``.
 from __future__ import annotations
 
 import importlib
+import inspect
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -52,6 +53,7 @@ class CaptureStore(Protocol):
         occurrences: Sequence[Mapping[str, object]],
         *,
         db_path: Path | None = None,
+        **kwargs: object,
     ) -> object: ...
 
 
@@ -61,6 +63,8 @@ class Exposure:
 
     exception_rule_identifier: str
     key_columns: tuple[tuple[str, str], ...]
+    rule_index: str
+    detail_values: dict[str, str]
 
 
 def _utc_timestamp(value: datetime | None) -> datetime:
@@ -137,10 +141,47 @@ def _ordered_key_pairs(
     return tuple(pairs)
 
 
+def violation_identity(
+    result: ExecutionResult,
+    rule_id: str,
+    violation: object,
+) -> tuple[str, tuple[tuple[str, str], ...]]:
+    """Return the canonical identity key for a validation violation.
+
+    This is shared with read-time status reconciliation so run filtering matches
+    the same occurrence identity Worker A persisted.
+    """
+
+    identifier = _rule_identifier(result, rule_id, getattr(violation, "rule_identifier", None))
+    pairs = _ordered_key_pairs(result, rule_id, getattr(violation, "key_columns", {}))
+    return identifier, pairs
+
+
+def _supports_template_columns(function: object) -> str | None:
+    try:
+        signature = inspect.signature(function)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    for name in (
+        "extra_columns",
+        "template_columns",
+        "commentary_template_columns",
+        "kwargs",
+    ):
+        if name in signature.parameters:
+            parameter = signature.parameters[name]
+            if name == "kwargs" and parameter.kind is inspect.Parameter.VAR_KEYWORD:
+                return "extra_columns"
+            if name != "kwargs":
+                return name
+    return None
+
+
 def build_occurrences(
     result: ExecutionResult,
     *,
     captured_at: datetime | None = None,
+    template_columns: Sequence[str] | None = None,
 ) -> list[OccurrencePayload]:
     """Convert every violation into one deduplicated occurrence payload.
 
@@ -154,24 +195,46 @@ def build_occurrences(
     pairs in the run's configured key-column order. Worker A forms the literal
     underscore-separated ID from those values and records a documented lossless
     textual representation in the ``key_columns`` column.
+
+    ``rule_index`` is the historical run-local rule id (``Rxxx``), never the
+    exception identity. ``detail_values`` carries only the ordered Extra Columns
+    for Commentary Template selection; it is independent of rule/exception extra
+    columns and attribute-comparison sections. Worker A's canonical payload names
+    are ``exception_rule_index`` and ``exception_extra_values``.
     """
 
     timestamp = _utc_timestamp(captured_at)
+    selected_columns = list(
+        template_columns
+        if template_columns is not None
+        else result.commentary_template_columns
+    )
     unique: dict[IdentityKey, Exposure] = {}
 
     for rule_id, violations in result.validation.violations_by_rule.items():
         for violation in violations:
             identifier = _rule_identifier(result, rule_id, violation.rule_identifier)
             pairs = _ordered_key_pairs(result, rule_id, violation.key_columns)
+            detail_values = {
+                column: _key_value_text(violation.detail_values.get(column, ""))
+                for column in selected_columns
+            }
             key: IdentityKey = (identifier, pairs)
             if key not in unique:
-                unique[key] = Exposure(identifier, pairs)
+                unique[key] = Exposure(
+                    exception_rule_identifier=identifier,
+                    key_columns=pairs,
+                    rule_index=rule_id,
+                    detail_values=detail_values,
+                )
 
     return [
         {
             "exception_rule_identifier": exposure.exception_rule_identifier,
             "key_columns": exposure.key_columns,
             "exception_timestamp": timestamp,
+            "exception_rule_index": exposure.rule_index,
+            "exception_extra_values": exposure.detail_values,
         }
         for _, exposure in sorted(unique.items())
     ]
@@ -240,6 +303,7 @@ def capture_run_exceptions(
     captured_at: datetime | None = None,
     db_path: Path | None = None,
     store: CaptureStore | None = None,
+    template_columns: Sequence[str] | None = None,
 ) -> object:
     """Capture a completed run's exceptions before the run is persisted.
 
@@ -247,24 +311,60 @@ def capture_run_exceptions(
     ``as_of_date`` upserts occurrences, preserves commentary, and does not delete
     unrelated historical exceptions. This function itself performs no retries so a
     failure is reported synchronously to the caller.
+
+    ``template_columns`` is the ordered Extra Columns for Commentary Template
+    selection, sent to Worker A as ``extra_columns``. Worker A persists the
+    ordered union and each occurrence's ``exception_extra_values``; a non-empty
+    selection fails closed when the integrated A store does not expose that
+    capture contract.
     """
 
     if isinstance(as_of_date, datetime) or not isinstance(as_of_date, date):
         raise ExceptionCaptureError("Exception capture requires an ISO calendar As-of Date.")
 
     timestamp = _utc_timestamp(captured_at)
-    occurrences = build_occurrences(result, captured_at=timestamp)
+    selected_columns = list(
+        template_columns
+        if template_columns is not None
+        else result.commentary_template_columns
+    )
+    occurrences = build_occurrences(
+        result,
+        captured_at=timestamp,
+        template_columns=selected_columns,
+    )
     resolved_path = db_path if db_path is not None else resolve_tracking_db_path()
     resolved_store = store or _load_store()
+
+    template_parameter = _supports_template_columns(
+        resolved_store.capture_exceptions
+    )
+    if template_parameter is None:
+        if selected_columns:
+            raise ExceptionTrackingDependencyError(
+                "Worker A's capture_exceptions() does not accept the ordered "
+                "extra_columns contract required by Extra Columns for Commentary "
+                "Template. The run was not saved; integrate Worker A's template "
+                "context commit first."
+            )
+        extra_kwargs: dict[str, object] = {}
+    else:
+        extra_kwargs = {template_parameter: selected_columns}
 
     try:
         return resolved_store.capture_exceptions(
             as_of_date,
             occurrences,
             db_path=resolved_path,
+            **extra_kwargs,
         )
     except ExceptionCaptureError:
         raise
+    except TypeError as exc:
+        raise ExceptionTrackingDependencyError(
+            "Worker A's capture_exceptions() rejected the extra_columns contract: "
+            f"{exc}. The run was not saved."
+        ) from exc
     except Exception as exc:
         raise ExceptionCaptureError(
             f"Exception tracking capture failed for {as_of_date.isoformat()}: {exc}. "

@@ -17,6 +17,7 @@ class RunMetadataSerializer(serializers.Serializer):  # type: ignore[misc]
     file_b_name = serializers.CharField()
     created_at = serializers.CharField()
     as_of_date = serializers.CharField(required=False, allow_null=True)
+    new_exceptions_only = serializers.BooleanField(required=False, default=True)
 
 
 class RenameRunRequestSerializer(serializers.Serializer):  # type: ignore[misc]

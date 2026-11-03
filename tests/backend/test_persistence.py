@@ -434,3 +434,103 @@ class TestAsOfDatePersistence:
 
         assert loaded is not None
         assert loaded["as_of_date"] == "2026-10-30"
+
+
+class TestTemplateOptimizationPersistence:
+    def test_save_run_persists_template_selection_and_display_scope(
+        self, tmp_path: Path, mock_result: ExecutionResult
+    ) -> None:
+        from dataclasses import replace
+
+        result = replace(
+            mock_result,
+            commentary_template_columns=["Region", "Score"],
+            new_exceptions_only=False,
+        )
+        with override_settings(RESULTS_DIR=tmp_path / "results"):
+            metadata = save_run(result, "a.csv", "b.csv")
+            loaded = load_run(metadata.run_id)
+            listed = list_runs()
+
+        assert metadata.new_exceptions_only is False
+        assert loaded is not None
+        assert loaded["result"]["commentary_template_columns"] == ["Region", "Score"]
+        assert loaded["result"]["new_exceptions_only"] is False
+        assert listed[0].new_exceptions_only is False
+
+    def test_rename_preserves_display_scope(
+        self, tmp_path: Path, mock_result: ExecutionResult
+    ) -> None:
+        from dataclasses import replace
+
+        result = replace(mock_result, new_exceptions_only=False)
+        with override_settings(RESULTS_DIR=tmp_path / "results"):
+            metadata = save_run(result, "a.csv", "b.csv")
+            renamed = rename_run(metadata.run_id, "Renamed")
+
+        assert renamed.new_exceptions_only is False
+
+    def test_legacy_result_defaults_template_fields_and_checked_scope(
+        self, tmp_path: Path
+    ) -> None:
+        results_dir = tmp_path / "results"
+        results_dir.mkdir()
+        run_path = results_dir / "legacy_run.json"
+        run_path.write_text(
+            json.dumps(
+                {
+                    "run_id": "legacy",
+                    "report_name": "legacy",
+                    "file_a_name": "a.csv",
+                    "file_b_name": "b.csv",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "result": {
+                        "validation": {
+                            "violations_by_rule": {
+                                "R001": [
+                                    {
+                                        "row_index": 0,
+                                        "rule_id": "R001",
+                                        "rule_name": "Legacy",
+                                        "key_columns": {"id": "1"},
+                                        "details": "bad",
+                                        "violating_column": "status",
+                                        "violating_value": "inactive",
+                                        "rule_logic": "status equals 'active'",
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                }
+            )
+        )
+        (results_dir / "index.json").write_text(
+            json.dumps(
+                {
+                    "runs": [
+                        {
+                            "run_id": "legacy",
+                            "report_name": "legacy",
+                            "file_a_name": "a.csv",
+                            "file_b_name": "b.csv",
+                            "created_at": "2026-01-01T00:00:00+00:00",
+                            "file_path": str(run_path),
+                        }
+                    ]
+                }
+            )
+        )
+
+        with override_settings(RESULTS_DIR=results_dir):
+            loaded = load_run("legacy")
+            listed = list_runs()
+
+        assert loaded is not None
+        assert loaded["result"]["commentary_template_columns"] == []
+        assert loaded["result"]["new_exceptions_only"] is True
+        violation = loaded["result"]["validation"]["violations_by_rule"]["R001"][0]
+        assert violation["detail_values"] == {}
+        assert violation["exception_id"] is None
+        assert violation["exception_status"] is None
+        assert listed[0].new_exceptions_only is True
