@@ -976,3 +976,326 @@ Chrome scenarios are complete. Final functional acceptance remains with the
 user. Worker branches remain intact; current user edits in `.config`, the
 requirement file and `test-data/` remain uncommitted. No main merge, deployment,
 worktree deletion or live-data access occurred.
+
+## Follow-up: Exception Tracking Template optimization (2026-11-04)
+
+### Baseline, worker tips and dependency order
+
+- Integration review baseline: `db5d57b82a68d550ca0234e81355f5be50023a43`
+  (`Fix UTF-8 preparation cache reads on Windows`). The cache read still uses
+  explicit UTF-8; `git diff db5d57b..HEAD -- backend/apps/files/preparation_cache.py`
+  is empty.
+- Worker tips inspected, including final rework commits:
+  - A `8168fd99760fa7dcc2a867ec5fac6bc18054a635` — storage and precedence fix.
+  - B `7580dbb` — API/workbook and date-scoped schema rework/type fix.
+  - C `f251a5e59c07866cfa5eba4348e34ac1b3026306` — capture/config/report scope.
+  - D `80e2ec8389070fb009bae79315b45dc50d98a699` — frontend controls.
+- Workers share the older `aabcf5c` base, not the integration tip. Their full
+  branch diffs include already-integrated earlier exception-tracking work and
+  removals caused by that divergence; no worker branch was merged wholesale.
+  Only reviewed template-optimization commits listed below were cherry-picked.
+- Integration order was A storage → B API/workbook → C capture/config/reports →
+  D frontend. B consumes A's persisted selection/value contract; C sends the
+  ordered selection through A and owns report filtering/config backend; D maps
+  B/C interfaces.
+- Worker worktrees remain intact. A and B each retain their pre-existing
+  untracked `data/prepare_cache/`; C/D were clean at handoff. No live database
+  was used.
+
+### Reviewed commit mapping
+
+The selected template-optimization commits were integrated as follows; omitted
+worker report-only commits are summarized here rather than copied into the
+integration review tree.
+
+- Worker A:
+  - `5057fba` → `2b06548` storage contract.
+  - `dd2d7f5` → `a382281` persisted ordered selection, Rule Index and values.
+  - `df93efd` → `4d4f884` empty-filling export helper.
+  - `8168fd9` → `e1cb1f8` reviewer-requested Rule Index precedence correction.
+- Worker B:
+  - `3a7f8e2` → `189fba5` API/workbook contract.
+  - `17da6ef` → `823c221` v2 workbook, tracking table endpoint, filters/sort/page.
+  - `e32561e` → `fb33487`; `eb04b82` → `669df2a` compatibility and formula-safe
+    selected headers.
+  - `b8b5530` → `738ba7d`; `8c9177b` → `d6eac43`; `7812e01` → `39e3a42`
+    canonical A metadata, documentation alignment and row grouping.
+  - `f1723d5` → `5bf5ada` date-scoped selected columns (rework below).
+  - `7580dbb` → `6c3ebf2` no-redefinition fix required by mypy.
+- Worker C:
+  - `c8898b2` → `07037c0` capture, rows-and-columns config and report filtering.
+  - `3f0b20c` → `514c89f` reserved headers/source fixture correction.
+  - `f02d5fd` → `8d9a30e` real-storage verification.
+  - `532001b` → `7730f00` API docs for report scope override.
+- Worker D `80e2ec8` → `329dc83` frontend selection, table chooser/paging and
+  New Exceptions Only controls.
+- Generated deployable assets are rebuilt and committed after final source
+  acceptance; the review/test fix for `test_run_detail_views.py` and real A/B
+  schema regression are reviewer-owned.
+
+Earlier A/B/C/D exception-tracking and D selector/identity commits were already
+represented in this integration history and were not cherry-picked a second
+time. In particular, D's As-of Date selector and stable-ID feature remain in
+place. The Windows UTF-8 cache fix remains the parent baseline.
+
+### Frozen cross-worker contract and requirement coverage
+
+- **Only source of appended data:** the ordered **Extra Columns for Commentary
+  Template** selection. Existing Extra Column, attribute comparison sections,
+  keys/aggregations and exception-table display fields do not infer or inject
+  template data columns. Selection order is retained. Empty latest selection
+  adds no source columns.
+- **Historical schema rule:** for As-of Date D, use D's own exact ordered
+  selection, then append columns selected on later As-of Dates, chronologically
+  and in each later selection's order, skipping names already present. A column
+  selected only on an earlier date but deselected on D is omitted on D. This
+  reconciles “only the configured selection” with “later-selected columns are
+  empty on earlier records”: e.g. August `[REGION, SEGMENT]`, September
+  `[SEGMENT, PORTFOLIO]` produces August `[REGION, SEGMENT, PORTFOLIO]` (blank
+  historical Portfolio) and September `[SEGMENT, PORTFOLIO]` (no stale Region).
+  The tracking API's columns and both workbook paths use this same schema.
+- **Storage:** selected values and historical Rule Index are captured per
+  exception/date in the separate SQLite database. Legacy ten-column tables are
+  read-compatible and upgraded transactionally; repeated migration, rollback,
+  database reopen and later-added empty values are tested. No Django migration
+  is required. Values are not reconstructed from source uploads or current rule
+  catalog order.
+- **Rule Index precedence:** newest capture timestamp wins per same-date
+  Exception ID, independent of occurrence timestamp; equal capture timestamp
+  uses later serialized write. A capture lacking Rule Index does not clear it;
+  conflicting nonblank values within one capture still fail. The internal
+  capture timestamp column is a migration-safe storage marker, not a wire field.
+- **Workbook v2/UI order:** `Exception ID`, `Exception Status`, `Commentary`,
+  `Rule Index`, then standard tracking metadata in documented order, then the
+  date-scoped selected data columns. First four XLSX columns have visible
+  dimensions; all remaining columns are actually hidden but retain values.
+  Exception Tracking defaults to the same first four and exposes the remaining
+  metadata/selected columns with its chooser. v1 imports remain compatible;
+  v2 requires the first four headers, and later data is informational.
+- **Rows and columns config:** backend serializes `commentaryTemplateColumns`
+  separately from `extraColumns`, preserves order, rejects invalid/reserved or
+  duplicate names, and returns `[]` for older config missing the field. Frontend
+  load explicitly replaces current state, so stale selections clear.
+- **Run capture/source values:** C validates the concrete selection against the
+  uploaded source headers and captures only those selected values. Comparison
+  side wins when that source column is present; otherwise baseline is used;
+  otherwise empty text. Rule Index is the historical run-local rule ID. Capture
+  stores all violations before display filtering and fails closed if tracking
+  capture/enrichment fails.
+- **New Exceptions Only:** checked by default; includes New + NotCommented,
+  excludes Commented, with unknown legacy statuses kept visible. It changes
+  result/ordinary HTML/Excel view only. Tracking persists all exceptions, and
+  commentary XLSX always includes every exception, New/NotCommented before
+  Commented, sorted deterministically by Exception ID. Commentary is prefilled.
+- **Tracking table operations:** server-side filter/sort occurs over the full
+  date dataset before pagination; default page size 50 and allowed 50/100/200/500.
+  Filter choices come from the complete set. Filter changes reset to page one;
+  stable ID tie-breaks are applied.
+- **Import safety:** v1/v2 file/version policy, required version-specific
+  headers, selected date, ID/duplicate/missing validation, upload limits and
+  atomic commentary updates remain. Appended informational values/formulas are
+  ignored; commentary formula cells remain rejected. Invalid rows never update
+  a subset of the database.
+
+### Findings and rework rounds
+
+1. **A Rule Index conflict (rework accepted).** Initial A contract preserved a
+   nonblank prior Rule Index on same-date rerun, while B/C specified newest
+   capture wins. Returned to A. A added the migration-safe capture timestamp
+   marker and tests for newer captures with older occurrence timestamps, older
+   out-of-order captures and exact ties. Independently verified; integrated as
+   `e1cb1f8`.
+2. **B automatic union leaked deselected historical columns (rework accepted).**
+   Browser reproduction used August `[REGION, SEGMENT]` then September
+   `[SEGMENT, PORTFOLIO]`; before rework the September output still contained
+   prior-only `REGION`. Returned to B. B implemented the date-aware rule above
+   for tracking metadata and both exports, added tests for later-added blanks,
+   explicit empty latest selection, and compatibility fallback, and committed
+   `f1723d5` (`5bf5ada` integrated). Integration added a real A repository + B
+   API/workbook test in `tests/backend/test_exception_tracking_integration.py`.
+   Independent focused real-service tests passed. Actual Chrome recheck shows
+   September only Segment/Portfolio and August also includes empty Portfolio.
+3. **B mypy issue (rework accepted).** Full mypy after date-scoping found a new
+   local-variable `no-redef` in B's compatibility fallback. Returned to B;
+   `7580dbb` renamed the fallback variable without changing behavior. Targeted
+   tests/Ruff passed; after integration full mypy returned to only the two
+   pre-existing unrelated errors.
+4. **Commit conflicts and resolution:** the branches have old common ancestry and
+   prior feature history is not an exact fast-forward. Conflicts were resolved
+   narrowly: old automatic-detail tests/docs are superseded by the latest
+   selection contract; stable Exception ID fallback documentation remains.
+   Retained both the previous run-detail identity-input test and C's
+   New-Exceptions scope test; retained the null group-statistics mapping test
+   alongside D's saved-run restoration test. Worker-specific delivery reports
+   were not copied over the integration review. No user planning/config/data
+   file was staged.
+
+### Independent validation results
+
+- Worker A after precedence rework:
+  `uv run pytest -q tests/backend/test_exception_tracking_identity.py tests/backend/test_exception_tracking_store.py tests/backend/test_exception_tracking_template_storage.py`
+  — **104 passed**; targeted Ruff and storage-package mypy passed. Integration
+  run of the same storage/identity set — **106 passed**.
+- Worker B after date-scoping rework:
+  `uv run pytest -q tests/backend/test_exception_tracking_api.py tests/backend/test_exception_tracking_workbook.py tests/backend/test_settings.py`
+  — **59 passed**; targeted Ruff passed. The same API/workbook suite on the
+  integration branch after A/B/C integration, plus capture/config/report and
+  storage tests — **259 passed**. A real A/B integration regression suite
+  (`tests/backend/test_exception_tracking_integration.py`, API and workbook)
+  — **61 passed**.
+- Worker C focused suite from its handoff:
+  `uv run pytest -q tests/backend/test_rows_and_columns_template_columns.py tests/backend/test_tracking_context.py tests/backend/test_report_new_exceptions.py tests/backend/test_tracking_capture.py tests/backend/test_run_capture_views.py tests/backend/test_persistence.py tests/backend/test_run_detail_views.py tests/backend/test_runs.py`
+  — **149 passed**.
+- Worker D focused UI/config/result suite run independently — **7 files, 92
+  tests passed**. Worker D's completion report records its full **54 files / 498
+  tests**, production build and build inspection; integration independently
+  reran the combined frontend suite below.
+- Final integrated gates at `6c3ebf2`:
+  - `uv run python backend/manage.py check` — pass.
+  - `uv run python backend/manage.py makemigrations --check --dry-run` — pass,
+    no Django migration changes.
+  - `uv run pytest -q tests/backend tests/contracts tests/integration` —
+    **580 passed, 1 failed**. The only failure is the pre-existing,
+    unrelated `test_migration_reconciles_later_file_edits` (`KeyError: 'rule_id'`)
+    in legacy rule YAML migration; it is unchanged from the recorded baseline.
+  - `uv run ruff check backend tests` — the same **5 unrelated baseline
+    findings** (migration import sorting and four long lines in
+    `test_rule_catalog_api.py`). Targeted Ruff for all changed backend files and
+    tests passes.
+  - `uv run mypy backend` — only the **2 unrelated baseline** errors remain in
+    `backend/apps/rules/repository.py:218` and `backend/apps/configs/views.py:322`;
+    B's new API `no-redef` finding is fixed.
+  - `npm --prefix frontend test -- --run` — **55 files, 501 tests passed**.
+  - `npm --prefix frontend run build` — TypeScript/Vite pass (252 modules); Vite
+    retains its >500 kB chunk advisory. `npm --prefix frontend run build:inspect`
+    — **5 passed**.
+  - `git diff --check HEAD -- backend docs frontend tests` — pass. The full
+    worktree `git diff --check` still reports two trailing-space lines in the
+    user's pre-existing edited requirement file; they are intentionally
+    untouched. Committed implementation diff is clean.
+- Generated frontend bundle remains a tracked deployable artifact; it is rebuilt
+  below. No SQLite database files are tracked. The UTF-8 cache fix remains
+  present. Test and browser databases/files were under `tmp_path` or
+  `/tmp/opencode/boat-control-template-optimization.s0M0qn` only.
+
+### Actual Chrome validation — completed, reviewer and user scope separated
+
+Used headless Google Chrome with an isolated source/config/database copy at
+`/tmp/opencode/boat-control-template-optimization.s0M0qn`, Django at
+`http://127.0.0.1:8011/` and Vite at `http://127.0.0.1:5176/`. The scratch
+`.config` used `rule_config_path=samples/exception_tracking`,
+`run_history_path=<scratch>/data/results`, and
+`exception_tracking_path=<scratch>/data/custom_exception_tracking.db`. The
+scratch started from migrations and `migrate_rules_to_db`; it did not use the
+integration `.config`, `test-data/`, or a live DB.
+
+- Browser saved and loaded ordered `REGION, SEGMENT`; it then loaded a legacy
+  rows-and-columns config without `commentaryTemplateColumns`, and the prior
+  selection cleared. A different ordered selection was then loaded for
+  September.
+- August 31 run: 65 exceptions. The UI used Extra Column `BALANCE`, an attribute
+  comparison section, and commentary selection `REGION, SEGMENT`. The v2 XLSX
+  had 65 rows, the first four columns visible, all columns 5+ hidden in actual
+  Excel dimensions, and only selected/persisted commentary data appended—not
+  BALANCE. Results and Exception Tracking workbook sheets matched exactly; all
+  65 displayed result IDs matched tracking API and workbook IDs.
+- Edited commentary for 20 August records, changed/cleared all appended data
+  cells and put a formula in an informational cell. Upload succeeded (`Updated
+  20`); commentary changed while stored REGION/SEGMENT values did not. Re-export
+  from both entry points matched exactly. Unknown-ID, mismatched-date and
+  duplicate-ID workbooks were each rejected and the original commentary stayed
+  unchanged.
+- September 30 run: 90 exceptions. Stored statuses were **25 New, 45
+  NotCommented, 20 Commented**. With New Exceptions Only checked by default,
+  Results showed 70 IDs including New/NotCommented and excluding Commented;
+  unchecking showed all 90. Ordinary Excel and HTML report exception-table
+  counts matched the two scopes (70/90); the commentary template always had all
+  90, with uncommented before commented and deterministic ID order.
+- Exception Tracking rendered exactly the first four columns by default, 50
+  rows per page; Next showed the remaining 40. A Commented filter applied to the
+  full dataset returned 20 and reset to page one. Page sizes 50/100/200/500
+  worked; sorting by Exception ID covered all 90 deterministically. The chooser
+  revealed REGION/PORTFOLIO and Show default columns restored four.
+- With date-scoped B rework, September API/UI/XLSX schema was exactly
+  `SEGMENT, PORTFOLIO` after the standard columns. August schema, after the
+  later selection, was `REGION, SEGMENT, PORTFOLIO`, with all 65 earlier
+  Portfolio values empty. Results and tracking downloads matched for each date.
+- A third isolated run tested independent settings: Extra Column `BALANCE`,
+  Attribute Comparing Section `PORTFOLIO`, commentary selection `REGION`. Saved
+  run `detail_values` contained only REGION and the October template appended
+  REGION only; BALANCE, PORTFOLIO and SEGMENT were absent.
+- After both dates were captured, I removed the four CSV upload copies only
+  from scratch `data/uploads`, restarted Django against the same isolated DB,
+  and re-read September selection/values, Rule Index, 90 exceptions and a
+  successful XLSX export. This verifies retrieval does not depend on source
+  files or the process lifetime.
+- Browser evidence: `/tmp/opencode/template-optimization-upload.png`,
+  `template-optimization-prepare.png`, `template-optimization-results-aug.png`,
+  `template-optimization-tracking-aug.png`,
+  `template-optimization-commentary-import.png`,
+  `template-optimization-invalid-import.png`,
+  `template-optimization-results-sep-all.png`,
+  `template-optimization-tracking-paging.png`,
+  `template-optimization-tracking-sep.png`. XLSX/report evidence is under
+  `/tmp/opencode/template-opt-*.xlsx` and `template-opt-sep-*.html`.
+
+### Final local startup and user acceptance walkthrough
+
+Use **Reproducible local startup** above (disposable `UI_ROOT`, migrations,
+backend `127.0.0.1:8000`, Vite `127.0.0.1:5173`, URL
+<http://127.0.0.1:5173/>). Configure only the scratch `.config`; keep run history
+and `exception_tracking_path` under that scratch `data/` directory.
+
+For reproducible data, from the copied source tree run:
+
+```bash
+python samples/exception_tracking/template_optimization/generate_data.py \
+  "$UI_ROOT/template-optimization-data"
+```
+
+Then in the UI:
+
+1. Upload the August 31 pair from `template-optimization-data/`; use As-of Date
+   `2026-08-31`, key `ACCOUNT_ID`, existing Extra Column `BALANCE`, and Attribute
+   Comparing Section `PORTFOLIO`. Set **Extra Columns for Commentary Template**
+   in order to `REGION, SEGMENT`. Save a rows-and-columns config, run, verify 65
+   New IDs and the first four visible tracking columns. Download from Results
+   and Exception Tracking; compare IDs, headers, hidden columns and values.
+2. Enter commentary for the first 20 IDs. Change/blank appended informational
+   values (including an informational formula) and upload. Verify the import
+   succeeds, the status/commentary changes, and the next downloads preserve the
+   original stored source values.
+3. Upload the September 30 pair, load the saved rows-and-columns config, and
+   change the commentary selection to `SEGMENT, PORTFOLIO` (leave BALANCE and
+   PORTFOLIO as the other independent selections). Run with **New Exceptions
+   Only** checked. Expect 90 stored rows and 70 visible; uncheck to show all 90.
+   The tracking table should page 50/40, offer 100/200/500, sort/filter over all
+   rows and show only the first four columns until the chooser reveals others.
+4. The September template should append only Segment/Portfolio; the August
+   historical template should also include later-added Portfolio with empty
+   cells. Both downloads for the same date must match, include all rows, and
+   prefill commentary; ordinary HTML/Excel reports follow the New Exceptions
+   Only toggle.
+5. To verify old-config clearing, save/POST a rows-and-columns config without
+   the field, for example:
+
+   ```bash
+   curl -X POST http://127.0.0.1:8000/api/rows-and-columns/configs/ \
+     -H 'Content-Type: application/json' \
+     -d '{"name":"legacy-no-template-columns","content":{"keyColumns":[{"kind":"column","name":"ACCOUNT_ID"}]}}'
+   ```
+
+   Load it through the UI and confirm the current commentary selection clears;
+   reload the saved new config to restore its ordered selection. Finally test an
+   unknown/duplicate ID and a wrong As-of Date; each upload should fail without
+   partial commentary updates.
+
+**READY FOR USER UI VALIDATION.** All four worker scopes are integrated; A's
+Rule Index and B's date-schema issues were returned, corrected and independently
+retested. Combined storage/API/capture/report/frontend suites, production build,
+and actual browser checks pass for the new behavior. The only automated blockers
+are pre-existing baseline pytest/Ruff/mypy findings stated above. The user still
+performs final functional acceptance. User `.config`, requirement edits,
+untracked planning instructions/addendum and `test-data/` remain untouched and
+uncommitted. No merge to main, push, deployment, worker worktree deletion or
+live-data modification occurred.

@@ -1,4 +1,4 @@
-# Commentary template exception details — B/D contract
+# Exception IDs in Results detail tables — compatibility contract
 
 > **SUPERSEDED for appended data columns.** The newest
 > `Exception Tracking Template optimization` requirement replaced automatic
@@ -47,107 +47,15 @@ The backend workbook always takes the Exception ID from the tracking record, so
 the workbook and displayed table use the same value. Worker B also applies the
 same fallback when matching older run rows for appended detail values.
 
-## Ordered appended detail columns
+## Current template contract
 
-The original workbook columns stay unchanged and in this order:
+The earlier automatic exception-detail-column behavior is superseded. The only
+source-data columns appended to current commentary templates and shown in
+Exception Tracking come from the ordered **Extra Columns for Commentary
+Template** selection. The current workbook order, status filtering, hidden-column,
+import-compatibility and date-scoped historical-column rules are documented in
+[`20261103_exception_tracking_template_optimization_contract.md`](20261103_exception_tracking_template_optimization_contract.md).
 
-1. Exception ID
-2. Exception Rule Identifier
-3. Key Columns
-4. Exception Timestamp
-5. Exception Commentary
-6. Exception As-of Date
-7. Exception First Seen As-of Date
-8. Exception Last Seen As-of Date
-9. Status
-
-After those, the backend appends the current Results exception-table columns
-that are not already represented, in table order:
-
-1. Each configured key column name, in `result.key_columns` order.
-2. `Rule Index` (the run-local `Rxxx` value).
-3. Each aggregation column using its display label
-   (`result.aggregation_column_labels.get(column, column)`).
-4. Each configured exception/extra column in `result.exception_columns` order;
-   for older runs without that list, use the first-seen order of
-   `violation.extra_values` keys.
-
-If `result.extra_column_display.exception_tables` is explicitly `false`, omit
-the configured exception/extra columns because they are not shown in the Results
-Exception Table. If that legacy display flag is absent, keep the historical
-default and include them.
-
-Deduplication rules:
-
-- Normalize a header by trimming and case-folding for comparison.
-- Skip a candidate if its normalized name already exists in the original nine
-  columns or in an earlier appended column.
-- Therefore a key/aggregation/extra column named `Status`, `Exception ID`,
-  `Exception Rule Identifier`, `Key Columns`, etc. is not appended twice.
-- The table's `Exception ID` and canonical `Rule identifier` columns are not
-  appended again because the original `Exception ID` and
-  `Exception Rule Identifier` columns already carry them.
-- The first occurrence of a duplicated name wins; later sources for that name
-  do not create another column.
-
-With the reference sample (`key_columns=["id","name"]`,
-`aggregation_columns=["status","region"]` with labels `Status`/`Region`,
-`exception_columns=["name","status","region","id","score"]`), the appended
-headers are:
-
-```text
-id, name, Rule Index, Region, score
-```
-
-The duplicated `name`, `status`, `region` and `id` extra columns are skipped
-because an earlier column already represents them. The aggregation `Status`
-column is also skipped because the original template already has `Status`.
-
-## Value mapping
-
-For each exception row, appended values come from the same run result row:
-
-| Appended source | Value |
-| --- | --- |
-| key column | `violation.key_columns[name]` |
-| `Rule Index` | the rule's local id (`Rxxx`) |
-| aggregation label | `violation.grouping_values[source_column]` |
-| exception/extra column | `violation.extra_values[source_column]` |
-
-Missing/`null` values become an empty cell. Values are written as literal text
-with the existing formula-injection protection. If one Exception ID has
-multiple violation rows, the first nonblank value for each appended column is
-used. If several saved runs exist for the same As-of Date, the newest run wins
-for matching detail values.
-
-## Downloads from Results and Exception Tracking
-
-Both downloads call the same date-scoped endpoint/service and therefore produce
-the same workbook for the same As-of Date:
-
-```text
-GET /api/exception-tracking/export/?as_of_date=YYYY-MM-DD
-GET /api/exception-tracking/export/?run_id=<run-id>
-```
-
-The backend resolves detail values by scanning saved run documents whose
-top-level `as_of_date` equals the selected date, newest first. It matches each
-tracking row by Exception ID. Old runs without `as_of_date` are ignored for
-detail enrichment; old runs without `exception_id` use the fallback calculation.
-If no saved run provides detail context for a date, the original nine columns
-remain and no detail columns are appended.
-
-## Import behavior
-
-- The first nine columns remain required, in the existing order, and the
-  As-of Date metadata and Exception IDs remain validated exactly as before.
-- Every column after the ninth is informational. The importer ignores its
-  header and values completely.
-- Editing, blanking, adding, deleting, reordering or renaming trailing
-  informational columns must not fail an otherwise valid import and must never
-  update exception data.
-- Unknown/duplicate/missing Exception IDs, mismatched As-of Dates, malformed
-  workbooks, and resource-limit violations still fail atomically with no
-  partial commentary update.
-- Workbook version remains `exception_commentary/v1`; older workbooks with only
-  the nine original columns remain valid.
+The stable Exception ID contract above remains in force: use the backend ID when
+supplied; otherwise the Results frontend derives the same literal value only from
+a canonical rule identifier and complete configured key values.

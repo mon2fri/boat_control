@@ -238,6 +238,10 @@ def test_paginated_violation_pages_preserve_identity_inputs(
             rule_identifier=rule_identifier,
             rule_name="Status",
             key_columns={"id": identifier, "region": region},
+            details="bad",
+            violating_column="status",
+            violating_value="inactive",
+            rule_logic="status equals 'active'",
         )
         for index, identifier, region in ((0, "A", "EMEA"), (1, "B", "APAC"))
     ]

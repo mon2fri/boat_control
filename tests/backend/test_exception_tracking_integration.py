@@ -13,6 +13,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
+from apps.exception_tracking import api_services
 from apps.exception_tracking.api_services import (
     TrackingAPIError,
     export_commentary,
@@ -176,3 +177,91 @@ def test_real_store_export_uses_standard_columns_without_detail_metadata(
     assert sheet["A2"].value == list_exceptions(FIRST_DATE, repository)[0]["exception_id"]
     assert sheet["B2"].value == "Commented"
     assert sheet["C2"].value == "Known"
+
+
+def test_real_store_date_scoped_template_columns_and_later_historical_union(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = repository_module.ExceptionTrackingRepository(tmp_path / "tracking.db")
+    occurrence_type = domain_module.ExceptionOccurrence
+    repository.record_exceptions(
+        FIRST_DATE,
+        [
+            occurrence_type(
+                exception_rule_identifier=RULE_IDENTIFIER,
+                key_columns={"id": "A", "region": "EMEA"},
+                key_column_order=["id", "region"],
+                exception_timestamp=datetime(2026, 8, 31, 9, tzinfo=UTC),
+                exception_rule_index="R001",
+                exception_extra_values={"REGION": "EMEA", "SEGMENT": "Retail"},
+            )
+        ],
+        extra_columns=["REGION", "SEGMENT"],
+    )
+    repository.record_exceptions(
+        SECOND_DATE,
+        [
+            occurrence_type(
+                exception_rule_identifier=RULE_IDENTIFIER,
+                key_columns={"id": "A", "region": "EMEA"},
+                key_column_order=["id", "region"],
+                exception_timestamp=datetime(2026, 9, 30, 9, tzinfo=UTC),
+                exception_rule_index="R001",
+                exception_extra_values={
+                    "SEGMENT": "Wholesale",
+                    "PORTFOLIO": "Growth",
+                },
+            )
+        ],
+        extra_columns=["SEGMENT", "PORTFOLIO"],
+    )
+    monkeypatch.setattr(api_services, "get_repository", lambda: repository)
+
+    august_columns = api_services.list_template_detail_columns(repository, FIRST_DATE)
+    september_columns = api_services.list_template_detail_columns(
+        repository, SECOND_DATE
+    )
+    assert august_columns == ["REGION", "SEGMENT", "PORTFOLIO"]
+    assert september_columns == ["SEGMENT", "PORTFOLIO"]
+
+    august_listing = APIClient().get(
+        f"/api/exception-tracking/?as_of_date={FIRST_DATE.isoformat()}"
+    ).json()
+    september_listing = APIClient().get(
+        f"/api/exception-tracking/?as_of_date={SECOND_DATE.isoformat()}"
+    ).json()
+    assert august_listing["detail_columns"] == august_columns
+    assert august_listing["exceptions"][0]["detail_values"] == {
+        "REGION": "EMEA",
+        "SEGMENT": "Retail",
+        "PORTFOLIO": "",
+    }
+    assert september_listing["detail_columns"] == september_columns
+    assert september_listing["exceptions"][0]["detail_values"] == {
+        "SEGMENT": "Wholesale",
+        "PORTFOLIO": "Growth",
+    }
+
+    august = load_workbook(io.BytesIO(export_commentary(FIRST_DATE, repository)))
+    september = load_workbook(io.BytesIO(export_commentary(SECOND_DATE, repository)))
+    august_sheet = august["Exceptions"]
+    september_sheet = september["Exceptions"]
+    assert [cell.value for cell in august_sheet[1]][len(EXCEPTION_HEADERS) :] == [
+        "REGION",
+        "SEGMENT",
+        "PORTFOLIO",
+    ]
+    assert [cell.value for cell in august_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+        "EMEA",
+        "Retail",
+        None,
+    ]
+    assert [cell.value for cell in september_sheet[1]] == [
+        *EXCEPTION_HEADERS,
+        "SEGMENT",
+        "PORTFOLIO",
+    ]
+    assert [cell.value for cell in september_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+        "Wholesale",
+        "Growth",
+    ]
