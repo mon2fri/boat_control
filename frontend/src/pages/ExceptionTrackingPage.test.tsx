@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ExceptionTrackingPage } from "./ExceptionTrackingPage";
-import { defaultAsOfDate } from "../lib/asOfDate";
+import { defaultAsOfDate, formatIsoDate } from "../lib/asOfDate";
 
 const AS_OF = defaultAsOfDate();
 
@@ -153,7 +153,9 @@ describe("ExceptionTrackingPage", () => {
         String(url).includes(`/exception-tracking/?as_of_date=${AS_OF}`),
       )).toBe(true),
     );
-    expect(screen.getByLabelText("As-of Date")).toHaveValue(AS_OF);
+    expect(
+      screen.getByRole("button", { name: new RegExp(`As-of Date, selected`) }),
+    ).toHaveTextContent(formatIsoDate(AS_OF));
   });
 
   it("downloads the selected-date commentary template", async () => {
@@ -245,5 +247,46 @@ describe("ExceptionTrackingPage", () => {
       expect(screen.getByText(new RegExp(`No exceptions are recorded for ${AS_OF}`))).toBeInTheDocument(),
     );
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("selects an older marked date through Other date and loads its no-data state", async () => {
+    const dates = Array.from({ length: 12 }, (_, index) => {
+      const day = String(30 - index).padStart(2, "0");
+      return `2026-10-${day}`;
+    });
+    const fetchMock = vi.fn((url: string) => {
+      const target = String(url);
+      if (target.includes("/exception-tracking/dates/")) {
+        return Promise.resolve(json({ dates, default_as_of_date: "2026-10-30" }));
+      }
+      if (target.includes("as_of_date=2026-10-19")) {
+        return Promise.resolve(json({ as_of_date: "2026-10-19", exceptions: [] }));
+      }
+      return Promise.resolve(json({ as_of_date: "2026-10-30", exceptions: [] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+
+    const trigger = await screen.findByRole("button", { name: /As-of Date, selected/ });
+    await waitFor(() => expect(trigger).toHaveTextContent(formatIsoDate("2026-10-30")));
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("option", { name: /Other date/ }));
+
+    const olderDay = await screen.findByRole("button", {
+      name: /19, 2026, has tracking data/,
+    });
+    fireEvent.click(olderDay);
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) =>
+        String(url).includes("/exception-tracking/?as_of_date=2026-10-19"),
+      )).toBe(true),
+    );
+    expect(trigger).toHaveTextContent(formatIsoDate("2026-10-19"));
+    await waitFor(() =>
+      expect(
+        screen.getByText(/No exceptions are recorded for 2026-10-19/),
+      ).toBeInTheDocument(),
+    );
   });
 });

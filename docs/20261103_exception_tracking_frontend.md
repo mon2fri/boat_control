@@ -27,7 +27,20 @@ verification performed while the backend branches were still being integrated.
 
 Route: `/exception-tracking` (navigation item **Exception Tracking**).
 
-- Select a date with the calendar control or from the recorded-date list.
+- One **As-of Date** selector replaces the old separate date input and
+  recorded-date select. Its first click opens a dropdown of up to the 10 latest
+  available dates with tracking data, newest first; **Other date…** is always
+  the final option, even with zero or fewer than ten dates.
+- Choosing **Other date…** opens a custom calendar. Every date with recorded
+  data — including older dates outside the latest ten — carries a green dot,
+  an `aria-label` stating “has tracking data”, and bold weight. Unrecorded dates
+  remain plain but selectable and show the existing no-data state. Today uses
+  a warning-coloured outline and the selected date uses an accent fill, so the
+  three indicators are visually and programmatically distinct.
+- The calendar supports month navigation, Escape/Cancel dismissal without
+  changing selection, and arrow-key day movement. Available dates and calendar
+  markers share the same authoritative `/exception-tracking/dates/` list;
+  saving a new tracking database path or importing commentary invalidates it.
 - Displays all eight requested columns plus a visible status badge:
   Exception ID, Exception Rule Identifier, Key Columns, Exception Timestamp,
   Exception Commentary, Exception As-of Date, First Seen As-of Date,
@@ -107,7 +120,14 @@ New/updated focused tests:
   statuses, key-column display formats, status fallback, date sorting.
 - `src/pages/ExceptionTrackingPage.test.tsx` — all requested columns + status,
   backend default, template download, successful import/refresh, unknown-ID
-  rejection, non-XLSX rejection, empty state.
+  rejection, non-XLSX rejection, empty state, older marked date via Other date.
+- `src/features/tracking/AsOfDateSelector.test.tsx` — 10-latest/newest-first
+  limit, fewer/empty dates, Other date placement, available-date selection,
+  keyboard listbox navigation, calendar markers for older dates, plain
+  unrecorded dates, selected/today/data distinctions, cancellation, arrow-key
+  day movement and marker refresh when the authoritative list changes.
+- `src/features/settings/useSettings.test.tsx` — database-path save invalidates
+  available dates, calendar markers and loaded tracking rows.
 - `src/features/reports/ExportControls.test.tsx` — results page downloads the
   same date-bound template; historical runs without a date disable it.
 - `src/pages/SettingsPage.test.tsx` — path loaded/saved with the B field name,

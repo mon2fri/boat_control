@@ -31,6 +31,10 @@ import {
   updateSavedFilter,
 } from "../../api/endpoints";
 import type { AppSettings, SavedFilter } from "../../api/domain";
+import {
+  EXCEPTION_TRACKING_DATES_KEY,
+  EXCEPTION_TRACKING_KEY,
+} from "../tracking/queryKeys";
 
 const SETTINGS_KEY = ["settings"] as const;
 const FILTERS_KEY = ["saved-filters"] as const;
@@ -55,7 +59,13 @@ export function useSaveSettings() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (next: AppSettings) => saveSettings(next),
-    onSuccess: (saved) => client.setQueryData(SETTINGS_KEY, saved),
+    onSuccess: (saved) => {
+      client.setQueryData(SETTINGS_KEY, saved);
+      // The configured tracking database may have changed: refresh both the
+      // available-date list/markers and any loaded exception rows.
+      void client.invalidateQueries({ queryKey: EXCEPTION_TRACKING_DATES_KEY });
+      void client.invalidateQueries({ queryKey: EXCEPTION_TRACKING_KEY });
+    },
   });
 }
 

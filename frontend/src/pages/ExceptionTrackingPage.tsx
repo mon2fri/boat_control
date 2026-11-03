@@ -8,12 +8,16 @@ import {
 import type { ExceptionStatus, TrackedException } from "../api/domain";
 import { defaultAsOfDate, formatIsoDate, isValidIsoDate } from "../lib/asOfDate";
 import { formatDateTime } from "../utils/format";
-import { AsOfDateField } from "../features/tracking/AsOfDateField";
+import { AsOfDateSelector } from "../features/tracking/AsOfDateSelector";
 import {
   useExceptionTrackingDates,
   useImportCommentary,
   useTrackedExceptions,
 } from "../features/tracking/useTracking";
+import {
+  EXCEPTION_TRACKING_DATES_KEY,
+  EXCEPTION_TRACKING_KEY,
+} from "../features/tracking/queryKeys";
 
 const STATUS_CLASS: Record<ExceptionStatus, string> = {
   New: "status-badge status-badge--new",
@@ -165,37 +169,19 @@ export function ExceptionTrackingPage() {
       </p>
 
       <div className="card">
-        <div className="tracking-toolbar">
-          <AsOfDateField
-            id="tracking-as-of-date"
-            value={selectedDate}
-            dates={dates}
-            onChange={(date) => {
-              setExplicitDate(date);
-              setNotice(null);
-            }}
-            hint="Pick a date to load its exception-tracking table. Dates with recorded data are offered below."
-          />
-          {dates.length > 0 && (
-            <div className="field">
-              <label htmlFor="tracking-recorded-dates">Recorded dates</label>
-              <select
-                id="tracking-recorded-dates"
-                value={dates.includes(selectedDate) ? selectedDate : ""}
-                onChange={(event) => {
-                  if (!event.target.value) return;
-                  setExplicitDate(event.target.value);
-                  setNotice(null);
-                }}
-              >
-                <option value="">-- Choose a recorded date --</option>
-                {dates.map((date) => (
-                  <option key={date} value={date}>{date}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
+        <AsOfDateSelector
+          id="tracking-as-of-date"
+          value={selectedDate}
+          availableDates={dates}
+          onChange={(date) => {
+            setExplicitDate(date);
+            setNotice(null);
+          }}
+        />
+        <p className="field-hint">
+          The menu lists up to ten latest recorded dates. Choose <strong>Other date…</strong> to
+          open the calendar, where a dot marks every date that has tracking data.
+        </p>
         {datesQuery.isError && (
           <p className="alert alert--warn" role="status">
             Recorded dates could not be loaded ({datesQuery.error.message}). You can still try a date
@@ -226,16 +212,6 @@ export function ExceptionTrackingPage() {
             disabled={listQuery.isFetching || dateInvalid}
           >
             {listQuery.isFetching ? "Refreshing…" : "Refresh list"}
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              setExplicitDate(null);
-              setNotice(null);
-            }}
-          >
-            Use default date
           </button>
         </div>
         <div className="field tracking-upload">
@@ -335,8 +311,8 @@ export function ExceptionTrackingPage() {
             type="button"
             className="btn"
             onClick={() => {
-              void queryClient.invalidateQueries({ queryKey: ["exception-tracking"] });
-              void queryClient.invalidateQueries({ queryKey: ["exception-tracking-dates"] });
+              void queryClient.invalidateQueries({ queryKey: EXCEPTION_TRACKING_KEY });
+              void queryClient.invalidateQueries({ queryKey: EXCEPTION_TRACKING_DATES_KEY });
             }}
           >
             Refresh dates and list

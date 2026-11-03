@@ -5,16 +5,18 @@ import {
   loadExceptionTrackingDates,
 } from "../../api/endpoints";
 import { isValidIsoDate } from "../../lib/asOfDate";
-
-const DATES_KEY = ["exception-tracking-dates"] as const;
+import {
+  EXCEPTION_TRACKING_DATES_KEY,
+  EXCEPTION_TRACKING_KEY,
+} from "./queryKeys";
 
 function exceptionsKey(asOfDate: string) {
-  return ["exception-tracking", asOfDate] as const;
+  return [EXCEPTION_TRACKING_KEY[0], asOfDate] as const;
 }
 
 export function useExceptionTrackingDates() {
   return useQuery({
-    queryKey: DATES_KEY,
+    queryKey: EXCEPTION_TRACKING_DATES_KEY,
     queryFn: () => loadExceptionTrackingDates(),
     retry: false,
     staleTime: 30_000,
@@ -37,7 +39,7 @@ export function useImportCommentary(asOfDate: string) {
     onSuccess: async () => {
       await Promise.all([
         client.invalidateQueries({ queryKey: exceptionsKey(asOfDate) }),
-        client.invalidateQueries({ queryKey: DATES_KEY }),
+        client.invalidateQueries({ queryKey: EXCEPTION_TRACKING_DATES_KEY }),
       ]);
     },
   });
