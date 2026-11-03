@@ -236,7 +236,7 @@ The required full gates and their final disposition are recorded below.
 | `uv run pytest -q tests/backend tests/contracts tests/integration` | **465 passed, 1 failed**. The failure is `tests/backend/test_rule_identifier_release_review.py::test_migration_reconciles_later_file_edits` (`KeyError: 'rule_id'` in legacy rule migration). Worker handoffs report reproducing this on the untouched setup baseline `aabcf5c`; no rule migration files were changed here. |
 | `npm --prefix frontend test -- --run` | Passed: **50 files, 458 tests**. |
 | `npm --prefix frontend run build` | Passed (TypeScript + Vite); Vite reports its >500 kB JS chunk advisory. |
-| `git diff --check` | Passed after all final edits (rerun before commit below). |
+| `git diff --check` | Passed on the staged final docs/review and again on the final committed diff. |
 
 `npm ci --prefix frontend` installed the locked dependencies. npm reported 25
 dependency advisories (16 moderate, 9 high); no `npm audit fix` was run.
