@@ -248,16 +248,11 @@ class TestBuildOccurrences:
     def test_empty_run_produces_no_occurrences(self) -> None:
         assert build_occurrences(make_result(violations_by_rule={})) == []
 
-    def test_naive_timestamp_is_treated_as_utc(self) -> None:
+    def test_naive_timestamp_is_rejected(self) -> None:
         result = make_result(violations_by_rule={"R001": [violation()]})
 
-        occurrence = build_occurrences(
-            result, captured_at=datetime(2026, 10, 30, 12, 0)
-        )[0]
-
-        timestamp = occurrence["exception_timestamp"]
-        assert isinstance(timestamp, datetime)
-        assert timestamp.tzinfo is UTC
+        with pytest.raises(ExceptionCaptureError, match="timezone-aware"):
+            build_occurrences(result, captured_at=datetime(2026, 10, 30, 12, 0))
 
     def test_aware_timestamp_is_converted_to_utc(self) -> None:
         result = make_result(violations_by_rule={"R001": [violation()]})
@@ -271,6 +266,25 @@ class TestBuildOccurrences:
         assert isinstance(timestamp, datetime)
         assert timestamp == local
         assert timestamp.utcoffset() == timedelta(0)
+
+    def test_datetime_key_values_use_iso_8601_text(self) -> None:
+        result = make_result(
+            violations_by_rule={
+                "R001": [
+                    violation(
+                        key_columns={
+                            "id": datetime(2026, 10, 30, 12, 15, tzinfo=UTC)
+                        }
+                    )
+                ]
+            },
+        )
+
+        occurrence = build_occurrences(result)[0]
+
+        assert occurrence["key_columns"] == (
+            ("id", "2026-10-30T12:15:00+00:00"),
+        )
 
 
 class TestCaptureRunExceptions:

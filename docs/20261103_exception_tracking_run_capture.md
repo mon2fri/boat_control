@@ -35,8 +35,9 @@ no second workbook or storage implementation in this scope.
   drift; the local fallback uses the backend server's current calendar date.
   January rolls back to December of the previous year; a month ending on
   Saturday/Sunday resolves to the preceding Friday.
-- Invalid dates, timestamps, locale formats, and impossible dates return HTTP
-  400. The backend never silently substitutes the default for an invalid value.
+- Invalid dates, timestamps, whitespace-padded dates, locale formats, blank
+  supplied values, and impossible dates return HTTP 400. The backend never
+  silently substitutes the default for an invalid value.
 - Upload (`POST /api/files/upload/`) accepts an optional `as_of_date` form field,
   validates it before storing files, retains it on the server-side upload
   session, and returns the effective date in the response. Preset loads follow

@@ -161,7 +161,6 @@ def test_real_capture_round_trip_and_results_workbook(
         assert loaded is not None
         assert loaded["as_of_date"] == "2026-10-30"
 
-
 def test_real_empty_run_creates_selectable_date_and_header_only_workbook(
     tmp_path: Path,
 ) -> None:
@@ -231,4 +230,3 @@ def test_real_capture_second_date_is_not_commented_and_legacy_export_is_rejected
         loaded = load_run(second["run_id"])
         assert loaded is not None
         assert loaded["as_of_date"] == "2026-10-30"
-

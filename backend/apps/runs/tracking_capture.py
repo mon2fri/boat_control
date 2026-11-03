@@ -66,8 +66,17 @@ class Exposure:
 def _utc_timestamp(value: datetime | None) -> datetime:
     timestamp = value or datetime.now(UTC)
     if timestamp.tzinfo is None or timestamp.utcoffset() is None:
-        return timestamp.replace(tzinfo=UTC)
+        raise ExceptionCaptureError(
+            "Exception capture timestamp must be timezone-aware; supply UTC or another "
+            "explicit timezone. Naive timestamps are ambiguous and are not guessed."
+        )
     return timestamp.astimezone(UTC)
+
+
+def _key_value_text(value: object) -> str:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value)
 
 
 def _rule_identifier(
@@ -117,7 +126,7 @@ def _ordered_key_pairs(
                 f"'{column}'. Exception IDs require every configured key value; no "
                 "ID was guessed."
             )
-        text_value = str(raw_value)
+        text_value = _key_value_text(raw_value)
         if text_value == "":
             raise ExceptionCaptureError(
                 f"Exception for rule {rule_id} has an empty value for key column "

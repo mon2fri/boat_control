@@ -40,7 +40,7 @@ def parse_as_of_date(value: object) -> date:
     if not isinstance(value, str):
         raise AsOfDateError("As-of Date must be an ISO calendar date (YYYY-MM-DD).")
 
-    text = value.strip()
+    text = value
     if not _ISO_DATE.fullmatch(text):
         raise AsOfDateError(
             f"As-of Date '{value}' must use the ISO calendar format YYYY-MM-DD."
@@ -102,13 +102,14 @@ def resolve_as_of_date(
 ) -> date:
     """Resolve an explicit request date, then a session fallback, then the default.
 
-    Empty strings and ``None`` are treated as "not supplied". Invalid values
-    raise :class:`AsOfDateError`; they are never silently replaced by a default.
+    Only ``None`` is treated as "not supplied". An explicitly supplied empty or
+    malformed value raises :class:`AsOfDateError`; it is never silently replaced
+    by a default.
     """
 
-    if value is not None and value != "":
+    if value is not None:
         return parse_as_of_date(value)
-    if fallback is not None and fallback != "":
+    if fallback is not None:
         return parse_as_of_date(fallback)
     return default_as_of_date(today)
 

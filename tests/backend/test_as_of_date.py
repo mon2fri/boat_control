@@ -33,8 +33,10 @@ class TestParseAsOfDate:
         with pytest.raises(AsOfDateError):
             parse_as_of_date(value)
 
-    def test_strips_surrounding_whitespace_like_the_tracking_api(self) -> None:
-        assert parse_as_of_date(" 2026-01-02 ") == date(2026, 1, 2)
+    @pytest.mark.parametrize("value", [" 2026-01-02", "2026-01-02 "])
+    def test_rejects_surrounding_whitespace(self, value: str) -> None:
+        with pytest.raises(AsOfDateError):
+            parse_as_of_date(value)
 
     def test_rejects_datetime_and_non_string_values(self) -> None:
         with pytest.raises(AsOfDateError):
@@ -81,10 +83,10 @@ class TestResolveAsOfDate:
             None, fallback="2026-08-31", today=date(2026, 11, 3)
         ) == date(2026, 8, 31)
 
-    def test_empty_strings_fall_through(self) -> None:
-        assert resolve_as_of_date(
-            "", fallback="", today=date(2026, 11, 3)
-        ) == date(2026, 10, 30)
+    @pytest.mark.parametrize("value", ["", " "])
+    def test_explicit_empty_strings_are_invalid(self, value: str) -> None:
+        with pytest.raises(AsOfDateError):
+            resolve_as_of_date(value, fallback="2026-08-31", today=date(2026, 11, 3))
 
     def test_invalid_request_date_is_not_silently_defaulted(self) -> None:
         with pytest.raises(AsOfDateError):
