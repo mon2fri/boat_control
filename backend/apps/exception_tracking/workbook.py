@@ -211,7 +211,12 @@ def build_commentary_workbook(
     appended = _unique_detail_columns(detail_columns)
     headers = [*EXCEPTION_HEADERS, *appended]
     sheet = workbook.create_sheet(EXCEPTIONS_SHEET)
-    sheet.append(headers)
+    sheet.append(
+        [
+            *EXCEPTION_HEADERS,
+            *[_protect_text(column) for column in appended],
+        ]
+    )
     _style_header(sheet)
 
     values_by_id = detail_values or {}

@@ -253,6 +253,18 @@ def test_detail_values_are_formula_protected_as_literal_text() -> None:
     assert workbook["Exceptions"]["K2"].value == "'=HYPERLINK(\"x\")"
 
 
+def test_detail_column_header_is_formula_protected_as_literal_text() -> None:
+    record = _record()
+    content = build_commentary_workbook(
+        [record],
+        date(2026, 10, 30),
+        detail_columns=["=HYPERLINK(\"x\")"],
+        detail_values={record["exception_id"]: {"=HYPERLINK(\"x\")": "value"}},
+    )
+    workbook = load_workbook(io.BytesIO(content))
+    assert workbook["Exceptions"]["K1"].value == "'=HYPERLINK(\"x\")"
+
+
 def test_accepts_excel_date_cell_for_as_of_date() -> None:
     def set_date_cell(workbook: Any) -> None:
         workbook["Template"]["B3"] = datetime(2026, 10, 30)
