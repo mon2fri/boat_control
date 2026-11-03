@@ -171,11 +171,15 @@ Neither list includes a file changed by this delivery.
 - Worker B's `record_to_dict()` expects `date`/`datetime` objects and the exact status
   strings; `ExceptionRecord` provides them.
 - Worker C's `capture_exceptions()` seam is provided with its published payload shape.
-- **Resolver-name mismatch to reconcile:** Worker C's `resolve_tracking_db_path()` looks for
-  `apps.settings.services.get_exception_tracking_db_path`, while Worker B currently exposes
-  `get_exception_tracking_path`. This is outside Worker A's ownership; the reviewer should
-  have Worker B add the alias or Worker C use the existing name before end-to-end run
-  capture is tested.
+  Worker C's delivery reports a real A/B integration run against Worker A commit
+  `0422f04` (450 passed, 1 pre-existing failure); this delivery's later `cc76cbc`
+  commit only adds read-side schema validation and does not change any interface or
+  stored format. The reviewer should rerun C's integration after cherry-picking all
+  three A commits.
+- Worker C has already aligned its path resolver to Worker B's
+  `get_exception_tracking_path` (C commit `a5ea453`); the earlier provisional
+  `get_exception_tracking_db_path` name is no longer present in C's current branch.
+  No resolver-name mismatch remains.
 - No live `data/exception_tracking.db` was created or read. The untracked
   `data/prepare_cache/` directory was left untouched and not committed.
 - Reviewer-owned follow-up: `.gitignore` currently ignores `data/*.sqlite3` but not
