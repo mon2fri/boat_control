@@ -201,9 +201,9 @@ def build_commentary_workbook(
     template["B4"] = _protect_text(generated.isoformat())
     template["A5"] = "Instructions"
     template["B5"] = _protect_text(
-        "Edit only the Exception Commentary column. A blank commentary cell clears "
-        "the value for this as-of date. Do not change exception IDs. Columns after "
-        "Status are informational context and are ignored during upload."
+        "Edit only the Commentary column. A blank commentary cell clears the value "
+        "for this as-of date. Do not change exception IDs. Columns after Rule Index "
+        "are informational context and are ignored during upload."
     )
     template.column_dimensions["A"].width = 24
     template.column_dimensions["B"].width = 90
