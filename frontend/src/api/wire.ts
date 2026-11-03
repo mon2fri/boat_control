@@ -269,6 +269,8 @@ export const wireRunRequestSchema = z.object({
   filters: z.array(wireFilterRowSchema).optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
   exception_columns: z.array(z.string()).optional(),
+  commentary_template_columns: z.array(z.string()).optional(),
+  new_exceptions_only: z.boolean().optional(),
   extra_column_display: z.object({
     overall_result_page: z.boolean(), overall_html_report: z.boolean(), overall_excel_report: z.boolean(),
     new_books_result_page: z.boolean(), new_books_html_report: z.boolean(), new_books_excel_report: z.boolean(),
@@ -404,6 +406,8 @@ export const wireRunResultSchema = z.object({
     extra_columns: z.array(z.string()).optional(),
   })).optional(),
   exception_columns: z.array(z.string()).optional(),
+  commentary_template_columns: z.array(z.string()).optional(),
+  new_exceptions_only: z.boolean().optional(),
   extra_column_display: z.object({
     overall_result_page: z.boolean(), overall_html_report: z.boolean(), overall_excel_report: z.boolean(),
     new_books_result_page: z.boolean(), new_books_html_report: z.boolean(), new_books_excel_report: z.boolean(),
@@ -419,6 +423,7 @@ export const wireRunDocumentSchema = z.object({
   created_at: z.string(),
   /** Calendar date used for exception tracking. Older runs omit it. */
   as_of_date: z.string().optional(),
+  new_exceptions_only: z.boolean().optional(),
   result: wireRunResultSchema,
 });
 export type WireRunDocument = z.infer<typeof wireRunDocumentSchema>;
@@ -451,6 +456,7 @@ export const legacyWireRunDocumentSchema = z.object({
   file_b_name: z.string(),
   created_at: z.string(),
   as_of_date: z.string().optional(),
+  new_exceptions_only: z.boolean().optional(),
   result: legacyRunResultSchema,
 });
 export type LegacyWireRunDocument = z.infer<typeof legacyWireRunDocumentSchema>;
@@ -513,6 +519,7 @@ export const wireExceptionKeyColumnsSchema = z
 export const wireTrackedExceptionSchema = z.object({
   exception_id: z.string(),
   exception_rule_identifier: z.string(),
+  rule_index: z.string().nullable().optional(),
   key_columns: wireExceptionKeyColumnsSchema,
   exception_timestamp: z.string(),
   exception_commentary: z.string().nullable().optional(),
@@ -521,10 +528,23 @@ export const wireTrackedExceptionSchema = z.object({
   exception_last_seen_as_of_date: z.string(),
   exception_first_seen_timestamp: z.string().nullable().optional(),
   exception_last_seen_timestamp: z.string().nullable().optional(),
+  /** Values for selected commentary-template columns, keyed by column name. */
+  detail_values: z.record(z.string(), wireScalarSchema).optional(),
+  /** Compatibility alias for detail_values. */
+  extra_values: z.record(z.string(), wireScalarSchema).optional(),
   /** Backend-derived status; required once B ships it, optional for fixtures. */
   status: wireExceptionStatusSchema.optional(),
 });
 export type WireTrackedException = z.infer<typeof wireTrackedExceptionSchema>;
+
+export const wireExceptionTrackingColumnSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  visible: z.boolean().default(false),
+  sortable: z.boolean().default(true),
+  filterable: z.boolean().default(true),
+  source: z.enum(["standard", "detail"]).default("standard"),
+});
 
 export const wireExceptionTrackingListSchema = z.union([
   z.array(wireTrackedExceptionSchema),
@@ -532,6 +552,18 @@ export const wireExceptionTrackingListSchema = z.union([
     as_of_date: z.string().optional(),
     exceptions: z.array(wireTrackedExceptionSchema),
     total: z.number().int().nonnegative().optional(),
+    unfiltered_total: z.number().int().nonnegative().optional(),
+    offset: z.number().int().nonnegative().optional(),
+    limit: z.number().int().positive().optional(),
+    has_more: z.boolean().optional(),
+    sort: z.string().nullable().optional(),
+    order: z.enum(["asc", "desc"]).optional(),
+    columns: z.array(wireExceptionTrackingColumnSchema).optional(),
+    available_filters: z.record(z.string(), z.array(z.string())).optional(),
+    /** Ordered additional columns selected for the commentary template. */
+    detail_columns: z.array(z.string()).optional(),
+    commentary_template_columns: z.array(z.string()).optional(),
+    available_columns: z.array(z.string()).optional(),
   }),
 ]);
 export type WireExceptionTrackingList = z.infer<typeof wireExceptionTrackingListSchema>;

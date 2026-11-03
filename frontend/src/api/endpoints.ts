@@ -55,6 +55,7 @@ import type {
   CommentaryImportResult,
   DetailRow,
   ExceptionTrackingDates,
+  ExceptionTrackingResult,
   Family,
   Rule as DomainRule,
   FilterRow,
@@ -65,7 +66,6 @@ import type {
   RunSummary,
   SavedFilter,
   SourceFile,
-  TrackedException,
 } from "./domain";
 import { z } from "zod";
 import { resolveExceptionId } from "../lib/exceptionIdentity";
@@ -462,10 +462,16 @@ export function loadRunHistory(): Promise<RunSummary[]> {
   );
 }
 
-export function loadRun(id: string): Promise<RunResult> {
-  return apiRequest(`/runs/${encodeURIComponent(id)}/`, { schema: wireRunDocumentResponseSchema }).then(
-    mapRunDocumentToResult,
-  );
+export function loadRun(
+  id: string,
+  newExceptionsOnly?: boolean,
+): Promise<RunResult> {
+  const query = newExceptionsOnly === undefined
+    ? ""
+    : `?new_exceptions_only=${newExceptionsOnly ? "true" : "false"}`;
+  return apiRequest(`/runs/${encodeURIComponent(id)}/${query}`, {
+    schema: wireRunDocumentResponseSchema,
+  }).then(mapRunDocumentToResult);
 }
 
 export function deleteRun(id: string): Promise<void> {
@@ -522,6 +528,7 @@ export async function downloadExport(
   options: {
     onProgress?: (received: number, total: number | null) => void;
     signal?: AbortSignal;
+    newExceptionsOnly?: boolean;
   } = {},
 ): Promise<ExportResult> {
   // The export endpoint is the only one whose response is not JSON; bypass
@@ -534,7 +541,13 @@ export async function downloadExport(
     method: "POST",
     credentials: "same-origin",
     headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({ run_id: runId, format }),
+    body: JSON.stringify({
+      run_id: runId,
+      format,
+      ...(options.newExceptionsOnly !== undefined
+        ? { new_exceptions_only: options.newExceptionsOnly }
+        : {}),
+    }),
     ...(options.signal ? { signal: options.signal } : {}),
   });
   if (!response.ok) {
@@ -627,12 +640,27 @@ export function loadExceptionTrackingDates(): Promise<ExceptionTrackingDates> {
   }).then(mapTrackingDates);
 }
 
-export function loadExceptionTracking(asOfDate: string): Promise<{
-  asOfDate: string | null;
-  exceptions: TrackedException[];
-}> {
-  const query = `?as_of_date=${encodeURIComponent(asOfDate)}`;
-  return apiRequest(`/exception-tracking/${query}`, {
+export interface ExceptionTrackingQuery {
+  offset?: number;
+  limit?: number;
+  sort?: string | null;
+  order?: "asc" | "desc";
+  filters?: Record<string, string[]>;
+}
+
+export function loadExceptionTracking(
+  asOfDate: string,
+  options: ExceptionTrackingQuery = {},
+): Promise<ExceptionTrackingResult> {
+  const params = new URLSearchParams({ as_of_date: asOfDate });
+  if (options.offset !== undefined) params.set("offset", String(options.offset));
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.sort) params.set("sort", options.sort);
+  if (options.order) params.set("order", options.order);
+  for (const [key, values] of Object.entries(options.filters ?? {})) {
+    if (values.length > 0) params.set(`filter_${key}`, values.join(","));
+  }
+  return apiRequest(`/exception-tracking/?${params.toString()}`, {
     schema: wireExceptionTrackingListSchema,
   }).then(mapExceptionTrackingList);
 }

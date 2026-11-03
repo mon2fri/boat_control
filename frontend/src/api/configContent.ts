@@ -54,6 +54,8 @@ export interface RowsColumnsConfigContent {
   extraColumns?: ColumnRef[];
   /** Legacy name retained so existing rows-and-columns configs still load. */
   exceptionColumns?: ColumnRef[];
+  /** Ordered source columns appended to the commentary template and tracking table. */
+  commentaryTemplateColumns?: ColumnRef[];
   extraColumnDisplay?: ExtraColumnDisplay | undefined;
   /** When true, aggregation columns form an ordered hierarchy shown as a tree. */
   nestedAggregationEnabled?: boolean;
@@ -92,6 +94,7 @@ export interface ConfigLoadResult {
   filters: FilterRow[];
   targetColumns: string[];
   exceptionColumns: string[];
+  commentaryColumns: string[];
   extraColumnDisplay: ExtraColumnDisplay;
   nestedAggregationEnabled: boolean;
   comparisonSections: ResolvedComparisonSection[];
@@ -252,7 +255,7 @@ export function resolveRowsColumnsConfig(
   const comparisonSections: ResolvedComparisonSection[] = [];
 
   if (!data) {
-    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], aggregationColumnLabels, filters: [], targetColumns: [], exceptionColumns: [], extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true }, nestedAggregationEnabled, comparisonSections: [], warnings };
+    return { comparisonColumns: [], keyColumns: [], aggregationColumns: [], aggregationColumnLabels, filters: [], targetColumns: [], exceptionColumns: [], commentaryColumns: [], extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true }, nestedAggregationEnabled, comparisonSections: [], warnings };
   }
 
   if (Array.isArray(data.comparisonColumns)) {
@@ -306,6 +309,19 @@ export function resolveRowsColumnsConfig(
     }
   }
 
+  const commentaryColumns: string[] = [];
+  // Deliberately no fallback to other selections: an old config without this
+  // field must clear the selection rather than retain stale session values.
+  if (Array.isArray(data.commentaryTemplateColumns)) {
+    for (const ref of data.commentaryTemplateColumns) {
+      const { resolved, warnings: w } = resolveColumnRef(ref, families, availableColumns);
+      for (const column of resolved) {
+        if (!commentaryColumns.includes(column)) commentaryColumns.push(column);
+      }
+      warnings.push(...w);
+    }
+  }
+
   if (Array.isArray(data.filters)) {
     for (const row of data.filters) {
       const { resolved, warnings: w } = resolveConfigFilterRow(row, families, availableColumns);
@@ -345,7 +361,7 @@ export function resolveRowsColumnsConfig(
   }
 
   const extraColumnDisplay = { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true, ...(data.extraColumnDisplay ?? {}) };
-  return { comparisonColumns, keyColumns, aggregationColumns, aggregationColumnLabels, filters, targetColumns, exceptionColumns, extraColumnDisplay, nestedAggregationEnabled, comparisonSections, warnings };
+  return { comparisonColumns, keyColumns, aggregationColumns, aggregationColumnLabels, filters, targetColumns, exceptionColumns, commentaryColumns, extraColumnDisplay, nestedAggregationEnabled, comparisonSections, warnings };
 }
 
 /**
@@ -395,6 +411,7 @@ export function mapWorkflowToRowsColumnsConfig(
     filters: FilterRow[];
     targetColumns: string[];
     exceptionColumns?: string[];
+    commentaryColumns?: string[];
     extraColumnDisplay?: ExtraColumnDisplay;
     nestedAggregationEnabled?: boolean;
     comparisonSections?: {
@@ -422,6 +439,7 @@ export function mapWorkflowToRowsColumnsConfig(
     })),
     targetColumns: columnsToRefs(state.targetColumns, families),
     extraColumns: (state.exceptionColumns ?? []).map((c) => ({ kind: "column" as const, name: c })),
+    commentaryTemplateColumns: (state.commentaryColumns ?? []).map((c) => ({ kind: "column" as const, name: c })),
     ...(state.extraColumnDisplay ? { extraColumnDisplay: state.extraColumnDisplay } : {}),
     nestedAggregationEnabled: state.nestedAggregationEnabled ?? false,
     comparisonSections: (state.comparisonSections ?? []).map((s) => ({

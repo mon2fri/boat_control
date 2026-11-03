@@ -13,6 +13,7 @@ import { PaginatedDetailSection } from "../features/results/PaginatedDetailSecti
 import { GroupStatisticsPanel } from "../features/results/GroupStatisticsPanel";
 import { NestedAggregationPanel } from "../features/results/NestedAggregationPanel";
 import { ExceptionRuleSummary } from "../features/results/ExceptionRuleSummary";
+import { NewExceptionsOnlyToggle } from "../features/results/NewExceptionsOnlyToggle";
 import { NewBooksCard } from "../features/results/NewBooksCard";
 import { ComparisonColumnList } from "../features/results/ComparisonColumnList";
 import { buildSectionGroupStatistics } from "../features/results/sectionGroupStatistics";
@@ -27,11 +28,15 @@ function completeFilters(filters: FilterRow[]): FilterRow[] {
   return filters.filter((f) => f.column.trim() !== "" && f.values.length > 0);
 }
 
-function buildRunRequest(state: WorkflowState): RunRequest | null {
+function buildRunRequest(
+  state: WorkflowState,
+  newExceptionsOnly: boolean = state.newExceptionsOnly,
+): RunRequest | null {
   if (!state.header) return null;
   const request: RunRequest = {
     sessionId: state.header.sessionId,
     asOfDate: state.asOfDate,
+    newExceptionsOnly,
     comparisonColumns: state.comparisonColumns,
     filters: completeFilters(state.filters),
     targetColumns: state.targetColumns,
@@ -50,6 +55,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
   if (state.exceptionColumns.length > 0) {
     request.exceptionColumns = state.exceptionColumns;
   }
+  request.commentaryColumns = state.commentaryColumns;
   request.extraColumnDisplay = state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true };
   return request;
 }
@@ -59,6 +65,8 @@ export function ResultsPage() {
   const { runId } = useParams<{ runId?: string }>();
   const { state, dispatch, reset, clearResult } = useWorkflow();
   const [showStartOverConfirm, setShowStartOverConfirm] = useState(false);
+  const [scopeBusy, setScopeBusy] = useState(false);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   const execution = useRunExecution((result) => dispatch({ type: "setResult", result }));
 
   const handleStartOver = useCallback(() => {
@@ -102,6 +110,8 @@ export function ResultsPage() {
         dispatch({ type: "setKeyColumns", columns: result.keyColumns ?? [] });
         // Always restore exception columns (including empty array).
         dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns ?? [] });
+        dispatch({ type: "setCommentaryColumns", columns: result.commentaryColumns ?? [] });
+        dispatch({ type: "setNewExceptionsOnly", enabled: result.newExceptionsOnly ?? true });
         dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true } });
       })
       .catch(() => {
@@ -130,6 +140,17 @@ export function ResultsPage() {
 
   const request = buildRunRequest(state);
 
+  function handleNewExceptionsOnlyChange(checked: boolean): void {
+    dispatch({ type: "setNewExceptionsOnly", enabled: checked });
+    setScopeError(null);
+    if (!state.result) return;
+    setScopeBusy(true);
+    loadRun(state.result.id, checked)
+      .then((result) => dispatch({ type: "setResult", result }))
+      .catch((error: Error) => setScopeError(`Could not change the result scope: ${error.message}`))
+      .finally(() => setScopeBusy(false));
+  }
+
   return (
     <section aria-labelledby="results-title">
       <h2 id="results-title" className="section-heading">3. Results</h2>
@@ -146,6 +167,10 @@ export function ResultsPage() {
             </li>
             <li>{state.selectedRuleIndexes.length} rule(s) selected</li>
           </ul>
+          <NewExceptionsOnlyToggle
+            checked={state.newExceptionsOnly}
+            onChange={(checked) => dispatch({ type: "setNewExceptionsOnly", enabled: checked })}
+          />
           {execution.status === "running" ? (
             <p role="status" aria-live="polite" className="busy-row">
               <span className="spinner" aria-hidden="true" /> Running…{" "}
@@ -183,6 +208,12 @@ export function ResultsPage() {
           exceptionColumns={state.exceptionColumns}
           extraColumnDisplay={state.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true }}
           nestedAggregationEnabled={state.nestedAggregationEnabled}
+          commentaryColumns={state.commentaryColumns}
+          newExceptionsOnly={state.newExceptionsOnly}
+          canChangeNewExceptionsOnly={Boolean(state.result.id)}
+          applyingScope={scopeBusy || execution.status === "running"}
+          scopeError={scopeError}
+          onNewExceptionsOnlyChange={handleNewExceptionsOnlyChange}
           commonColumns={state.header?.common ?? []}
           onRunAnother={() => setShowStartOverConfirm(true)}
           onEditFilters={handleEditFiltersOrRules}
@@ -213,6 +244,12 @@ interface ResultViewProps {
   aggregationColumns: string[];
   aggregationColumnLabels: Record<string, string>;
   exceptionColumns: string[];
+  commentaryColumns: string[];
+  newExceptionsOnly: boolean;
+  canChangeNewExceptionsOnly: boolean;
+  applyingScope: boolean;
+  scopeError: string | null;
+  onNewExceptionsOnlyChange: (checked: boolean) => void;
   extraColumnDisplay: import("../api/domain").ExtraColumnDisplay;
   nestedAggregationEnabled: boolean;
   commonColumns: string[];
@@ -231,6 +268,12 @@ function ResultView({
   aggregationColumns,
   aggregationColumnLabels,
   exceptionColumns,
+  commentaryColumns,
+  newExceptionsOnly,
+  canChangeNewExceptionsOnly,
+  applyingScope,
+  scopeError,
+  onNewExceptionsOnlyChange,
   extraColumnDisplay,
   nestedAggregationEnabled,
   commonColumns,
@@ -254,8 +297,42 @@ function ResultView({
             {asOfDate ? ` · As-of Date ${asOfDate}` : ""}
           </span>
         </div>
-        <ExportControls runId={result.id} reportName={result.reportName} asOfDate={asOfDate} />
+        <ExportControls
+          runId={result.id}
+          reportName={result.reportName}
+          asOfDate={asOfDate}
+          newExceptionsOnly={newExceptionsOnly}
+        />
       </div>
+      <section className="card" aria-label="Exception display scope">
+        <NewExceptionsOnlyToggle
+          checked={newExceptionsOnly}
+          onChange={onNewExceptionsOnlyChange}
+          disabled={!canChangeNewExceptionsOnly}
+          busy={applyingScope}
+        />
+        {!canChangeNewExceptionsOnly && (
+          <p className="field-hint">
+            Reopen this comparison from an upload session to change its result/report scope.
+          </p>
+        )}
+        {scopeError && (
+          <p className="alert alert--error" role="alert">{scopeError}</p>
+        )}
+        {newExceptionsOnly && result.overall.ruleViolationRowCount === 0 && (
+          <p className="alert alert--info" role="status">
+            No New or NotCommented exceptions are visible for this As-of Date. Uncheck
+            New Exceptions Only to display Commented exceptions. All exceptions remain stored,
+            and the commentary template still includes them.
+          </p>
+        )}
+        <p className="field-hint">
+          Commentary-template columns: {commentaryColumns.length > 0
+            ? commentaryColumns.join(", ")
+            : "no additional columns selected"}
+          . Commentary downloads always include all exceptions.
+        </p>
+      </section>
       <section id="overall" aria-labelledby="overall-title" className="card">
         <h3 id="overall-title" className="results-card-title">Overall result</h3>
         <p className="section-logic">

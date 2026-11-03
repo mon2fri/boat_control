@@ -87,6 +87,8 @@ function base(): WorkflowState {
       { id: "s2", name: "Ownership", columns: ["status", "owner"] },
     ],
     exceptionColumns: [],
+  commentaryColumns: [],
+  newExceptionsOnly: true,
     selectedRuleIndexes: [],
     confirmFullSet: false,
     page2Complete: false,

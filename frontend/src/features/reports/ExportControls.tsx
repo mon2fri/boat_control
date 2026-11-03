@@ -11,6 +11,8 @@ interface Props {
   reportName: string;
   /** Persisted As-of Date; same date/template as the Exception Tracking tab. */
   asOfDate?: string;
+  /** Result/report scope; does not narrow the commentary template. */
+  newExceptionsOnly?: boolean;
 }
 
 interface DownloadState {
@@ -31,7 +33,7 @@ interface DownloadState {
  * distinguishes between user-cancelled, network interruption, and server
  * errors.
  */
-export function ExportControls({ runId, reportName, asOfDate }: Props) {
+export function ExportControls({ runId, reportName, asOfDate, newExceptionsOnly }: Props) {
   const [busy, setBusy] = useState<DownloadState | null>(null);
   const [commentaryBusy, setCommentaryBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +77,7 @@ export function ExportControls({ runId, reportName, asOfDate }: Props) {
           })()
         : await downloadExport(runId, format, reportName, {
             signal: controller.signal,
+            ...(newExceptionsOnly !== undefined ? { newExceptionsOnly } : {}),
             onProgress: (received, total) => {
               setBusy({ format, received, total });
             },

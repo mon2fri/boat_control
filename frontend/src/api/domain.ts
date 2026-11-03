@@ -151,6 +151,10 @@ export interface RunRequest {
   confirmFullSet: boolean;
   /** Extra columns selected for the cross-rule exception table. */
   exceptionColumns?: string[];
+  /** Ordered source columns appended to the commentary template/tracking table. */
+  commentaryColumns?: string[];
+  /** Result/report scope; checked by default includes New and NotCommented. */
+  newExceptionsOnly?: boolean;
   /** Places where selected extra columns are shown outside the exception table. */
   extraColumnDisplay?: ExtraColumnDisplay;
 }
@@ -235,6 +239,10 @@ export interface RunResult {
   keyColumns?: string[];
   /** Extra columns selected for the cross-rule exception table; persisted with the run. */
   exceptionColumns?: string[];
+  /** Ordered commentary-template columns persisted with the run. */
+  commentaryColumns?: string[];
+  /** Whether this run/result was scoped to New + NotCommented exceptions. */
+  newExceptionsOnly?: boolean;
   extraColumnDisplay?: ExtraColumnDisplay;
   ruleBindings?: Record<string, string | null>;
 }
@@ -260,6 +268,8 @@ export type ExceptionStatus = "New" | "Commented" | "NotCommented";
 export interface TrackedException {
   exceptionId: string;
   exceptionRuleIdentifier: string;
+  /** Historical run-local rule index (Rxxx); never part of exception identity. */
+  ruleIndex: string;
   keyColumns: string;
   exceptionTimestamp: string;
   exceptionCommentary: string;
@@ -268,7 +278,34 @@ export interface TrackedException {
   exceptionLastSeenAsOfDate: string;
   exceptionFirstSeenTimestamp?: string;
   exceptionLastSeenTimestamp?: string;
+  /** Values for the configured Extra Columns for Commentary Template. */
+  detailValues: Record<string, string>;
   status: ExceptionStatus;
+}
+
+export interface ExceptionTrackingColumn {
+  key: string;
+  label: string;
+  visible: boolean;
+  sortable: boolean;
+  filterable: boolean;
+  source: "standard" | "detail";
+}
+
+export interface ExceptionTrackingResult {
+  asOfDate: string | null;
+  exceptions: TrackedException[];
+  /** Ordered additional data columns returned by the complete-dataset API. */
+  detailColumns: string[];
+  total: number;
+  unfilteredTotal: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  sort: string | null;
+  order: "asc" | "desc";
+  columns: ExceptionTrackingColumn[];
+  availableFilters: Record<string, string[]>;
 }
 
 export interface ExceptionTrackingDates {

@@ -5,7 +5,11 @@ import {
   downloadExceptionCommentaryTemplate,
   ExportError,
 } from "../api/endpoints";
-import type { ExceptionStatus, TrackedException } from "../api/domain";
+import type {
+  ExceptionStatus,
+  ExceptionTrackingColumn,
+  TrackedException,
+} from "../api/domain";
 import { defaultAsOfDate, formatIsoDate, isValidIsoDate } from "../lib/asOfDate";
 import { formatDateTime } from "../utils/format";
 import { AsOfDateSelector } from "../features/tracking/AsOfDateSelector";
@@ -25,6 +29,9 @@ const STATUS_CLASS: Record<ExceptionStatus, string> = {
   NotCommented: "status-badge status-badge--not-commented",
 };
 
+const PAGE_SIZES = [50, 100, 200, 500] as const;
+const DEFAULT_VISIBLE_COLUMNS = ["exception_id", "status", "commentary", "rule_index"];
+
 function saveBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -42,18 +49,17 @@ function StatusBadge({ status }: { status: ExceptionStatus }) {
   return <span className={STATUS_CLASS[status]}>{status}</span>;
 }
 
-function countByStatus(exceptions: TrackedException[]): Record<ExceptionStatus, number> {
-  const counts: Record<ExceptionStatus, number> = { New: 0, Commented: 0, NotCommented: 0 };
-  for (const exception of exceptions) {
-    counts[exception.status] = counts[exception.status] + 1;
-  }
-  return counts;
+function detailName(column: ExceptionTrackingColumn): string {
+  return column.key.startsWith("detail:")
+    ? column.key.slice("detail:".length)
+    : column.label;
 }
 
 /**
- * Exception Tracking tab. The backend owns the tracking database, history
- * metadata, statuses and XLSX workbook; this page only selects an As-of Date,
- * displays the returned occurrences and round-trips the shared template.
+ * Exception Tracking tab. Paging, sorting and filtering are authoritative in
+ * Worker B's complete-dataset endpoint: the client sends those query options
+ * and renders only the returned page, so operations always cover every row for
+ * the selected date rather than only the currently loaded page.
  */
 export function ExceptionTrackingPage() {
   const queryClient = useQueryClient();
@@ -61,6 +67,11 @@ export function ExceptionTrackingPage() {
   const [explicitDate, setExplicitDate] = useState<string | null>(null);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [notice, setNotice] = useState<{ tone: "success" | "error" | "info"; text: string } | null>(null);
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([...DEFAULT_VISIBLE_COLUMNS]);
+  const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+  const [filters, setFilters] = useState<Record<string, string[]>>({});
+  const [pageSize, setPageSize] = useState<number>(50);
+  const [page, setPage] = useState(1);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const backendDefault = datesQuery.data?.defaultDate ?? null;
@@ -71,13 +82,68 @@ export function ExceptionTrackingPage() {
     dates[0] ??
     defaultAsOfDate();
 
-  const listQuery = useTrackedExceptions(selectedDate);
+  const queryOptions = useMemo(() => ({
+    offset: (page - 1) * pageSize,
+    limit: pageSize,
+    ...(sort ? { sort: sort.key, order: sort.direction } : {}),
+    filters: Object.fromEntries(
+      Object.entries(filters).filter(([, values]) => values.length > 0),
+    ),
+  }), [filters, page, pageSize, sort]);
+
+  const listQuery = useTrackedExceptions(selectedDate, queryOptions);
   const importMutation = useImportCommentary(selectedDate);
-  const exceptions = useMemo(
-    () => listQuery.data?.exceptions ?? [],
-    [listQuery.data],
+  const data = listQuery.data;
+  const exceptions = useMemo(() => data?.exceptions ?? [], [data]);
+  const columns = useMemo(() => data?.columns ?? [], [data]);
+  const availableFilters = data?.availableFilters ?? {};
+  const total = data?.total ?? 0;
+  const unfilteredTotal = data?.unfilteredTotal ?? total;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const pageRows = exceptions;
+  const firstRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const lastRow = Math.min(page * pageSize, total);
+
+  const visibleColumnDefs = useMemo(
+    () => columns.filter((column) => visibleColumns.includes(column.key)),
+    [columns, visibleColumns],
   );
-  const counts = useMemo(() => countByStatus(exceptions), [exceptions]);
+
+  function resetPaging(): void {
+    setPage(1);
+  }
+
+  function toggleColumn(key: string, checked: boolean): void {
+    setVisibleColumns((current) => {
+      if (checked) {
+        return current.includes(key) ? current : [...current, key];
+      }
+      return current.filter((item) => item !== key);
+    });
+    resetPaging();
+  }
+
+  function resetColumns(): void {
+    setVisibleColumns([...DEFAULT_VISIBLE_COLUMNS]);
+    resetPaging();
+  }
+
+  function changeSort(key: string): void {
+    setSort((current) => current?.key === key
+      ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+      : { key, direction: "asc" });
+    resetPaging();
+  }
+
+  function setColumnFilter(key: string, values: string[]): void {
+    setFilters((current) => {
+      const next = { ...current };
+      if (values.length === 0) delete next[key];
+      else next[key] = values;
+      return next;
+    });
+    resetPaging();
+  }
 
   async function handleDownload(): Promise<void> {
     setNotice(null);
@@ -158,7 +224,28 @@ export function ExceptionTrackingPage() {
     });
   }
 
+  function renderCell(column: ExceptionTrackingColumn, row: TrackedException) {
+    if (column.key === "status") return <StatusBadge status={row.status} />;
+    if (column.key === "exception_id") return <code>{row.exceptionId}</code>;
+    if (column.key === "commentary") {
+      return <span className="tracking-commentary">{row.exceptionCommentary || "—"}</span>;
+    }
+    if (column.key === "rule_index") return row.ruleIndex || "—";
+    if (column.key === "exception_rule_identifier") return row.exceptionRuleIdentifier;
+    if (column.key === "key_columns") return row.keyColumns || "—";
+    if (column.key === "exception_timestamp") return formatDateTime(row.exceptionTimestamp);
+    if (column.key === "exception_as_of_date") return row.exceptionAsOfDate;
+    if (column.key === "exception_first_seen_as_of_date") return row.exceptionFirstSeenAsOfDate;
+    if (column.key === "exception_last_seen_as_of_date") return row.exceptionLastSeenAsOfDate;
+    if (column.key.startsWith("detail:")) {
+      return row.detailValues[detailName(column)] || "—";
+    }
+    return "—";
+  }
+
   const dateInvalid = !isValidIsoDate(selectedDate);
+  const hasVisibleColumns = visibleColumnDefs.length > 0;
+  const hasFilters = Object.values(filters).some((values) => values.length > 0);
 
   return (
     <section aria-labelledby="exception-tracking-title">
@@ -176,6 +263,9 @@ export function ExceptionTrackingPage() {
           onChange={(date) => {
             setExplicitDate(date);
             setNotice(null);
+            setFilters({});
+            setSort(null);
+            resetPaging();
           }}
         />
         <p className="field-hint">
@@ -238,18 +328,38 @@ export function ExceptionTrackingPage() {
         )}
         <p className="field-hint">
           Unknown, duplicate or mismatched exception IDs are rejected as a whole; no partial
-          commentary updates are applied.
+          commentary updates are applied. Columns after the standard tracking metadata are
+          informational and ignored.
         </p>
       </div>
 
       <div className="card">
         <div className="tracking-summary" aria-label="Exception status summary">
           <span>As-of Date: <strong>{isValidIsoDate(selectedDate) ? formatIsoDate(selectedDate) : selectedDate}</strong></span>
-          <span>Total: <strong>{exceptions.length}</strong></span>
-          <span><StatusBadge status="New" /> {counts.New}</span>
-          <span><StatusBadge status="Commented" /> {counts.Commented}</span>
-          <span><StatusBadge status="NotCommented" /> {counts.NotCommented}</span>
+          <span>Filtered total: <strong>{total}</strong></span>
+          <span>All rows: <strong>{unfilteredTotal}</strong></span>
         </div>
+
+        <details className="tracking-column-chooser">
+          <summary>
+            Columns ({visibleColumnDefs.length} of {columns.length} visible)
+          </summary>
+          <div className="tracking-column-chooser__grid" role="group" aria-label="Choose visible columns">
+            {columns.map((column) => (
+              <label key={column.key} className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={visibleColumns.includes(column.key)}
+                  onChange={(event) => toggleColumn(column.key, event.target.checked)}
+                />
+                {column.label}
+              </label>
+            ))}
+          </div>
+          <button type="button" className="btn" onClick={resetColumns}>
+            Show default columns
+          </button>
+        </details>
 
         {listQuery.isLoading && (
           <p role="status" className="busy-row">
@@ -261,49 +371,114 @@ export function ExceptionTrackingPage() {
             Could not load exceptions for {selectedDate}: {listQuery.error.message}
           </p>
         )}
-        {!listQuery.isLoading && !listQuery.isError && exceptions.length === 0 && (
+        {!listQuery.isLoading && !listQuery.isError && total === 0 && !hasFilters && (
           <p role="status">
             No exceptions are recorded for {selectedDate}. Run a comparison with this As-of Date to
             populate the tracking table.
           </p>
         )}
+        {!listQuery.isLoading && !listQuery.isError && total === 0 && hasFilters && (
+          <p role="status">No exceptions match the current filters.</p>
+        )}
 
-        {exceptions.length > 0 && (
-          <div className="table-scroll">
-            <table className="data exception-tracking-table">
-              <caption className="visually-hidden">
-                Exceptions recorded for {selectedDate}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Exception ID</th>
-                  <th scope="col">Exception Rule Identifier</th>
-                  <th scope="col">Key Columns</th>
-                  <th scope="col">Exception Timestamp</th>
-                  <th scope="col">Exception Commentary</th>
-                  <th scope="col">Exception As-of Date</th>
-                  <th scope="col">Exception First Seen As-of Date</th>
-                  <th scope="col">Exception Last Seen As-of Date</th>
-                  <th scope="col">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {exceptions.map((exception) => (
-                  <tr key={exception.exceptionId}>
-                    <td><code>{exception.exceptionId}</code></td>
-                    <td><code>{exception.exceptionRuleIdentifier}</code></td>
-                    <td>{exception.keyColumns || "—"}</td>
-                    <td>{formatDateTime(exception.exceptionTimestamp)}</td>
-                    <td className="tracking-commentary">{exception.exceptionCommentary || "—"}</td>
-                    <td>{exception.exceptionAsOfDate}</td>
-                    <td>{exception.exceptionFirstSeenAsOfDate}</td>
-                    <td>{exception.exceptionLastSeenAsOfDate}</td>
-                    <td><StatusBadge status={exception.status} /></td>
+        {total > 0 && !hasVisibleColumns && (
+          <p role="status">No columns are selected. Choose at least one column above.</p>
+        )}
+
+        {total > 0 && hasVisibleColumns && (
+          <>
+            <div className="table-scroll">
+              <table className="data exception-tracking-table">
+                <caption className="visually-hidden">
+                  Exceptions recorded for {selectedDate}
+                </caption>
+                <thead>
+                  <tr>
+                    {visibleColumnDefs.map((column) => (
+                      <th key={column.key} scope="col" aria-sort={
+                        sort?.key === column.key
+                          ? sort.direction === "asc" ? "ascending" : "descending"
+                          : "none"
+                      }>
+                        <div className="tracking-th">
+                          <span>{column.label}</span>
+                          {column.sortable && (
+                            <button
+                              type="button"
+                              className="th-sort-btn"
+                              onClick={() => changeSort(column.key)}
+                              aria-label={`Sort by ${column.label}`}
+                            >
+                              <span className="sort-icon sort-icon--none">⇅</span>
+                              <span className="sort-icon sort-icon--asc">↑</span>
+                              <span className="sort-icon sort-icon--desc">↓</span>
+                            </button>
+                          )}
+                          {column.filterable && (
+                            <TrackingFilter
+                              label={column.label}
+                              options={availableFilters[column.key] ?? []}
+                              selected={filters[column.key] ?? []}
+                              onChange={(values) => setColumnFilter(column.key, values)}
+                            />
+                          )}
+                        </div>
+                      </th>
+                    ))}
                   </tr>
+                </thead>
+                <tbody>
+                  {pageRows.map((exception) => (
+                    <tr key={exception.exceptionId}>
+                      {visibleColumnDefs.map((column) => (
+                        <td key={column.key} className={
+                          column.key === "commentary" || column.key.startsWith("detail:")
+                            ? "tracking-commentary"
+                            : undefined
+                        }>
+                          {renderCell(column, exception)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="tracking-pagination" aria-label="Exception table pagination">
+              <label htmlFor="tracking-page-size">Rows per page</label>
+              <select
+                id="tracking-page-size"
+                value={pageSize}
+                onChange={(event) => {
+                  setPageSize(Number(event.target.value));
+                  resetPaging();
+                }}
+              >
+                {PAGE_SIZES.map((size) => (
+                  <option key={size} value={size}>{size}</option>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </select>
+              <span>{firstRow}–{lastRow} of {total}</span>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1}
+              >
+                Previous
+              </button>
+              <span>Page {page} of {pageCount}</span>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+                disabled={page >= pageCount}
+              >
+                Next
+              </button>
+            </div>
+          </>
         )}
 
         <div className="config-inline-row">
@@ -320,5 +495,47 @@ export function ExceptionTrackingPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+function TrackingFilter({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (values: string[]) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <details className="tracking-filter">
+      <summary aria-label={`Filter by ${label}`}>
+        Filter{selected.length > 0 ? ` (${selected.length})` : ""}
+      </summary>
+      <div className="tracking-filter__options">
+        {options.map((option) => (
+          <label key={option} className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={selected.includes(option)}
+              onChange={() => onChange(
+                selected.includes(option)
+                  ? selected.filter((value) => value !== option)
+                  : [...selected, option],
+              )}
+            />
+            {option}
+          </label>
+        ))}
+        {selected.length > 0 && (
+          <button type="button" className="btn" onClick={() => onChange([])}>
+            Clear filter
+          </button>
+        )}
+      </div>
+    </details>
   );
 }

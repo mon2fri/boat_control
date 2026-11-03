@@ -14,6 +14,8 @@ const baseState: WorkflowState = {
   nestedAggregationEnabled: false,
   comparisonSections: [],
   exceptionColumns: [],
+  commentaryColumns: [],
+  newExceptionsOnly: true,
   selectedRuleIndexes: [],
   confirmFullSet: false,
   page2Complete: false,

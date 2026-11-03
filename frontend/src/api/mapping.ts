@@ -316,6 +316,8 @@ export function mapRunRequestToWire(request: {
   comparisonSections?: ComparisonSection[] | undefined;
   ruleIndexes: string[];
   exceptionColumns?: string[];
+  commentaryColumns?: string[];
+  newExceptionsOnly?: boolean;
   extraColumnDisplay?: import("./domain").ExtraColumnDisplay;
 }): WireRunRequest {
   return {
@@ -350,6 +352,10 @@ export function mapRunRequestToWire(request: {
     ...(request.exceptionColumns && request.exceptionColumns.length > 0
       ? { exception_columns: [...request.exceptionColumns] }
       : {}),
+    ...(request.commentaryColumns
+      ? { commentary_template_columns: [...request.commentaryColumns] }
+      : {}),
+    new_exceptions_only: request.newExceptionsOnly !== false,
     ...(request.extraColumnDisplay ? { extra_column_display: {
       overall_result_page: request.extraColumnDisplay.overallResultPage,
       overall_html_report: request.extraColumnDisplay.overallHtmlReport,
@@ -449,6 +455,7 @@ export function mapViolation(
 export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocument): RunResult {
   const result = doc.result;
   const validation = result.validation;
+  const newExceptionsOnly = doc.new_exceptions_only ?? result.new_exceptions_only;
 
   // Prefer the backend's explicit distinct counts; fall back to a local
   // derivation only if the server omitted them.
@@ -600,6 +607,10 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
     ...(result.exception_columns && result.exception_columns.length > 0
       ? { exceptionColumns: [...result.exception_columns] }
       : {}),
+    ...(result.commentary_template_columns
+      ? { commentaryColumns: [...result.commentary_template_columns] }
+      : {}),
+    ...(newExceptionsOnly !== undefined ? { newExceptionsOnly } : {}),
     ...(result.extra_column_display ? { extraColumnDisplay: {
       overallResultPage: result.extra_column_display.overall_result_page,
       overallHtmlReport: result.extra_column_display.overall_html_report,
@@ -762,15 +773,23 @@ function fallbackExceptionStatus(
 }
 
 export function mapTrackedException(wire: WireTrackedException): TrackedException {
+  const detailValues = Object.fromEntries(
+    Object.entries(wire.detail_values ?? wire.extra_values ?? {}).map(([key, value]) => [
+      key,
+      value === null ? "" : String(value),
+    ]),
+  );
   const exception: TrackedException = {
     exceptionId: wire.exception_id,
     exceptionRuleIdentifier: wire.exception_rule_identifier,
+    ruleIndex: wire.rule_index ?? "",
     keyColumns: formatKeyColumns(wire.key_columns),
     exceptionTimestamp: wire.exception_timestamp,
     exceptionCommentary: wire.exception_commentary ?? "",
     exceptionAsOfDate: wire.exception_as_of_date,
     exceptionFirstSeenAsOfDate: wire.exception_first_seen_as_of_date,
     exceptionLastSeenAsOfDate: wire.exception_last_seen_as_of_date,
+    detailValues,
     status: wire.status ?? fallbackExceptionStatus(wire),
   };
   if (wire.exception_first_seen_timestamp) {
@@ -793,17 +812,82 @@ export function mapTrackingDates(wire: WireExceptionTrackingDates): ExceptionTra
 
 export function mapExceptionTrackingList(
   wire: WireExceptionTrackingList,
-): { asOfDate: string | null; exceptions: TrackedException[] } {
+): import("./domain").ExceptionTrackingResult {
   if (Array.isArray(wire)) {
+    const exceptions = wire.map(mapTrackedException);
+    const detailColumns = exceptionDetailColumnUnion(exceptions);
     return {
       asOfDate: wire[0]?.exception_as_of_date ?? null,
-      exceptions: wire.map(mapTrackedException),
+      exceptions,
+      detailColumns,
+      total: exceptions.length,
+      unfilteredTotal: exceptions.length,
+      offset: 0,
+      limit: exceptions.length,
+      hasMore: false,
+      sort: null,
+      order: "asc",
+      columns: fallbackTrackingColumns(detailColumns),
+      availableFilters: {},
     };
   }
+  const exceptions = wire.exceptions.map(mapTrackedException);
+  const declared = wire.detail_columns ?? wire.available_columns;
+  const detailColumns = declared && declared.length > 0
+    ? [...declared]
+    : exceptionDetailColumnUnion(exceptions);
   return {
     asOfDate: wire.as_of_date ?? null,
-    exceptions: wire.exceptions.map(mapTrackedException),
+    exceptions,
+    detailColumns,
+    total: wire.total ?? exceptions.length,
+    unfilteredTotal: wire.unfiltered_total ?? wire.total ?? exceptions.length,
+    offset: wire.offset ?? 0,
+    limit: wire.limit ?? exceptions.length,
+    hasMore: wire.has_more ?? false,
+    sort: wire.sort ?? null,
+    order: wire.order ?? "asc",
+    columns: wire.columns ?? fallbackTrackingColumns(detailColumns),
+    availableFilters: wire.available_filters ?? {},
   };
+}
+
+function fallbackTrackingColumns(detailColumns: string[]): import("./domain").ExceptionTrackingColumn[] {
+  const standard: Array<[string, string, boolean]> = [
+    ["exception_id", "Exception ID", true],
+    ["status", "Exception Status", true],
+    ["commentary", "Commentary", true],
+    ["rule_index", "Rule Index", true],
+    ["exception_rule_identifier", "Exception Rule Identifier", false],
+    ["key_columns", "Key Columns", false],
+    ["exception_timestamp", "Exception Timestamp", false],
+    ["exception_as_of_date", "Exception As-of Date", false],
+    ["exception_first_seen_as_of_date", "Exception First Seen As-of Date", false],
+    ["exception_last_seen_as_of_date", "Exception Last Seen As-of Date", false],
+  ];
+  return [
+    ...standard.map(([key, label, visible]) => ({
+      key, label, visible, sortable: true, filterable: true, source: "standard" as const,
+    })),
+    ...detailColumns.map((label) => ({
+      key: `detail:${label}`,
+      label,
+      visible: false,
+      sortable: true,
+      filterable: true,
+      source: "detail" as const,
+    })),
+  ];
+}
+
+function exceptionDetailColumnUnion(exceptions: TrackedException[]): string[] {
+  const columns: string[] = [];
+  for (const exception of exceptions) {
+    for (const column of Object.keys(exception.detailValues)) {
+      if (!columns.includes(column)) columns.push(column);
+    }
+  }
+  return columns;
 }
 
 export function mapCommentaryImportResult(

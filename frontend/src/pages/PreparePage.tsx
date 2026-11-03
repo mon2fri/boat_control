@@ -5,6 +5,7 @@ import { FilterBuilder } from "../features/filters/FilterBuilder";
 import { TargetSelector } from "../features/targets/TargetSelector";
 import { ComparisonSectionEditor } from "../features/targets/ComparisonSectionEditor";
 import { ExceptionColumnPicker } from "../features/targets/ExceptionColumnPicker";
+import { CommentaryColumnPicker } from "../features/targets/CommentaryColumnPicker";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { ConfigLoadNotice } from "../features/configs/ConfigLoadNotice";
@@ -57,7 +58,7 @@ export function PreparePage() {
     ? 100
     : Math.min(99, Math.floor((loadingElapsedMs / PREPARATION_ESTIMATE_MS) * 99));
 
-  const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0 || state.exceptionColumns.length > 0;
+  const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0 || state.exceptionColumns.length > 0 || state.commentaryColumns.length > 0;
 
   useEffect(() => {
     if (!header) return;
@@ -132,6 +133,7 @@ export function PreparePage() {
     dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
     dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
     dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns });
+    dispatch({ type: "setCommentaryColumns", columns: result.commentaryColumns });
     dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay });
 
     for (const w of result.warnings) {
@@ -171,6 +173,7 @@ export function PreparePage() {
               filters: state.filters,
               targetColumns: state.targetColumns,
               exceptionColumns: state.exceptionColumns,
+              commentaryColumns: state.commentaryColumns,
               extraColumnDisplay,
               nestedAggregationEnabled: state.nestedAggregationEnabled,
               comparisonSections: state.comparisonSections,
@@ -273,12 +276,21 @@ export function PreparePage() {
         />
       </div>
 
-      <ComparisonSectionEditor
-        sections={state.comparisonSections}
-        onChange={(sections) => dispatch({ type: "setComparisonSections", sections })}
-        availableColumns={comparisonColumns}
-        families={families}
-      />
+      <div className="card-grid-2">
+        <ComparisonSectionEditor
+          sections={state.comparisonSections}
+          onChange={(sections) => dispatch({ type: "setComparisonSections", sections })}
+          availableColumns={comparisonColumns}
+          families={families}
+        />
+
+        <CommentaryColumnPicker
+          columns={comparisonColumns}
+          families={families}
+          selected={state.commentaryColumns}
+          onChange={(columns) => dispatch({ type: "setCommentaryColumns", columns })}
+        />
+      </div>
 
       <RulesPage
         embedded

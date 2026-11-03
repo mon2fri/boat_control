@@ -3,6 +3,7 @@ import {
   importExceptionCommentary,
   loadExceptionTracking,
   loadExceptionTrackingDates,
+  type ExceptionTrackingQuery,
 } from "../../api/endpoints";
 import { isValidIsoDate } from "../../lib/asOfDate";
 import {
@@ -10,8 +11,8 @@ import {
   EXCEPTION_TRACKING_KEY,
 } from "./queryKeys";
 
-function exceptionsKey(asOfDate: string) {
-  return [EXCEPTION_TRACKING_KEY[0], asOfDate] as const;
+function exceptionsKey(asOfDate: string, options: ExceptionTrackingQuery) {
+  return [EXCEPTION_TRACKING_KEY[0], asOfDate, options] as const;
 }
 
 export function useExceptionTrackingDates() {
@@ -23,10 +24,13 @@ export function useExceptionTrackingDates() {
   });
 }
 
-export function useTrackedExceptions(asOfDate: string) {
+export function useTrackedExceptions(
+  asOfDate: string,
+  options: ExceptionTrackingQuery = {},
+) {
   return useQuery({
-    queryKey: exceptionsKey(asOfDate),
-    queryFn: () => loadExceptionTracking(asOfDate),
+    queryKey: exceptionsKey(asOfDate, options),
+    queryFn: () => loadExceptionTracking(asOfDate, options),
     enabled: isValidIsoDate(asOfDate),
     retry: false,
   });
@@ -38,7 +42,7 @@ export function useImportCommentary(asOfDate: string) {
     mutationFn: (file: File) => importExceptionCommentary(asOfDate, file),
     onSuccess: async () => {
       await Promise.all([
-        client.invalidateQueries({ queryKey: exceptionsKey(asOfDate) }),
+        client.invalidateQueries({ queryKey: [EXCEPTION_TRACKING_KEY[0], asOfDate] }),
         client.invalidateQueries({ queryKey: EXCEPTION_TRACKING_DATES_KEY }),
       ]);
     },

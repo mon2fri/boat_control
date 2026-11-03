@@ -41,6 +41,10 @@ export interface WorkflowState {
   comparisonSections: ComparisonSection[];
   /** Extra columns included in the exception table beyond key + aggregation columns. */
   exceptionColumns: string[];
+  /** Ordered source columns appended to the commentary template and tracking table. */
+  commentaryColumns: string[];
+  /** Display/report scope: include New + NotCommented, exclude Commented. */
+  newExceptionsOnly: boolean;
   extraColumnDisplay?: ExtraColumnDisplay;
   /** Page-two CSV scan result, reusable while files and columns are unchanged. */
   preparedData?: PreparedDataCache | null;
@@ -68,6 +72,8 @@ const initialState: WorkflowState = {
   nestedAggregationEnabled: false,
   comparisonSections: [],
   exceptionColumns: [],
+  commentaryColumns: [],
+  newExceptionsOnly: true,
   extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true },
   preparedData: null,
   selectedRuleIndexes: [],
@@ -88,6 +94,8 @@ type Action =
   | { type: "setNestedAggregationEnabled"; enabled: boolean }
   | { type: "setComparisonSections"; sections: ComparisonSection[] }
   | { type: "setExceptionColumns"; columns: string[] }
+  | { type: "setCommentaryColumns"; columns: string[] }
+  | { type: "setNewExceptionsOnly"; enabled: boolean }
   | { type: "setExtraColumnDisplay"; display: ExtraColumnDisplay }
   | { type: "setPreparedData"; cache: PreparedDataCache }
   | { type: "setFilters"; filters: FilterRow[] }
@@ -139,6 +147,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
           }))
           .filter((s) => s.columns.length > 0),
         exceptionColumns: state.exceptionColumns.filter((c) => colSet.has(c)),
+        commentaryColumns: state.commentaryColumns.filter((c) => colSet.has(c)),
         filters: state.filters.map((f) =>
           colSet.has(f.column) ? f : { ...f, column: "" },
         ),
@@ -166,6 +175,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
           }))
           .filter((s) => s.columns.length > 0),
         exceptionColumns: state.exceptionColumns.filter((c) => c !== col),
+        commentaryColumns: state.commentaryColumns.filter((c) => c !== col),
         filters: state.filters.map((f) =>
           f.column === col ? { ...f, column: "" } : f,
         ),
@@ -200,6 +210,10 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       };
     case "setExceptionColumns":
       return { ...state, exceptionColumns: action.columns };
+    case "setCommentaryColumns":
+      return { ...state, commentaryColumns: action.columns };
+    case "setNewExceptionsOnly":
+      return { ...state, newExceptionsOnly: action.enabled };
     case "setExtraColumnDisplay":
       return { ...state, extraColumnDisplay: action.display };
     case "setPreparedData":

@@ -203,6 +203,28 @@ describe("mapRunRequestToWire", () => {
     // let the backend default to nested-off without ambiguity.
     expect(body.nested_aggregation_enabled).toBe(false);
   });
+
+  it("serializes ordered commentary columns and defaults New Exceptions Only to true", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      ruleIndexes: [],
+      commentaryColumns: ["score", "region"],
+    });
+    expect(body.commentary_template_columns).toEqual(["score", "region"]);
+    expect(body.new_exceptions_only).toBe(true);
+    expect(() => wireRunRequestSchema.parse(body)).not.toThrow();
+  });
+
+  it("serializes an explicit empty commentary selection and unchecked scope", () => {
+    const body = mapRunRequestToWire({
+      ...baseRequest,
+      ruleIndexes: [],
+      commentaryColumns: [],
+      newExceptionsOnly: false,
+    });
+    expect(body.commentary_template_columns).toEqual([]);
+    expect(body.new_exceptions_only).toBe(false);
+  });
 });
 
 describe("canonical rule catalog mapping", () => {
@@ -552,6 +574,29 @@ describe("exception tracking mapping", () => {
     expect(mapRunDocumentToResult(doc).asOfDate).toBe("2026-10-30");
   });
 
+  it("restores commentary-template columns and New Exceptions Only scope from a saved run", () => {
+    const doc = legacyWireRunDocumentSchema.parse({
+      run_id: "r-scope",
+      report_name: "test",
+      file_a_name: "a.csv",
+      file_b_name: "b.csv",
+      created_at: "2026-10-30T12:00:00Z",
+      as_of_date: "2026-10-30",
+      new_exceptions_only: false,
+      result: {
+        comparison: { total_rows_a: 1, total_rows_b: 1, rows_with_changes: 0, total_attribute_changes: 0, row_details: [] },
+        validation: { total_violations: 0, violations_by_rule: {}, violation_count_by_rule: {} },
+        common_columns: ["id"],
+        target_columns: ["id"],
+        filters_applied: [],
+        commentary_template_columns: ["score", "region"],
+      },
+    });
+    const result = mapRunDocumentToResult(doc);
+    expect(result.commentaryColumns).toEqual(["score", "region"]);
+    expect(result.newExceptionsOnly).toBe(false);
+  });
+
   it("maps all three statuses verbatim when supplied by the backend", () => {
     const statuses = wireExceptionTrackingListSchema.parse([
       { ...exception, status: "New" },
@@ -589,6 +634,45 @@ describe("exception tracking mapping", () => {
       exception_commentary: "Known issue",
     });
     expect(commented.status).toBe("Commented");
+  });
+
+  it("maps the complete-dataset tracking metadata, columns and detail values", () => {
+    const mapped = mapExceptionTrackingList(
+      wireExceptionTrackingListSchema.parse({
+        as_of_date: "2026-10-30",
+        total: 120,
+        unfiltered_total: 200,
+        offset: 50,
+        limit: 50,
+        has_more: true,
+        sort: "exception_id",
+        order: "desc",
+        detail_columns: ["Region"],
+        columns: [
+          { key: "exception_id", label: "Exception ID", visible: true, sortable: true, filterable: true, source: "standard" },
+          { key: "detail:Region", label: "Region", visible: false, sortable: true, filterable: true, source: "detail" },
+        ],
+        available_filters: { status: ["New", "Commented"], "detail:Region": ["EMEA"] },
+        exceptions: [{
+          ...exception,
+          rule_index: "R001",
+          detail_values: { Region: "EMEA" },
+        }],
+      }),
+    );
+    expect(mapped.total).toBe(120);
+    expect(mapped.unfilteredTotal).toBe(200);
+    expect(mapped.offset).toBe(50);
+    expect(mapped.limit).toBe(50);
+    expect(mapped.hasMore).toBe(true);
+    expect(mapped.sort).toBe("exception_id");
+    expect(mapped.order).toBe("desc");
+    expect(mapped.detailColumns).toEqual(["Region"]);
+    expect(mapped.columns[1]?.key).toBe("detail:Region");
+    expect(mapped.columns[1]?.visible).toBe(false);
+    expect(mapped.availableFilters["detail:Region"]).toEqual(["EMEA"]);
+    expect(mapped.exceptions[0]?.ruleIndex).toBe("R001");
+    expect(mapped.exceptions[0]?.detailValues).toEqual({ Region: "EMEA" });
   });
 
   it("accepts envelope and array list responses and sorts recorded dates newest-first", () => {

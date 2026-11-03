@@ -95,6 +95,7 @@ function installFetchMock() {
     if (url.includes("/files/filters/prepare/")) return Promise.resolve(json(prepareResponse));
     if (url.includes("/rules/") && method === "GET") return Promise.resolve(json(rulesList));
     if (url.includes("/runs/execute/") && method === "POST") return Promise.resolve(json(runDoc));
+    if (url.includes("/runs/run-1/") && method === "GET") return Promise.resolve(json(runDoc));
     return Promise.resolve(json({}));
   });
   vi.stubGlobal("fetch", fn);
@@ -158,8 +159,26 @@ describe("critical user journey: upload → prepare → rules → run → result
     expect(executeCall).toBeDefined();
     expect(JSON.parse(String(executeCall![1]?.body))).toMatchObject({
       as_of_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      new_exceptions_only: true,
     });
     expect(screen.getByText("220")).toBeInTheDocument();
+
+    const scopeToggle = screen.getByRole("checkbox", { name: "New Exceptions Only" });
+    expect(scopeToggle).toBeChecked();
+    expect(screen.getByText(/No New or NotCommented exceptions/)).toBeInTheDocument();
+    fireEvent.click(scopeToggle);
+    await waitFor(() => {
+      const calls = vi.mocked(fetch).mock.calls.filter(([url]) =>
+        String(url).includes("/runs/run-1/?new_exceptions_only=false"),
+      );
+      expect(calls).toHaveLength(1);
+    });
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).includes("/runs/execute/"),
+    )).toHaveLength(1);
+    await waitFor(() =>
+      expect(screen.queryByText(/No New or NotCommented exceptions/)).not.toBeInTheDocument(),
+    );
     expect(screen.getByText("baseline_vs_candidate")).toBeInTheDocument();
     expect(document.querySelector(".result-content.results-layer-content")).toBeInTheDocument();
     expect(document.querySelector(".results-header.results-layer-header")).toBeInTheDocument();
