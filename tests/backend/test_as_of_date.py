@@ -26,13 +26,15 @@ class TestParseAsOfDate:
             "2026-13-01",
             "2026-02-30",
             "2026-01-02T00:00:00",
-            "2026-01-02 ",
             "not-a-date",
         ],
     )
     def test_rejects_non_canonical_or_impossible_dates(self, value: str) -> None:
         with pytest.raises(AsOfDateError):
             parse_as_of_date(value)
+
+    def test_strips_surrounding_whitespace_like_the_tracking_api(self) -> None:
+        assert parse_as_of_date(" 2026-01-02 ") == date(2026, 1, 2)
 
     def test_rejects_datetime_and_non_string_values(self) -> None:
         with pytest.raises(AsOfDateError):

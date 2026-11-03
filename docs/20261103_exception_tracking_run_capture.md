@@ -29,9 +29,12 @@ no second workbook or storage implementation in this scope.
   1. `as_of_date` on `POST /api/runs/execute/`;
   2. the date retained by the upload session;
   3. the backend default.
-- The backend default is the last Monday-Friday of the previous calendar month,
-  using the current UTC date. January rolls back to December of the previous
-  year; a month ending on Saturday/Sunday resolves to the preceding Friday.
+- The backend default is the last Monday-Friday of the previous calendar month.
+  Production delegates to Worker B's shared `apps.exception_tracking.dates`
+  helper so the upload/execute default and the tracking API default cannot
+  drift; the local fallback uses the backend server's current calendar date.
+  January rolls back to December of the previous year; a month ending on
+  Saturday/Sunday resolves to the preceding Friday.
 - Invalid dates, timestamps, locale formats, and impossible dates return HTTP
   400. The backend never silently substitutes the default for an invalid value.
 - Upload (`POST /api/files/upload/`) accepts an optional `as_of_date` form field,

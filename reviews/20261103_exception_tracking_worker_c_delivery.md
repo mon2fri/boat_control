@@ -64,8 +64,10 @@ The capture adapter reads the existing `ValidationViolation` dataclass:
 - Strict ISO `YYYY-MM-DD`; `datetime`, timestamps, locale formats, whitespace, and
   impossible dates are rejected with HTTP 400.
 - Precedence: execute request `as_of_date` → upload session date → backend default.
-- Default is the last Monday-Friday of the previous calendar month using the current
-  UTC date, including January/year rollover and weekend rollback.
+- Default is the last Monday-Friday of the previous calendar month. Production
+  delegates to Worker B's shared `apps.exception_tracking.dates` helper; the local
+  fallback uses the backend server's current calendar date. January/year rollover and
+  weekend rollback are covered.
 - Upload accepts an optional `as_of_date`, validates before storing files, retains it
   on the in-memory session, and returns it. Preset loads follow the same rule.
 - Saved runs persist `as_of_date` as a top-level ISO string; run metadata list/detail

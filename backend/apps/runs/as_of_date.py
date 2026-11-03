@@ -12,10 +12,12 @@ month, including January/year rollover.
 
 from __future__ import annotations
 
+import importlib
 import re
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SHARED_DATES_MODULE = "apps.exception_tracking.dates"
 
 
 class AsOfDateError(ValueError):
@@ -38,7 +40,7 @@ def parse_as_of_date(value: object) -> date:
     if not isinstance(value, str):
         raise AsOfDateError("As-of Date must be an ISO calendar date (YYYY-MM-DD).")
 
-    text = value
+    text = value.strip()
     if not _ISO_DATE.fullmatch(text):
         raise AsOfDateError(
             f"As-of Date '{value}' must use the ISO calendar format YYYY-MM-DD."
@@ -52,15 +54,39 @@ def parse_as_of_date(value: object) -> date:
     return parsed
 
 
+def _shared_default_as_of_date() -> date | None:
+    """Use Worker B's shared calendar helper once that module is integrated."""
+
+    try:
+        module = importlib.import_module(_SHARED_DATES_MODULE)
+    except ImportError:
+        return None
+    shared = vars(module).get("default_as_of_date")
+    if not callable(shared):
+        return None
+    value = shared()
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    return None
+
+
 def default_as_of_date(today: date | None = None) -> date:
     """Return the last Monday-Friday of the month before ``today``.
 
-    ``today`` defaults to the current UTC date so the backend default does not
-    depend on the host's local timezone. Weekends are skipped; a month whose
-    final day is Saturday or Sunday resolves to the preceding Friday.
+    Production uses Worker B's shared calendar helper when it is integrated so the
+    upload/execute default and the tracking API's ``default_as_of_date`` cannot
+    drift. The local fallback matches that helper for development before B is
+    present: the current backend server calendar date is used, weekends are
+    skipped, and a month whose final day is Saturday or Sunday resolves to the
+    preceding Friday.
     """
 
-    reference = today or datetime.now(UTC).date()
+    if today is None:
+        shared = _shared_default_as_of_date()
+        if shared is not None:
+            return shared
+
+    reference = today or date.today()
     previous_month_end = reference.replace(day=1) - timedelta(days=1)
     candidate = previous_month_end
     while candidate.weekday() >= 5:
