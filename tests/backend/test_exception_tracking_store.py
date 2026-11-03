@@ -492,6 +492,19 @@ def test_existing_table_with_unexpected_columns_is_rejected(tmp_path: Path) -> N
         repo.record_exceptions(DATE_2, [_occurrence()])
 
 
+def test_read_rejects_a_date_table_with_the_wrong_schema(tmp_path: Path) -> None:
+    db = tmp_path / "exception_tracking.db"
+    with sqlite3.connect(db) as connection:
+        connection.execute(
+            'CREATE TABLE "exceptions_20261030" (exception_id TEXT PRIMARY KEY)'
+        )
+        connection.commit()
+
+    repo = ExceptionTrackingRepository(db)
+    with pytest.raises(SchemaMismatchError, match="missing required columns"):
+        repo.list_exceptions(DATE_2)
+
+
 def test_directory_path_is_rejected(tmp_path: Path) -> None:
     repo = ExceptionTrackingRepository(tmp_path)
     with pytest.raises(InvalidDatabasePathError, match="directory"):

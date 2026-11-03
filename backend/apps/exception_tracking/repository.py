@@ -178,13 +178,8 @@ def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
     return row is not None
 
 
-def _ensure_date_table(connection: sqlite3.Connection, as_of_date: date) -> str:
-    name = table_name_for_date(as_of_date)
+def _validate_date_table(connection: sqlite3.Connection, name: str) -> None:
     quoted = quote_identifier(name)
-    if not _table_exists(connection, name):
-        connection.execute(_CREATE_TABLE_SQL.format(table=quoted))
-        return name
-
     rows = connection.execute(f"PRAGMA table_info({quoted})").fetchall()
     present = {_text(row, "name") for row in rows}
     missing = [column for column in REQUIRED_COLUMNS if column not in present]
@@ -200,6 +195,14 @@ def _ensure_date_table(connection: sqlite3.Connection, as_of_date: date) -> str:
             f"({'; '.join(details)}). Repair or recreate the tracking database; no "
             "rows were written."
         )
+
+
+def _ensure_date_table(connection: sqlite3.Connection, as_of_date: date) -> str:
+    name = table_name_for_date(as_of_date)
+    quoted = quote_identifier(name)
+    if not _table_exists(connection, name):
+        connection.execute(_CREATE_TABLE_SQL.format(table=quoted))
+    _validate_date_table(connection, name)
     return name
 
 
@@ -346,6 +349,7 @@ class ExceptionTrackingRepository:
             table = table_name_for_date(parsed_date)
             if not _table_exists(connection, table):
                 return []
+            _validate_date_table(connection, table)
             rows = connection.execute(
                 f"SELECT * FROM {quote_identifier(table)} ORDER BY exception_id"
             ).fetchall()
@@ -363,6 +367,7 @@ class ExceptionTrackingRepository:
             table = table_name_for_date(parsed_date)
             if not _table_exists(connection, table):
                 return None
+            _validate_date_table(connection, table)
             row = connection.execute(
                 f"SELECT * FROM {quote_identifier(table)} WHERE exception_id = ?",
                 (exception_id,),
@@ -377,6 +382,7 @@ class ExceptionTrackingRepository:
         records: list[ExceptionRecord] = []
         with self._read_connection() as connection:
             for table_date, table in _date_tables(connection):
+                _validate_date_table(connection, table)
                 row = connection.execute(
                     f"SELECT * FROM {quote_identifier(table)} WHERE exception_id = ?",
                     (exception_id,),
@@ -436,6 +442,7 @@ class ExceptionTrackingRepository:
                     f"{', '.join(sorted(normalized))}.",
                     unknown_ids=list(normalized),
                 )
+            _validate_date_table(connection, table)
 
             existing: dict[str, str] = {}
             ids = list(normalized)
