@@ -57,8 +57,8 @@ def _restore_tracking_db() -> None:
     if _ISOLATED_TRACKING_DIR is not None:
         with contextlib.suppress(OSError):
             shutil.rmtree(_ISOLATED_TRACKING_DIR)
-        if "EXCEPTION_TRACKING_DB" in vars(django_settings):
-            del django_settings.EXCEPTION_TRACKING_DB  # type: ignore[attr-defined]
+        if hasattr(django_settings, "EXCEPTION_TRACKING_DB"):
+            delattr(django_settings, "EXCEPTION_TRACKING_DB")
 
 
 def _isolate_rules_file() -> Path:
