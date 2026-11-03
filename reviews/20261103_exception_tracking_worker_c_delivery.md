@@ -2,19 +2,16 @@
 
 ## Status
 
-**IMPLEMENTATION COMPLETE — INTEGRATED VERIFICATION PASSED AGAINST DEPENDENCY SNAPSHOT; FORMAL DEPENDENCY COMMIT STILL PENDING**
+**IMPLEMENTATION COMPLETE — VERIFIED AGAINST WORKER A/B COMMITS; READY FOR REVIEWER INTEGRATION**
 
 Worker C implemented As-of Date propagation, run capture, saved-run metadata, and
 backward compatibility. The real A/B integration boundary was exercised in a
-throwaway worktree against Worker B's committed API/settings commits and Worker A's
-current implementation snapshot: **384 passed, 1 pre-existing failure** across
-`tests/backend`, `tests/contracts`, and `tests/integration`.
+throwaway worktree against Worker A implementation commit `0422f04` and Worker B
+commits `9f047d9`, `91ee51d`, and `34d5b11`: **450 passed, 1 pre-existing failure**
+across `tests/backend`, `tests/contracts`, and `tests/integration`.
 
-Worker A's implementation is not committed yet on
-`work/20261103-exception-tracking-worker-a` (only contract doc `bbdc06d` and
-untracked implementation files are present). The reviewer must integrate A's
-implementation commit before the final gate. Worker C has not merged or cherry-picked
-any dependency into its branch.
+Worker C has not merged or cherry-picked any dependency into its branch. The
+reviewer must integrate A and B, then C, and rerun the full gate.
 
 ## Worktree and branch
 
@@ -205,15 +202,14 @@ passed
 
 ### Real A/B integrated verification (throwaway worktree, not merged)
 
-Worktree `/tmp/opencode/verify-exception-c2` was created detached at C commit
-`e27e82a`, Worker B commits `9f047d9`, `91ee51d`, and `34d5b11` were cherry-picked
-for verification only, and Worker A's current implementation snapshot
-(`domain.py`, `errors.py`, `identity.py`, `repository.py`, `store.py`) was copied in
-without committing. No dependency was merged into the assigned branch.
+Worktree `/tmp/opencode/verify-exception-final` was created detached at C commit
+`a5ea453`, Worker A commit `0422f04` and Worker B commits `9f047d9`, `91ee51d`,
+and `34d5b11` were cherry-picked for verification only. No dependency was merged
+into the assigned branch.
 
 ```text
 uv run pytest -q tests/backend tests/contracts tests/integration
-1 failed, 384 passed
+1 failed, 450 passed
 
 uv run python backend/manage.py check
 System check identified no issues (0 silenced).
@@ -240,10 +236,8 @@ Worker C did not modify these areas.
 
 ## Dependency commits needed for final verification
 
-1. **Worker A implementation commit** — required: `apps/exception_tracking.store`,
-   `repository`, `identity`, `domain`, `errors` (contract doc is `bbdc06d`). Final
-   integration tests cannot pass without it; C's branch fails closed with a visible
-   dependency message.
+1. **Worker A implementation commit** — `0422f04` (`apps/exception_tracking.store`,
+   `repository`, `identity`, `domain`, `errors`), with contract doc `bbdc06d`.
 2. **Worker B** — `9f047d9` (settings `get_exception_tracking_path`) and `91ee51d`
    (tracking API, shared workbook, URL registration), with workbook date-cell fix
    `34d5b11`. Optional `8b4fa17` test boundary.
@@ -265,6 +259,7 @@ Worker C did not modify these areas.
 ## Disposition
 
 Worker C scope is implemented, documented, committed, and independently verified
-against the current A/B contracts. Final integration remains **NOT READY** until
-Worker A commits its implementation and the reviewer integrates A+B+C and resolves the
-pre-existing baseline failures.
+against Worker A commit `0422f04` and Worker B commits `9f047d9`/`91ee51d`/`34d5b11`.
+It is ready for the reviewer to integrate A, then B, then C. The coordinator's full
+gate remains red only because of the pre-existing baseline failures listed above and
+the reviewer sign-off items; no Worker C requirement gap is known.
