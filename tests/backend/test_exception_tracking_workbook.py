@@ -73,6 +73,14 @@ def test_formula_like_text_is_written_as_literal_and_round_trips() -> None:
     assert parsed.commentaries == {"CBR1_RULE_ID_1": commentary}
 
 
+def test_literal_leading_apostrophe_before_formula_text_round_trips() -> None:
+    commentary = "'=SUM(A1:A2)"
+    content = _workbook_bytes([_record(commentary=commentary)])
+
+    parsed = parse_commentary_workbook(content)
+    assert parsed.commentaries == {"CBR1_RULE_ID_1": commentary}
+
+
 def test_header_only_template_round_trips_for_empty_date() -> None:
     content = _workbook_bytes([])
     parsed = parse_commentary_workbook(content)

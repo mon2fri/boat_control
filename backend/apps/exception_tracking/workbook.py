@@ -78,8 +78,12 @@ class ParsedCommentaryTemplate:
     duplicate_ids: tuple[str, ...] = field(default_factory=tuple)
 
 
+def _needs_formula_protection(value: str) -> bool:
+    return value.lstrip("'").startswith(_FORMULA_PREFIXES)
+
+
 def _protect_text(value: str) -> str:
-    if value.startswith(_FORMULA_PREFIXES):
+    if _needs_formula_protection(value):
         return f"'{value}"
     return value
 
@@ -89,7 +93,7 @@ def _restore_text(value: Any) -> str:
         return ""
     if not isinstance(value, str):
         return str(value)
-    if value.startswith("'") and len(value) > 1 and value[1] in _FORMULA_PREFIXES:
+    if value.startswith("'") and _needs_formula_protection(value[1:]):
         return value[1:]
     return value
 
