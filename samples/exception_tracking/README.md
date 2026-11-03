@@ -1,7 +1,7 @@
 # Exception tracking acceptance sample
 
-This isolated sample uses the single rule in `rules.yaml` (status must equal
-`active`) and `account_id` as the configured key column.
+This isolated sample uses the single rule in `rules.yaml` (STATUS must equal
+`active`) and `ACCOUNT_ID` as the configured key column.
 
 - First run, As-of Date `2026-09-30`: use `baseline.csv` and
   `candidate_2026-09-30.csv`. This yields exceptions for A and B.

@@ -7,7 +7,7 @@ rules:
     conditions: []
     logic:
       format: value_vs_column
-      column_name: status
+      column_name: STATUS
       operator: eq
       target_value: active
       target_values:
