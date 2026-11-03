@@ -52,30 +52,62 @@ Returns available as-of dates and the backend default.
 
 ### `GET /api/exception-tracking/?as_of_date=2026-10-30`
 
-Returns the selected date's exceptions, including status. If `as_of_date` is
-omitted, the backend default is used. Invalid dates return HTTP 400.
+Returns the selected date's exception page plus authoritative table metadata.
+If `as_of_date` is omitted, the backend default is used. Invalid dates return
+HTTP 400.
+
+Paging, sorting and filtering run against the complete filtered dataset before
+the page is sliced. See
+`docs/20261103_exception_tracking_template_optimization_contract.md` for the
+frozen parameters and column keys.
 
 ```json
 {
   "as_of_date": "2026-10-30",
-  "total": 2,
+  "total": 65,
+  "unfiltered_total": 65,
+  "offset": 0,
+  "limit": 50,
+  "has_more": true,
+  "sort": null,
+  "order": "asc",
+  "filters": {},
+  "columns": [
+    {
+      "key": "exception_id",
+      "label": "Exception ID",
+      "visible": true,
+      "sortable": true,
+      "filterable": true,
+      "source": "standard"
+    }
+  ],
   "exceptions": [
     {
       "exception_id": "CBR1_00000000000000000000_ABC_123",
+      "status": "Commented",
+      "exception_commentary": "Known upstream defect",
+      "rule_index": "R001",
       "exception_rule_identifier": "CBR1_00000000000000000000",
       "key_columns": "{\"id\":\"ABC\",\"type\":\"123\"}",
       "exception_timestamp": "2026-10-30T08:15:00+00:00",
-      "exception_commentary": "Known upstream defect",
       "exception_as_of_date": "2026-10-30",
       "exception_first_seen_as_of_date": "2026-09-30",
       "exception_last_seen_as_of_date": "2026-10-30",
       "exception_first_seen_timestamp": "2026-09-30T09:00:00+00:00",
       "exception_last_seen_timestamp": "2026-10-30T08:15:00+00:00",
-      "status": "Commented"
+      "detail_values": {"Region": "EMEA"}
     }
-  ]
+  ],
+  "available_filters": {
+    "status": ["Commented", "New", "NotCommented"]
+  }
 }
 ```
+
+Default page size is 50; selectable sizes are 50, 100, 200 and 500. Without an
+explicit sort, rows are ordered New, NotCommented, Commented and then by
+Exception ID.
 
 ### `GET /api/exception-tracking/export/?as_of_date=2026-10-30`
 
@@ -156,7 +188,8 @@ Codes: `invalid_workbook`, `invalid_as_of_date`, `date_mismatch`,
 
 ## XLSX workbook format
 
-Workbook version: `exception_commentary/v1`.
+Workbook version: `exception_commentary/v2`. The importer also accepts the
+legacy `exception_commentary/v1` layout.
 
 ### Sheet `Template`
 
@@ -166,7 +199,7 @@ Metadata used for safe round-trip validation. Users may leave this sheet alone.
 | --- | --- |
 | A1 | `Exception Commentary Template` |
 | A2 | `Template Version` |
-| B2 | `exception_commentary/v1` |
+| B2 | `exception_commentary/v2` (legacy imports accept `v1`) |
 | A3 | `As-of Date` |
 | B3 | ISO date, e.g. `2026-10-30` |
 | A4 | `Generated At` |
@@ -176,37 +209,41 @@ Metadata used for safe round-trip validation. Users may leave this sheet alone.
 
 ### Sheet `Exceptions`
 
-Row 1 is the header. Data starts at row 2. Required columns, in order:
+Row 1 is the header. Data starts at row 2. The v2 column order is:
 
-1. `Exception ID`
-2. `Exception Rule Identifier`
-3. `Key Columns`
-4. `Exception Timestamp`
-5. `Exception Commentary`
-6. `Exception As-of Date`
-7. `Exception First Seen As-of Date`
-8. `Exception Last Seen As-of Date`
-9. `Status`
+1. `Exception ID` — visible by default
+2. `Exception Status` — visible by default
+3. `Commentary` — visible by default
+4. `Rule Index` — visible by default
+5. `Exception Rule Identifier` — hidden by default
+6. `Key Columns` — hidden by default
+7. `Exception Timestamp` — hidden by default
+8. `Exception As-of Date` — hidden by default
+9. `Exception First Seen As-of Date` — hidden by default
+10. `Exception Last Seen As-of Date` — hidden by default
+11. Only the ordered `Extra Columns for Commentary Template` selection —
+    hidden by default
 
-Only `Exception ID` and `Exception Commentary` are used to update data. The
-other required displayed values are informational and are re-read from the
-database on import; the client cannot change identity or status through this
-workbook.
+Columns 5 onward use Excel hidden-column dimensions; their values are present
+and remain revealable.
 
-### Appended exception-detail columns
+Only `Exception ID`, `As-of Date` and `Commentary` participate in v2 import
+business validation. All later columns are informational. For the legacy v1
+layout, the original nine headers remain required and `Exception Commentary`
+remains the commentary field.
 
-After the nine required columns, the backend appends the exception-table context
-for the selected date: configured key columns, `Rule Index`, aggregation
-columns, and configured exception/extra columns. Duplicate header names are
-removed with first-occurrence-wins ordering. See
-`docs/20261103_exception_tracking_detail_template_contract.md` for the exact
-ordered mapping and the shared Exception ID rule used by Results and Exception
-Tracking.
+### Appended data columns
+
+Only `Extra Columns for Commentary Template` supplies appended data columns, in
+its configured order. The backend never infers them from Extra Column,
+attribute-comparison sections, key/aggregation columns or other exception-table
+fields. An empty selection adds no data columns. Values are read from Worker A's
+persisted per-exception detail values; records from older dates without a value
+for a later-selected column export an empty cell.
 
 All trailing columns are informational only. Import ignores their headers and
 values completely: editing, clearing, adding, deleting or reordering them never
-changes validation results or exception data. Older workbooks with only the nine
-required columns remain valid.
+changes validation results or exception data.
 
 Formula-injection protection: every text cell written by the backend is
 prefixed with an apostrophe when it begins with `=`, `+`, `-`, `@`, tab, or

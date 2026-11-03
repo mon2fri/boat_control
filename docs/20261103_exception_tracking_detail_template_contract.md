@@ -1,6 +1,13 @@
 # Commentary template exception details — B/D contract
 
-Status: **FROZEN BY COORDINATOR/REVIEWER; IMPLEMENTED AND INTEGRATED**
+> **SUPERSEDED for appended data columns.** The newest
+> `Exception Tracking Template optimization` requirement replaced automatic
+> exception-table appending with the ordered
+> `Extra Columns for Commentary Template` selection. Use
+> `docs/20261103_exception_tracking_template_optimization_contract.md`.
+> The stable Exception ID/fallback guidance below remains applicable.
+
+Status: **SUPERSEDED FOR APPENDED COLUMNS; ID CONTRACT RETAINED AND INTEGRATED**
 
 Branch: `work/20261103-exception-tracking-worker-b`
 

@@ -13,14 +13,13 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
-from apps.exception_tracking import api_services
 from apps.exception_tracking.api_services import (
     TrackingAPIError,
     export_commentary,
     import_commentary,
     list_exceptions,
 )
-from apps.exception_tracking.workbook import build_commentary_workbook
+from apps.exception_tracking.workbook import EXCEPTION_HEADERS, build_commentary_workbook
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.utils import override_settings
 from openpyxl import load_workbook
@@ -74,7 +73,7 @@ def test_real_store_round_trip_prefill_and_carry_forward(tmp_path: Path) -> None
     template = export_commentary(SECOND_DATE, repository)
     workbook = load_workbook(io.BytesIO(template))
     assert workbook["Template"]["B3"].value == "2026-10-30"
-    assert workbook["Exceptions"]["E2"].value == "Known upstream defect"
+    assert workbook["Exceptions"]["C2"].value == "Known upstream defect"
 
     edited = build_commentary_workbook(
         [{**second_records[0], "exception_commentary": "Reviewed"}], SECOND_DATE
@@ -142,7 +141,7 @@ def test_api_adapter_opens_configured_real_database(tmp_path: Path) -> None:
         assert export.status_code == 200
 
         workbook = load_workbook(io.BytesIO(export.content))
-        workbook["Exceptions"]["E2"] = "Reviewed"
+        workbook["Exceptions"]["C2"] = "Reviewed"
         buffer = io.BytesIO()
         workbook.save(buffer)
         uploaded = SimpleUploadedFile(
@@ -163,45 +162,17 @@ def test_api_adapter_opens_configured_real_database(tmp_path: Path) -> None:
         assert imported.json()["exceptions"][0]["exception_commentary"] == "Reviewed"
 
 
-def test_real_store_export_appends_run_detail_context(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_real_store_export_uses_standard_columns_without_detail_metadata(
+    tmp_path: Path,
 ) -> None:
     repository = repository_module.ExceptionTrackingRepository(tmp_path / "tracking.db")
     repository.record_exceptions(FIRST_DATE, [_occurrence(commentary="Known")])
-    record = list_exceptions(FIRST_DATE, repository)[0]
-    run = {
-        "run_id": "detail-run",
-        "as_of_date": FIRST_DATE.isoformat(),
-        "result": {
-            "key_columns": ["id", "region"],
-            "aggregation_columns": [],
-            "aggregation_column_labels": {},
-            "exception_columns": ["score"],
-            "rule_bindings": {},
-            "validation": {
-                "rule_summaries": {
-                    "R001": {"rule_identifier": RULE_IDENTIFIER, "name": "Rule"}
-                },
-                "violations_by_rule": {
-                    "R001": [
-                        {
-                            "exception_id": record["exception_id"],
-                            "rule_identifier": RULE_IDENTIFIER,
-                            "key_columns": {"id": "A", "region": "EMEA"},
-                            "grouping_values": {},
-                            "extra_values": {"score": "10"},
-                        }
-                    ]
-                },
-            },
-        },
-    }
-    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [run])
 
     template = export_commentary(FIRST_DATE, repository)
     workbook = load_workbook(io.BytesIO(template))
     sheet = workbook["Exceptions"]
 
-    headers = [cell.value for cell in sheet[1]]
-    assert headers[9:] == ["id", "region", "Rule Index", "score"]
-    assert [cell.value for cell in sheet[2]][9:] == ["A", "EMEA", "R001", "10"]
+    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert sheet["A2"].value == list_exceptions(FIRST_DATE, repository)[0]["exception_id"]
+    assert sheet["B2"].value == "Commented"
+    assert sheet["C2"].value == "Known"

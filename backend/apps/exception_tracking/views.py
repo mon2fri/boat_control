@@ -16,6 +16,16 @@ from apps.exception_tracking.serializers import (
     CommentaryTemplateImportSerializer,
     ExportQuerySerializer,
 )
+from apps.exception_tracking.table import (
+    TableQueryError,
+    available_filters,
+    column_metadata,
+    filter_records,
+    normalize_query,
+    parse_filters,
+    sort_records,
+    trim_detail_values,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,16 +76,44 @@ class ExceptionListView(APIView):  # type: ignore[misc]
             as_of_date = api_services.resolve_as_of_date(
                 serializer.validated_data.get("as_of_date")
             )
-            records = api_services.list_exceptions(as_of_date)
+            repository = api_services.get_repository()
+            records = api_services.list_exceptions(as_of_date, repository)
+            detail_columns = api_services.list_template_detail_columns(repository)
+            offset, limit, sort_key, order = normalize_query(
+                offset=request.query_params.get("offset"),
+                limit=request.query_params.get("limit"),
+                sort=request.query_params.get("sort"),
+                order=request.query_params.get("order"),
+                detail_columns=detail_columns,
+            )
+            filters = parse_filters(request.query_params, detail_columns)
+        except TableQueryError as exc:
+            return _error_response(
+                api_services.TrackingAPIError(str(exc), code=exc.code)
+            )
         except api_services.TrackingAPIError as exc:
             return _error_response(exc)
         except Exception as exc:  # pragma: no cover - defensive boundary
             return _unexpected_response(exc)
+
+        filtered = filter_records(records, filters)
+        ordered = sort_records(filtered, sort_key=sort_key, order=order)
+        page = ordered[offset : offset + limit]
         return Response(
             {
                 "as_of_date": as_of_date.isoformat(),
-                "total": len(records),
-                "exceptions": records,
+                "total": len(ordered),
+                "unfiltered_total": len(records),
+                "offset": offset,
+                "limit": limit,
+                "has_more": offset + len(page) < len(ordered),
+                "sort": sort_key,
+                "order": order,
+                "filters": filters,
+                "columns": column_metadata(detail_columns),
+                "detail_columns": list(detail_columns),
+                "exceptions": trim_detail_values(page, detail_columns),
+                "available_filters": available_filters(records, detail_columns),
             }
         )
 

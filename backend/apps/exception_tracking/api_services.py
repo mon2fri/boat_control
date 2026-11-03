@@ -4,13 +4,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
 
 from apps.exception_tracking.dates import default_as_of_date, parse_iso_date
 from apps.exception_tracking.workbook import (
-    EXCEPTION_HEADERS,
     ParsedCommentaryTemplate,
     WorkbookValidationError,
     build_commentary_workbook,
@@ -74,9 +72,9 @@ def _wire_temporal(value: Any, field_name: str) -> str:
     )
 
 
-def record_to_dict(record: Any) -> dict[str, str]:
+def record_to_dict(record: Any) -> dict[str, Any]:
     """Convert a Worker A record into the frozen wire shape."""
-    result = {
+    result: dict[str, Any] = {
         field_name: str(_field(record, field_name) or "")
         for field_name in _RECORD_FIELDS
         if field_name not in {"exception_timestamp", "exception_first_seen_timestamp",
@@ -108,6 +106,8 @@ def record_to_dict(record: Any) -> dict[str, str]:
             details={"status": status},
         )
     result["status"] = str(status)
+    result["rule_index"] = _record_rule_index(record)
+    result["detail_values"] = _record_detail_values(record)
     return result
 
 
@@ -183,7 +183,9 @@ def list_as_of_dates(repository: Any | None = None) -> list[date]:
     return sorted({value if isinstance(value, date) else parse_iso_date(value) for value in values})
 
 
-def list_exceptions(as_of_date: date, repository: Any | None = None) -> list[dict[str, str]]:
+def list_exceptions(
+    as_of_date: date, repository: Any | None = None
+) -> list[dict[str, Any]]:
     repo = repository or get_repository()
     try:
         records = repo.list_exceptions(as_of_date)
@@ -234,10 +236,6 @@ def resolve_export_as_of_date(
     return default_as_of_date()
 
 
-def _detail_header(value: object) -> str:
-    return " ".join(str(value).split()).casefold()
-
-
 def _detail_text(value: Any) -> str:
     if value is None:
         return ""
@@ -248,234 +246,64 @@ def _detail_text(value: Any) -> str:
     return str(value)
 
 
-@dataclass(frozen=True)
-class _DetailSpec:
-    header: str
-    source: str
-    column: str = ""
+def _record_rule_index(record: Any) -> str:
+    return str(_field(record, "rule_index") or "")
 
 
-def _exception_column_names(
-    result: Mapping[str, Any], violations_by_rule: Mapping[str, Any]
-) -> list[str]:
-    display = result.get("extra_column_display")
-    if isinstance(display, Mapping) and display.get("exception_tables") is False:
-        return []
-    configured = result.get("exception_columns")
-    if isinstance(configured, list):
-        return [str(column) for column in configured]
-    seen: list[str] = []
-    for violations in violations_by_rule.values():
-        if not isinstance(violations, list):
+def _record_detail_values(record: Any) -> dict[str, str]:
+    for field_name in ("detail_values", "extra_values"):
+        values = _field(record, field_name)
+        if isinstance(values, Mapping):
+            return {str(name): _detail_text(value) for name, value in values.items()}
+    return {}
+
+
+def _unique_names(values: Iterable[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        name = str(raw).strip()
+        key = name.casefold()
+        if not name or key in seen:
             continue
-        for violation in violations:
-            if not isinstance(violation, Mapping):
-                continue
-            for column in (violation.get("extra_values") or {}):
-                if str(column) not in seen:
-                    seen.append(str(column))
-    return seen
+        seen.add(key)
+        result.append(name)
+    return result
 
 
-def _detail_specs(result: Mapping[str, Any]) -> list[_DetailSpec]:
-    validation = result.get("validation") or {}
-    violations_by_rule = (
-        validation.get("violations_by_rule") or {}
-        if isinstance(validation, Mapping)
-        else {}
-    )
-    labels = result.get("aggregation_column_labels") or {}
-    candidates: list[tuple[str, str, str]] = []
-    for column in result.get("key_columns") or []:
-        candidates.append((str(column), "key", str(column)))
-    candidates.append(("Rule Index", "rule_index", ""))
-    for column in result.get("aggregation_columns") or []:
-        label = labels.get(column, column) if isinstance(labels, Mapping) else column
-        candidates.append((str(label), "aggregation", str(column)))
-    for column in _exception_column_names(result, violations_by_rule):
-        candidates.append((str(column), "extra", str(column)))
-
-    used = {_detail_header(header) for header in EXCEPTION_HEADERS}
-    specs: list[_DetailSpec] = []
-    for header, source, column in candidates:
-        name = header.strip()
-        if not name:
-            continue
-        key = _detail_header(name)
-        if key in used:
-            continue
-        used.add(key)
-        specs.append(_DetailSpec(name, source, column))
-    return specs
-
-
-def _violation_rule_identifier(
-    result: Mapping[str, Any], rule_id: str, violation: Mapping[str, Any]
-) -> str | None:
-    validation = result.get("validation") or {}
-    summaries = validation.get("rule_summaries") or {} if isinstance(validation, Mapping) else {}
-    summary = summaries.get(rule_id) if isinstance(summaries, Mapping) else None
-    bindings = result.get("rule_bindings") or {}
-    candidates = (
-        violation.get("rule_identifier"),
-        bindings.get(rule_id) if isinstance(bindings, Mapping) else None,
-        summary.get("rule_identifier") if isinstance(summary, Mapping) else None,
-    )
-    for candidate in candidates:
-        if isinstance(candidate, str) and candidate.strip():
-            return candidate
-    return None
-
-
-def _violation_exception_id(
-    result: Mapping[str, Any], rule_id: str, violation: Mapping[str, Any]
-) -> str | None:
-    explicit = violation.get("exception_id")
-    if isinstance(explicit, str) and explicit.strip():
-        return explicit
-    identifier = _violation_rule_identifier(result, rule_id, violation)
-    if not identifier:
-        return None
-    key_values = violation.get("key_columns") or {}
-    if not isinstance(key_values, Mapping):
-        return None
-    key_order = result.get("key_columns")
-    columns = (
-        [str(column) for column in key_order]
-        if isinstance(key_order, list) and key_order
-        else [str(column) for column in key_values]
-    )
-    values: list[str] = []
-    for column in columns:
-        if column not in key_values:
-            return None
-        text = _detail_text(key_values.get(column))
-        if text == "":
-            return None
-        values.append(text)
-    if not values:
-        return None
-    return "_".join([identifier, *values])
-
-
-def _value_for_spec(
-    rule_id: str, violation: Mapping[str, Any], spec: _DetailSpec
-) -> Any:
-    if spec.source == "rule_index":
-        return rule_id
-    if spec.source == "key":
-        return (violation.get("key_columns") or {}).get(spec.column)
-    if spec.source == "aggregation":
-        return (violation.get("grouping_values") or {}).get(spec.column)
-    return (violation.get("extra_values") or {}).get(spec.column)
-
-
-def _runs_for_date(as_of_date: date) -> list[dict[str, Any]]:
-    """Load saved runs for a date, newest first, for optional detail context."""
-    from apps.runs.persistence import list_runs, load_run
-
-    try:
-        metadata = list_runs()
-    except Exception:  # pragma: no cover - detail context is optional
-        logger.warning("Could not list saved runs for commentary template details")
-        return []
-
-    runs: list[dict[str, Any]] = []
-    for meta in metadata:
-        indexed_date = getattr(meta, "as_of_date", None)
-        if indexed_date:
+def list_template_detail_columns(repository: Any) -> list[str]:
+    """Read the ordered Extra Columns for Commentary Template selection."""
+    for method_name in (
+        "list_template_detail_columns",
+        "list_detail_columns",
+        "list_commentary_template_columns",
+        "list_template_columns",
+        "get_template_columns",
+        "get_commentary_template_columns",
+    ):
+        method = getattr(repository, method_name, None)
+        if callable(method):
             try:
-                if parse_iso_date(indexed_date) != as_of_date:
-                    continue
-            except (TypeError, ValueError):
-                pass
-        try:
-            run_data = load_run(meta.run_id)
-        except Exception:  # pragma: no cover - corrupt run must not block export
-            logger.warning("Could not load saved run %s for template details", meta.run_id)
-            continue
-        if not run_data:
-            continue
-        raw_date = run_data.get("as_of_date")
-        if not raw_date:
-            continue
-        try:
-            run_date = parse_iso_date(raw_date)
-        except (TypeError, ValueError):
-            continue
-        if run_date == as_of_date:
-            runs.append(run_data)
-    return runs
+                return _unique_names(method())
+            except (OSError, ValueError) as exc:
+                raise TrackingAPIError(
+                    str(exc),
+                    code="tracking_database_unavailable",
+                ) from exc
 
-
-def resolve_exception_details(
-    as_of_date: date,
-    records: Iterable[Mapping[str, str]],
-) -> tuple[tuple[str, ...], dict[str, dict[str, str]]]:
-    """Resolve appended exception-table detail columns for a date's rows.
-
-    Saved runs with the same top-level ``as_of_date`` are scanned newest first.
-    Older saved runs remain usable when they lack an explicit ``exception_id``:
-    the literal ID is recomputed from the persisted canonical rule identifier
-    and configured key order.
-    """
-    exception_ids = {record["exception_id"] for record in records}
-    if not exception_ids:
-        return (), {}
-
-    global_specs: list[_DetailSpec] = []
-    global_keys: set[str] = set()
-    details: dict[str, dict[str, str]] = {}
-
-    for run_data in _runs_for_date(as_of_date):
-        result = run_data.get("result") or {}
-        if not isinstance(result, Mapping):
-            continue
-        validation = result.get("validation") or {}
-        violations_by_rule = (
-            validation.get("violations_by_rule") or {}
-            if isinstance(validation, Mapping)
-            else {}
-        )
-        if not isinstance(violations_by_rule, Mapping):
-            continue
-
-        run_specs = _detail_specs(result)
-        matched: dict[str, list[tuple[str, Mapping[str, Any]]]] = {}
-        for rule_id, violations in violations_by_rule.items():
-            if not isinstance(violations, list):
-                continue
-            for violation in violations:
-                if not isinstance(violation, Mapping):
-                    continue
-                exception_id = _violation_exception_id(
-                    result, str(rule_id), violation
-                )
-                if exception_id in exception_ids:
-                    matched.setdefault(exception_id, []).append(
-                        (str(rule_id), violation)
-                    )
-        if not matched:
-            continue
-
-        for spec in run_specs:
-            key = _detail_header(spec.header)
-            if key not in global_keys:
-                global_keys.add(key)
-                global_specs.append(spec)
-
-        for exception_id, violations in matched.items():
-            target = details.setdefault(exception_id, {})
-            for spec in global_specs:
-                if target.get(spec.header):
-                    continue
-                for rule_id, violation in violations:
-                    text = _detail_text(_value_for_spec(rule_id, violation, spec))
-                    if text:
-                        target[spec.header] = text
-                        break
-
-    return tuple(spec.header for spec in global_specs), details
+    # Compatibility fallback for an older repository that persists detail
+    # values but does not yet expose the ordered metadata method.
+    columns: list[str] = []
+    try:
+        for date_value in repository.list_as_of_dates():
+            for record in repository.list_exceptions(date_value):
+                columns.extend(_record_detail_values(record))
+    except (OSError, ValueError) as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="tracking_database_unavailable",
+        ) from exc
+    return _unique_names(columns)
 
 
 def export_commentary(
@@ -484,8 +312,13 @@ def export_commentary(
     *,
     generated_at: datetime | None = None,
 ) -> bytes:
-    records = list_exceptions(as_of_date, repository)
-    detail_columns, detail_values = resolve_exception_details(as_of_date, records)
+    repo = repository or get_repository()
+    records = list_exceptions(as_of_date, repo)
+    detail_columns = list_template_detail_columns(repo)
+    detail_values = {
+        record["exception_id"]: record.get("detail_values") or {}
+        for record in records
+    }
     return build_commentary_workbook(
         records,
         as_of_date,
@@ -509,7 +342,7 @@ def _import_details(
 
 
 def _validate_ids(
-    parsed: ParsedCommentaryTemplate, existing: list[dict[str, str]]
+    parsed: ParsedCommentaryTemplate, existing: list[dict[str, Any]]
 ) -> None:
     existing_ids = {record["exception_id"] for record in existing}
     provided_ids = set(parsed.commentaries)
@@ -538,8 +371,8 @@ def _validate_ids(
     raise TrackingAPIError(message, code=code, details=details)
 
 
-def _commentary(record: Mapping[str, str]) -> str:
-    return record.get("exception_commentary") or ""
+def _commentary(record: Mapping[str, Any]) -> str:
+    return str(record.get("exception_commentary") or "")
 
 
 def import_commentary(

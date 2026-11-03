@@ -180,6 +180,7 @@ Response:
       "source": "detail"
     }
   ],
+  "detail_columns": ["Region"],
   "exceptions": [
     {
       "exception_id": "CBR1_..._ID",

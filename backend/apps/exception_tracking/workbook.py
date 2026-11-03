@@ -18,11 +18,14 @@ from openpyxl.utils import get_column_letter
 
 from apps.exception_tracking.dates import parse_iso_date
 
-TEMPLATE_VERSION = "exception_commentary/v1"
+TEMPLATE_VERSION = "exception_commentary/v2"
+LEGACY_TEMPLATE_VERSION = "exception_commentary/v1"
 TEMPLATE_SHEET = "Template"
 EXCEPTIONS_SHEET = "Exceptions"
 
-EXCEPTION_HEADERS: tuple[str, ...] = (
+VISIBLE_COLUMN_COUNT = 4
+
+LEGACY_EXCEPTION_HEADERS: tuple[str, ...] = (
     "Exception ID",
     "Exception Rule Identifier",
     "Key Columns",
@@ -33,19 +36,30 @@ EXCEPTION_HEADERS: tuple[str, ...] = (
     "Exception Last Seen As-of Date",
     "Status",
 )
+EXCEPTION_HEADERS: tuple[str, ...] = (
+    "Exception ID",
+    "Exception Status",
+    "Commentary",
+    "Rule Index",
+    "Exception Rule Identifier",
+    "Key Columns",
+    "Exception Timestamp",
+    "Exception As-of Date",
+    "Exception First Seen As-of Date",
+    "Exception Last Seen As-of Date",
+)
 _EXCEPTION_FIELDS: tuple[str, ...] = (
     "exception_id",
+    "status",
+    "exception_commentary",
+    "rule_index",
     "exception_rule_identifier",
     "key_columns",
     "exception_timestamp",
-    "exception_commentary",
     "exception_as_of_date",
     "exception_first_seen_as_of_date",
     "exception_last_seen_as_of_date",
-    "status",
 )
-_COMMENTARY_COLUMN = EXCEPTION_HEADERS.index("Exception Commentary")
-_ID_COLUMN = EXCEPTION_HEADERS.index("Exception ID")
 
 MAX_TEMPLATE_BYTES = 10 * 1024 * 1024
 MAX_TEMPLATE_ROWS = 100_000
@@ -76,6 +90,7 @@ class ParsedCommentaryTemplate:
     commentaries: dict[str, str]
     row_count: int
     duplicate_ids: tuple[str, ...] = field(default_factory=tuple)
+    template_version: str = TEMPLATE_VERSION
 
 
 def _needs_formula_protection(value: str) -> bool:
@@ -148,6 +163,13 @@ def _detail_text(value: Any) -> str:
     return str(value)
 
 
+_STATUS_RANK = {"New": 0, "NotCommented": 1, "Commented": 2}
+
+
+def _status_rank(value: object) -> int:
+    return _STATUS_RANK.get(str(value), len(_STATUS_RANK))
+
+
 def build_commentary_workbook(
     records: Iterable[Mapping[str, Any]],
     as_of_date: date,
@@ -160,9 +182,9 @@ def build_commentary_workbook(
 
     ``records`` uses the API record shape (the ten persisted columns plus
     ``status``). Text is written literally with formula-injection protection.
-    ``detail_columns`` are informational exception-table columns appended after
-    the original nine; their values are keyed by exception ID in
-    ``detail_values`` and are never used by import validation.
+    ``detail_columns`` are the ordered `Extra Columns for Commentary Template`
+    selection appended after the standard metadata. Their values are keyed by
+    exception ID in ``detail_values`` and are never used by import validation.
     """
     workbook = Workbook()
     template = workbook.active
@@ -193,7 +215,13 @@ def build_commentary_workbook(
     _style_header(sheet)
 
     values_by_id = detail_values or {}
-    ordered = sorted(records, key=lambda item: _record_value(item, "exception_id"))
+    ordered = sorted(
+        records,
+        key=lambda item: (
+            _status_rank(_record_value(item, "status")),
+            _record_value(item, "exception_id"),
+        ),
+    )
     for record in ordered:
         exception_id = _record_value(record, "exception_id")
         detail = values_by_id.get(exception_id) or {}
@@ -210,9 +238,12 @@ def build_commentary_workbook(
             ]
         )
 
-    widths = (52, 34, 42, 26, 52, 22, 28, 28, 16, *([24] * len(appended)))
+    widths = (52, 18, 52, 16, 34, 42, 26, 22, 28, 28, *([24] * len(appended)))
     for index, width in enumerate(widths, start=1):
-        sheet.column_dimensions[get_column_letter(index)].width = width
+        column = get_column_letter(index)
+        sheet.column_dimensions[column].width = width
+        if index > VISIBLE_COLUMN_COUNT:
+            sheet.column_dimensions[column].hidden = True
     for row in sheet.iter_rows(min_row=2):
         for cell in row:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
@@ -224,17 +255,21 @@ def build_commentary_workbook(
     return buffer.getvalue()
 
 
-def _validated_headers(row: tuple[Any, ...]) -> tuple[str, ...]:
+def _validated_headers(row: tuple[Any, ...], version: str) -> tuple[int, int]:
     headers = tuple(_cell_text(cell.value) for cell in row)
-    expected = len(EXCEPTION_HEADERS)
-    if len(headers) < expected or headers[:expected] != EXCEPTION_HEADERS:
+    if version == LEGACY_TEMPLATE_VERSION:
+        expected = LEGACY_EXCEPTION_HEADERS
+        commentary_index = expected.index("Exception Commentary")
+    else:
+        expected = EXCEPTION_HEADERS[:VISIBLE_COLUMN_COUNT]
+        commentary_index = expected.index("Commentary")
+    required_count = len(expected)
+    if len(headers) < required_count or headers[:required_count] != expected:
         raise WorkbookValidationError(
-            "The Exceptions sheet's original commentary columns are missing or out of order.",
-            details={"expected_columns": list(EXCEPTION_HEADERS)},
+            f"The Exceptions sheet's required {version} columns are missing or out of order.",
+            details={"expected_columns": list(expected)},
         )
-    # Trailing columns are informational exception context. Their names and
-    # values are intentionally ignored during import.
-    return headers[:expected]
+    return required_count, commentary_index
 
 
 def parse_commentary_workbook(
@@ -267,10 +302,13 @@ def parse_commentary_workbook(
 
         template = workbook[TEMPLATE_SHEET]
         version = _cell_text(template["B2"].value)
-        if version != TEMPLATE_VERSION:
+        if version not in (LEGACY_TEMPLATE_VERSION, TEMPLATE_VERSION):
             raise WorkbookValidationError(
                 "The workbook template version is not supported.",
-                details={"expected_version": TEMPLATE_VERSION, "actual_version": version},
+                details={
+                    "supported_versions": [LEGACY_TEMPLATE_VERSION, TEMPLATE_VERSION],
+                    "actual_version": version,
+                },
             )
 
         try:
@@ -286,7 +324,7 @@ def parse_commentary_workbook(
         header_row = next(rows, None)
         if header_row is None:
             raise WorkbookValidationError("The Exceptions sheet has no header row.")
-        _validated_headers(header_row)
+        required_count, commentary_index = _validated_headers(header_row, version)
 
         commentaries: dict[str, str] = {}
         duplicates: list[str] = []
@@ -298,15 +336,15 @@ def parse_commentary_workbook(
                     f"The workbook exceeds the {max_rows:,}-row import limit.",
                     code="file_too_large",
                 )
-            cells = list(row) + [None] * (len(EXCEPTION_HEADERS) - len(row))
+            cells = list(row) + [None] * (required_count - len(row))
             values = [cell.value if cell is not None else None for cell in cells]
-            original_values = values[: len(EXCEPTION_HEADERS)]
+            original_values = values[:required_count]
             if not any(value not in (None, "") for value in original_values):
-                # Entirely blank required cells. Appended informational values
-                # alone never create or invalidate an exception row.
+                # Entirely blank required cells. Informational values alone
+                # never create or invalidate an exception row.
                 continue
 
-            raw_id = values[_ID_COLUMN]
+            raw_id = values[0]
             exception_id = _cell_text(raw_id)
             if not exception_id:
                 raise WorkbookValidationError(
@@ -319,13 +357,13 @@ def parse_commentary_workbook(
                     details={"row": row_number},
                 )
 
-            commentary_cell = cells[_COMMENTARY_COLUMN]
-            raw_commentary = values[_COMMENTARY_COLUMN]
+            commentary_cell = cells[commentary_index]
+            raw_commentary = values[commentary_index]
             if getattr(commentary_cell, "data_type", None) == "f" or (
                 isinstance(raw_commentary, str) and raw_commentary.startswith("=")
             ):
                 raise WorkbookValidationError(
-                    f"Row {row_number} contains a formula in Exception Commentary. "
+                    f"Row {row_number} contains a formula in Commentary. "
                     "Enter literal text instead.",
                     code="invalid_commentary",
                     details={"row": row_number},
@@ -349,6 +387,7 @@ def parse_commentary_workbook(
             commentaries=commentaries,
             row_count=row_count,
             duplicate_ids=tuple(dict.fromkeys(duplicates)),
+            template_version=version,
         )
     finally:
         workbook.close()
