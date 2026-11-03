@@ -150,6 +150,8 @@ def test_real_capture_round_trip_and_results_workbook(
         repository.update_commentaries(date(2026, 10, 30), {records[0].exception_id: "Known"})
         second = _execute(client, session_id, "2026-10-30")
         assert second["run_id"] != first["run_id"]
+        # The response is filtered because the exception is now Commented.
+        assert second["result"]["validation"]["total_violations"] == 0
         records = repository.list_exceptions(date(2026, 10, 30))
         assert records[0].exception_commentary == "Known"
 
@@ -169,6 +171,9 @@ def test_real_capture_round_trip_and_results_workbook(
         loaded = load_run(second["run_id"])
         assert loaded is not None
         assert loaded["as_of_date"] == "2026-10-30"
+        stored_violations = loaded["result"]["validation"]["violations_by_rule"]["R001"]
+        assert len(stored_violations) == 1
+        assert stored_violations[0]["exception_status"] == "Commented"
 
 def test_real_empty_run_creates_selectable_date_and_header_only_workbook(
     tmp_path: Path,
