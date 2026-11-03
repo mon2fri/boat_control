@@ -10,6 +10,9 @@ import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { ConfigLoadNotice } from "../features/configs/ConfigLoadNotice";
 import { resolveRowsColumnsConfig, mapWorkflowToRowsColumnsConfig } from "../api/configContent";
 import type { SourceFile } from "../api/domain";
+import { AsOfDateField } from "../features/tracking/AsOfDateField";
+import { useExceptionTrackingDates } from "../features/tracking/useTracking";
+import { isValidIsoDate } from "../lib/asOfDate";
 
 export function UploadPage() {
   const navigate = useNavigate();
@@ -32,7 +35,16 @@ export function UploadPage() {
 
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
   const [configNotice, setConfigNotice] = useState<string | null>(null);
+  const dateTouchedRef = useRef(false);
+  const trackingDates = useExceptionTrackingDates();
 
+  useEffect(() => {
+    if (dateTouchedRef.current) return;
+    const backendDefault = trackingDates.data?.defaultDate;
+    if (backendDefault && isValidIsoDate(backendDefault) && backendDefault !== state.asOfDate) {
+      dispatch({ type: "setAsOfDate", date: backendDefault });
+    }
+  }, [dispatch, state.asOfDate, trackingDates.data]);
   const header = useHeaderReport((report) => {
     dispatch({ type: "setHeader", header: report });
     lastSessionIdRef.current = report.sessionId;
@@ -65,13 +77,13 @@ export function UploadPage() {
 
   const handleLocalSubmit = useCallback(() => {
     if (!localFile1 || !localFile2) return;
-    void header.submitUpload(localFile1, localFile2);
-  }, [localFile1, localFile2, header]);
+    void header.submitUpload(localFile1, localFile2, state.asOfDate);
+  }, [localFile1, localFile2, header, state.asOfDate]);
 
   const handleRemoteSubmit = useCallback(() => {
     if (!remoteFileA) return;
-    void header.submitFromPreset(remoteFileA, remoteFileB);
-  }, [remoteFileA, remoteFileB, header]);
+    void header.submitFromPreset(remoteFileA, remoteFileB, state.asOfDate);
+  }, [remoteFileA, remoteFileB, header, state.asOfDate]);
 
   const handleContinue = useCallback(() => {
     if (!state.header) return;
@@ -132,6 +144,24 @@ export function UploadPage() {
       <p className="section-hint">
         Provide two CSV versions to calibrate. Choose from local upload or a configured remote source.
       </p>
+
+      <div className="card">
+        <h3 className="card-heading">Exception tracking date</h3>
+        <AsOfDateField
+          id="upload-as-of-date"
+          value={state.asOfDate}
+          onChange={(date) => {
+            dateTouchedRef.current = true;
+            dispatch({ type: "setAsOfDate", date });
+          }}
+          hint="This calendar date is stored with the run and identifies the exception-tracking snapshot."
+        />
+        {!isValidIsoDate(state.asOfDate) && (
+          <p className="alert alert--error" role="alert">
+            Choose a valid As-of Date before loading or running files.
+          </p>
+        )}
+      </div>
 
       {state.sessionExpired && (
         <p className="alert alert--error" role="alert">
@@ -281,7 +311,7 @@ export function UploadPage() {
           <button
             type="button"
             className="btn btn--primary"
-            disabled={!localFile1 || !localFile2 || header.status === "loading"}
+            disabled={!localFile1 || !localFile2 || header.status === "loading" || !isValidIsoDate(state.asOfDate)}
             onClick={handleLocalSubmit}
           >
             Inspect headers
@@ -295,7 +325,7 @@ export function UploadPage() {
           <button
             type="button"
             className="btn btn--primary"
-            disabled={!remoteFileA || header.status === "loading"}
+            disabled={!remoteFileA || header.status === "loading" || !isValidIsoDate(state.asOfDate)}
             onClick={handleRemoteSubmit}
           >
             Inspect headers

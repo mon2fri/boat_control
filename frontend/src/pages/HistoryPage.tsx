@@ -53,6 +53,7 @@ export function HistoryPage() {
             <tr>
               <th scope="col">Report</th>
               <th scope="col">Files</th>
+              <th scope="col">As-of Date</th>
               <th scope="col">Created</th>
               <th scope="col">
                 <span className="visually-hidden">Actions</span>
@@ -66,6 +67,7 @@ export function HistoryPage() {
                 <td>
                   {run.file1Name} vs {run.file2Name}
                 </td>
+                <td>{run.asOfDate ?? "—"}</td>
                 <td>{formatDateTime(run.createdAt)}</td>
                 <td>
                   <div className="history-actions">

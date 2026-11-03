@@ -6,6 +6,7 @@ import { ResultsPage } from "./pages/ResultsPage";
 import { FamiliesPage } from "./pages/FamiliesPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ExceptionTrackingPage } from "./pages/ExceptionTrackingPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
 /** Route table shared by the app bootstrap and integration tests. */
@@ -24,6 +25,7 @@ export const routes: RouteObject[] = [
       // shows the saved result.
       { path: "results/:runId", element: <ResultsPage /> },
       { path: "history", element: <HistoryPage /> },
+      { path: "exception-tracking", element: <ExceptionTrackingPage /> },
       { path: "settings", element: <SettingsPage /> },
       { path: "*", element: <NotFoundPage /> },
     ],

@@ -32,12 +32,15 @@ export const uploadResponseSchema = z.object({
   file_b_name: z.string(),
   file_a_deduplicated: z.boolean(),
   file_b_deduplicated: z.boolean(),
+  /** Optional echo of the selected tracking date (backend is authoritative). */
+  as_of_date: z.string().optional(),
   inspection: inspectionSchema,
 });
 export type WireUploadResponse = z.infer<typeof uploadResponseSchema>;
 
 export const inspectResponseSchema = z.object({
   session_id: z.string(),
+  as_of_date: z.string().optional(),
   inspection: inspectionSchema,
 });
 
@@ -250,6 +253,7 @@ export type WireFilterRow = z.infer<typeof wireFilterRowSchema>;
 
 export const wireRunRequestSchema = z.object({
   session_id: z.string(),
+  as_of_date: z.string().optional(),
   comparison_columns: z.array(z.string()).nullable().optional(),
   target_columns: z.array(z.string()).nullable().optional(),
   key_columns: z.array(z.string()).nullable().optional(),
@@ -408,6 +412,8 @@ export const wireRunDocumentSchema = z.object({
   file_a_name: z.string(),
   file_b_name: z.string(),
   created_at: z.string(),
+  /** Calendar date used for exception tracking. Older runs omit it. */
+  as_of_date: z.string().optional(),
   result: wireRunResultSchema,
 });
 export type WireRunDocument = z.infer<typeof wireRunDocumentSchema>;
@@ -439,6 +445,7 @@ export const legacyWireRunDocumentSchema = z.object({
   file_a_name: z.string(),
   file_b_name: z.string(),
   created_at: z.string(),
+  as_of_date: z.string().optional(),
   result: legacyRunResultSchema,
 });
 export type LegacyWireRunDocument = z.infer<typeof legacyWireRunDocumentSchema>;
@@ -450,6 +457,8 @@ export const wireRunMetadataSchema = z.object({
   file_a_name: z.string(),
   file_b_name: z.string(),
   created_at: z.string(),
+  /** Calendar date used for exception tracking. Older runs omit it. */
+  as_of_date: z.string().optional(),
   // `file_path` was removed from the canonical history/rename response per
   // the worker matrix; it is accepted but ignored when present for backward
   // compatibility with older backends during the cut-over.
@@ -468,6 +477,82 @@ export const wireExportRequestSchema = z.object({
 });
 export type WireExportRequest = z.infer<typeof wireExportRequestSchema>;
 
+// --- Exception tracking --------------------------------------------------
+
+/**
+ * Wire status is the backend's authoritative value. Lower-case/space/hyphen
+ * spellings are normalised defensively, but the UI never invents a status.
+ */
+export const wireExceptionStatusSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  return value.replace(/[\s_-]/g, "").toLowerCase();
+}, z.enum(["new", "commented", "notcommented"]).transform((value) => {
+  const canonical = {
+    new: "New",
+    commented: "Commented",
+    notcommented: "NotCommented",
+  } as const;
+  return canonical[value];
+}));
+
+/** `key_columns` is a documented lossless representation: string, object, or ordered values. */
+export const wireExceptionKeyColumnsSchema = z
+  .union([
+    z.string(),
+    z.array(wireScalarSchema),
+    z.record(z.string(), wireScalarSchema),
+  ])
+  .nullable()
+  .optional();
+
+export const wireTrackedExceptionSchema = z.object({
+  exception_id: z.string(),
+  exception_rule_identifier: z.string(),
+  key_columns: wireExceptionKeyColumnsSchema,
+  exception_timestamp: z.string(),
+  exception_commentary: z.string().nullable().optional(),
+  exception_as_of_date: z.string(),
+  exception_first_seen_as_of_date: z.string(),
+  exception_last_seen_as_of_date: z.string(),
+  exception_first_seen_timestamp: z.string().nullable().optional(),
+  exception_last_seen_timestamp: z.string().nullable().optional(),
+  /** Backend-derived status; required once B ships it, optional for fixtures. */
+  status: wireExceptionStatusSchema.optional(),
+});
+export type WireTrackedException = z.infer<typeof wireTrackedExceptionSchema>;
+
+export const wireExceptionTrackingListSchema = z.union([
+  z.array(wireTrackedExceptionSchema),
+  z.object({
+    as_of_date: z.string().optional(),
+    exceptions: z.array(wireTrackedExceptionSchema),
+    total: z.number().int().nonnegative().optional(),
+  }),
+]);
+export type WireExceptionTrackingList = z.infer<typeof wireExceptionTrackingListSchema>;
+
+export const wireExceptionTrackingDatesSchema = z.object({
+  /** Preferred spelling; `available_dates` is accepted for wire compatibility. */
+  dates: z.array(z.string()).optional(),
+  available_dates: z.array(z.string()).optional(),
+  /** Backend-authoritative default (B contract). */
+  default_as_of_date: z.string().optional(),
+  /** Compatibility alias accepted during parallel development. */
+  default_date: z.string().optional(),
+});
+export type WireExceptionTrackingDates = z.infer<typeof wireExceptionTrackingDatesSchema>;
+
+export const wireCommentaryImportResponseSchema = z.object({
+  as_of_date: z.string().optional(),
+  updated: z.number().int().nonnegative().optional(),
+  updated_count: z.number().int().nonnegative().optional(),
+  cleared: z.number().int().nonnegative().optional(),
+  unchanged: z.number().int().nonnegative().optional(),
+  imported: z.number().int().nonnegative().optional(),
+  message: z.string().optional(),
+});
+export type WireCommentaryImportResponse = z.infer<typeof wireCommentaryImportResponseSchema>;
+
 // --- Settings, saved filters, presets ----------------------------------
 
 export const wireSettingsSchema = z.object({
@@ -479,6 +564,9 @@ export const wireSettingsSchema = z.object({
   family_config_path: z.string().min(1),
   full_set_confirmation_rows: z.number().int().positive(),
   run_history_path: z.string().min(1),
+  // Added by the exception-tracking enhancement. Defaults keep older
+  // backends/fixtures parseable while the setting is being rolled out.
+  exception_tracking_path: z.string().default(""),
 });
 export type WireSettings = z.infer<typeof wireSettingsSchema>;
 

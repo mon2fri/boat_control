@@ -7,6 +7,7 @@ import type {
   RunResult,
   ExtraColumnDisplay,
 } from "../api/domain";
+import { defaultAsOfDate, isValidIsoDate } from "../lib/asOfDate";
 
 export interface PreparedDataCache {
   sessionId: string;
@@ -22,6 +23,8 @@ export interface PreparedDataCache {
  */
 export interface WorkflowState {
   header: HeaderReport | null;
+  /** Calendar date used for exception tracking; carried through run and restoration. */
+  asOfDate: string;
   /** Shared columns selected for comparison. Initialized to all common columns on upload. */
   comparisonColumns: string[];
   filters: FilterRow[];
@@ -55,6 +58,7 @@ export interface WorkflowState {
 
 const initialState: WorkflowState = {
   header: null,
+  asOfDate: defaultAsOfDate(),
   comparisonColumns: [],
   filters: [],
   targetColumns: [],
@@ -76,6 +80,7 @@ const initialState: WorkflowState = {
 
 type Action =
   | { type: "setHeader"; header: HeaderReport }
+  | { type: "setAsOfDate"; date: string }
   | { type: "setComparisonColumns"; columns: string[] }
   | { type: "removeComparisonColumn"; column: string }
   | { type: "setAggregationColumns"; columns: string[] }
@@ -100,7 +105,18 @@ type Action =
 function reducer(state: WorkflowState, action: Action): WorkflowState {
   switch (action.type) {
     case "setHeader":
-      return { ...initialState, header: action.header, comparisonColumns: [...action.header.common] };
+      return {
+        ...initialState,
+        // Keep the date the user chose before/while loading files; a
+        // backend-echoed date is authoritative when present.
+        asOfDate: action.header.asOfDate && isValidIsoDate(action.header.asOfDate)
+          ? action.header.asOfDate
+          : state.asOfDate || initialState.asOfDate,
+        header: action.header,
+        comparisonColumns: [...action.header.common],
+      };
+    case "setAsOfDate":
+      return { ...state, asOfDate: action.date };
     case "setComparisonColumns": {
       const cols = action.columns;
       const colSet = new Set(cols);

@@ -28,6 +28,7 @@ function reducer(state: WorkflowState, action: any): WorkflowState {
 function base(): WorkflowState {
   return {
     header: null,
+    asOfDate: "2026-10-30",
     comparisonColumns: [],
     filters: [],
     targetColumns: [],

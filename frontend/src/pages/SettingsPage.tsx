@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppSettings } from "../api/domain";
 import { useSaveSettings, useSettings } from "../features/settings/useSettings";
+import { chooseExceptionTrackingDbPath } from "../features/settings/pathPicker";
+import { isAbsoluteHostPath } from "../lib/hostPath";
 
 interface DraftSettings {
   applicationName: string;
@@ -11,6 +13,7 @@ interface DraftSettings {
   familyConfigPath: string;
   fullSetConfirmationRows: string;
   runHistoryPath: string;
+  exceptionTrackingPath: string;
 }
 
 function toDraft(settings: AppSettings): DraftSettings {
@@ -23,9 +26,11 @@ function toDraft(settings: AppSettings): DraftSettings {
     familyConfigPath: settings.familyConfigPath,
     fullSetConfirmationRows: String(settings.fullSetConfirmationRows),
     runHistoryPath: settings.runHistoryPath,
+    exceptionTrackingPath: settings.exceptionTrackingPath,
   };
 }
 
+/** Absolute Linux (`/...`), Windows drive (`C:\...`/`C:/...`) or UNC (`\\host\share`) path. */
 function validate(draft: DraftSettings): string[] {
   const errors: string[] = [];
   if (!draft.applicationName.trim()) errors.push("Application name is required.");
@@ -34,6 +39,11 @@ function validate(draft: DraftSettings): string[] {
   if (!draft.filterConfigPath.trim()) errors.push("Filter Config Path is required.");
   if (!draft.familyConfigPath.trim()) errors.push("Column/Value Family Config Path is required.");
   if (!draft.runHistoryPath.trim()) errors.push("Run history Path is required.");
+  if (!draft.exceptionTrackingPath.trim()) {
+    errors.push("Exception tracking database path is required.");
+  } else if (/[\0\r\n]/.test(draft.exceptionTrackingPath)) {
+    errors.push("Exception tracking database path contains characters that are not allowed.");
+  }
   const rowLimit = Number(draft.fullSetConfirmationRows);
   if (!Number.isInteger(rowLimit) || rowLimit < 1) {
     errors.push("Full set confirmation (Rows) must be a positive integer.");
@@ -49,6 +59,8 @@ export function SettingsPage() {
     settings.data ? toDraft(settings.data) : null,
   );
   const [submitted, setSubmitted] = useState(false);
+  const [pickerNotice, setPickerNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
+  const [picking, setPicking] = useState(false);
 
   useEffect(() => {
     if (!settings.data || lastSyncedRef.current === settings.data) return;
@@ -101,7 +113,25 @@ export function SettingsPage() {
       familyConfigPath: draft.familyConfigPath.trim(),
       fullSetConfirmationRows: Number(draft.fullSetConfirmationRows),
       runHistoryPath: draft.runHistoryPath.trim(),
+      exceptionTrackingPath: draft.exceptionTrackingPath.trim(),
     });
+  }
+
+  async function handlePickPath(): Promise<void> {
+    if (!draft) return;
+    setPickerNotice(null);
+    setPicking(true);
+    try {
+      const outcome = await chooseExceptionTrackingDbPath(draft.exceptionTrackingPath);
+      if (outcome.status === "picked") {
+        patch({ exceptionTrackingPath: outcome.path });
+        setPickerNotice({ tone: "info", text: `Selected ${outcome.path}` });
+      } else {
+        setPickerNotice({ tone: "error", text: outcome.message });
+      }
+    } finally {
+      setPicking(false);
+    }
   }
 
   const fields: Array<{
@@ -165,6 +195,45 @@ export function SettingsPage() {
             value={draft.runHistoryPath}
             onChange={(event) => patch({ runHistoryPath: event.target.value })}
           />
+        </div>
+
+        <div className="field">
+          <label htmlFor="exception-tracking-db-path">Exception tracking database path</label>
+          <div className="path-picker-row">
+            <input
+              id="exception-tracking-db-path"
+              value={draft.exceptionTrackingPath}
+              onChange={(event) => patch({ exceptionTrackingPath: event.target.value })}
+              placeholder="/absolute/path/to/exception_tracking.db"
+              spellCheck={false}
+            />
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void handlePickPath()}
+              disabled={picking}
+            >
+              {picking ? "Choosing…" : "Browse…"}
+            </button>
+          </div>
+          <span className="field-hint">
+            Separate SQLite file. Use an absolute Linux path (<code>/srv/boat/exception_tracking.db</code>)
+            or Windows path (<code>C:\Boat\exception_tracking.db</code>). The server validates that the
+            location is usable.
+          </span>
+          {!isAbsoluteHostPath(draft.exceptionTrackingPath) && draft.exceptionTrackingPath.trim() && (
+            <span className="field-hint field-hint--warn" role="status">
+              This does not look absolute; the server may resolve it relative to the project root.
+            </span>
+          )}
+          {pickerNotice && (
+            <p
+              className={`alert alert--${pickerNotice.tone === "error" ? "error" : "info"}`}
+              role={pickerNotice.tone === "error" ? "alert" : "status"}
+            >
+              {pickerNotice.text}
+            </p>
+          )}
         </div>
 
         <div role="status" aria-live="polite">

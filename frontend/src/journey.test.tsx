@@ -152,6 +152,13 @@ describe("critical user journey: upload → prepare → rules → run → result
     await waitFor(() =>
       expect(screen.getByLabelText("Overall result summary")).toBeInTheDocument(),
     );
+    const executeCall = vi.mocked(fetch).mock.calls.find(([url]) =>
+      String(url).includes("/runs/execute/"),
+    );
+    expect(executeCall).toBeDefined();
+    expect(JSON.parse(String(executeCall![1]?.body))).toMatchObject({
+      as_of_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
     expect(screen.getByText("220")).toBeInTheDocument();
     expect(screen.getByText("baseline_vs_candidate")).toBeInTheDocument();
     expect(document.querySelector(".result-content.results-layer-content")).toBeInTheDocument();

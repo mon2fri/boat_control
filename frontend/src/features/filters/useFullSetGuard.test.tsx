@@ -4,6 +4,7 @@ import type { WorkflowState } from "../../state/WorkflowContext";
 
 const baseState: WorkflowState = {
   header: null,
+  asOfDate: "2026-10-30",
   comparisonColumns: [],
   filters: [],
   targetColumns: [],

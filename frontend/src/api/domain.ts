@@ -22,6 +22,8 @@ export interface HeaderReport {
   file1Deduplicated: boolean;
   /** True when file 2's bytes matched a file already in the upload store. */
   file2Deduplicated: boolean;
+  /** Backend-echoed As-of Date for exception tracking, when supplied. */
+  asOfDate?: string;
   common: string[];
   file1Only: string[];
   file2Only: string[];
@@ -126,6 +128,8 @@ export type GroupNode =
 
 export interface RunRequest {
   sessionId: string;
+  /** ISO calendar date propagated to run capture and history metadata. */
+  asOfDate?: string;
   comparisonColumns: string[];
   filters: FilterRow[];
   targetColumns: string[];
@@ -204,6 +208,8 @@ export interface RunResult {
   id: string;
   reportName: string;
   createdAt: string;
+  /** ISO calendar date used for exception tracking; absent on historical runs. */
+  asOfDate?: string;
   file1Name: string;
   file2Name: string;
   overall: OverallSummary;
@@ -235,8 +241,46 @@ export interface RunSummary {
   id: string;
   reportName: string;
   createdAt: string;
+  /** ISO calendar date used for exception tracking; absent on historical runs. */
+  asOfDate?: string;
   file1Name: string;
   file2Name: string;
+}
+
+/** User-visible exception tracking status, as derived by the backend. */
+export type ExceptionStatus = "New" | "Commented" | "NotCommented";
+
+/**
+ * One exception occurrence for a selected As-of Date. `keyColumns` is the
+ * display form of the backend's documented lossless `key_columns`
+ * representation; the raw wire value stays on the API boundary.
+ */
+export interface TrackedException {
+  exceptionId: string;
+  exceptionRuleIdentifier: string;
+  keyColumns: string;
+  exceptionTimestamp: string;
+  exceptionCommentary: string;
+  exceptionAsOfDate: string;
+  exceptionFirstSeenAsOfDate: string;
+  exceptionLastSeenAsOfDate: string;
+  exceptionFirstSeenTimestamp?: string;
+  exceptionLastSeenTimestamp?: string;
+  status: ExceptionStatus;
+}
+
+export interface ExceptionTrackingDates {
+  dates: string[];
+  /** Backend-authoritative default; `null` when it did not supply one. */
+  defaultDate: string | null;
+}
+
+export interface CommentaryImportResult {
+  asOfDate: string | null;
+  updatedCount: number;
+  clearedCount: number;
+  unchangedCount: number;
+  message: string | null;
 }
 
 /** Draft used to create or update a rule (server may assign `index`). */
@@ -262,6 +306,8 @@ export interface AppSettings {
   familyConfigPath: string;
   fullSetConfirmationRows: number;
   runHistoryPath: string;
+  /** Absolute Linux or Windows path to the separate exception-tracking SQLite file. */
+  exceptionTrackingPath: string;
 }
 
 /**

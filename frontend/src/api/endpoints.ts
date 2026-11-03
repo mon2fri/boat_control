@@ -12,6 +12,9 @@ import {
   validateTargetsResponseSchema,
   wireColumnValuesPageSchema,
   wireDetailPageSchema,
+  wireExceptionTrackingDatesSchema,
+  wireExceptionTrackingListSchema,
+  wireCommentaryImportResponseSchema,
   wireFamilyListSchema,
   wireFamilySchema,
   wirePresetListSchema,
@@ -30,6 +33,8 @@ import {
 } from "./wire";
 import {
   mapColumnValue,
+  mapCommentaryImportResult,
+  mapExceptionTrackingList,
   mapFamily,
   mapPresetSource,
   mapRunDocumentToResult,
@@ -41,12 +46,15 @@ import {
   mapSettings,
   mapSettingsToWire,
   mapSourceFile,
+  mapTrackingDates,
   mapUploadToHeader,
   mapWireRule,
 } from "./mapping";
 import type {
   AppSettings,
+  CommentaryImportResult,
   DetailRow,
+  ExceptionTrackingDates,
   Family,
   Rule as DomainRule,
   FilterRow,
@@ -57,6 +65,7 @@ import type {
   RunSummary,
   SavedFilter,
   SourceFile,
+  TrackedException,
 } from "./domain";
 import { z } from "zod";
 
@@ -67,11 +76,13 @@ import { z } from "zod";
 export function uploadFiles(
   file1: File,
   file2: File,
+  asOfDate?: string,
   signal?: AbortSignal,
 ): Promise<HeaderReport> {
   const formData = new FormData();
   formData.append("file_a", file1);
   formData.append("file_b", file2);
+  if (asOfDate) formData.append("as_of_date", asOfDate);
   return apiRequest("/files/upload/", { method: "POST", formData, schema: uploadResponseSchema, signal }).then(
     mapUploadToHeader,
   );
@@ -578,6 +589,107 @@ function mapOperatorForWire(op: FilterRow["operator"]): string {
   return map[op];
 }
 
+// --- Exception tracking --------------------------------------------------
+
+/**
+ * Wire contract consumed by Worker D (to be frozen by the coordinator):
+ *
+ *   GET  /api/exception-tracking/dates/
+ *        -> { dates: ["2026-10-30"], default_as_of_date: "2026-10-30" }
+ *   GET  /api/exception-tracking/?as_of_date=2026-10-30
+ *        -> { as_of_date, exceptions: [ ...tracked exception... ] }
+ *   GET  /api/exception-tracking/export/?as_of_date=2026-10-30
+ *        -> XLSX attachment
+ *   POST /api/exception-tracking/import/  (multipart: file, as_of_date)
+ *        -> { as_of_date, updated, cleared, unchanged, total }
+ *
+ * The results page uses the same export endpoint with the run's persisted
+ * As-of Date, so its workbook is the tracking template rather than a second
+ * format.
+ */
+export function loadExceptionTrackingDates(): Promise<ExceptionTrackingDates> {
+  return apiRequest("/exception-tracking/dates/", {
+    schema: wireExceptionTrackingDatesSchema,
+  }).then(mapTrackingDates);
+}
+
+export function loadExceptionTracking(asOfDate: string): Promise<{
+  asOfDate: string | null;
+  exceptions: TrackedException[];
+}> {
+  const query = `?as_of_date=${encodeURIComponent(asOfDate)}`;
+  return apiRequest(`/exception-tracking/${query}`, {
+    schema: wireExceptionTrackingListSchema,
+  }).then(mapExceptionTrackingList);
+}
+
+export interface BinaryDownload {
+  filename: string;
+  blob: Blob;
+  contentType: string;
+  size: number;
+}
+
+async function requestBinaryDownload(
+  path: string,
+  fallbackFilename: string,
+): Promise<BinaryDownload> {
+  // Binary endpoints bypass `apiRequest` because their bodies are not JSON.
+  const headers: Record<string, string> = { Accept: "*/*" };
+  const csrf = readCookie("csrftoken");
+  if (csrf) headers["X-CSRFToken"] = csrf;
+  // eslint-disable-next-line no-restricted-globals -- download, not a JSON request
+  const response = await fetch(`/api${path}`, {
+    method: "GET",
+    credentials: "same-origin",
+    headers,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    const parsed: unknown = safeJson(text);
+    const message =
+      parsed && typeof parsed === "object" && "error" in parsed
+        ? String(parsed.error)
+        : parsed && typeof parsed === "object" && "detail" in parsed
+          ? String(parsed.detail)
+          : text || `Download failed (${response.status})`;
+    throw new ExportError(message, response.status);
+  }
+  const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  return {
+    filename: parseFilename(disposition) ?? fallbackFilename,
+    blob,
+    contentType,
+    size: blob.size,
+  };
+}
+
+export function downloadExceptionCommentaryTemplate(
+  asOfDate: string,
+): Promise<BinaryDownload> {
+  const query = `?as_of_date=${encodeURIComponent(asOfDate)}`;
+  return requestBinaryDownload(
+    `/exception-tracking/export/${query}`,
+    `exception_commentary_${asOfDate}.xlsx`,
+  );
+}
+
+export function importExceptionCommentary(
+  asOfDate: string,
+  file: File,
+): Promise<CommentaryImportResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("as_of_date", asOfDate);
+  return apiRequest("/exception-tracking/import/", {
+    method: "POST",
+    formData,
+    schema: wireCommentaryImportResponseSchema,
+  }).then(mapCommentaryImportResult);
+}
+
 // --- Settings, saved filters, presets ----------------------------------
 //
 // These endpoints are part of the Priority 1 follow-ups and depend on
@@ -639,10 +751,10 @@ export function listSourceFiles(sourceId: string): Promise<SourceFile[]> {
   }).then((items) => items.map(mapSourceFile));
 }
 
-export function loadPresetSource(id: string): Promise<HeaderReport> {
+export function loadPresetSource(id: string, asOfDate?: string): Promise<HeaderReport> {
   return apiRequest("/files/presets/load/", {
     method: "POST",
-    body: { preset_id: id },
+    body: { preset_id: id, ...(asOfDate ? { as_of_date: asOfDate } : {}) },
     schema: uploadResponseSchema,
   }).then(mapUploadToHeader);
 }
@@ -650,11 +762,16 @@ export function loadPresetSource(id: string): Promise<HeaderReport> {
 export function loadPresetFiles(
   fileAId: string,
   fileBId: string | null,
+  asOfDate?: string,
   signal?: AbortSignal,
 ): Promise<HeaderReport> {
   return apiRequest("/files/presets/load/", {
     method: "POST",
-    body: { file_a_id: fileAId, file_b_id: fileBId },
+    body: {
+      file_a_id: fileAId,
+      file_b_id: fileBId,
+      ...(asOfDate ? { as_of_date: asOfDate } : {}),
+    },
     schema: uploadResponseSchema,
     signal,
   }).then(mapUploadToHeader);

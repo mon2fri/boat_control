@@ -2415,6 +2415,110 @@ dl.card dd {
 }
 
 /* ============================================================
+   EXCEPTION TRACKING
+   ============================================================ */
+
+.as-of-date-row,
+.path-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space);
+  flex-wrap: wrap;
+}
+
+.as-of-date-row input[type="date"] {
+  min-width: 12rem;
+}
+
+.path-picker-row input {
+  flex: 1 1 24rem;
+  min-width: 0;
+}
+
+.tracking-toolbar {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) minmax(12rem, 0.6fr);
+  gap: var(--space) calc(var(--space) * 3);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .tracking-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tracking-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
+}
+
+.tracking-upload input[type="file"] {
+  max-width: 100%;
+}
+
+.tracking-summary {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--space) * 2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space);
+  color: var(--color-text-soft);
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-rule-strong);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.status-badge--new {
+  color: var(--white);
+  background: var(--rag-blue);
+  border-color: var(--rag-blue);
+}
+
+.status-badge--commented {
+  color: var(--white);
+  background: var(--rag-green);
+  border-color: var(--rag-green);
+}
+
+.status-badge--not-commented {
+  color: var(--charcoal);
+  background: var(--rag-amber);
+  border-color: var(--rag-amber);
+}
+
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.exception-tracking-table {
+  min-width: 90rem;
+}
+
+.exception-tracking-table td {
+  vertical-align: top;
+}
+
+.tracking-commentary {
+  white-space: pre-wrap;
+  min-width: 16rem;
+}
+
+.field-hint--warn {
+  color: var(--color-warn);
+}
+
+/* ============================================================
    ENTRANCE ANIMATIONS — staggered reveal for primary content
    ============================================================ */
 

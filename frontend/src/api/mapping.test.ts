@@ -9,16 +9,27 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  formatKeyColumns,
   mapConditionToWire,
+  mapExceptionTrackingList,
   mapFilterRowToWire,
   mapRuleToWireDraft,
   mapRunDocumentToResult,
+  mapRunMetadata,
   mapRunRequestToWire,
+  mapTrackedException,
+  mapTrackingDates,
   mapWireCondition,
   mapWireFilterRow,
   mapWireRule,
 } from "./mapping";
-import { ruleDraftRequestSchema, wireRunRequestSchema, legacyWireRunDocumentSchema } from "./wire";
+import {
+  ruleDraftRequestSchema,
+  wireExceptionTrackingListSchema,
+  wireExceptionTrackingDatesSchema,
+  wireRunRequestSchema,
+  legacyWireRunDocumentSchema,
+} from "./wire";
 
 const baseRequest = {
   sessionId: "s1",
@@ -434,5 +445,136 @@ describe("rule condition mapping", () => {
       const result = mapRunDocumentToResult(wireDoc);
       expect(result.exceptionColumns).toBeUndefined();
     });
+  });
+});
+
+describe("exception tracking mapping", () => {
+  const exception = {
+    exception_id: "CBR1_00000000000000000000_id_42",
+    exception_rule_identifier: "CBR1_00000000000000000000",
+    key_columns: { id: "42" },
+    exception_timestamp: "2026-10-30T12:00:00Z",
+    exception_commentary: "",
+    exception_as_of_date: "2026-10-30",
+    exception_first_seen_as_of_date: "2026-10-30",
+    exception_last_seen_as_of_date: "2026-10-30",
+    exception_first_seen_timestamp: "2026-10-30T12:00:00Z",
+    exception_last_seen_timestamp: "2026-10-30T12:00:00Z",
+  };
+
+  it("propagates as_of_date through the run request wire body", () => {
+    const body = mapRunRequestToWire({
+      sessionId: "s1",
+      asOfDate: "2026-10-30",
+      comparisonColumns: ["id"],
+      filters: [],
+      targetColumns: [],
+      keyColumns: ["id"],
+      aggregationColumns: [],
+      ruleIndexes: [],
+    });
+    expect(body.as_of_date).toBe("2026-10-30");
+    expect(() => wireRunRequestSchema.parse(body)).not.toThrow();
+  });
+
+  it("omits as_of_date when no date is selected", () => {
+    const body = mapRunRequestToWire({
+      sessionId: "s1",
+      comparisonColumns: ["id"],
+      filters: [],
+      targetColumns: [],
+      keyColumns: ["id"],
+      aggregationColumns: [],
+      ruleIndexes: [],
+    });
+    expect(body.as_of_date).toBeUndefined();
+  });
+
+  it("restores as_of_date from run documents and history metadata", () => {
+    const doc = legacyWireRunDocumentSchema.parse({
+      run_id: "r1",
+      report_name: "test",
+      file_a_name: "a.csv",
+      file_b_name: "b.csv",
+      created_at: "2026-10-30T12:00:00Z",
+      as_of_date: "2026-10-30",
+      result: {
+        comparison: { total_rows_a: 1, total_rows_b: 1, rows_with_changes: 0, total_attribute_changes: 0, row_details: [] },
+        validation: { total_violations: 0, violations_by_rule: {}, violation_count_by_rule: {} },
+        common_columns: ["id"],
+        target_columns: ["id"],
+        filters_applied: [],
+      },
+    });
+    expect(mapRunDocumentToResult(doc).asOfDate).toBe("2026-10-30");
+    expect(
+      mapRunMetadata({
+        run_id: "r1",
+        report_name: "test",
+        file_a_name: "a.csv",
+        file_b_name: "b.csv",
+        created_at: "2026-10-30T12:00:00Z",
+        as_of_date: "2026-10-30",
+      }).asOfDate,
+    ).toBe("2026-10-30");
+  });
+
+  it("maps all three statuses verbatim when supplied by the backend", () => {
+    const statuses = wireExceptionTrackingListSchema.parse([
+      { ...exception, status: "New" },
+      { ...exception, exception_id: "e2", status: "Commented", exception_commentary: "known" },
+      { ...exception, exception_id: "e3", status: "not-commented" },
+    ]);
+    const mapped = mapExceptionTrackingList(statuses);
+    expect(mapped.exceptions.map((item) => item.status)).toEqual([
+      "New",
+      "Commented",
+      "NotCommented",
+    ]);
+  });
+
+  it("formats string, ordered-array and object key-column representations", () => {
+    expect(formatKeyColumns("a_b")).toBe("a_b");
+    expect(formatKeyColumns(["a", 1, null])).toBe("a, 1, ");
+    expect(formatKeyColumns({ id: "42", region: "EMEA" })).toBe("id=42, region=EMEA");
+    expect(formatKeyColumns(null)).toBe("");
+  });
+
+  it("falls back to commentary/history only when the backend omits status", () => {
+    const first = mapTrackedException({ ...exception });
+    expect(first.status).toBe("New");
+    const later = mapTrackedException({
+      ...exception,
+      exception_as_of_date: "2026-11-30",
+      exception_first_seen_as_of_date: "2026-10-30",
+    });
+    expect(later.status).toBe("NotCommented");
+    const commented = mapTrackedException({
+      ...exception,
+      exception_as_of_date: "2026-11-30",
+      exception_first_seen_as_of_date: "2026-10-30",
+      exception_commentary: "Known issue",
+    });
+    expect(commented.status).toBe("Commented");
+  });
+
+  it("accepts envelope and array list responses and sorts recorded dates newest-first", () => {
+    const envelope = mapExceptionTrackingList(
+      wireExceptionTrackingListSchema.parse({
+        as_of_date: "2026-10-30",
+        exceptions: [exception],
+      }),
+    );
+    expect(envelope.asOfDate).toBe("2026-10-30");
+    expect(envelope.exceptions[0]?.exceptionId).toBe(exception.exception_id);
+
+    const dates = mapTrackingDates(
+      wireExceptionTrackingDatesSchema.parse({
+        available_dates: ["2026-09-30", "2026-10-30", "2026-10-30"],
+        default_as_of_date: "2026-10-30",
+      }),
+    );
+    expect(dates.dates).toEqual(["2026-10-30", "2026-09-30"]);
+    expect(dates.defaultDate).toBe("2026-10-30");
   });
 });

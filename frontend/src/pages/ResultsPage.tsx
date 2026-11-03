@@ -31,6 +31,7 @@ function buildRunRequest(state: WorkflowState): RunRequest | null {
   if (!state.header) return null;
   const request: RunRequest = {
     sessionId: state.header.sessionId,
+    asOfDate: state.asOfDate,
     comparisonColumns: state.comparisonColumns,
     filters: completeFilters(state.filters),
     targetColumns: state.targetColumns,
@@ -87,6 +88,11 @@ export function ResultsPage() {
         // Restore the configuration that produced this run so subsequent
         // renders (e.g. nested aggregation tree) match the persisted state.
         dispatch({ type: "setResult", result });
+        // Restore the As-of Date used by this run, including for historical
+        // runs that predate tracking (leave the workflow default untouched).
+        if (result.asOfDate) {
+          dispatch({ type: "setAsOfDate", date: result.asOfDate });
+        }
         // Always restore nested-aggregation flag (including false).
         dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled ?? false });
         // Always restore aggregation columns (including empty array).
@@ -168,6 +174,7 @@ export function ResultsPage() {
       {state.result && (
         <ResultView
           result={state.result}
+          asOfDate={state.result.asOfDate ?? ""}
           targetColumns={state.targetColumns}
           filters={state.filters}
           keyColumns={state.keyColumns}
@@ -199,6 +206,7 @@ export function ResultsPage() {
 
 interface ResultViewProps {
   result: NonNullable<ReturnType<typeof useWorkflow>["state"]["result"]>;
+  asOfDate: string;
   targetColumns: string[];
   filters: FilterRow[];
   keyColumns: string[];
@@ -216,6 +224,7 @@ interface ResultViewProps {
 
 function ResultView({
   result,
+  asOfDate,
   targetColumns,
   filters,
   keyColumns,
@@ -242,9 +251,10 @@ function ResultView({
           />
           <span className="field-hint results-run-time">
             Ran on {formatDateTime(result.createdAt)}
+            {asOfDate ? ` · As-of Date ${asOfDate}` : ""}
           </span>
         </div>
-        <ExportControls runId={result.id} reportName={result.reportName} />
+        <ExportControls runId={result.id} reportName={result.reportName} asOfDate={asOfDate} />
       </div>
       <section id="overall" aria-labelledby="overall-title" className="card">
         <h3 id="overall-title" className="results-card-title">Overall result</h3>

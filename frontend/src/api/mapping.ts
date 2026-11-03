@@ -5,9 +5,12 @@
  */
 import type {
   AppSettings,
+  CommentaryImportResult,
   ComparisonSection,
   Condition,
   DetailRow,
+  ExceptionStatus,
+  ExceptionTrackingDates,
   Family,
   FilterOperator,
   FilterRow,
@@ -27,11 +30,14 @@ import type {
   RunSummary,
   SavedFilter,
   SourceFile,
+  TrackedException,
 } from "./domain";
 import type {
   WireAttributeChange,
   WireColumnValue,
   WireCondition,
+  WireExceptionTrackingDates,
+  WireExceptionTrackingList,
   WireFamily,
   WireFilterRow,
   WireGroupNode,
@@ -48,6 +54,7 @@ import type {
   WireSavedFilter,
   WireSettings,
   WireSourceFile,
+  WireTrackedException,
   wireScalarSchema,
   WireViolation,
 } from "./wire";
@@ -116,6 +123,7 @@ export function mapUploadToHeader(
     file_b_name: string;
     file_a_deduplicated: boolean;
     file_b_deduplicated: boolean;
+    as_of_date?: string | undefined;
     inspection: {
       columns_a: string[];
       columns_b: string[];
@@ -131,6 +139,7 @@ export function mapUploadToHeader(
     file2Name: response.file_b_name,
     file1Deduplicated: response.file_a_deduplicated,
     file2Deduplicated: response.file_b_deduplicated,
+    ...(response.as_of_date ? { asOfDate: response.as_of_date } : {}),
     common: response.inspection.common_columns,
     file1Only: response.inspection.only_in_a,
     file2Only: response.inspection.only_in_b,
@@ -295,6 +304,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
 
 export function mapRunRequestToWire(request: {
   sessionId: string;
+  asOfDate?: string;
   comparisonColumns: string[];
   filters: FilterRow[];
   targetColumns: string[];
@@ -309,6 +319,7 @@ export function mapRunRequestToWire(request: {
 }): WireRunRequest {
   return {
     session_id: request.sessionId,
+    ...(request.asOfDate ? { as_of_date: request.asOfDate } : {}),
     comparison_columns: [...request.comparisonColumns],
     target_columns: request.targetColumns.length > 0 ? request.targetColumns : null,
     // Always send `key_columns` as an array (even when empty) so the backend
@@ -522,6 +533,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
     id: doc.run_id,
     reportName: doc.report_name,
     createdAt: doc.created_at,
+    ...(doc.as_of_date ? { asOfDate: doc.as_of_date } : {}),
     file1Name: doc.file_a_name,
     file2Name: doc.file_b_name,
     overall,
@@ -647,6 +659,7 @@ export function mapRunMetadata(meta: WireRunMetadata): RunSummary {
     id: meta.run_id,
     reportName: meta.report_name,
     createdAt: meta.created_at,
+    ...(meta.as_of_date ? { asOfDate: meta.as_of_date } : {}),
     file1Name: meta.file_a_name,
     file2Name: meta.file_b_name,
   };
@@ -657,6 +670,7 @@ export function mapRunDocumentMetadata(doc: WireRunDocument): RunSummary {
     id: doc.run_id,
     reportName: doc.report_name,
     createdAt: doc.created_at,
+    ...(doc.as_of_date ? { asOfDate: doc.as_of_date } : {}),
     file1Name: doc.file_a_name,
     file2Name: doc.file_b_name,
   };
@@ -674,6 +688,7 @@ export function mapSettings(wire: WireSettings): AppSettings {
     familyConfigPath: wire.family_config_path,
     fullSetConfirmationRows: wire.full_set_confirmation_rows,
     runHistoryPath: wire.run_history_path,
+    exceptionTrackingPath: wire.exception_tracking_path,
   };
 }
 
@@ -687,6 +702,100 @@ export function mapSettingsToWire(settings: AppSettings): WireSettings {
     family_config_path: settings.familyConfigPath,
     full_set_confirmation_rows: settings.fullSetConfirmationRows,
     run_history_path: settings.runHistoryPath,
+    exception_tracking_path: settings.exceptionTrackingPath,
+  };
+}
+
+// --- Exception tracking --------------------------------------------------
+
+function displayScalarValue(value: string | number | boolean | null): string {
+  if (value === null) return "";
+  return String(value);
+}
+
+/** Render the documented lossless `key_columns` representation for display. */
+export function formatKeyColumns(value: WireTrackedException["key_columns"]): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => displayScalarValue(item)).join(", ");
+  }
+  return Object.entries(value)
+    .map(([key, item]) => `${key}=${displayScalarValue(item)}`)
+    .join(", ");
+}
+
+function fallbackExceptionStatus(
+  exception: WireTrackedException,
+): ExceptionStatus {
+  if ((exception.exception_commentary ?? "").trim().length > 0) return "Commented";
+  return exception.exception_first_seen_as_of_date === exception.exception_as_of_date
+    ? "New"
+    : "NotCommented";
+}
+
+export function mapTrackedException(wire: WireTrackedException): TrackedException {
+  const exception: TrackedException = {
+    exceptionId: wire.exception_id,
+    exceptionRuleIdentifier: wire.exception_rule_identifier,
+    keyColumns: formatKeyColumns(wire.key_columns),
+    exceptionTimestamp: wire.exception_timestamp,
+    exceptionCommentary: wire.exception_commentary ?? "",
+    exceptionAsOfDate: wire.exception_as_of_date,
+    exceptionFirstSeenAsOfDate: wire.exception_first_seen_as_of_date,
+    exceptionLastSeenAsOfDate: wire.exception_last_seen_as_of_date,
+    status: wire.status ?? fallbackExceptionStatus(wire),
+  };
+  if (wire.exception_first_seen_timestamp) {
+    exception.exceptionFirstSeenTimestamp = wire.exception_first_seen_timestamp;
+  }
+  if (wire.exception_last_seen_timestamp) {
+    exception.exceptionLastSeenTimestamp = wire.exception_last_seen_timestamp;
+  }
+  return exception;
+}
+
+export function mapTrackingDates(wire: WireExceptionTrackingDates): ExceptionTrackingDates {
+  const raw = wire.dates ?? wire.available_dates ?? [];
+  const dates = [...new Set(raw)].sort((a, b) => b.localeCompare(a));
+  return {
+    dates,
+    defaultDate: wire.default_as_of_date ?? wire.default_date ?? null,
+  };
+}
+
+export function mapExceptionTrackingList(
+  wire: WireExceptionTrackingList,
+): { asOfDate: string | null; exceptions: TrackedException[] } {
+  if (Array.isArray(wire)) {
+    return {
+      asOfDate: wire[0]?.exception_as_of_date ?? null,
+      exceptions: wire.map(mapTrackedException),
+    };
+  }
+  return {
+    asOfDate: wire.as_of_date ?? null,
+    exceptions: wire.exceptions.map(mapTrackedException),
+  };
+}
+
+export function mapCommentaryImportResult(
+  wire: {
+    as_of_date?: string | undefined;
+    updated?: number | undefined;
+    updated_count?: number | undefined;
+    cleared?: number | undefined;
+    unchanged?: number | undefined;
+    imported?: number | undefined;
+    message?: string | undefined;
+  },
+): CommentaryImportResult {
+  return {
+    asOfDate: wire.as_of_date ?? null,
+    updatedCount: wire.updated ?? wire.updated_count ?? wire.imported ?? 0,
+    clearedCount: wire.cleared ?? 0,
+    unchangedCount: wire.unchanged ?? 0,
+    message: wire.message ?? null,
   };
 }
 
