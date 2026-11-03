@@ -195,7 +195,8 @@ prefixed with an apostrophe when it begins with `=`, `+`, `-`, `@`, tab, or
 carriage return. The importer reverses only that safety prefix and treats all
 remaining content as literal text. Formulas are never evaluated.
 
-Limits: 10 MiB, 100,000 data rows, and 32,768 characters per commentary cell.
+Limits: 10 MiB, 100,000 data rows, and 32,767 characters per commentary cell
+(the Excel cell limit).
 
 ## Settings
 
@@ -221,43 +222,42 @@ There is no server-side file picker in this Django application. Worker D owns
 the browser/native picker behavior and must retain a plain absolute-path text
 input with an honest capability message.
 
-## Storage interface expected from Worker A
+## Storage interface consumed from Worker A
 
-Worker B imports this interface from
-`apps.exception_tracking.repository`. The final repository commit is a
-dependency commit for B's integration tests; Worker B does not duplicate
-storage or identity code.
+Worker A published the storage contract in
+`docs/20261103_exception_tracking_storage_contract.md` (commit `bbdc06d`). It
+matches the interface Worker B consumes from
+`apps.exception_tracking.repository`; Worker B does not duplicate storage or
+identity code.
 
 ```python
-from collections.abc import Mapping, Sequence
-from datetime import date, datetime
+from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
-
-class ExceptionRecord:
-    exception_id: str
-    exception_rule_identifier: str
-    key_columns: str
-    exception_timestamp: datetime
-    exception_commentary: str
-    exception_as_of_date: date
-    exception_first_seen_as_of_date: date
-    exception_last_seen_as_of_date: date
-    exception_first_seen_timestamp: datetime
-    exception_last_seen_timestamp: datetime
-    status: str  # "New" | "Commented" | "NotCommented"
 
 class ExceptionTrackingRepository:
     def __init__(self, database_path: str | Path) -> None: ...
-    def list_as_of_dates(self) -> list[date]: ...
-    def list_exceptions(self, as_of_date: date) -> list[ExceptionRecord]: ...
+    def list_as_of_dates(self) -> list[date]: ...  # ascending
+    def list_exceptions(self, as_of_date: date | str) -> list[ExceptionRecord]: ...
     def update_commentaries(
-        self, as_of_date: date, updates: Mapping[str, str]
+        self, as_of_date: date | str, updates: Mapping[str, str]
     ) -> int: ...  # one transaction; returns changed row count
+    # record_exceptions(), get_exception(), and list_exception_history() are
+    # used by Worker C; Worker B does not call them.
 ```
 
-Worker A may choose `Sequence[ExceptionRecord]` instead of `list`; Worker B's
-adapter tolerates any iterable. If Worker A freezes different names, the
-reviewer must record the mapping before B is integrated.
+Worker B reads these `ExceptionRecord` attributes: `exception_id`,
+`exception_rule_identifier`, `key_columns`, `exception_timestamp`,
+`exception_commentary`, `exception_as_of_date`,
+`exception_first_seen_as_of_date`, `exception_last_seen_as_of_date`,
+`exception_first_seen_timestamp`, `exception_last_seen_timestamp`. If Worker A
+omits a derived `status` attribute, Worker B applies Worker A's frozen status
+rule from those fields. All Worker A errors subclass `ValueError`; Worker B maps
+them to HTTP 400 with an actionable message.
+
+The Worker A repository commit is a dependency commit for B's final
+integration tests. Worker B's parallel tests use a contract fixture for the
+repository; they do not treat the fixture as production storage.
 
 ## Worker C dependency
 
