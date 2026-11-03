@@ -145,7 +145,8 @@ Worker C integration depends on:
 - Worker B: `apps.settings.services.get_exception_tracking_path()`, used to pass
   the configured database path explicitly, and the shared
   `/api/exception-tracking/export/?run_id=...` results download. B's commits are
-  `9f047d9` (settings path) and `91ee51d` (tracking API and shared workbook).
+  `9f047d9` (settings path), `91ee51d` (tracking API and shared workbook), and
+  `34d5b11` (workbook date-cell compatibility).
 
 Until both dependency commits are integrated, execute-endpoint tests that reach
 capture fail closed with a visible "Worker A/B integration dependency" message;

@@ -7,7 +7,7 @@
 Worker C implemented As-of Date propagation, run capture, saved-run metadata, and
 backward compatibility. The real A/B integration boundary was exercised in a
 throwaway worktree against Worker B's committed API/settings commits and Worker A's
-current implementation snapshot: **383 passed, 1 pre-existing failure** across
+current implementation snapshot: **384 passed, 1 pre-existing failure** across
 `tests/backend`, `tests/contracts`, and `tests/integration`.
 
 Worker A's implementation is not committed yet on
@@ -203,16 +203,15 @@ passed
 
 ### Real A/B integrated verification (throwaway worktree, not merged)
 
-Worktree `/tmp/opencode/verify-exception-c` was created detached at C commit
-`36d09ab`, Worker B commits `9f047d9` and `91ee51d` were cherry-picked for
-verification only, and Worker A's current implementation snapshot
+Worktree `/tmp/opencode/verify-exception-c2` was created detached at C commit
+`e27e82a`, Worker B commits `9f047d9`, `91ee51d`, and `34d5b11` were cherry-picked
+for verification only, and Worker A's current implementation snapshot
 (`domain.py`, `errors.py`, `identity.py`, `repository.py`, `store.py`) was copied in
-without committing. The final C test commit `5fbf6c7` was copied over the scratch
-tree. No dependency was merged into the assigned branch.
+without committing. No dependency was merged into the assigned branch.
 
 ```text
 uv run pytest -q tests/backend tests/contracts tests/integration
-1 failed, 383 passed
+1 failed, 384 passed
 
 uv run python backend/manage.py check
 System check identified no issues (0 silenced).
@@ -244,7 +243,8 @@ Worker C did not modify these areas.
    integration tests cannot pass without it; C's branch fails closed with a visible
    dependency message.
 2. **Worker B** — `9f047d9` (settings `get_exception_tracking_path`) and `91ee51d`
-   (tracking API, shared workbook, URL registration). Optional `8b4fa17` test boundary.
+   (tracking API, shared workbook, URL registration), with workbook date-cell fix
+   `34d5b11`. Optional `8b4fa17` test boundary.
 3. After integrating A and B, rerun the reviewer's full commands. C's real-boundary
    test must run (not skip) and the three currently failing contract tests must pass.
 
