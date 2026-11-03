@@ -15,6 +15,7 @@ delivery.
 - `027b6c1` — docs: publish exception detail template contract for Worker D
 - `37c81e5` — feat: append exception details to commentary templates
 - `b28849c` — test: verify detail columns with real tracking storage
+- `254057b` — perf: skip unrelated saved runs when resolving template details
 
 Earlier Worker B commits remain on the same branch.
 
