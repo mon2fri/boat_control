@@ -2,6 +2,14 @@
 
 Status: **FROZEN BY COORDINATOR/REVIEWER; IMPLEMENTED AND INTEGRATED**
 
+> **Template-optimization addendum:** this document describes the original
+> storage foundation. The newer `### Exception Tracking Template optimization`
+> requirement adds `exception_rule_index`, `exception_extra_values`, and ordered
+> extra-column metadata. See
+> `docs/20261103_exception_tracking_template_storage_contract.md` for the
+> current schema and interfaces; where the two documents differ, the addendum
+> wins.
+
 Branch: `work/20261103-exception-tracking-worker-a`
 
 This document freezes the Python storage/identity surface, the SQLite schema, and

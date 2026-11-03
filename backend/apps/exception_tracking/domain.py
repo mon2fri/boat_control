@@ -27,6 +27,8 @@ class ExceptionOccurrence:
     key_column_order: Sequence[str]
     exception_timestamp: datetime | None = None
     exception_commentary: str | None = None
+    exception_rule_index: str | None = None
+    exception_extra_values: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,8 @@ class ExceptionRecord:
     key_columns: str
     exception_timestamp: datetime
     exception_commentary: str
+    exception_rule_index: str
+    exception_extra_values: Mapping[str, str]
     exception_as_of_date: date
     exception_first_seen_as_of_date: date
     exception_last_seen_as_of_date: date
@@ -60,6 +64,7 @@ class RecordingSummary:
     inserted: int
     updated: int
     exception_ids: tuple[str, ...]
+    extra_columns: tuple[str, ...] = ()
 
     @property
     def total(self) -> int:

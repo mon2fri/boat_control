@@ -17,6 +17,16 @@ from contextlib import contextmanager, suppress
 from datetime import date, datetime
 from pathlib import Path
 
+from apps.exception_tracking.columns import (
+    deserialize_column_selection,
+    deserialize_extra_values,
+    merge_extra_values,
+    normalize_extra_values,
+    serialize_column_selection,
+    serialize_extra_values,
+    validate_extra_columns,
+    validate_selected_values,
+)
 from apps.exception_tracking.domain import (
     ExceptionOccurrence,
     ExceptionRecord,
@@ -46,7 +56,7 @@ from apps.exception_tracking.identity import (
 
 DEFAULT_DATABASE_RELATIVE_PATH = Path("data") / "exception_tracking.db"
 
-REQUIRED_COLUMNS: tuple[str, ...] = (
+LEGACY_COLUMNS: tuple[str, ...] = (
     "exception_id",
     "exception_rule_identifier",
     "key_columns",
@@ -59,6 +69,16 @@ REQUIRED_COLUMNS: tuple[str, ...] = (
     "exception_last_seen_timestamp",
 )
 
+CONTEXT_COLUMNS: tuple[str, ...] = (
+    "exception_rule_index",
+    "exception_extra_values",
+)
+
+REQUIRED_COLUMNS: tuple[str, ...] = (*LEGACY_COLUMNS, *CONTEXT_COLUMNS)
+
+EXTRA_COLUMNS_TABLE = "exception_tracking_extra_columns"
+DATE_COLUMNS_TABLE = "exception_tracking_date_selections"
+
 _CREATE_TABLE_SQL = """
 CREATE TABLE {table} (
     exception_id TEXT PRIMARY KEY NOT NULL,
@@ -70,9 +90,32 @@ CREATE TABLE {table} (
     exception_first_seen_as_of_date DATE NOT NULL,
     exception_last_seen_as_of_date DATE NOT NULL,
     exception_first_seen_timestamp DATETIME NOT NULL,
-    exception_last_seen_timestamp DATETIME NOT NULL
+    exception_last_seen_timestamp DATETIME NOT NULL,
+    exception_rule_index TEXT NOT NULL DEFAULT '',
+    exception_extra_values TEXT NOT NULL DEFAULT '{{}}'
 )
 """
+
+_CREATE_EXTRA_COLUMNS_SQL = """
+CREATE TABLE IF NOT EXISTS exception_tracking_extra_columns (
+    column_name TEXT PRIMARY KEY,
+    column_order INTEGER NOT NULL UNIQUE,
+    first_seen_at TEXT NOT NULL
+)
+"""
+
+_CREATE_DATE_COLUMNS_SQL = """
+CREATE TABLE IF NOT EXISTS exception_tracking_date_selections (
+    as_of_date TEXT PRIMARY KEY,
+    columns_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+)
+"""
+
+_CONTEXT_COLUMN_SQL: dict[str, str] = {
+    "exception_rule_index": "TEXT NOT NULL DEFAULT ''",
+    "exception_extra_values": "TEXT NOT NULL DEFAULT '{}'",
+}
 
 _SQLITE_TIMEOUT_SECONDS = 30
 _ID_CHUNK_SIZE = 400
@@ -137,6 +180,29 @@ def _text(row: sqlite3.Row, column: str) -> str:
     return value
 
 
+def _optional_text(row: sqlite3.Row, column: str, default: str) -> str:
+    keys = row.keys()
+    if column not in keys:
+        return default
+    value = row[column]
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise ExceptionTrackingError(
+            f"Stored exception tracking column '{column}' is not text; the database "
+            "is corrupt."
+        )
+    return value
+
+
+def _rule_index_text(row: sqlite3.Row) -> str:
+    return _optional_text(row, "exception_rule_index", "")
+
+
+def _extra_values_text(row: sqlite3.Row) -> str:
+    return _optional_text(row, "exception_extra_values", "{}")
+
+
 def _commentary_text(row: sqlite3.Row) -> str:
     value = row["exception_commentary"]
     if value is None:
@@ -178,23 +244,70 @@ def _table_exists(connection: sqlite3.Connection, name: str) -> bool:
     return row is not None
 
 
-def _validate_date_table(connection: sqlite3.Connection, name: str) -> None:
+def _table_columns(connection: sqlite3.Connection, name: str) -> set[str]:
     quoted = quote_identifier(name)
     rows = connection.execute(f"PRAGMA table_info({quoted})").fetchall()
-    present = {_text(row, "name") for row in rows}
-    missing = [column for column in REQUIRED_COLUMNS if column not in present]
-    extra = sorted(present - set(REQUIRED_COLUMNS))
-    if missing or extra:
+    return {_text(row, "name") for row in rows}
+
+
+def _schema_error(name: str, details: list[str]) -> SchemaMismatchError:
+    return SchemaMismatchError(
+        f"Exception tracking table '{name}' does not match the required schema "
+        f"({'; '.join(details)}). Repair or recreate the tracking database; no "
+        "rows were written."
+    )
+
+
+def _validate_date_table(
+    connection: sqlite3.Connection,
+    name: str,
+    *,
+    require_current: bool = False,
+) -> None:
+    """Validate a date table.
+
+    Reads accept the original ten-column schema so existing databases remain
+    readable.  Writes require the two context columns and migrate legacy tables
+    first.
+    """
+
+    present = _table_columns(connection, name)
+    missing_base = [column for column in LEGACY_COLUMNS if column not in present]
+    unknown = sorted(present - set(REQUIRED_COLUMNS))
+    missing_context = [column for column in CONTEXT_COLUMNS if column not in present]
+    if missing_base or unknown or (require_current and missing_context):
         details: list[str] = []
-        if missing:
-            details.append(f"missing required columns: {', '.join(missing)}")
-        if extra:
-            details.append(f"unexpected columns: {', '.join(extra)}")
-        raise SchemaMismatchError(
-            f"Exception tracking table '{name}' does not match the required schema "
-            f"({'; '.join(details)}). Repair or recreate the tracking database; no "
-            "rows were written."
-        )
+        if missing_base:
+            details.append(f"missing required columns: {', '.join(missing_base)}")
+        if unknown:
+            details.append(f"unexpected columns: {', '.join(unknown)}")
+        if require_current and missing_context:
+            details.append(f"missing context columns: {', '.join(missing_context)}")
+        raise _schema_error(name, details)
+
+
+def _migrate_date_table(connection: sqlite3.Connection, name: str) -> None:
+    """Add template-optimization context columns to a legacy date table."""
+
+    present = _table_columns(connection, name)
+    missing_base = [column for column in LEGACY_COLUMNS if column not in present]
+    unknown = sorted(present - set(REQUIRED_COLUMNS))
+    if missing_base or unknown:
+        details: list[str] = []
+        if missing_base:
+            details.append(f"missing required columns: {', '.join(missing_base)}")
+        if unknown:
+            details.append(f"unexpected columns: {', '.join(unknown)}")
+        raise _schema_error(name, details)
+
+    quoted = quote_identifier(name)
+    for column in CONTEXT_COLUMNS:
+        if column not in present:
+            connection.execute(
+                f"ALTER TABLE {quoted} ADD COLUMN "
+                f"{quote_identifier(column)} {_CONTEXT_COLUMN_SQL[column]}"
+            )
+    _validate_date_table(connection, name, require_current=True)
 
 
 def _ensure_date_table(connection: sqlite3.Connection, as_of_date: date) -> str:
@@ -202,8 +315,79 @@ def _ensure_date_table(connection: sqlite3.Connection, as_of_date: date) -> str:
     quoted = quote_identifier(name)
     if not _table_exists(connection, name):
         connection.execute(_CREATE_TABLE_SQL.format(table=quoted))
-    _validate_date_table(connection, name)
+    else:
+        _migrate_date_table(connection, name)
+    _validate_date_table(connection, name, require_current=True)
     return name
+
+
+def _ensure_metadata_tables(connection: sqlite3.Connection) -> None:
+    connection.execute(_CREATE_EXTRA_COLUMNS_SQL)
+    connection.execute(_CREATE_DATE_COLUMNS_SQL)
+
+
+def _date_extra_columns(
+    connection: sqlite3.Connection, as_of_date: date
+) -> tuple[str, ...]:
+    if not _table_exists(connection, DATE_COLUMNS_TABLE):
+        return ()
+    row = connection.execute(
+        f"SELECT columns_json FROM {quote_identifier(DATE_COLUMNS_TABLE)} "
+        "WHERE as_of_date = ?",
+        (as_of_date.isoformat(),),
+    ).fetchone()
+    if row is None:
+        return ()
+    return deserialize_column_selection(_text(row, "columns_json"))
+
+
+def _has_date_selection(connection: sqlite3.Connection, as_of_date: date) -> bool:
+    if not _table_exists(connection, DATE_COLUMNS_TABLE):
+        return False
+    row = connection.execute(
+        f"SELECT 1 FROM {quote_identifier(DATE_COLUMNS_TABLE)} WHERE as_of_date = ?",
+        (as_of_date.isoformat(),),
+    ).fetchone()
+    return row is not None
+
+
+def _record_extra_columns(
+    connection: sqlite3.Connection,
+    as_of_date: date,
+    columns: Sequence[str],
+    first_seen_at: datetime,
+) -> None:
+    """Replace one date's ordered selection and register new column names."""
+
+    _ensure_metadata_tables(connection)
+    registry = quote_identifier(EXTRA_COLUMNS_TABLE)
+    selections = quote_identifier(DATE_COLUMNS_TABLE)
+    for column in columns:
+        row = connection.execute(
+            f"SELECT column_order FROM {registry} WHERE column_name = ?",
+            (column,),
+        ).fetchone()
+        if row is None:
+            next_row = connection.execute(
+                f"SELECT COALESCE(MAX(column_order), 0) + 1 FROM {registry}"
+            ).fetchone()
+            assert next_row is not None
+            next_order = int(next_row[0])
+            connection.execute(
+                f"INSERT INTO {registry} (column_name, column_order, first_seen_at) "
+                "VALUES (?, ?, ?)",
+                (column, next_order, first_seen_at.isoformat()),
+            )
+    connection.execute(
+        f"INSERT INTO {selections} (as_of_date, columns_json, updated_at) "
+        "VALUES (?, ?, ?) ON CONFLICT(as_of_date) DO UPDATE SET "
+        "columns_json = excluded.columns_json, updated_at = excluded.updated_at",
+        (
+            as_of_date.isoformat(),
+            serialize_column_selection(columns),
+            first_seen_at.isoformat(),
+        ),
+    )
 
 
 def _row_to_record(row: sqlite3.Row, table_date: date) -> ExceptionRecord:
@@ -222,6 +406,8 @@ def _row_to_record(row: sqlite3.Row, table_date: date) -> ExceptionRecord:
         key_columns=_text(row, "key_columns"),
         exception_timestamp=parse_utc_timestamp(_text(row, "exception_timestamp")),
         exception_commentary=commentary,
+        exception_rule_index=_rule_index_text(row),
+        exception_extra_values=deserialize_extra_values(_extra_values_text(row)),
         exception_as_of_date=stored_date,
         exception_first_seen_as_of_date=first_seen_date,
         exception_last_seen_as_of_date=last_seen_date,
@@ -338,6 +524,52 @@ class ExceptionTrackingRepository:
             return []
         with self._read_connection() as connection:
             return sorted(parsed for parsed, _ in _date_tables(connection))
+
+    def get_extra_columns(
+        self, as_of_date: date | str | None = None
+    ) -> tuple[str, ...]:
+        """Return an ordered extra-column selection.
+
+        With a date, return that date's recorded selection.  Without a date,
+        return the stable all-time schema union ordered by first capture
+        appearance.  A legacy database without metadata returns ``()``.
+        """
+
+        if as_of_date is not None:
+            parsed_date: date | None = parse_as_of_date(as_of_date)
+        else:
+            parsed_date = None
+        if not self._path.exists():
+            return ()
+        with self._read_connection() as connection:
+            if not _table_exists(connection, EXTRA_COLUMNS_TABLE):
+                return ()
+            if parsed_date is None:
+                rows = connection.execute(
+                    f"SELECT column_name FROM {quote_identifier(EXTRA_COLUMNS_TABLE)} "
+                    "ORDER BY column_order"
+                ).fetchall()
+                return tuple(_text(row, "column_name") for row in rows)
+            return _date_extra_columns(connection, parsed_date)
+
+    def get_extra_column_union(self) -> tuple[str, ...]:
+        """Return all columns ever selected, in stable first-seen order."""
+
+        return self.get_extra_columns(None)
+
+    def migrate_schema(self) -> None:
+        """Explicitly upgrade every existing date table and metadata schema.
+
+        Reads remain compatible with legacy tables; this method is for callers
+        that want a one-time upgrade instead of the lazy write-time migration.
+        """
+
+        if not self._path.exists():
+            return
+        with self._write_connection() as connection:
+            _ensure_metadata_tables(connection)
+            for _, table in _date_tables(connection):
+                _migrate_date_table(connection, table)
 
     def list_exceptions(self, as_of_date: date | str) -> list[ExceptionRecord]:
         """Return one date's occurrences sorted by literal exception ID."""
@@ -481,18 +713,25 @@ class ExceptionTrackingRepository:
         self,
         as_of_date: date | str,
         occurrences: Iterable[ExceptionOccurrence],
+        *,
+        extra_columns: Sequence[str] | None = None,
     ) -> RecordingSummary:
         """Upsert one run's occurrences for an as-of date in one transaction.
 
         The date table is created even when ``occurrences`` is empty so an empty
         date remains selectable.  Existing rows are updated monotonically; no
         historical row is deleted and omitted exceptions remain untouched.
+        ``extra_columns`` is the ordered Extra Columns for Commentary Template
+        selection; ``None`` preserves an existing date selection or infers one
+        from supplied values for legacy callers.
         """
 
         parsed_date = parse_as_of_date(as_of_date)
         captured_at = utc_now()
+        explicit_columns = (
+            None if extra_columns is None else validate_extra_columns(extra_columns)
+        )
         prepared: dict[str, _PreparedOccurrence] = {}
-
         for occurrence in occurrences:
             if not isinstance(occurrence, ExceptionOccurrence):
                 raise ExceptionTrackingError(
@@ -509,6 +748,13 @@ class ExceptionTrackingRepository:
                 else ensure_utc_timestamp(occurrence.exception_timestamp)
             )
             commentary = normalize_commentary(occurrence.exception_commentary)
+            rule_index = _normalize_rule_index(occurrence.exception_rule_index)
+            raw_values = occurrence.exception_extra_values or {}
+            values = (
+                validate_selected_values(raw_values, explicit_columns)
+                if explicit_columns is not None
+                else normalize_extra_values(raw_values)
+            )
 
             previous = prepared.get(identity.exception_id)
             if previous is None:
@@ -516,6 +762,8 @@ class ExceptionTrackingRepository:
                     identity=identity,
                     timestamp=timestamp,
                     commentary=commentary,
+                    rule_index=rule_index,
+                    extra_values=values,
                 )
                 continue
 
@@ -538,11 +786,47 @@ class ExceptionTrackingRepository:
                     commentary,
                     exception_id=identity.exception_id,
                 ),
+                rule_index=_merge_batch_rule_index(
+                    previous.rule_index,
+                    rule_index,
+                    exception_id=identity.exception_id,
+                ),
+                extra_values=_merge_batch_extra_values(
+                    previous.extra_values,
+                    values,
+                    exception_id=identity.exception_id,
+                ),
             )
+
+        inferred_columns = (
+            ()
+            if explicit_columns is not None
+            else validate_extra_columns(_infer_extra_columns(prepared))
+        )
 
         with self._write_connection() as connection:
             table = _ensure_date_table(connection, parsed_date)
+            _ensure_metadata_tables(connection)
             self._assert_no_identity_conflicts(connection, prepared)
+
+            existing_columns = _date_extra_columns(connection, parsed_date)
+            has_selection = _has_date_selection(connection, parsed_date)
+            if explicit_columns is not None:
+                effective_columns = explicit_columns
+                _record_extra_columns(
+                    connection, parsed_date, effective_columns, captured_at
+                )
+            elif has_selection:
+                effective_columns = existing_columns
+            else:
+                if inferred_columns:
+                    effective_columns = inferred_columns
+                    _record_extra_columns(
+                        connection, parsed_date, effective_columns, captured_at
+                    )
+                else:
+                    effective_columns = ()
+
             quoted = quote_identifier(table)
             inserted = 0
             updated = 0
@@ -562,10 +846,22 @@ class ExceptionTrackingRepository:
                         if item.commentary is None
                         else item.commentary
                     )
+                    new_rule_index = _rule_index_text(row) or (item.rule_index or "")
+                    new_extra_values = merge_extra_values(
+                        deserialize_extra_values(_extra_values_text(row)),
+                        item.extra_values,
+                    )
                     connection.execute(
                         f"UPDATE {quoted} SET exception_timestamp = ?, "
-                        "exception_commentary = ? WHERE exception_id = ?",
-                        (new_timestamp.isoformat(), new_commentary, exception_id),
+                        "exception_commentary = ?, exception_rule_index = ?, "
+                        "exception_extra_values = ? WHERE exception_id = ?",
+                        (
+                            new_timestamp.isoformat(),
+                            new_commentary,
+                            new_rule_index,
+                            serialize_extra_values(new_extra_values, effective_columns),
+                            exception_id,
+                        ),
                     )
                     updated += 1
                     continue
@@ -580,8 +876,9 @@ class ExceptionTrackingRepository:
                     "exception_id, exception_rule_identifier, key_columns, "
                     "exception_timestamp, exception_commentary, exception_as_of_date, "
                     "exception_first_seen_as_of_date, exception_last_seen_as_of_date, "
-                    "exception_first_seen_timestamp, exception_last_seen_timestamp"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "exception_first_seen_timestamp, exception_last_seen_timestamp, "
+                    "exception_rule_index, exception_extra_values"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         exception_id,
                         item.identity.exception_rule_identifier,
@@ -593,6 +890,8 @@ class ExceptionTrackingRepository:
                         parsed_date.isoformat(),
                         item.timestamp.isoformat(),
                         item.timestamp.isoformat(),
+                        item.rule_index or "",
+                        serialize_extra_values(item.extra_values, effective_columns),
                     ),
                 )
                 inserted += 1
@@ -605,6 +904,7 @@ class ExceptionTrackingRepository:
                 inserted=inserted,
                 updated=updated,
                 exception_ids=tuple(sorted(prepared)),
+                extra_columns=effective_columns,
             )
 
     def _assert_no_identity_conflicts(
@@ -710,7 +1010,7 @@ class ExceptionTrackingRepository:
 
 
 class _PreparedOccurrence:
-    __slots__ = ("identity", "timestamp", "commentary")
+    __slots__ = ("identity", "timestamp", "commentary", "rule_index", "extra_values")
 
     def __init__(
         self,
@@ -718,10 +1018,78 @@ class _PreparedOccurrence:
         identity: ExceptionIdentity,
         timestamp: datetime,
         commentary: str | None,
+        rule_index: str | None,
+        extra_values: dict[str, str],
     ) -> None:
         self.identity = identity
         self.timestamp = timestamp
         self.commentary = commentary
+        self.rule_index = rule_index
+        self.extra_values = extra_values
+
+
+def _normalize_rule_index(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ExceptionTrackingError(
+            "exception_rule_index must be text when supplied."
+        )
+    if "\x00" in value:
+        raise ExceptionTrackingError(
+            "exception_rule_index contains a NUL character, which cannot be stored "
+            "safely."
+        )
+    text = value.strip()
+    return text or None
+
+
+def _merge_batch_rule_index(
+    previous: str | None,
+    incoming: str | None,
+    *,
+    exception_id: str,
+) -> str | None:
+    if previous is None:
+        return incoming
+    if incoming is None:
+        return previous
+    if previous == incoming:
+        return previous
+    raise ExceptionTrackingError(
+        f"Conflicting historical Rule Index values ('{previous}' and '{incoming}') "
+        f"were supplied for exception '{exception_id}' in one capture. Supply one "
+        "Rule Index per exception; nothing was stored."
+    )
+
+
+def _merge_batch_extra_values(
+    previous: Mapping[str, str],
+    incoming: Mapping[str, str],
+    *,
+    exception_id: str,
+) -> dict[str, str]:
+    merged = dict(previous)
+    for name, value in incoming.items():
+        if name in merged and merged[name] != value:
+            raise ExceptionTrackingError(
+                f"Conflicting values for extra column '{name}' were supplied for "
+                f"exception '{exception_id}' in one capture. Supply one value per "
+                "column; nothing was stored."
+            )
+        merged[name] = value
+    return merged
+
+
+def _infer_extra_columns(
+    prepared: Mapping[str, _PreparedOccurrence],
+) -> tuple[str, ...]:
+    seen: list[str] = []
+    for item in prepared.values():
+        for name in item.extra_values:
+            if name not in seen:
+                seen.append(name)
+    return tuple(seen)
 
 
 def _merge_commentary(
@@ -748,6 +1116,20 @@ def _merge_commentary(
 
 def list_as_of_dates(database_path: str | Path) -> list[date]:
     return ExceptionTrackingRepository(database_path).list_as_of_dates()
+
+
+def get_extra_columns(
+    database_path: str | Path, as_of_date: date | str | None = None
+) -> tuple[str, ...]:
+    return ExceptionTrackingRepository(database_path).get_extra_columns(as_of_date)
+
+
+def get_extra_column_union(database_path: str | Path) -> tuple[str, ...]:
+    return ExceptionTrackingRepository(database_path).get_extra_column_union()
+
+
+def migrate_schema(database_path: str | Path) -> None:
+    ExceptionTrackingRepository(database_path).migrate_schema()
 
 
 def list_exceptions(
@@ -786,7 +1168,9 @@ def record_exceptions(
     database_path: str | Path,
     as_of_date: date | str,
     occurrences: Iterable[ExceptionOccurrence],
+    *,
+    extra_columns: Sequence[str] | None = None,
 ) -> RecordingSummary:
     return ExceptionTrackingRepository(database_path).record_exceptions(
-        as_of_date, occurrences
+        as_of_date, occurrences, extra_columns=extra_columns
     )

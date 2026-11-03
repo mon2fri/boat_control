@@ -122,12 +122,29 @@ def _coerce_occurrence(payload: Mapping[str, object] | ExceptionOccurrence) -> E
             "Occurrence exception_commentary must be text when supplied."
         )
 
+    rule_index = payload.get("exception_rule_index", payload.get("rule_index"))
+    if rule_index is not None and not isinstance(rule_index, str):
+        raise ExceptionTrackingError(
+            "Occurrence exception_rule_index must be text when supplied."
+        )
+
+    extra_values = payload.get(
+        "exception_extra_values", payload.get("extra_values")
+    )
+    if extra_values is not None and not isinstance(extra_values, Mapping):
+        raise ExceptionTrackingError(
+            "Occurrence exception_extra_values must be a mapping of column names "
+            "to values."
+        )
+
     return ExceptionOccurrence(
         exception_rule_identifier=rule_identifier,
         key_columns=key_values,
         key_column_order=order,
         exception_timestamp=timestamp,
         exception_commentary=commentary,
+        exception_rule_index=rule_index,
+        exception_extra_values=extra_values,
     )
 
 
@@ -136,15 +153,20 @@ def capture_exceptions(
     occurrences: Sequence[Mapping[str, object] | ExceptionOccurrence],
     *,
     db_path: str | Path | None = None,
+    extra_columns: Sequence[str] | None = None,
 ) -> RecordingSummary:
     """Record one run's occurrences for an as-of date in a single transaction.
 
-    Same-date captures upsert idempotently, preserve commentary, and never delete
-    unrelated historical exceptions.  ``db_path`` is the resolved tracking
+    Same-date captures upsert idempotently, preserve commentary/history, and
+    never delete unrelated historical exceptions.  ``extra_columns`` is the
+    ordered Extra Columns for Commentary Template selection; only its values may
+    be supplied in each occurrence.  ``db_path`` is the resolved tracking
     database path supplied by Worker C/B; when omitted, the settings resolver (or
     the documented project-root default) is used.
     """
 
     repository = ExceptionTrackingRepository(resolve_database_path(db_path))
     coerced = [_coerce_occurrence(occurrence) for occurrence in occurrences]
-    return repository.record_exceptions(as_of_date, coerced)
+    return repository.record_exceptions(
+        as_of_date, coerced, extra_columns=extra_columns
+    )

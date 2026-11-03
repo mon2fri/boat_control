@@ -64,7 +64,7 @@ def _repo(tmp_path: Path) -> ExceptionTrackingRepository:
     return ExceptionTrackingRepository(tmp_path / "exception_tracking.db")
 
 
-def test_schema_has_all_ten_requested_columns(tmp_path: Path) -> None:
+def test_schema_has_all_required_columns(tmp_path: Path) -> None:
     db = tmp_path / "exception_tracking.db"
     record_exceptions(db, DATE_2, [_occurrence()])
 
@@ -81,6 +81,8 @@ def test_schema_has_all_ten_requested_columns(tmp_path: Path) -> None:
     assert declared_types["exception_timestamp"] == "DATETIME"
     assert declared_types["exception_as_of_date"] == "DATE"
     assert declared_types["exception_first_seen_timestamp"] == "DATETIME"
+    assert declared_types["exception_rule_index"] == "TEXT"
+    assert declared_types["exception_extra_values"] == "TEXT"
 
 
 def test_record_and_read_one_occurrence(tmp_path: Path) -> None:
@@ -100,6 +102,8 @@ def test_record_and_read_one_occurrence(tmp_path: Path) -> None:
     assert record.key_columns == '{"id":"ABC","type":"123"}'
     assert record.exception_timestamp == _at(DATE_2)
     assert record.exception_commentary == ""
+    assert record.exception_rule_index == ""
+    assert record.exception_extra_values == {}
     assert record.exception_as_of_date == DATE_2
     assert record.exception_first_seen_as_of_date == DATE_2
     assert record.exception_last_seen_as_of_date == DATE_2

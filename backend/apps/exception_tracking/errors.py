@@ -29,6 +29,10 @@ class InvalidKeyColumnsError(ExceptionTrackingError):
     """The configured key-column order or supplied key mapping is invalid."""
 
 
+class InvalidExtraColumnsError(ExceptionTrackingError):
+    """The ordered commentary extra-column selection or values are invalid."""
+
+
 class ExceptionIdentityCollisionError(ExceptionTrackingError):
     """Two different key-value tuples serialize to the same literal exception ID."""
 

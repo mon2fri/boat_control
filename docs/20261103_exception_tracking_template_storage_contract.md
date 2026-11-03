@@ -140,19 +140,19 @@ CREATE TABLE exception_tracking_extra_columns (
     first_seen_at TEXT NOT NULL
 );
 
-CREATE TABLE exception_tracking_date_columns (
-    as_of_date TEXT NOT NULL,
-    column_name TEXT NOT NULL,
-    position INTEGER NOT NULL,
-    PRIMARY KEY (as_of_date, column_name)
+CREATE TABLE exception_tracking_date_selections (
+    as_of_date TEXT PRIMARY KEY,
+    columns_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
 );
 ```
 
 - `column_order` is the stable first-seen order across all captures. Backdated
   captures append newly introduced columns at the end; they do not reorder
   existing columns.
-- `date_columns` is the ordered selection recorded for one as-of date. It is
-  replaced by the latest explicit capture selection for that date.
+- `date_selections.columns_json` is the ordered JSON array recorded for one
+  as-of date (including `[]` for an explicit empty selection). It is replaced by
+  the latest explicit capture selection for that date.
 - The metadata tables never appear as available as-of dates.
 - Values for deselected columns remain in `exception_extra_values` for future
   retrieval/reselection; they are simply not part of the date's current ordered
