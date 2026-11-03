@@ -40,7 +40,8 @@ Route: `/exception-tracking` (navigation item **Exception Tracking**).
 - The calendar supports month navigation, Escape/Cancel dismissal without
   changing selection, and arrow-key day movement. Available dates and calendar
   markers share the same authoritative `/exception-tracking/dates/` list;
-  saving a new tracking database path or importing commentary invalidates it.
+  successful run capture, saving a new tracking database path, or importing
+  commentary invalidates both the date list and cached rows.
 - Displays all eight requested columns plus a visible status badge:
   Exception ID, Exception Rule Identifier, Key Columns, Exception Timestamp,
   Exception Commentary, Exception As-of Date, First Seen As-of Date,
@@ -128,6 +129,8 @@ New/updated focused tests:
   day movement and marker refresh when the authoritative list changes.
 - `src/features/settings/useSettings.test.tsx` — database-path save invalidates
   available dates, calendar markers and loaded tracking rows.
+- `src/features/results/useRunExecution.test.ts` — a successful tracking capture
+  invalidates cached dates and rows; failed runs do not invalidate them.
 - `src/features/reports/ExportControls.test.tsx` — results page downloads the
   same date-bound template; historical runs without a date disable it.
 - `src/pages/SettingsPage.test.tsx` — path loaded/saved with the B field name,
@@ -146,7 +149,7 @@ committed the generated assets after integrating all four workers.
 ## Verification status
 
 - The worker's mocked/fixture frontend suite passed (50 files, 457 tests).
-- The integrated suite passed (50 files, 458 tests); the build passed with
+- The integrated suite passed (52 files, 473 tests); the build passed with
   Vite's advisory about the current >500 kB JavaScript chunk.
 - Integrated browser checks were completed in headless Google Chrome with
   isolated sample data/database. See `reviews/20261103_exception_tracking_review.md`

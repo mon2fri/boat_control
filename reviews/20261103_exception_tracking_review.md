@@ -366,3 +366,171 @@ the actual browser checks above completed. The user still owns final functional
 acceptance. The one unrelated baseline pytest failure and existing Ruff/mypy
 findings remain; they are not silently reported as green. `main` remains
 untouched, no deployment occurred, and all worker worktrees remain available.
+
+## Follow-up: Exception Tracking As-of Date selector enhancement
+
+### Commit ownership and disposition
+
+- D's earlier frontend workflow commit `790f7d2` was already integrated by
+  cherry-pick `c71886b`; it was not cherry-picked again.
+- The only new Worker D enhancement commit was
+  `feb6518f8f5eca7f7ef989c65aa7e9b3d23aaa1f` (`feat: add exception tracking
+  as-of date selector`). It was independently reviewed and cherry-picked as
+  `6782464b2b33cadf17b34d34b8ee07990b012938`.
+- Reviewer corrections are in `159d6ae0294d315514c07c38f45c24e70cf67aa1`
+  (query invalidation, marker distinction, ARIA state and regressions); the
+  generated production bundle is in `1415efc95195386e8069425a90499ced03e85074`.
+- No backend or contract files changed for this enhancement. The existing
+  `/api/exception-tracking/dates/` response remains authoritative; the frontend
+  sorts/deduplicates it for the menu and uses the complete list for calendar
+  markers.
+- The integration worktree began this follow-up with user changes in `.config`,
+  `requirements/20261103_exception_tracking_enhancement.md`, and untracked
+  `test-data/`. These remain unstaged/uncommitted and untouched by this work.
+
+### Independent review findings and corrections
+
+Worker D's completed handoff was reviewed against the Enhancement section and
+the source, tests, CSS, query hooks and results workflow.
+
+1. **Stale dates after a successful run:** import and settings changes invalidated
+   the dates/rows queries, but successful run capture did not. Because the dates
+   query has a 30-second `staleTime`, returning to Exception Tracking promptly
+   after a run could omit the newly captured date and its marker. The correction
+   was recorded for Worker D; since the handoff was complete with no active
+   worker session, no duplicate worker was started. Reviewer integration change
+   invalidates dates and rows only after a successful run; a hook regression
+   verifies success invalidates and failure does not.
+2. **Today + selected visual overlap:** `.is-selected` overrode the prior
+   `.is-today` border/shadow, hiding today's warning outline when today was also
+   selected. The integration correction uses an outline that remains visible
+   over the selected fill; data retains its separate green marker. Actual Chrome
+   computed styles confirm distinct outline, fill and marker colors.
+3. **Popup ARIA state:** while the calendar dialog was open, the trigger still
+   advertised a collapsed listbox. It now reports an expanded dialog, with a
+   regression for open/cancel state. Actual Chrome keyboard navigation and
+   Escape dismissal were also checked.
+4. **Sort test coverage:** D's original latest-date fixture was already in
+   descending order. The integration regression now supplies unsorted duplicate
+   dates and verifies distinct newest-first results, the ten-item cap and final
+   Other date option.
+
+Worker D's branch/worktree was left unchanged after its delivered commit. The
+corrections live as reviewer changes on the integration branch; the full
+integrated frontend tests and actual browser checks below passed afterward.
+
+### Exact validation results
+
+- Worker D branch, after its production build existed:
+  - `npm --prefix frontend test -- --run` — **52 files, 472 tests passed**.
+  - `npm --prefix frontend run build` — passed (TypeScript + Vite); advisory for
+    the >500 kB JavaScript chunk.
+- Integrated branch after selector and reviewer corrections:
+  - `npm --prefix frontend test -- --run` — **52 files, 473 tests passed**.
+  - `npm --prefix frontend run build` — passed; same chunk-size advisory.
+  - `npm --prefix frontend run build:inspect` — **5 tests passed**.
+  - Targeted ESLint on the changed selector, tracking hook, run hook and tests —
+    passed.
+  - `git diff --check` — passed; generated `frontend/dist` is rebuilt below.
+- No backend code changed, so backend/contract tests were not rerun for this
+  frontend-only enhancement. The previously recorded backend baseline results
+  remain as documented above.
+
+### Actual browser validation — completed
+
+Google Chrome `156.0.8078.79` was used against the integrated frontend and an
+isolated scratch app/database at
+`/tmp/opencode/boat-control-exception-ui-acceptance-v2`. No live data was used.
+
+- Verified the tracking tab has one selector and no separate Recorded dates
+  control. With four available dates, the menu showed `Nov 04`, `Nov 03`,
+  `Oct 30`, `Sep 30` in descending order, followed by `Other date…`.
+- Selected recorded dates and confirmed they loaded their exception rows.
+  Selected unrecorded `2026-11-15` from the calendar and confirmed the existing
+  no-data state. Cancel preserved the current selection.
+- Opened `Other date…`, navigated to November, and verified November 3 (today,
+  selected after selection, and containing data) had three distinct signals:
+  computed warning outline `rgb(255, 187, 51)`, selected fill
+  `rgb(219, 0, 17)`, and data marker `rgb(0, 132, 127)`.
+- Keyboard-operated the menu with End/Enter, moved a calendar day with
+  ArrowRight, and dismissed with Escape; the selected date did not change.
+- Ran a new comparison for `2026-11-04`, then returned to Exception Tracking.
+  The successful run invalidated the cached list; the newly captured date
+  appeared first without waiting for the former 30-second stale time.
+- Changed Settings to a separate empty scratch DB: the menu contained only
+  Other date and the page showed no data. Switched back to the original scratch
+  DB: recorded dates and markers returned.
+- Confirmed the file-loading page still uses its original native date input.
+- Automated selector tests cover empty/fewer/more-than-ten dates, unsorted and
+  duplicate input, older marked dates outside the latest ten, keyboard behavior
+  and marker refresh. The actual scratch browser DB had four dates; it was not
+  used as evidence of the ten-item cap.
+
+Screenshots are available in `/tmp/opencode/`:
+`exception-tracking-selector-markers.png`,
+`exception-tracking-selector-no-data.png`,
+`exception-tracking-selector-db-switch.png`, plus the earlier workflow
+screenshots listed above.
+
+### Concise UI validation steps for the user
+
+Use the isolated startup commands and URLs in **Reproducible local startup**
+above; start with a fresh scratch copy and the supplied sample CSVs. Run the
+first and second sample dates, then:
+
+1. Open **Exception Tracking**. Confirm there is one **As-of Date** selector and
+   no Recorded dates control. Click it; confirm dates are newest-first and
+   **Other date…** is last. With the two supplied sample dates, both should be
+   listed and Other date should still appear.
+2. Click an available date and confirm its rows load. Choose **Other date…**,
+   move to a month containing an older recorded date, and confirm it has a dot
+   while an unrecorded date is plain. Select a plain date and confirm the
+   no-data message. Cancel or press Escape and confirm the displayed selection
+   is unchanged.
+3. Use Tab/Arrow/End/Enter/Escape to operate the menu and calendar. Confirm the
+   data dot, today outline and selected fill remain distinguishable when they
+   overlap.
+4. In Settings, switch `exception_tracking_path` to a new absolute scratch DB.
+   Return to Exception Tracking: the menu should offer only Other date and the
+   selected date should show no data. Restore the original path; the dates and
+   markers should return. A successful new run should add its As-of Date to the
+   menu immediately on return to the tab.
+5. Return to file loading and confirm its As-of Date control is unchanged.
+
+To exercise the menu cap and older-than-ten marker manually, seed the isolated
+scratch DB (never a live DB) with twelve dates after startup:
+
+```bash
+cd "$UI_ROOT"
+DJANGO_SETTINGS_MODULE=boat_control.settings PYTHONPATH=backend uv run python - <<'PY'
+from datetime import UTC, date, datetime
+from apps.exception_tracking.store import capture_exceptions
+from apps.settings.services import get_exception_tracking_path
+
+db = get_exception_tracking_path()
+rule = "CBR1_00000000000000000000"
+for month in range(1, 13):
+    day = date(2025, month, 15)
+    capture_exceptions(
+        day,
+        [{
+            "exception_rule_identifier": rule,
+            "key_columns": (("ACCOUNT_ID", "SELECTOR-DEMO"),),
+            "exception_timestamp": datetime(2025, month, 15, 12, tzinfo=UTC),
+        }],
+        db_path=db,
+    )
+PY
+```
+
+The menu should show the ten latest seeded dates, newest first; the calendar
+should still mark Jan/Feb dates outside the menu. This seed is confined to the
+scratch DB.
+
+### Follow-up readiness
+
+**READY FOR USER UI VALIDATION.** The new selector requirements were independently
+reviewed, defects were corrected on the integration branch, frontend tests/build
+passed, and the actual browser scenarios above were completed. User functional
+acceptance remains outstanding. No backend changes, deployment, main merge or
+live-data access occurred; the worker worktrees and user changes remain intact.
