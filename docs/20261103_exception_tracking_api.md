@@ -1,6 +1,6 @@
-# Exception Tracking API and XLSX contract (Worker B proposal)
+# Exception Tracking API and XLSX contract
 
-Status: **PUBLISHED FOR WORKERS C AND D / REVIEWER FREEZE REQUIRED**
+Status: **FROZEN BY COORDINATOR/REVIEWER; IMPLEMENTED AND INTEGRATED**
 
 Branch: `work/20261103-exception-tracking-worker-b`
 
@@ -11,8 +11,10 @@ Field names are frozen unless the coordinator/reviewer records a change.
 
 ## Shared decisions
 
-- `as_of_date` is an ISO calendar date (`YYYY-MM-DD`). The backend is
-  authoritative for the default date.
+- Supplied `as_of_date` strings must be exactly `YYYY-MM-DD`; whitespace-padded
+  or blank supplied values are invalid, not an instruction to use the default.
+  The backend is authoritative for the default date and calculates it from the
+  configured Django `TIME_ZONE` calendar date.
 - The default date is the last Monday-Friday of the previous calendar month
   (January rolls back to December of the previous year).
 - Tracking data lives in a separate SQLite database. The default setting is

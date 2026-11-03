@@ -1,9 +1,8 @@
-# Exception tracking — run capture and As-of Date (Worker C)
+# Exception tracking — run capture and As-of Date
 
-Status: implementation delivered against the Worker A storage contract
-(`docs/20261103_exception_tracking_storage_contract.md`) and the Worker B API/XLSX
-contract (`docs/20261103_exception_tracking_api.md`). Reviewer sign-off is
-required for the decisions listed at the end.
+Status: **FROZEN, REVIEWED AND INTEGRATED** against the storage contract
+(`docs/20261103_exception_tracking_storage_contract.md`) and API/XLSX contract
+(`docs/20261103_exception_tracking_api.md`).
 
 ## Scope
 
@@ -29,10 +28,10 @@ no second workbook or storage implementation in this scope.
   1. `as_of_date` on `POST /api/runs/execute/`;
   2. the date retained by the upload session;
   3. the backend default.
-- The backend default is the last Monday-Friday of the previous calendar month.
-  Production delegates to Worker B's shared `apps.exception_tracking.dates`
-  helper so the upload/execute default and the tracking API default cannot
-  drift; the local fallback uses the backend server's current calendar date.
+- The backend default is the last Monday-Friday of the previous calendar month,
+  calculated from Django's configured `TIME_ZONE` calendar date. Production
+  delegates to the shared `apps.exception_tracking.dates` helper so upload,
+  execute and tracking defaults cannot drift.
   January rolls back to December of the previous year; a month ending on
   Saturday/Sunday resolves to the preceding Friday.
 - Invalid dates, timestamps, whitespace-padded dates, locale formats, blank
@@ -150,11 +149,11 @@ Worker C integration depends on:
   `9f047d9` (settings path), `91ee51d` (tracking API and shared workbook), and
   `34d5b11` (workbook date-cell compatibility).
 
-Until both dependency commits are integrated, execute-endpoint tests that reach
-capture fail closed with a visible "Worker A/B integration dependency" message;
-they do not skip tracking silently.
+The final integrated branch includes both dependencies. Execute-endpoint tests
+exercise capture against the real repository and fail closed if a tracking write
+fails; they do not skip tracking silently.
 
-## Reviewer sign-off items
+## Frozen reviewer decisions
 
 1. The literal exception ID has no `exception_` prefix; requirement wording
    "exception <identifier>_<keys>" is read as the noun plus the canonical

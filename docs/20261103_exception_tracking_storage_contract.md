@@ -1,6 +1,6 @@
-# Exception tracking storage contract (Worker A proposal)
+# Exception tracking storage contract
 
-Status: **PUBLISHED FOR WORKERS B/C/D AND REVIEWER FREEZE**
+Status: **FROZEN BY COORDINATOR/REVIEWER; IMPLEMENTED AND INTEGRATED**
 
 Branch: `work/20261103-exception-tracking-worker-a`
 
@@ -143,7 +143,8 @@ the configured order explicitly.
   );
   ```
 
-- Dates are stored as `YYYY-MM-DD`; timestamps are stored as timezone-aware
+- Date strings must be exactly `YYYY-MM-DD` with no surrounding whitespace.
+  Timestamps are stored as timezone-aware
   ISO-8601 UTC text (`...+00:00`). Naive timestamps supplied by a caller are
   rejected; naive legacy values read from disk are interpreted as UTC.
 - A date table is created for every recorded as-of date, including a run with
@@ -251,7 +252,7 @@ path. The storage layer never returns a synthesized ID or silently skips a row.
   `<project_root>/data/exception_tracking.db`. Production run capture always
   passes the resolved path explicitly.
 
-## Reviewer sign-off items
+## Frozen reviewer decisions
 
 1. Literal ID has no `exception_` prefix; the requirement's word "exception" is
    read as the noun, and the canonical rule identifier already starts with
