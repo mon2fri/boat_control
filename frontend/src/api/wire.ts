@@ -390,7 +390,7 @@ export const wireRunResultSchema = z.object({
   filters_applied: z.array(wireFilterRowSchema),
   aggregation_columns: z.array(z.string()).optional(),
   aggregation_column_labels: z.record(z.string(), z.string()).optional(),
-  group_statistics: wireGroupStatisticsBundleSchema.optional(),
+  group_statistics: wireGroupStatisticsBundleSchema.nullable().optional(),
   nested_aggregation_enabled: z.boolean().optional(),
   comparison_sections: z.array(z.object({
     id: z.string(),

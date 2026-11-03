@@ -28,6 +28,7 @@ import {
   wireExceptionTrackingListSchema,
   wireExceptionTrackingDatesSchema,
   wireRunRequestSchema,
+  wireRunDocumentResponseSchema,
   legacyWireRunDocumentSchema,
 } from "./wire";
 
@@ -517,6 +518,38 @@ describe("exception tracking mapping", () => {
         as_of_date: "2026-10-30",
       }).asOfDate,
     ).toBe("2026-10-30");
+  });
+
+  it("restores saved runs whose group_statistics is explicitly null", () => {
+    const doc = wireRunDocumentResponseSchema.parse({
+      run_id: "r-null-stats",
+      report_name: "test",
+      file_a_name: "a.csv",
+      file_b_name: "b.csv",
+      created_at: "2026-10-30T12:00:00Z",
+      as_of_date: "2026-10-30",
+      result: {
+        comparison: {
+          total_rows_a: 1,
+          total_rows_b: 1,
+          rows_with_changes: 0,
+          total_attribute_changes: 0,
+          row_details: [],
+        },
+        validation: {
+          total_violations: 0,
+          violations_by_rule: {},
+          violation_count_by_rule: {},
+        },
+        rule_bindings: {},
+        common_columns: ["id"],
+        target_columns: ["id"],
+        filters_applied: [],
+        group_statistics: null,
+      },
+    });
+
+    expect(mapRunDocumentToResult(doc).asOfDate).toBe("2026-10-30");
   });
 
   it("maps all three statuses verbatim when supplied by the backend", () => {
