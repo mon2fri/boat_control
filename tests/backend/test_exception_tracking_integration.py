@@ -20,7 +20,10 @@ from apps.exception_tracking.api_services import (
     list_exceptions,
 )
 from apps.exception_tracking.workbook import build_commentary_workbook
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test.utils import override_settings
 from openpyxl import load_workbook
+from rest_framework.test import APIClient
 
 try:
     from apps.exception_tracking import domain as domain_module
@@ -115,3 +118,45 @@ def test_real_store_is_untouched_when_workbook_ids_do_not_match(tmp_path: Path) 
 
     assert error.value.code == "unknown_exception_ids"
     assert list_exceptions(FIRST_DATE, repository)[0]["exception_commentary"] == "Original"
+
+
+def test_api_adapter_opens_configured_real_database(tmp_path: Path) -> None:
+    database_path = tmp_path / "configured-tracking.db"
+    repository = repository_module.ExceptionTrackingRepository(database_path)
+    repository.record_exceptions(FIRST_DATE, [_occurrence(commentary="Known")])
+
+    with override_settings(
+        EXCEPTION_TRACKING_DB=database_path,
+        SETTINGS_FILE=tmp_path / ".config",
+    ):
+        client = APIClient()
+        dates = client.get("/api/exception-tracking/dates/")
+        listing = client.get("/api/exception-tracking/?as_of_date=2026-09-30")
+        export = client.get("/api/exception-tracking/export/?as_of_date=2026-09-30")
+
+        assert dates.status_code == 200
+        assert dates.json()["dates"] == ["2026-09-30"]
+        assert listing.status_code == 200
+        assert listing.json()["exceptions"][0]["status"] == "Commented"
+        assert export.status_code == 200
+
+        workbook = load_workbook(io.BytesIO(export.content))
+        workbook["Exceptions"]["E2"] = "Reviewed"
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        uploaded = SimpleUploadedFile(
+            "template.xlsx",
+            buffer.getvalue(),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+        imported = client.post(
+            "/api/exception-tracking/import/",
+            {"file": uploaded, "as_of_date": "2026-09-30"},
+            format="multipart",
+        )
+
+        assert imported.status_code == 200
+        assert imported.json()["updated"] == 1
+        assert imported.json()["exceptions"][0]["exception_commentary"] == "Reviewed"
