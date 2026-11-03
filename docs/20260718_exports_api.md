@@ -10,7 +10,8 @@ Exports comparison and validation results to HTML or CSV format.
 ```json
 {
   "run_id": "abc123def456",
-  "format": "html"
+  "format": "html",
+  "new_exceptions_only": true
 }
 ```
 
