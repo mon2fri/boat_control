@@ -12,6 +12,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
+from apps.exception_tracking import repository as repository_module
 from apps.exception_tracking.domain import ExceptionOccurrence
 from apps.exception_tracking.errors import (
     ExceptionTrackingError,
@@ -265,7 +266,7 @@ def test_value_keys_match_selected_names_case_insensitively(tmp_path: Path) -> N
     assert record.exception_extra_values == {"SEGMENT": "Retail"}
 
 
-def test_rule_index_is_preserved_on_same_date_rerun_and_blank_is_filled(
+def test_newest_capture_rule_index_wins_on_same_date_rerun(
     tmp_path: Path,
 ) -> None:
     repo = _repo(tmp_path)
@@ -276,7 +277,80 @@ def test_rule_index_is_preserved_on_same_date_rerun_and_blank_is_filled(
     assert repo.list_exceptions(DATE_1)[0].exception_rule_index == "R001"
 
     repo.record_exceptions(DATE_1, [_occurrence(rule_index="R999")])
-    assert repo.list_exceptions(DATE_1)[0].exception_rule_index == "R001"
+    assert repo.list_exceptions(DATE_1)[0].exception_rule_index == "R999"
+
+
+def test_rule_index_precedence_uses_capture_time_not_occurrence_timestamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    capture_times = iter(
+        [
+            datetime(2026, 11, 1, 10, tzinfo=UTC),
+            datetime(2026, 11, 1, 11, tzinfo=UTC),
+            datetime(2026, 11, 1, 11, tzinfo=UTC),
+            datetime(2026, 11, 1, 9, tzinfo=UTC),
+        ]
+    )
+    monkeypatch.setattr(repository_module, "utc_now", lambda: next(capture_times))
+    repo = _repo(tmp_path)
+
+    repo.record_exceptions(
+        DATE_1,
+        [
+            ExceptionOccurrence(
+                exception_rule_identifier=RULE,
+                key_columns={"id": "A"},
+                key_column_order=["id"],
+                exception_timestamp=datetime(2026, 11, 1, 8, tzinfo=UTC),
+                exception_rule_index="R001",
+            )
+        ],
+    )
+    # The newer capture's occurrence timestamp is older, but its Rule Index wins.
+    repo.record_exceptions(
+        DATE_1,
+        [
+            ExceptionOccurrence(
+                exception_rule_identifier=RULE,
+                key_columns={"id": "A"},
+                key_column_order=["id"],
+                exception_timestamp=datetime(2026, 10, 30, 8, tzinfo=UTC),
+                exception_rule_index="R002",
+            )
+        ],
+    )
+    assert repo.list_exceptions(DATE_1)[0].exception_rule_index == "R002"
+
+    # If timestamps tie exactly, the later serialized write wins consistently.
+    repo.record_exceptions(
+        DATE_1,
+        [
+            ExceptionOccurrence(
+                exception_rule_identifier=RULE,
+                key_columns={"id": "A"},
+                key_column_order=["id"],
+                exception_timestamp=datetime(2026, 10, 29, 8, tzinfo=UTC),
+                exception_rule_index="R003",
+            )
+        ],
+    )
+    assert repo.list_exceptions(DATE_1)[0].exception_rule_index == "R003"
+
+    # An out-of-order older capture cannot replace the newer captured context,
+    # even if its occurrence timestamp is later.
+    repo.record_exceptions(
+        DATE_1,
+        [
+            ExceptionOccurrence(
+                exception_rule_identifier=RULE,
+                key_columns={"id": "A"},
+                key_column_order=["id"],
+                exception_timestamp=datetime(2026, 11, 2, 8, tzinfo=UTC),
+                exception_rule_index="R004",
+            )
+        ],
+    )
+    assert repo.list_exceptions(DATE_1)[0].exception_rule_index == "R003"
 
 
 def test_rule_index_is_never_derived_from_catalog_order(tmp_path: Path) -> None:
@@ -321,7 +395,7 @@ def test_same_date_rerun_merges_values_and_updates_selection(
     )
 
     record = repo.list_exceptions(DATE_1)[0]
-    assert record.exception_rule_index == "R001"
+    assert record.exception_rule_index == "R999"
     assert record.exception_commentary == "known issue"
     assert record.exception_extra_values == {
         "SEGMENT": "Wholesale",
@@ -463,6 +537,11 @@ def test_partially_migrated_table_gains_only_the_missing_context_column(
     record = repo.list_exceptions(DATE_1)[0]
     assert record.exception_rule_index == "R005"
     assert record.exception_extra_values == {}
+
+    # A migrated row has no capture-time marker, so the first new captured
+    # value becomes authoritative without deriving anything from the catalog.
+    repo.record_exceptions(DATE_1, [_occurrence(key="LEGACY", rule_index="R006")])
+    assert repo.list_exceptions(DATE_1)[0].exception_rule_index == "R006"
 
 
 def test_metadata_tables_are_not_available_as_of_dates(tmp_path: Path) -> None:

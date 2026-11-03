@@ -126,12 +126,22 @@ data columns; A stores values but does not choose workbook layout.
 ## Schema additions
 
 Each date table keeps its existing ten columns and gains two backward-compatible
-columns:
+public context columns:
 
 ```sql
 exception_rule_index TEXT NOT NULL DEFAULT '',
 exception_extra_values TEXT NOT NULL DEFAULT '{}'
 ```
+
+It also stores an internal capture-time marker for Rule Index precedence:
+
+```sql
+exception_rule_index_captured_at TEXT NOT NULL DEFAULT ''
+```
+
+This field is storage metadata only; it is not part of `ExceptionRecord` or the
+tracking API. Existing twelve-column template tables are upgraded lazily on
+write or by `migrate_schema()`.
 
 `exception_rule_index` is the historical run-local rule id (for example
 `R001`). `exception_extra_values` is a compact JSON object mapping selected
@@ -171,8 +181,13 @@ CREATE TABLE exception_tracking_date_selections (
 - A stores exactly the nonblank `exception_rule_index` supplied by capture. It
   never reads the current rule catalog and never derives a value from catalog
   order, row order, or exception position.
-- Same-date reruns preserve the existing nonblank Rule Index; a later capture
-  only fills a blank legacy value. This keeps historical context stable.
+- For a given Exception ID and As-of Date, the nonblank Rule Index from the
+  newest captured run wins. Precedence uses the repository capture timestamp,
+  not `exception_timestamp` (which may be backdated or otherwise out of order).
+  An exact capture-timestamp tie is resolved by the later serialized write.
+- A capture without a nonblank Rule Index does not erase a previously captured
+  value. Legacy rows with no capture-time marker accept the first new nonblank
+  captured value. Rule Index is never reconstructed from the current catalog.
 - Two nonblank, different Rule Index values for the same exception in one
   capture batch are rejected as ambiguous.
 - Legacy rows without Rule Index read as `""`; no value is backfilled or guessed.
@@ -227,9 +242,9 @@ CREATE TABLE exception_tracking_date_selections (
 - Existing populated databases with the original ten-column date tables remain
   readable. Missing `exception_rule_index`/`exception_extra_values` read as
   `""`/`{}`; no business value is rewritten.
-- The first write to an old date table adds the two columns with their defaults
-  inside the same transaction. `migrate_schema()` performs the upgrade for every
-  existing date table explicitly.
+- The first write to an old date table adds any missing context columns with
+  their defaults inside the same transaction. `migrate_schema()` performs the
+  upgrade for every existing date table explicitly.
 - Metadata tables are created lazily on write/migration. On a legacy database
   without them, `get_extra_columns()` returns `()` and exports append no data
   columns.
@@ -241,10 +256,12 @@ CREATE TABLE exception_tracking_date_selections (
 
 ## Reviewer sign-off items
 
-1. New date-table columns are `exception_rule_index` and
-   `exception_extra_values`; metadata lives in the two tracking metadata tables.
-2. Rule Index is capture-supplied historical context; existing nonblank values
-   win on same-date reruns.
+1. New date-table columns are `exception_rule_index`,
+   `exception_extra_values`, and the internal
+   `exception_rule_index_captured_at` precedence marker; ordered selections live
+   in the two tracking metadata tables.
+2. Rule Index is capture-supplied historical context; the newest same-date
+   capture wins, ordered by its capture timestamp rather than occurrence time.
 3. The ordered selection is the sole source of appended columns; unselected
    values are rejected when an explicit selection is supplied.
 4. Reserved/duplicate header names are rejected, not silently skipped.

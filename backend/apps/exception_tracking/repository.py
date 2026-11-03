@@ -73,6 +73,7 @@ LEGACY_COLUMNS: tuple[str, ...] = (
 CONTEXT_COLUMNS: tuple[str, ...] = (
     "exception_rule_index",
     "exception_extra_values",
+    "exception_rule_index_captured_at",
 )
 
 REQUIRED_COLUMNS: tuple[str, ...] = (*LEGACY_COLUMNS, *CONTEXT_COLUMNS)
@@ -93,7 +94,8 @@ CREATE TABLE {table} (
     exception_first_seen_timestamp DATETIME NOT NULL,
     exception_last_seen_timestamp DATETIME NOT NULL,
     exception_rule_index TEXT NOT NULL DEFAULT '',
-    exception_extra_values TEXT NOT NULL DEFAULT '{{}}'
+    exception_extra_values TEXT NOT NULL DEFAULT '{{}}',
+    exception_rule_index_captured_at TEXT NOT NULL DEFAULT ''
 )
 """
 
@@ -116,6 +118,7 @@ CREATE TABLE IF NOT EXISTS exception_tracking_date_selections (
 _CONTEXT_COLUMN_SQL: dict[str, str] = {
     "exception_rule_index": "TEXT NOT NULL DEFAULT ''",
     "exception_extra_values": "TEXT NOT NULL DEFAULT '{}'",
+    "exception_rule_index_captured_at": "TEXT NOT NULL DEFAULT ''",
 }
 
 _SQLITE_TIMEOUT_SECONDS = 30
@@ -267,9 +270,8 @@ def _validate_date_table(
 ) -> None:
     """Validate a date table.
 
-    Reads accept the original ten-column schema so existing databases remain
-    readable.  Writes require the two context columns and migrate legacy tables
-    first.
+    Reads accept older schemas so existing databases remain readable. Writes
+    require all context columns and migrate older tables first.
     """
 
     present = _table_columns(connection, name)
@@ -878,7 +880,22 @@ class ExceptionTrackingRepository:
                         if item.commentary is None
                         else item.commentary
                     )
-                    new_rule_index = _rule_index_text(row) or (item.rule_index or "")
+                    new_rule_index = _rule_index_text(row)
+                    rule_index_captured_at = _optional_text(
+                        row, "exception_rule_index_captured_at", ""
+                    )
+                    if item.rule_index is not None:
+                        prior_capture = (
+                            parse_utc_timestamp(rule_index_captured_at)
+                            if rule_index_captured_at
+                            else None
+                        )
+                        # Capture time, not occurrence time, decides which run's
+                        # historical Rule Index is authoritative. On exact ties,
+                        # the later serialized write wins deterministically.
+                        if prior_capture is None or captured_at >= prior_capture:
+                            new_rule_index = item.rule_index
+                            rule_index_captured_at = captured_at.isoformat()
                     new_extra_values = merge_extra_values(
                         deserialize_extra_values(_extra_values_text(row)),
                         item.extra_values,
@@ -886,12 +903,14 @@ class ExceptionTrackingRepository:
                     connection.execute(
                         f"UPDATE {quoted} SET exception_timestamp = ?, "
                         "exception_commentary = ?, exception_rule_index = ?, "
-                        "exception_extra_values = ? WHERE exception_id = ?",
+                        "exception_extra_values = ?, "
+                        "exception_rule_index_captured_at = ? WHERE exception_id = ?",
                         (
                             new_timestamp.isoformat(),
                             new_commentary,
                             new_rule_index,
                             serialize_extra_values(new_extra_values, effective_columns),
+                            rule_index_captured_at,
                             exception_id,
                         ),
                     )
@@ -909,8 +928,9 @@ class ExceptionTrackingRepository:
                     "exception_timestamp, exception_commentary, exception_as_of_date, "
                     "exception_first_seen_as_of_date, exception_last_seen_as_of_date, "
                     "exception_first_seen_timestamp, exception_last_seen_timestamp, "
-                    "exception_rule_index, exception_extra_values"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "exception_rule_index, exception_extra_values, "
+                    "exception_rule_index_captured_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         exception_id,
                         item.identity.exception_rule_identifier,
@@ -924,6 +944,7 @@ class ExceptionTrackingRepository:
                         item.timestamp.isoformat(),
                         item.rule_index or "",
                         serialize_extra_values(item.extra_values, effective_columns),
+                        captured_at.isoformat() if item.rule_index is not None else "",
                     ),
                 )
                 inserted += 1
