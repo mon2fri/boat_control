@@ -20,6 +20,7 @@ class ExecuteComparisonRequestSerializer(serializers.Serializer):  # type: ignor
     )
     filters = FilterSerializer(many=True, required=False, default=list)
     rule_ids = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
+    as_of_date = serializers.DateField(required=False, allow_null=True)
 
 
 class AttributeChangeSerializer(serializers.Serializer):  # type: ignore[misc]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,7 @@ class ExecutionResult:
     extra_column_display: dict[str, bool] = field(default_factory=dict)
     group_statistics: dict[str, Any] | None = None
     rule_bindings: dict[str, str] = field(default_factory=dict)
+    as_of_date: date | None = None
 
 
 def apply_filters(
@@ -791,6 +793,7 @@ def execute_comparison(
     comparison_sections: list[dict[str, Any]] | None = None,
     exception_columns: list[str] | None = None,
     extra_column_display: dict[str, bool] | None = None,
+    as_of_date: date | None = None,
 ) -> ExecutionResult:
     if filters is None:
         filters = []
@@ -998,4 +1001,5 @@ def execute_comparison(
         extra_column_display=display,
         group_statistics=grp_stats,
         rule_bindings=rule_bindings,
+        as_of_date=as_of_date,
     )

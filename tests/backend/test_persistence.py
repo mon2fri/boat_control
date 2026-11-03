@@ -1,3 +1,5 @@
+import json
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
@@ -284,3 +286,151 @@ class TestRunsListView(TestCase):
         response = self.client.get("/api/runs/")
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.json(), list)
+
+
+class TestAsOfDatePersistence:
+    def test_save_run_persists_as_of_date_and_utc_created_at(
+        self, tmp_path: Path, mock_result: ExecutionResult
+    ) -> None:
+        created_at = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
+        with override_settings(RESULTS_DIR=tmp_path / "results"):
+            metadata = save_run(
+                mock_result,
+                "a.csv",
+                "b.csv",
+                as_of_date=date(2026, 10, 30),
+                created_at=created_at,
+            )
+            loaded = load_run(metadata.run_id)
+
+        assert metadata.as_of_date == "2026-10-30"
+        assert metadata.created_at == "2026-10-30T12:00:00+00:00"
+        assert loaded is not None
+        assert loaded["as_of_date"] == "2026-10-30"
+        assert loaded["created_at"] == "2026-10-30T12:00:00+00:00"
+
+    def test_result_as_of_date_is_used_when_argument_is_omitted(
+        self, tmp_path: Path, mock_result: ExecutionResult
+    ) -> None:
+        from dataclasses import replace
+
+        result = replace(mock_result, as_of_date=date(2026, 9, 30))
+        with override_settings(RESULTS_DIR=tmp_path / "results"):
+            metadata = save_run(result, "a.csv", "b.csv")
+            loaded = load_run(metadata.run_id)
+
+        assert metadata.as_of_date == "2026-09-30"
+        assert loaded is not None
+        assert loaded["as_of_date"] == "2026-09-30"
+
+    def test_runs_without_tracking_date_remain_readable(
+        self, tmp_path: Path, mock_result: ExecutionResult
+    ) -> None:
+        with override_settings(RESULTS_DIR=tmp_path / "results"):
+            metadata = save_run(mock_result, "a.csv", "b.csv")
+            loaded = load_run(metadata.run_id)
+
+        assert metadata.as_of_date is None
+        assert loaded is not None
+        assert loaded["as_of_date"] is None
+
+    def test_rename_preserves_as_of_date(
+        self, tmp_path: Path, mock_result: ExecutionResult
+    ) -> None:
+        with override_settings(RESULTS_DIR=tmp_path / "results"):
+            metadata = save_run(
+                mock_result,
+                "a.csv",
+                "b.csv",
+                as_of_date=date(2026, 10, 30),
+            )
+            renamed = rename_run(metadata.run_id, "Renamed")
+            listed = list_runs()
+
+        assert renamed.as_of_date == "2026-10-30"
+        assert listed[0].as_of_date == "2026-10-30"
+
+    def test_legacy_index_and_document_without_date_load_as_null(
+        self, tmp_path: Path, mock_result: ExecutionResult
+    ) -> None:
+        results_dir = tmp_path / "results"
+        results_dir.mkdir()
+        run_path = results_dir / "legacy_run.json"
+        run_path.write_text(
+            json.dumps(
+                {
+                    "run_id": "legacy",
+                    "report_name": "legacy",
+                    "file_a_name": "a.csv",
+                    "file_b_name": "b.csv",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "result": {},
+                }
+            )
+        )
+        (results_dir / "index.json").write_text(
+            json.dumps(
+                {
+                    "runs": [
+                        {
+                            "run_id": "legacy",
+                            "report_name": "legacy",
+                            "file_a_name": "a.csv",
+                            "file_b_name": "b.csv",
+                            "created_at": "2026-01-01T00:00:00+00:00",
+                            "file_path": str(run_path),
+                        }
+                    ]
+                }
+            )
+        )
+
+        with override_settings(RESULTS_DIR=results_dir):
+            loaded = load_run("legacy")
+            listed = list_runs()
+
+        assert loaded is not None
+        assert loaded["as_of_date"] is None
+        assert listed[0].as_of_date is None
+
+    def test_index_date_is_used_when_document_omits_it(
+        self, tmp_path: Path, mock_result: ExecutionResult
+    ) -> None:
+        results_dir = tmp_path / "results"
+        results_dir.mkdir()
+        run_path = results_dir / "legacy_run.json"
+        run_path.write_text(
+            json.dumps(
+                {
+                    "run_id": "legacy",
+                    "report_name": "legacy",
+                    "file_a_name": "a.csv",
+                    "file_b_name": "b.csv",
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "result": {},
+                }
+            )
+        )
+        (results_dir / "index.json").write_text(
+            json.dumps(
+                {
+                    "runs": [
+                        {
+                            "run_id": "legacy",
+                            "report_name": "legacy",
+                            "file_a_name": "a.csv",
+                            "file_b_name": "b.csv",
+                            "created_at": "2026-01-01T00:00:00+00:00",
+                            "file_path": str(run_path),
+                            "as_of_date": "2026-10-30",
+                        }
+                    ]
+                }
+            )
+        )
+
+        with override_settings(RESULTS_DIR=results_dir):
+            loaded = load_run("legacy")
+
+        assert loaded is not None
+        assert loaded["as_of_date"] == "2026-10-30"

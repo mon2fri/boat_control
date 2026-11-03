@@ -14,6 +14,7 @@ from apps.files.sessions import (
     get_session,
     remove_upload_if_unreferenced,
 )
+from apps.runs.as_of_date import AsOfDateError, resolve_as_of_date
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,11 @@ class FileUploadView(APIView):  # type: ignore[misc]
             return Response({"error": "file_a exceeds 500 MB limit."}, status=400)
         if file_b.size and file_b.size > max_size:
             return Response({"error": "file_b exceeds 500 MB limit."}, status=400)
+
+        try:
+            as_of_date = resolve_as_of_date(request.data.get("as_of_date"))
+        except AsOfDateError as exc:
+            return Response({"error": str(exc)}, status=400)
 
         path_a, dedup_a = store_uploaded_file(file_a)
         path_b, dedup_b = store_uploaded_file(file_b)
@@ -70,12 +76,14 @@ class FileUploadView(APIView):  # type: ignore[misc]
             columns_b=result.columns_b,
             only_in_a=result.only_in_a,
             only_in_b=result.only_in_b,
+            as_of_date=as_of_date.isoformat(),
         )
 
         return Response({
             "session_id": session.session_id,
             "file_a_name": session.file_a_name,
             "file_b_name": session.file_b_name,
+            "as_of_date": session.as_of_date,
             "file_a_deduplicated": dedup_a,
             "file_b_deduplicated": dedup_b,
             "inspection": {
@@ -116,6 +124,7 @@ class HeaderInspectionView(APIView):  # type: ignore[misc]
 
         return Response({
             "session_id": session.session_id,
+            "as_of_date": session.as_of_date,
             "inspection": {
                 "columns_a": result.columns_a,
                 "columns_b": result.columns_b,

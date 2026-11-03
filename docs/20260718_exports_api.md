@@ -30,6 +30,22 @@ Or with inline result data:
 
 ## Export Formats
 
+### Commentary Template (results page)
+
+The result page downloads the same commentary XLSX workbook as the Exception
+Tracking tab:
+
+```text
+GET /api/exception-tracking/export/?run_id=<run-id>
+```
+
+Worker B owns this endpoint and the shared workbook format. The saved run's
+top-level `as_of_date` selects the workbook; runs created before exception
+tracking return an actionable HTTP 400 (`run_has_no_as_of_date`) instead of
+guessing a date. Worker C does not implement a second workbook or export route.
+See `docs/20261103_exception_tracking_run_capture.md` and
+`docs/20261103_exception_tracking_api.md`.
+
 ### HTML Export
 
 - Self-contained HTML with inline CSS
