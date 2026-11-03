@@ -180,6 +180,10 @@ Neither list includes a file changed by this delivery.
   `get_exception_tracking_path` (C commit `a5ea453`); the earlier provisional
   `get_exception_tracking_db_path` name is no longer present in C's current branch.
   No resolver-name mismatch remains.
+- Worker B's branch also adds an empty
+  `backend/apps/exception_tracking/__init__.py`. Resolve the add/add conflict in
+  favor of Worker A's re-exporting `__init__.py`; it is a normal package marker and
+  keeps the documented public imports available.
 - No live `data/exception_tracking.db` was created or read. The untracked
   `data/prepare_cache/` directory was left untouched and not committed.
 - Reviewer-owned follow-up: `.gitignore` currently ignores `data/*.sqlite3` but not
