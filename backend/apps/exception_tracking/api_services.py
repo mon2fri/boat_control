@@ -194,7 +194,7 @@ def list_exceptions(as_of_date: date, repository: Any | None = None) -> list[dic
 
 
 def resolve_as_of_date(value: str | None, repository: Any | None = None) -> date:
-    if value is None or not str(value).strip():
+    if value is None:
         return default_as_of_date()
     try:
         return parse_iso_date(value)

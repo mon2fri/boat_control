@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, timedelta
 
+from django.utils import timezone
+
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 WEEKDAYS = frozenset(range(0, 5))
@@ -16,7 +18,7 @@ def default_as_of_date(today: date | None = None) -> date:
     January rolls back to December of the previous year. The returned date is
     always a weekday, never the last calendar day when that day is a weekend.
     """
-    current = today or date.today()
+    current = today or datetime.now(timezone.get_default_timezone()).date()
     previous_month_end = current.replace(day=1) - timedelta(days=1)
     while previous_month_end.weekday() not in WEEKDAYS:
         previous_month_end -= timedelta(days=1)
@@ -31,7 +33,7 @@ def parse_iso_date(value: object, *, field: str = "as_of_date") -> date:
         return value
     if not isinstance(value, str):
         raise ValueError(f"{field} must be an ISO date (YYYY-MM-DD).")
-    text = value.strip()
+    text = value
     if not _ISO_DATE.fullmatch(text):
         raise ValueError(f"{field} must be an ISO date (YYYY-MM-DD).")
     try:

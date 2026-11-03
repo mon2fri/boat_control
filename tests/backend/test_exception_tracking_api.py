@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 from datetime import UTC, date, datetime
+from datetime import timezone as datetime_timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pytest
 from apps.exception_tracking import api_services
@@ -150,6 +152,34 @@ def test_list_endpoint_rejects_invalid_date(repository: FakeRepository) -> None:
 
     assert response.status_code == 400
     assert response.json()["code"] == "invalid_as_of_date"
+
+
+@pytest.mark.parametrize("value", ["", " 2026-10-30", "2026-10-30 "])
+def test_supplied_as_of_date_rejects_blank_or_padded_values(value: str) -> None:
+    with pytest.raises(api_services.TrackingAPIError) as error:
+        api_services.resolve_as_of_date(value)
+
+    assert error.value.code == "invalid_as_of_date"
+
+
+def test_default_date_uses_django_configured_timezone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz: datetime_timezone | None = None) -> datetime:
+            utc_now = datetime(2026, 11, 1, 2, 0, tzinfo=UTC)
+            return utc_now.astimezone(tz) if tz is not None else utc_now
+
+    monkeypatch.setattr("apps.exception_tracking.dates.datetime", FrozenDateTime)
+    monkeypatch.setattr(
+        "apps.exception_tracking.dates.timezone.get_default_timezone",
+        lambda: ZoneInfo("Etc/GMT+12"),
+    )
+
+    # 2026-11-01 UTC is still 2026-10-31 in UTC-12; the previous-month
+    # last weekday is therefore September 30, not October 30.
+    assert default_as_of_date() == date(2026, 9, 30)
 
 
 def test_export_returns_prefilled_xlsx_attachment(repository: FakeRepository) -> None:
