@@ -1,0 +1,32 @@
+version: 1
+next_index: 3
+rules:
+  - rule_id: R001
+    name: Status must be active
+    description: Sample detail rule using a value-versus-constant check.
+    conditions: []
+    logic:
+      format: value_vs_column
+      column_name: STATUS
+      operator: eq
+      target_value: active
+      target_values:
+        - active
+      comparison_mode: comparison_vs_baseline
+    extra_columns:
+      - SEGMENT
+    hide_comparison: false
+  - rule_id: R002
+    name: Score must increase
+    description: Sample detail rule using a comparison-versus-baseline check.
+    conditions: []
+    logic:
+      format: column_vs_column
+      column_name: SCORE
+      operator: gt
+      target_value: SCORE
+      target_values: []
+      comparison_mode: comparison_vs_baseline
+    extra_columns:
+      - SCORE
+    hide_comparison: false

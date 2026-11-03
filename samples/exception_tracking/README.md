@@ -13,3 +13,18 @@ This isolated sample uses the single rule in `rules.yaml` (STATUS must equal
 The backend generates the canonical rule identifier when it imports this rule.
 Do not hard-code an expected identifier; exception IDs use the returned
 identifier followed by `_A`, `_B`, or `_C`.
+
+## Detailed result-table/template sample
+
+The `detail/` subdirectory provides a two-rule sample for validating appended
+commentary-template details and stable result-table IDs. In an isolated copy,
+set `rule_config_path` to `samples/exception_tracking/detail` before running
+`migrate_rules_to_db`, then upload `detail/baseline.csv` and
+`detail/candidate.csv`. The rules exercise both value-vs-constant and
+column-vs-column checks; `REGION` can be selected for aggregation and `SEGMENT`
+and `SCORE` as extra columns. Expected template details include the ordered key,
+Rule Index, region and extra-column values; rule IDs remain catalog-generated.
+With the supplied files, R001 flags A and B while R002 flags A and C, producing
+four detail rows (A has two distinct IDs because each ID includes its rule's
+canonical identifier). Appended template fields should be `ACCOUNT_ID`,
+`Rule Index`, `REGION`, `SEGMENT`, and `SCORE` after the original nine columns.

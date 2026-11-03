@@ -85,8 +85,10 @@ Route: `/exception-tracking` (navigation item **Exception Tracking**).
   table, aggregation columns, configured extra columns, Column, In Baseline and
   In Comparison. Sorting/filtering continue to work, including filtering by the
   new Exception ID.
-- Paginated detail mapping preserves `exception_id` across pages; it never
-  derives identity from the page offset or rendered row number.
+- Paginated violation-detail mapping prefers `exception_id`; when the current
+  API omits it, it derives the same canonical ID from `rule_identifier` and
+  configured key-column order. It never derives identity from a page offset or
+  rendered row number; missing identity context remains `—`.
 
 ### Settings — exception-tracking database path
 
@@ -145,8 +147,10 @@ New/updated focused tests:
   `src/features/results/ExceptionTable.test.tsx` — stable Exception ID shown as
   the exception-detail row identifier; all existing detail columns preserved;
   no row-position fallback.
-- `src/features/results/usePaginatedDetails.test.ts` — backend exception IDs
-  remain stable across paginated violation pages.
+- `src/features/results/usePaginatedDetails.test.ts` and
+  `src/features/results/PaginatedDetailSection.test.tsx` — canonical fallback
+  IDs stay stable across actual paginated violation wire rows and are displayed
+  in the paginated exception table.
 - `src/pages/ExceptionTrackingPage.test.tsx` — all requested columns + status,
   backend default, template download, successful import/refresh, unknown-ID
   rejection, non-XLSX rejection, empty state, older marked date via Other date.

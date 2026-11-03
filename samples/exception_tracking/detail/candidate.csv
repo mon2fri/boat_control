@@ -1,0 +1,4 @@
+ACCOUNT_ID,STATUS,REGION,SEGMENT,SCORE
+A,inactive,EMEA,Alpha,5
+B,inactive,APAC,Beta,25
+C,active,AMER,Gamma,30

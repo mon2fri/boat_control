@@ -1,6 +1,6 @@
 # Commentary template exception details — B/D contract
 
-Status: **PUBLISHED FOR WORKER D AND REVIEWER FREEZE**
+Status: **FROZEN BY COORDINATOR/REVIEWER; IMPLEMENTED AND INTEGRATED**
 
 Branch: `work/20261103-exception-tracking-worker-b`
 
@@ -31,6 +31,10 @@ each violation:
   4. Join `rule_identifier` and the exact text values with underscores.
 - Do not display an incremental row number as the identifier.
 - Do not use the local rule index (`R001`) as the Exception ID.
+- The paginated violation-detail API currently provides the canonical
+  `rule_identifier` and ordered `key_columns`; the frontend uses those to derive
+  the same ID when `exception_id` itself is absent. If canonical identity or
+  complete key values are missing, display `—` rather than guess.
 
 The backend workbook always takes the Exception ID from the tracking record, so
 the workbook and displayed table use the same value. Worker B also applies the
@@ -60,6 +64,11 @@ that are not already represented, in table order:
 4. Each configured exception/extra column in `result.exception_columns` order;
    for older runs without that list, use the first-seen order of
    `violation.extra_values` keys.
+
+If `result.extra_column_display.exception_tables` is explicitly `false`, omit
+the configured exception/extra columns because they are not shown in the Results
+Exception Table. If that legacy display flag is absent, keep the historical
+default and include them.
 
 Deduplication rules:
 
