@@ -125,7 +125,7 @@ uv run pytest -q tests/backend/test_exception_tracking_workbook.py \
 39 passed
 
 uv run pytest -q tests/backend tests/contracts tests/integration
-319 passed, 4 skipped, 1 failed
+320 passed, 4 skipped, 1 failed
 ```
 
 The single failure is pre-existing and unrelated:
