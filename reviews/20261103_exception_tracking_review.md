@@ -431,7 +431,8 @@ integrated frontend tests and actual browser checks below passed afterward.
   - `npm --prefix frontend run build:inspect` — **5 tests passed**.
   - Targeted ESLint on the changed selector, tracking hook, run hook and tests —
     passed.
-  - `git diff --check` — passed; generated `frontend/dist` is rebuilt below.
+  - `git diff --check` — passed. Generated `frontend/dist` was rebuilt and
+    committed in `1415efc95195386e8069425a90499ced03e85074`.
 - No backend code changed, so backend/contract tests were not rerun for this
   frontend-only enhancement. The previously recorded backend baseline results
   remain as documented above.
