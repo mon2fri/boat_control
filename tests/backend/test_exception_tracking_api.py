@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 
 TRACKING_DATE = date(2026, 10, 30)
 PRIOR_DATE = date(2026, 9, 30)
+AUGUST_DATE = date(2026, 8, 31)
 
 
 def _record(
@@ -62,6 +63,7 @@ class FakeRepository:
         self.tables: dict[date, list[dict[str, Any]]] = {}
         self.update_calls: list[tuple[date, dict[str, str]]] = []
         self.detail_columns: list[str] = []
+        self.extra_columns_by_date: dict[date, list[str]] = {}
         self.fail_update = False
 
     def add(self, record: dict[str, Any]) -> None:
@@ -74,6 +76,11 @@ class FakeRepository:
         return [dict(record) for record in self.tables.get(as_of_date, [])]
 
     def get_extra_column_union(self) -> list[str]:
+        return list(self.detail_columns)
+
+    def get_extra_columns(self, as_of_date: date | None = None) -> list[str]:
+        if as_of_date in self.extra_columns_by_date:
+            return list(self.extra_columns_by_date[as_of_date])
         return list(self.detail_columns)
 
     def update_commentaries(self, as_of_date: date, updates: dict[str, str]) -> int:
@@ -524,6 +531,123 @@ def test_export_with_empty_selection_has_only_standard_columns(
     assert response.status_code == 200
     sheet = load_workbook(io.BytesIO(response.content))["Exceptions"]
     assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+
+
+def test_date_scoped_columns_control_tracking_metadata_and_both_export_routes(
+    repository: FakeRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository.extra_columns_by_date = {
+        AUGUST_DATE: ["REGION", "SEGMENT"],
+        PRIOR_DATE: ["SEGMENT", "PORTFOLIO"],
+    }
+    repository.detail_columns = ["ALL_TIME_UNION_ONLY"]
+    repository.add(
+        _record(
+            "AUG",
+            AUGUST_DATE,
+            detail_values={"REGION": "APAC", "SEGMENT": "Retail"},
+        )
+    )
+    repository.add(
+        _record(
+            "SEP",
+            PRIOR_DATE,
+            detail_values={"SEGMENT": "Wholesale", "PORTFOLIO": "Growth"},
+        )
+    )
+    monkeypatch.setattr(
+        "apps.runs.persistence.load_run",
+        lambda run_id: {"run_id": run_id, "as_of_date": PRIOR_DATE.isoformat()},
+    )
+
+    september_list = APIClient().get(
+        f"/api/exception-tracking/?as_of_date={PRIOR_DATE.isoformat()}"
+    ).json()
+    assert september_list["detail_columns"] == ["SEGMENT", "PORTFOLIO"]
+    september_detail_keys = [
+        column["key"]
+        for column in september_list["columns"]
+        if column["source"] == "detail"
+    ]
+    assert september_detail_keys == ["detail:SEGMENT", "detail:PORTFOLIO"]
+
+    august_list = APIClient().get(
+        f"/api/exception-tracking/?as_of_date={AUGUST_DATE.isoformat()}"
+    ).json()
+    assert august_list["detail_columns"] == ["REGION", "SEGMENT", "PORTFOLIO"]
+    assert august_list["exceptions"][0]["detail_values"] == {
+        "REGION": "APAC",
+        "SEGMENT": "Retail",
+        "PORTFOLIO": "",
+    }
+
+    august_export = APIClient().get(
+        f"/api/exception-tracking/export/?as_of_date={AUGUST_DATE.isoformat()}"
+    )
+    september_export = APIClient().get(
+        f"/api/exception-tracking/export/?as_of_date={PRIOR_DATE.isoformat()}"
+    )
+    run_export = APIClient().get("/api/exception-tracking/export/?run_id=september-run")
+
+    assert (
+        august_export.status_code
+        == september_export.status_code
+        == run_export.status_code
+        == 200
+    )
+    august_sheet = load_workbook(io.BytesIO(august_export.content))["Exceptions"]
+    assert [cell.value for cell in august_sheet[1]][len(EXCEPTION_HEADERS) :] == [
+        "REGION",
+        "SEGMENT",
+        "PORTFOLIO",
+    ]
+    assert [cell.value for cell in august_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+        "APAC",
+        "Retail",
+        None,
+    ]
+
+    september_sheet = load_workbook(io.BytesIO(september_export.content))["Exceptions"]
+    run_sheet = load_workbook(io.BytesIO(run_export.content))["Exceptions"]
+    expected_headers = [*EXCEPTION_HEADERS, "SEGMENT", "PORTFOLIO"]
+    assert [cell.value for cell in september_sheet[1]] == expected_headers
+    assert [cell.value for cell in run_sheet[1]] == expected_headers
+    assert [cell.value for cell in september_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+        "Wholesale",
+        "Growth",
+    ]
+    assert [cell.value for cell in run_sheet[2]] == [
+        cell.value for cell in september_sheet[2]
+    ]
+
+
+def test_latest_explicit_empty_selection_does_not_add_earlier_columns(
+    repository: FakeRepository,
+) -> None:
+    repository.extra_columns_by_date = {
+        AUGUST_DATE: ["REGION", "SEGMENT"],
+        PRIOR_DATE: [],
+    }
+    repository.add(_record("AUG", AUGUST_DATE, detail_values={"REGION": "APAC"}))
+    repository.add(_record("SEP", PRIOR_DATE, detail_values={}))
+
+    response = APIClient().get(
+        f"/api/exception-tracking/export/?as_of_date={PRIOR_DATE.isoformat()}"
+    )
+
+    assert response.status_code == 200
+    sheet = load_workbook(io.BytesIO(response.content))["Exceptions"]
+    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+
+
+def test_legacy_repository_union_remains_a_compatibility_fallback() -> None:
+    class LegacyRepository:
+        def get_extra_column_union(self) -> list[str]:
+            return ["Legacy Region", "Legacy Segment"]
+
+    assert api_services.list_template_detail_columns(
+        LegacyRepository(), PRIOR_DATE
+    ) == ["Legacy Region", "Legacy Segment"]
 
 
 def test_import_ignores_edited_and_cleared_detail_values(

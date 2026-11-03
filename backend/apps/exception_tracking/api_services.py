@@ -283,10 +283,67 @@ def _unique_names(values: Iterable[Any]) -> list[str]:
     return result
 
 
+def _date_scoped_detail_columns(repository: Any, as_of_date: date) -> list[str] | None:
+    """Read the exact ordered selection for a date when the repository supports it."""
+    for method_name in (
+        "get_extra_columns",
+        "list_template_detail_columns",
+        "list_detail_columns",
+        "list_commentary_template_columns",
+        "list_template_columns",
+        "get_template_columns",
+        "get_commentary_template_columns",
+        "get_detail_columns",
+    ):
+        method = getattr(repository, method_name, None)
+        if not callable(method):
+            continue
+        try:
+            return _unique_names(method(as_of_date))
+        except TypeError:
+            # Older aliases may expose only a no-argument all-time method.
+            continue
+        except (OSError, ValueError) as exc:
+            raise TrackingAPIError(
+                str(exc),
+                code="tracking_database_unavailable",
+            ) from exc
+    return None
+
+
+def _append_unique_names(target: list[str], values: Iterable[str]) -> None:
+    seen = {name.casefold() for name in target}
+    for name in values:
+        if name.casefold() in seen:
+            continue
+        target.append(name)
+        seen.add(name.casefold())
+
+
 def list_template_detail_columns(
     repository: Any, as_of_date: date | None = None
 ) -> list[str]:
-    """Read the ordered Extra Columns for Commentary Template union."""
+    """Return the date-aware ordered selection and columns added afterward.
+
+    A date's own selection is authoritative. Later selections are appended so
+    that newer context remains visible (blank where it was not captured yet),
+    while columns deselected by the requested date are not carried forward.
+    """
+    if as_of_date is not None:
+        selected = _date_scoped_detail_columns(repository, as_of_date)
+        if selected is not None:
+            columns = list(selected)
+            for later_date in list_as_of_dates(repository):
+                if later_date <= as_of_date:
+                    continue
+                later_selection = _date_scoped_detail_columns(repository, later_date)
+                if later_selection is not None:
+                    _append_unique_names(columns, later_selection)
+            return columns
+
+    # Compatibility with repositories that predate date-scoped metadata.
+    # Prefer the legacy all-time union only when the canonical/date-aware
+    # surface is unavailable.
     for method_name in (
         "get_extra_column_union",
         "list_extra_column_union",
@@ -316,12 +373,9 @@ def list_template_detail_columns(
         if not callable(method):
             continue
         try:
-            if as_of_date is not None:
-                try:
-                    return _unique_names(method(as_of_date))
-                except TypeError:
-                    pass
             return _unique_names(method())
+        except TypeError:
+            continue
         except (OSError, ValueError) as exc:
             raise TrackingAPIError(
                 str(exc),
@@ -329,18 +383,22 @@ def list_template_detail_columns(
             ) from exc
 
     # Compatibility fallback for an older repository that persists detail
-    # values but does not yet expose the ordered metadata method.
+    # values but does not expose ordered metadata. Limit the fallback to the
+    # requested date and later dates when a date was supplied.
     columns: list[str] = []
     try:
-        for date_value in repository.list_as_of_dates():
+        dates = list_as_of_dates(repository)
+        for date_value in dates:
+            if as_of_date is not None and date_value < as_of_date:
+                continue
             for record in repository.list_exceptions(date_value):
-                columns.extend(_record_detail_values(record))
+                _append_unique_names(columns, _record_detail_values(record))
     except (OSError, ValueError) as exc:
         raise TrackingAPIError(
             str(exc),
             code="tracking_database_unavailable",
         ) from exc
-    return _unique_names(columns)
+    return columns
 
 
 def export_commentary(

@@ -237,9 +237,17 @@ remains the commentary field.
 Only `Extra Columns for Commentary Template` supplies appended data columns, in
 its configured order. The backend never infers them from Extra Column,
 attribute-comparison sections, key/aggregation columns or other exception-table
-fields. An empty selection adds no data columns. Values are read from Worker A's
-persisted per-exception detail values; records from older dates without a value
-for a later-selected column export an empty cell.
+fields. For As-of Date D, the schema starts with D's exact ordered selection,
+then appends columns selected on later dates in chronological order, preserving
+the order within each later selection and skipping already-present names. Names
+selected only on earlier dates but deselected at D are omitted. The tracking-list
+column metadata follows the same rule. For example, if August selects
+`[REGION, SEGMENT]` and September selects `[SEGMENT, PORTFOLIO]`, September
+contains `[SEGMENT, PORTFOLIO]`, while August contains
+`[REGION, SEGMENT, PORTFOLIO]`. August's later-added `PORTFOLIO` cell is empty
+when no value was captured then. An explicit empty selection at the latest date
+adds no source columns. Values are read from Worker A's persisted per-exception
+detail values.
 
 All trailing columns are informational only. Import ignores their headers and
 values completely: editing, clearing, adding, deleting or reordering them never

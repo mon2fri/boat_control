@@ -51,8 +51,7 @@ deterministic precedence: the newest captured run value wins for the same
 Exception ID; older records without a stored value stay empty. Never derive
 Rule Index from the current catalog order.
 
-Worker A published the canonical read surface in
-`docs/20261103_exception_tracking_template_storage_contract.md`:
+Worker A's canonical read surface is:
 
 ```python
 class ExceptionRecord:
@@ -64,14 +63,25 @@ class ExceptionTrackingRepository:
     # existing methods...
     def get_extra_columns(self, as_of_date: date | str | None = None) -> tuple[str, ...]: ...
     def get_extra_column_union(self) -> tuple[str, ...]: ...
+    def list_as_of_dates(self) -> list[date]: ...
 ```
 
-B exports the stable `get_extra_column_union()` order so columns introduced on
-later dates appear empty on older records. If only `get_extra_columns(date)` is
-available, B uses the date selection; the compatibility aliases
-`rule_index`/`detail_values` and `list_template_detail_columns` remain accepted.
-`exception_extra_values` contains persisted values by column name. Values for
-unselected columns are never exported.
+B uses `get_extra_columns(D)` for the exact ordered selection at As-of Date D,
+then appends selections from later dates in chronological order, preserving each
+later selection's order and skipping names already present. Earlier selections
+that were deselected at D are not included. Thus if August selects
+`[REGION, SEGMENT]` and September selects `[SEGMENT, PORTFOLIO]`, September's
+columns are `[SEGMENT, PORTFOLIO]`, while August's are
+`[REGION, SEGMENT, PORTFOLIO]`; August's `PORTFOLIO` cells are blank. The
+tracking-list metadata uses this same date-aware schema. An explicit empty
+selection on the latest date adds no source columns.
+
+`list_as_of_dates()` supplies the chronological dates used to find later
+selections. The all-time union and older metadata method names are compatibility
+fallbacks only when date-scoped metadata is unavailable. Compatibility aliases
+`rule_index`/`detail_values` remain accepted. `exception_extra_values` contains
+persisted values by column name. Values for columns not in the computed schema
+are never exported.
 
 The tracking API exposes D-friendly fields `rule_index` and `detail_values` and
 also mirrors A's canonical names as `exception_rule_index` and

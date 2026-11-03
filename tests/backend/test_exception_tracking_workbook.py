@@ -235,6 +235,28 @@ def test_appends_only_selected_detail_columns_in_order() -> None:
     assert sheet.column_dimensions["L"].hidden is True
 
 
+def test_later_selected_detail_column_is_blank_when_record_has_no_value() -> None:
+    record = _record()
+    content = build_commentary_workbook(
+        [record],
+        date(2026, 10, 30),
+        detail_columns=["REGION", "SEGMENT", "PORTFOLIO"],
+        detail_values={record["exception_id"]: {"REGION": "APAC", "SEGMENT": "Retail"}},
+    )
+
+    sheet = load_workbook(io.BytesIO(content))["Exceptions"]
+    assert [cell.value for cell in sheet[1]][len(EXCEPTION_HEADERS) :] == [
+        "REGION",
+        "SEGMENT",
+        "PORTFOLIO",
+    ]
+    assert [cell.value for cell in sheet[2]][len(EXCEPTION_HEADERS) :] == [
+        "APAC",
+        "Retail",
+        None,
+    ]
+
+
 def test_empty_selection_adds_no_data_columns() -> None:
     content = _workbook_bytes([_record()])
     sheet = load_workbook(io.BytesIO(content))["Exceptions"]
