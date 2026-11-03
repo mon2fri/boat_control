@@ -36,6 +36,7 @@ data/results/*
 !data/results/.gitkeep
 data/*.sqlite3
 data/exception_tracking.db*
+data/prepare_cache/
 data/playwright/
 
 # OS / editor noise.
