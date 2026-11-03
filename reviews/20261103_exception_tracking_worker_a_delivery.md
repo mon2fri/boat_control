@@ -175,7 +175,7 @@ Neither list includes a file changed by this delivery.
   `0422f04` (450 passed, 1 pre-existing failure); this delivery's later `cc76cbc`
   commit only adds read-side schema validation and does not change any interface or
   stored format. The reviewer should rerun C's integration after cherry-picking all
-  three A commits.
+  Worker A code commits (`bbdc06d`, `0422f04`, `cc76cbc`).
 - Worker C has already aligned its path resolver to Worker B's
   `get_exception_tracking_path` (C commit `a5ea453`); the earlier provisional
   `get_exception_tracking_db_path` name is no longer present in C's current branch.
