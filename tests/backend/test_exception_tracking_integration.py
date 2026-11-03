@@ -13,6 +13,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 import pytest
+from apps.exception_tracking import api_services
 from apps.exception_tracking.api_services import (
     TrackingAPIError,
     export_commentary,
@@ -160,3 +161,47 @@ def test_api_adapter_opens_configured_real_database(tmp_path: Path) -> None:
         assert imported.status_code == 200
         assert imported.json()["updated"] == 1
         assert imported.json()["exceptions"][0]["exception_commentary"] == "Reviewed"
+
+
+def test_real_store_export_appends_run_detail_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = repository_module.ExceptionTrackingRepository(tmp_path / "tracking.db")
+    repository.record_exceptions(FIRST_DATE, [_occurrence(commentary="Known")])
+    record = list_exceptions(FIRST_DATE, repository)[0]
+    run = {
+        "run_id": "detail-run",
+        "as_of_date": FIRST_DATE.isoformat(),
+        "result": {
+            "key_columns": ["id", "region"],
+            "aggregation_columns": [],
+            "aggregation_column_labels": {},
+            "exception_columns": ["score"],
+            "rule_bindings": {},
+            "validation": {
+                "rule_summaries": {
+                    "R001": {"rule_identifier": RULE_IDENTIFIER, "name": "Rule"}
+                },
+                "violations_by_rule": {
+                    "R001": [
+                        {
+                            "exception_id": record["exception_id"],
+                            "rule_identifier": RULE_IDENTIFIER,
+                            "key_columns": {"id": "A", "region": "EMEA"},
+                            "grouping_values": {},
+                            "extra_values": {"score": "10"},
+                        }
+                    ]
+                },
+            },
+        },
+    }
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [run])
+
+    template = export_commentary(FIRST_DATE, repository)
+    workbook = load_workbook(io.BytesIO(template))
+    sheet = workbook["Exceptions"]
+
+    headers = [cell.value for cell in sheet[1]]
+    assert headers[9:] == ["id", "region", "Rule Index", "score"]
+    assert [cell.value for cell in sheet[2]][9:] == ["A", "EMEA", "R001", "10"]
