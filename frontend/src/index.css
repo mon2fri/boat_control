@@ -2583,8 +2583,8 @@ dl.card dd {
 }
 
 .date-picker__day.is-today {
-  border-color: var(--color-warn);
-  box-shadow: inset 0 0 0 1px var(--color-warn);
+  outline: 2px solid var(--color-warn);
+  outline-offset: -2px;
 }
 
 .date-picker__day.is-selected,

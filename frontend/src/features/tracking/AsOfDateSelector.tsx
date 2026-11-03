@@ -233,8 +233,8 @@ export function AsOfDateSelector({
         type="button"
         className="as-of-date-selector__trigger"
         aria-label={`As-of Date, selected ${formatIsoDate(selectedDate)}`}
-        aria-haspopup="listbox"
-        aria-expanded={menuOpen}
+        aria-haspopup={calendarOpen ? "dialog" : "listbox"}
+        aria-expanded={menuOpen || calendarOpen}
         aria-controls={menuOpen ? menuId : calendarOpen ? calendarId : undefined}
         disabled={disabled}
         onClick={toggleMenu}

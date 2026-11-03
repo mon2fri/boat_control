@@ -34,12 +34,16 @@ afterEach(() => {
 
 describe("AsOfDateSelector — available-date dropdown", () => {
   it("lists only the ten latest available dates, newest first, then Other date", () => {
-    renderSelector();
+    const availableDates = [...MANY_DATES].reverse().concat("2026-10-30", "2026-10-19");
+    renderSelector("2026-10-30", availableDates);
     const listbox = openMenu();
     const options = within(listbox).getAllByRole("option");
+    const expectedDates = [...new Set(availableDates)]
+      .sort((a, b) => b.localeCompare(a))
+      .slice(0, 10);
     expect(options).toHaveLength(11);
     expect(options.slice(0, 10).map((option) => option.textContent?.trim())).toEqual(
-      MANY_DATES.slice(0, 10).map(formatIsoDate),
+      expectedDates.map(formatIsoDate),
     );
     expect(options[10]).toHaveTextContent(/Other date/);
   });
@@ -146,10 +150,13 @@ describe("AsOfDateSelector — calendar via Other date", () => {
   it("cancels without changing the selected date", async () => {
     const { onChange } = openCalendar();
     await screen.findByRole("dialog");
+    expect(trigger()).toHaveAttribute("aria-haspopup", "dialog");
+    expect(trigger()).toHaveAttribute("aria-expanded", "true");
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(trigger()).toHaveTextContent(formatIsoDate("2026-10-30"));
+    expect(trigger()).toHaveAttribute("aria-expanded", "false");
   });
 
   it("closes with Escape without changing the selected date", async () => {
