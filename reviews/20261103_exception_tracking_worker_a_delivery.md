@@ -12,6 +12,7 @@ Worktree: `/home/zwj808/PycharmProjects/boat_control-worktrees/exception-trackin
 | --- | --- |
 | `bbdc06d` | Publish the storage/identity/run-capture contract early for Workers B/C/D. |
 | `0422f04` | Implement identity, SQLite repository, history/commentary semantics, and dedicated tests. |
+| `cc76cbc` | Harden read-side date-table schema validation and add its regression test. |
 
 No merge commit, no integration/main change, and no other worker's file was modified.
 
@@ -81,7 +82,8 @@ tests. The repository is the single write path; there is no second storage imple
    and every other existing date table. Nothing is written on collision.
 4. **Schema.** One table per date named `exceptions_YYYYMMDD`, generated only from a strictly
    validated ISO date and defensively quoted. Exactly the ten requested columns exist; a
-   pre-existing table with missing or unexpected columns raises `SchemaMismatchError`.
+   pre-existing table with missing or unexpected columns raises `SchemaMismatchError` on both
+   write and read.
 5. **History.** `first/last_seen_as_of_date` are min/max as-of dates across all date tables;
    `first/last_seen_timestamp` are min/max capture timestamps across all tables. A backdated
    run updates the metadata in every affected table.
@@ -123,7 +125,7 @@ No known requirement gap inside Worker A's assigned scope.
 
 ```bash
 uv run pytest -q tests/backend/test_exception_tracking_identity.py tests/backend/test_exception_tracking_store.py
-# 66 passed
+# 67 passed
 
 uv run ruff check backend/apps/exception_tracking tests/backend/test_exception_tracking_identity.py tests/backend/test_exception_tracking_store.py
 # All checks passed
@@ -176,6 +178,10 @@ Neither list includes a file changed by this delivery.
   capture is tested.
 - No live `data/exception_tracking.db` was created or read. The untracked
   `data/prepare_cache/` directory was left untouched and not committed.
+- Reviewer-owned follow-up: `.gitignore` currently ignores `data/*.sqlite3` but not
+  `data/exception_tracking.db`. Add that default path (and any future journal/WAL siblings)
+  so a developer run cannot accidentally stage live tracking data. This worker did not
+  modify root configuration.
 
 ## Reviewer sign-off items
 
