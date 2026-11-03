@@ -1388,6 +1388,12 @@ table.data td {
   font-weight: 600;
 }
 
+.exception-detail-id code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+}
+
 .exception-record-count {
   font-family: var(--font-display);
   color: var(--color-text);

@@ -611,3 +611,58 @@ describe("exception tracking mapping", () => {
     expect(dates.defaultDate).toBe("2026-10-30");
   });
 });
+
+describe("exception-detail identity mapping", () => {
+  const RULE = "CBR1_0123456789ABCDEFGHJK";
+
+  function documentWithViolation(extra: Record<string, unknown> = {}) {
+    return legacyWireRunDocumentSchema.parse({
+      run_id: "run-1",
+      report_name: "test",
+      file_a_name: "a.csv",
+      file_b_name: "b.csv",
+      created_at: "2026-10-30T12:00:00Z",
+      result: {
+        comparison: {
+          total_rows_a: 1,
+          total_rows_b: 1,
+          rows_with_changes: 0,
+          total_attribute_changes: 0,
+          row_details: [],
+        },
+        validation: {
+          total_violations: 1,
+          violations_by_rule: {
+            R001: [{
+              row_index: 0,
+              rule_id: "R001",
+              rule_identifier: RULE,
+              rule_name: "Rule",
+              key_columns: { id: "A_B", region: "EMEA" },
+              details: "Status is invalid",
+              violating_column: "status",
+              violating_value: "inactive",
+              comparison_value: "active",
+              ...extra,
+            }],
+          },
+          violation_count_by_rule: { R001: 1 },
+        },
+        common_columns: ["id", "region", "status"],
+        target_columns: ["id", "region", "status"],
+        key_columns: ["id", "region"],
+        filters_applied: [],
+      },
+    });
+  }
+
+  it("prefers the backend exception_id field", () => {
+    const result = mapRunDocumentToResult(documentWithViolation({ exception_id: "BACKEND_ID" }));
+    expect(result.ruleResults[0]?.details[0]?.exceptionId).toBe("BACKEND_ID");
+  });
+
+  it("derives the literal ID from canonical rule identifier and ordered key values", () => {
+    const result = mapRunDocumentToResult(documentWithViolation());
+    expect(result.ruleResults[0]?.details[0]?.exceptionId).toBe(`${RULE}_A_B_EMEA`);
+  });
+});

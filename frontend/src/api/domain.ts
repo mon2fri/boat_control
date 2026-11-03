@@ -176,6 +176,8 @@ export interface OverallSummary {
 
 export interface DetailRow {
   rowKey: string;
+  /** Stable exception identity supplied by the backend, when available. */
+  exceptionId?: string;
   keyColumns: Record<string, string | null>;
   column: string;
   file1Value: string | null;

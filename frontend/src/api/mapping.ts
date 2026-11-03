@@ -59,6 +59,7 @@ import type {
   WireViolation,
 } from "./wire";
 import type { z } from "zod";
+import { resolveExceptionId } from "../lib/exceptionIdentity";
 
 type WireScalar = z.infer<typeof wireScalarSchema>;
 type MappableViolation = Omit<WireViolation, "rule_identifier"> & {
@@ -400,6 +401,10 @@ export function mapAttributeChange(
 export function mapViolation(
   violation: MappableViolation,
   index: number,
+  options: {
+    ruleIdentifier?: string | null;
+    keyColumnNames?: string[];
+  } = {},
 ): DetailRow {
   const column = violation.violating_column ?? violation.rule_id;
   const violatingValue = violation.violating_value !== undefined
@@ -409,9 +414,19 @@ export function mapViolation(
     ? displayScalar(violation.comparison_value)
     : null;
   const aggregationValues = mapGroupingValues(violation.grouping_values);
+  const keyColumns = Object.fromEntries(
+    Object.entries(violation.key_columns).map(([k, v]) => [k, displayScalar(v)]),
+  );
+  const exceptionId = resolveExceptionId(
+    violation.exception_id,
+    options.ruleIdentifier ?? violation.rule_identifier,
+    options.keyColumnNames ?? Object.keys(violation.key_columns),
+    keyColumns,
+  );
   return {
     rowKey: `${rowKeyOf(violation.key_columns, violation.row_index)}#${index}`,
-    keyColumns: Object.fromEntries(Object.entries(violation.key_columns).map(([k, v]) => [k, displayScalar(v)])),
+    ...(exceptionId ? { exceptionId } : {}),
+    keyColumns,
     column,
     file1Value: comparisonValue,
     file2Value: violatingValue,
@@ -463,9 +478,14 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
         validation.violating_attributes_by_rule?.[ruleId] ?? violations.length;
       const sample = violations[0];
       const persistedSummary = validation.rule_summaries?.[ruleId];
+      const ruleIdentifier =
+        sample?.rule_identifier
+        ?? result.rule_bindings?.[ruleId]
+        ?? persistedSummary?.rule_identifier
+        ?? null;
       return {
         ruleIndex: ruleId,
-        ruleIdentifier: persistedSummary?.rule_identifier ?? sample?.rule_identifier ?? null,
+        ruleIdentifier,
         ruleName: persistedSummary?.name ?? sample?.rule_name ?? ruleId,
         ...(persistedSummary?.description
           ? { ruleDescription: persistedSummary.description }
@@ -481,7 +501,14 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
           : {}),
         violationRowCount: perRuleRowCount,
         violationAttributeCount: perRuleAttributeCount,
-        details: violations.map((v, i) => mapViolation(v, i)),
+        details: violations.map((v, i) =>
+          mapViolation(v, i, {
+            ruleIdentifier,
+            ...(result.key_columns && result.key_columns.length > 0
+              ? { keyColumnNames: result.key_columns }
+              : {}),
+          }),
+        ),
         hideComparison: persistedSummary?.hide_comparison ?? false,
       };
     },

@@ -196,6 +196,7 @@ export function fetchDetailPage(
     availableFilters: r.available_filters ?? {},
     rows: r.details.map((row) => ({
       rowKey: row.row_key,
+      ...(row.exception_id ? { exceptionId: row.exception_id } : {}),
       keyColumns: row.key_columns
         ? Object.fromEntries(Object.entries(row.key_columns).map(([k, v]) => [k, v === null ? null : String(v)]))
         : {},

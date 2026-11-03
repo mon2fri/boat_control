@@ -70,6 +70,24 @@ Route: `/exception-tracking` (navigation item **Exception Tracking**).
 - Runs without an As-of Date show the button disabled with an explanatory
   tooltip rather than producing a template for a guessed date.
 
+### Exception IDs in result detail tables
+
+- Both the per-rule exception-detail table and the cross-rule Exception Table
+  show a leading **Exception ID** column. It replaces any positional/row-index
+  identifier and is never synthesised from table position.
+- The frontend prefers a backend-supplied `exception_id` on violation rows and
+  paginated detail rows. When an older payload omits it, the frontend derives
+  the exact same literal ID from the canonical rule identifier plus the
+  configured key-column values in configured order
+  (`<rule_identifier>_<value1>_<value2>...`), matching the commentary workbook.
+  Incomplete identity data renders `—` rather than guessing.
+- All existing detail columns remain: key columns, Rule Index in the aggregate
+  table, aggregation columns, configured extra columns, Column, In Baseline and
+  In Comparison. Sorting/filtering continue to work, including filtering by the
+  new Exception ID.
+- Paginated detail mapping preserves `exception_id` across pages; it never
+  derives identity from the page offset or rendered row number.
+
 ### Settings — exception-tracking database path
 
 - Settings now edits `exception_tracking_path`, the field published by Worker B
@@ -118,7 +136,17 @@ New/updated focused tests:
   backend echo wins, explicit date update.
 - `src/journey.test.tsx` — run request contains `as_of_date`.
 - `src/api/mapping.test.ts` — request/run/history date propagation, all three
-  statuses, key-column display formats, status fallback, date sorting.
+  statuses, key-column display formats, status fallback, date sorting, and
+  exception-detail ID mapping (backend field preferred, canonical fallback).
+- `src/lib/exceptionIdentity.test.ts` — literal rule+key ID construction,
+  configured key order, underscores/Unicode, incomplete identity, backend
+  precedence.
+- `src/features/results/results.test.tsx` and
+  `src/features/results/ExceptionTable.test.tsx` — stable Exception ID shown as
+  the exception-detail row identifier; all existing detail columns preserved;
+  no row-position fallback.
+- `src/features/results/usePaginatedDetails.test.ts` — backend exception IDs
+  remain stable across paginated violation pages.
 - `src/pages/ExceptionTrackingPage.test.tsx` — all requested columns + status,
   backend default, template download, successful import/refresh, unknown-ID
   rejection, non-XLSX rejection, empty state, older marked date via Other date.

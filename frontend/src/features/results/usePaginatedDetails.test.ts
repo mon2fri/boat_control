@@ -65,6 +65,53 @@ describe("usePaginatedDetails", () => {
     vi.unstubAllGlobals();
   });
 
+  it("keeps backend exception IDs stable across paginated violation pages", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({
+        run_id: "run-1",
+        section: "violations",
+        offset: 0,
+        total: 2,
+        has_more: true,
+        details: [{
+          row_key: "id=1",
+          key_columns: { id: "1" },
+          exception_id: "CBR1_00000000000000000001_1",
+          column: "status",
+          file_a_value: "old",
+          file_b_value: "new",
+        }],
+      }))
+      .mockResolvedValueOnce(json({
+        run_id: "run-1",
+        section: "violations",
+        offset: 1,
+        total: 2,
+        has_more: false,
+        details: [{
+          row_key: "id=2",
+          key_columns: { id: "2" },
+          exception_id: "CBR1_00000000000000000001_2",
+          column: "status",
+          file_a_value: "old",
+          file_b_value: "new",
+        }],
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() => usePaginatedDetails("run-1", "violation"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.loadMore();
+    });
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
+    expect(result.current.rows.map((row) => row.exceptionId)).toEqual([
+      "CBR1_00000000000000000001_1",
+      "CBR1_00000000000000000001_2",
+    ]);
+    vi.unstubAllGlobals();
+  });
+
   it("resets when the runId changes", async () => {
     const fetchMock = vi
       .fn()

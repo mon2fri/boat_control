@@ -314,6 +314,8 @@ export const wireDetailPageSchema = z.object({
       file_b_value: wireScalarSchema,
       violating_column: z.string().optional(),
       violating_value: wireScalarSchema.optional(),
+      /** Stable tracking identity for paginated exception rows. */
+      exception_id: z.string().optional(),
       extra_values: z.record(z.string(), wireScalarSchema).optional(),
       grouping_values: z.record(z.string(), wireScalarSchema).optional(),
     }),
@@ -344,6 +346,8 @@ export const wireViolationSchema = z.object({
   rule_name: z.string(),
   key_columns: z.record(z.string(), wireScalarSchema),
   details: z.string(),
+  /** Stable tracking identity; preferred over any frontend-derived fallback. */
+  exception_id: z.string().optional(),
   // Server-provided explicit fields. Older backend responses omit them; the
   // mapper derives fallbacks from the rest of the violation record so the UI
   // is never blank for an in-flight release.
