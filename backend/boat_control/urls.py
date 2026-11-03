@@ -18,6 +18,7 @@ _api_patterns = [
     path("api/reports/", include("apps.reports.urls")),
     path("api/settings/", include("apps.settings.urls")),
     path("api/filters/", include("apps.saved_filters.urls")),
+    path("api/exception-tracking/", include("apps.exception_tracking.urls")),
     path("api/families/", include(_family_patterns)),
     path(
         "api/rows-and-columns/configs/",
