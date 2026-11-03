@@ -68,6 +68,7 @@ import type {
   TrackedException,
 } from "./domain";
 import { z } from "zod";
+import { resolveExceptionId } from "../lib/exceptionIdentity";
 
 /** All API calls go through this module; the wire ↔ domain boundary lives here. */
 
@@ -167,6 +168,7 @@ export function fetchDetailPage(
     signal?: AbortSignal;
     filters?: Record<string, string[]>;
     sectionColumns?: string[] | undefined;
+    keyColumnNames?: string[] | undefined;
   } = {},
 ): Promise<{
   rows: DetailRow[];
@@ -194,41 +196,52 @@ export function fetchDetailPage(
     total: r.total,
     hasMore: r.has_more,
     availableFilters: r.available_filters ?? {},
-    rows: r.details.map((row) => ({
-      rowKey: row.row_key,
-      ...(row.exception_id ? { exceptionId: row.exception_id } : {}),
-      keyColumns: row.key_columns
+    rows: r.details.map((row) => {
+      const keyColumns = row.key_columns
         ? Object.fromEntries(Object.entries(row.key_columns).map(([k, v]) => [k, v === null ? null : String(v)]))
-        : {},
-      column: row.column,
-      file1Value: row.file_a_value === null ? null : String(row.file_a_value),
-      file2Value: row.file_b_value === null ? null : String(row.file_b_value),
-      kind: kind === "violation" ? "exception" : kind,
-      ...(row.violating_column ? { violatingColumn: row.violating_column } : {}),
-      ...(row.violating_value !== undefined
-        ? { violatingValue: row.violating_value === null ? null : String(row.violating_value) }
-        : {}),
-      ...(row.extra_values
-        ? {
-            extraValues: Object.fromEntries(
-              Object.entries(row.extra_values).map(([key, value]) => [
-                key,
-                value === null ? null : String(value),
-              ]),
-            ),
-          }
-        : {}),
-      ...(row.grouping_values
-        ? {
-            aggregationValues: Object.fromEntries(
-              Object.entries(row.grouping_values).map(([key, value]) => [
-                key,
-                value === null ? null : String(value),
-              ]),
-            ),
-          }
-        : {}),
-    })),
+        : {};
+      const exceptionId = kind === "violation"
+        ? resolveExceptionId(
+            row.exception_id,
+            row.rule_identifier,
+            options.keyColumnNames ?? Object.keys(keyColumns),
+            keyColumns,
+          )
+        : undefined;
+      return {
+        rowKey: row.row_key,
+        ...(exceptionId ? { exceptionId } : {}),
+        keyColumns,
+        column: row.column,
+        file1Value: row.file_a_value === null ? null : String(row.file_a_value),
+        file2Value: row.file_b_value === null ? null : String(row.file_b_value),
+        kind: kind === "violation" ? "exception" : kind,
+        ...(row.violating_column ? { violatingColumn: row.violating_column } : {}),
+        ...(row.violating_value !== undefined
+          ? { violatingValue: row.violating_value === null ? null : String(row.violating_value) }
+          : {}),
+        ...(row.extra_values
+          ? {
+              extraValues: Object.fromEntries(
+                Object.entries(row.extra_values).map(([key, value]) => [
+                  key,
+                  value === null ? null : String(value),
+                ]),
+              ),
+            }
+          : {}),
+        ...(row.grouping_values
+          ? {
+              aggregationValues: Object.fromEntries(
+                Object.entries(row.grouping_values).map(([key, value]) => [
+                  key,
+                  value === null ? null : String(value),
+                ]),
+              ),
+            }
+          : {}),
+      };
+    }),
   }));
 }
 

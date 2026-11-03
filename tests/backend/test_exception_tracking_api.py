@@ -488,6 +488,92 @@ def test_detail_resolver_uses_newest_run_and_old_run_fallback_id(
     assert details[DETAIL_EXCEPTION_ID]["id"] == "ID"
 
 
+def test_detail_resolver_maps_values_for_multiple_rule_types(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first_id = DETAIL_EXCEPTION_ID
+    second_id = "CBR1_OTHER_RULE_ID_Bob"
+    run = _detail_run(exception_id=first_id, score="10")
+    validation = run["result"]["validation"]
+    validation["rule_summaries"]["R002"] = {
+        "rule_identifier": "CBR1_OTHER_RULE",
+        "name": "Score comparison",
+        "logic": "score greater than baseline value",
+    }
+    validation["violations_by_rule"]["R002"] = [
+        {
+            "exception_id": second_id,
+            "rule_identifier": "CBR1_OTHER_RULE",
+            "key_columns": {"id": "ID2", "name": "Bob"},
+            "grouping_values": {"status": "inactive", "region": "APAC"},
+            "extra_values": {
+                "name": "Bob",
+                "status": "inactive",
+                "region": "APAC",
+                "id": "ID2",
+                "score": 20,
+            },
+        }
+    ]
+    first_record = _detail_record(first_id)
+    second_record = _detail_record(second_id)
+    second_record["key_columns"] = '{"id":"ID2","name":"Bob"}'
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [run])
+
+    headers, details = api_services.resolve_exception_details(
+        TRACKING_DATE, [first_record, second_record]
+    )
+
+    assert headers == ("id", "name", "Rule Index", "Region", "score")
+    assert details[first_id] == {
+        "id": "ID",
+        "name": "Alice",
+        "Rule Index": "R001",
+        "Region": "EMEA",
+        "score": "10",
+    }
+    assert details[second_id] == {
+        "id": "ID2",
+        "name": "Bob",
+        "Rule Index": "R002",
+        "Region": "APAC",
+        "score": "20",
+    }
+
+
+def test_detail_resolver_obeys_exception_table_extra_column_visibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _detail_run()
+    run["result"]["extra_column_display"] = {"exception_tables": False}
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [run])
+
+    headers, details = api_services.resolve_exception_details(
+        TRACKING_DATE, [_detail_record()]
+    )
+
+    assert headers == ("id", "name", "Rule Index", "Region")
+    assert "score" not in details[DETAIL_EXCEPTION_ID]
+
+
+def test_detail_resolver_does_not_guess_when_historical_identity_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = _detail_run()
+    violation = run["result"]["validation"]["violations_by_rule"]["R001"][0]
+    violation.pop("exception_id")
+    violation.pop("rule_identifier")
+    run["result"]["validation"]["rule_summaries"]["R001"].pop("rule_identifier")
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [run])
+
+    headers, details = api_services.resolve_exception_details(
+        TRACKING_DATE, [_detail_record()]
+    )
+
+    assert headers == ()
+    assert details == {}
+
+
 def test_results_and_tracking_downloads_have_matching_detail_content(
     repository: FakeRepository, monkeypatch: pytest.MonkeyPatch
 ) -> None:

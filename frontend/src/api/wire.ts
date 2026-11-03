@@ -315,7 +315,8 @@ export const wireDetailPageSchema = z.object({
       violating_column: z.string().optional(),
       violating_value: wireScalarSchema.optional(),
       /** Stable tracking identity for paginated exception rows. */
-      exception_id: z.string().optional(),
+      exception_id: z.string().nullable().optional(),
+      rule_identifier: z.string().nullable().optional(),
       extra_values: z.record(z.string(), wireScalarSchema).optional(),
       grouping_values: z.record(z.string(), wireScalarSchema).optional(),
     }),

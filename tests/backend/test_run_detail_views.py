@@ -172,3 +172,51 @@ def test_violation_detail_preserves_rule_identifiers(
     detail = response.json()["details"][0]
     assert detail["rule_id"] == "R001"
     assert detail["rule_identifier"] == "CBR1_00000000000000000000"
+    assert detail["key_columns"] == {"id": "1"}
+
+
+def test_paginated_violation_pages_preserve_identity_inputs(
+    mock_result_with_details: ExecutionResult, tmp_path: Path
+) -> None:
+    from dataclasses import replace
+
+    rule_identifier = "CBR1_00000000000000000000"
+    violations = [
+        ValidationViolation(
+            row_index=index,
+            rule_id="R001",
+            rule_identifier=rule_identifier,
+            rule_name="Status",
+            key_columns={"id": identifier, "region": region},
+            details="bad",
+            violating_column="status",
+            violating_value="inactive",
+            rule_logic="status equals 'active'",
+        )
+        for index, identifier, region in ((0, "A", "EMEA"), (1, "B", "APAC"))
+    ]
+    result = replace(
+        mock_result_with_details,
+        key_columns=["id", "region"],
+        validation=replace(
+            mock_result_with_details.validation,
+            total_violations=2,
+            violations_by_rule={"R001": violations},
+        ),
+    )
+    run_id = _save_and_get_run_id(result, tmp_path)
+
+    with override_settings(RESULTS_DIR=str(tmp_path / "results")):
+        first = APIClient().get(
+            f"/api/runs/{run_id}/details/?section=violations&offset=0&limit=1"
+        )
+        second = APIClient().get(
+            f"/api/runs/{run_id}/details/?section=violations&offset=1&limit=1"
+        )
+
+    assert first.status_code == second.status_code == 200
+    first_row = first.json()["details"][0]
+    second_row = second.json()["details"][0]
+    assert first_row["rule_identifier"] == second_row["rule_identifier"] == rule_identifier
+    assert first_row["key_columns"] == {"id": "A", "region": "EMEA"}
+    assert second_row["key_columns"] == {"id": "B", "region": "APAC"}

@@ -30,7 +30,7 @@ export function PaginatedDetailSection({
   const {
     rows, total, hasMore, loading, loadingMore, error, isEmpty, loadMore,
     availableFilters,
-  } = usePaginatedDetails(runId, kind, filters, sectionColumns);
+  } = usePaginatedDetails(runId, kind, filters, sectionColumns, keyColumnNames);
 
   const handleFilterChange = useCallback((key: string, values: string[]) => {
     setFilters((prev) => {
@@ -114,6 +114,7 @@ export function PaginatedDetailSection({
         activeFilters={filters}
         onFilterChange={handleFilterChange}
         onClearAll={clearAllFilters}
+        showExceptionId={kind === "violation"}
       />
       {isEmpty && (
         <p role="status">No detail rows match the current filters.</p>

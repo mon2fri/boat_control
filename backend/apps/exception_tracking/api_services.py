@@ -258,6 +258,9 @@ class _DetailSpec:
 def _exception_column_names(
     result: Mapping[str, Any], violations_by_rule: Mapping[str, Any]
 ) -> list[str]:
+    display = result.get("extra_column_display")
+    if isinstance(display, Mapping) and display.get("exception_tables") is False:
+        return []
     configured = result.get("exception_columns")
     if isinstance(configured, list):
         return [str(column) for column in configured]

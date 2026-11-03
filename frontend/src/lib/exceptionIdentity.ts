@@ -6,12 +6,16 @@
  * Prefer a backend-supplied `exceptionId`; otherwise derive the exact same
  * literal from canonical values. Never derive identity from row position.
  */
+const CANONICAL_RULE_IDENTIFIER = /^CBR1_[0-9A-HJKMNP-TV-Z]{20}$/;
+
 export function buildExceptionId(
   ruleIdentifier: string | null | undefined,
   keyColumnNames: string[],
   keyColumns: Record<string, string | null>,
 ): string | null {
-  if (!ruleIdentifier || keyColumnNames.length === 0) return null;
+  if (!ruleIdentifier || !CANONICAL_RULE_IDENTIFIER.test(ruleIdentifier) || keyColumnNames.length === 0) {
+    return null;
+  }
   const values: string[] = [];
   for (const column of keyColumnNames) {
     const value = keyColumns[column];
@@ -27,5 +31,7 @@ export function resolveExceptionId(
   keyColumnNames: string[],
   keyColumns: Record<string, string | null>,
 ): string | null {
-  return supplied ?? buildExceptionId(ruleIdentifier, keyColumnNames, keyColumns);
+  return typeof supplied === "string" && supplied.trim().length > 0
+    ? supplied
+    : buildExceptionId(ruleIdentifier, keyColumnNames, keyColumns);
 }

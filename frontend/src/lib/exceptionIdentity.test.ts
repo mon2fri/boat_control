@@ -24,6 +24,7 @@ describe("exceptionIdentity", () => {
 
   it("does not guess when identity data is incomplete", () => {
     expect(buildExceptionId(null, ["id"], { id: "1" })).toBeNull();
+    expect(buildExceptionId("R001", ["id"], { id: "1" })).toBeNull();
     expect(buildExceptionId(RULE, [], { id: "1" })).toBeNull();
     expect(buildExceptionId(RULE, ["id"], {})).toBeNull();
     expect(buildExceptionId(RULE, ["id"], { id: null })).toBeNull();
@@ -37,5 +38,10 @@ describe("exceptionIdentity", () => {
     expect(
       resolveExceptionId(undefined, RULE, ["id"], { id: "1" }),
     ).toBe(`${RULE}_1`);
+    expect(resolveExceptionId("", RULE, ["id"], { id: "1" })).toBe(`${RULE}_1`);
+  });
+
+  it("does not invent IDs when historical rule identity is missing", () => {
+    expect(resolveExceptionId(undefined, null, ["id"], { id: "1" })).toBeNull();
   });
 });
