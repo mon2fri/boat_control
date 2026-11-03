@@ -51,25 +51,31 @@ deterministic precedence: the newest captured run value wins for the same
 Exception ID; older records without a stored value stay empty. Never derive
 Rule Index from the current catalog order.
 
-Worker A is expected to expose this read interface:
+Worker A published the canonical read surface in
+`docs/20261103_exception_tracking_template_storage_contract.md`:
 
 ```python
 class ExceptionRecord:
     # existing fields...
-    rule_index: str | None
-    detail_values: Mapping[str, str]
+    exception_rule_index: str
+    exception_extra_values: Mapping[str, str]
 
 class ExceptionTrackingRepository:
     # existing methods...
-    def list_template_detail_columns(self) -> list[str]:
-        """Ordered stable union of Extra Columns for Commentary Template."""
+    def get_extra_columns(self, as_of_date: date | str | None = None) -> tuple[str, ...]: ...
+    def get_extra_column_union(self) -> tuple[str, ...]: ...
 ```
 
-`detail_values` contains persisted values by column name. Columns introduced
-later simply have no value on older records; B renders an empty cell and never
-backfills from uploads or transient runs. B also tolerates these compatibility
-aliases while integration settles: `extra_values` for `detail_values` and
-`list_detail_columns`/`list_commentary_template_columns` for the column list.
+B exports the stable `get_extra_column_union()` order so columns introduced on
+later dates appear empty on older records. If only `get_extra_columns(date)` is
+available, B uses the date selection; the compatibility aliases
+`rule_index`/`detail_values` and `list_template_detail_columns` remain accepted.
+`exception_extra_values` contains persisted values by column name. Values for
+unselected columns are never exported.
+
+The tracking API exposes D-friendly fields `rule_index` and `detail_values` and
+also mirrors A's canonical names as `exception_rule_index` and
+`exception_extra_values`.
 
 ## Sole source of appended data columns
 

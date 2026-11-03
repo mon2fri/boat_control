@@ -106,8 +106,12 @@ def record_to_dict(record: Any) -> dict[str, Any]:
             details={"status": status},
         )
     result["status"] = str(status)
-    result["rule_index"] = _record_rule_index(record)
-    result["detail_values"] = _record_detail_values(record)
+    rule_index = _record_rule_index(record)
+    detail_values = _record_detail_values(record)
+    result["rule_index"] = rule_index
+    result["exception_rule_index"] = rule_index
+    result["detail_values"] = detail_values
+    result["exception_extra_values"] = detail_values
     return result
 
 
@@ -247,11 +251,19 @@ def _detail_text(value: Any) -> str:
 
 
 def _record_rule_index(record: Any) -> str:
-    return str(_field(record, "rule_index") or "")
+    for field_name in ("exception_rule_index", "rule_index"):
+        value = _field(record, field_name)
+        if value:
+            return str(value)
+    return ""
 
 
 def _record_detail_values(record: Any) -> dict[str, str]:
-    for field_name in ("detail_values", "extra_values"):
+    for field_name in (
+        "exception_extra_values",
+        "detail_values",
+        "extra_values",
+    ):
         values = _field(record, field_name)
         if isinstance(values, Mapping):
             return {str(name): _detail_text(value) for name, value in values.items()}
@@ -274,8 +286,24 @@ def _unique_names(values: Iterable[Any]) -> list[str]:
 def list_template_detail_columns(
     repository: Any, as_of_date: date | None = None
 ) -> list[str]:
-    """Read the ordered Extra Columns for Commentary Template selection."""
+    """Read the ordered Extra Columns for Commentary Template union."""
     for method_name in (
+        "get_extra_column_union",
+        "list_extra_column_union",
+        "get_template_column_union",
+    ):
+        method = getattr(repository, method_name, None)
+        if callable(method):
+            try:
+                return _unique_names(method())
+            except (OSError, ValueError) as exc:
+                raise TrackingAPIError(
+                    str(exc),
+                    code="tracking_database_unavailable",
+                ) from exc
+
+    for method_name in (
+        "get_extra_columns",
         "list_template_detail_columns",
         "list_detail_columns",
         "list_commentary_template_columns",

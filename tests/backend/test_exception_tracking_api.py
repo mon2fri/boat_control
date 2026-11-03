@@ -49,7 +49,9 @@ def _record(
         "exception_last_seen_timestamp": datetime(2026, 10, 30, 8, 15, tzinfo=UTC),
         "status": status,
         "rule_index": rule_index,
+        "exception_rule_index": rule_index,
         "detail_values": dict(detail_values or {}),
+        "exception_extra_values": dict(detail_values or {}),
     }
 
 
@@ -71,7 +73,7 @@ class FakeRepository:
     def list_exceptions(self, as_of_date: date) -> list[dict[str, Any]]:
         return [dict(record) for record in self.tables.get(as_of_date, [])]
 
-    def list_template_detail_columns(self) -> list[str]:
+    def get_extra_column_union(self) -> list[str]:
         return list(self.detail_columns)
 
     def update_commentaries(self, as_of_date: date, updates: dict[str, str]) -> int:
