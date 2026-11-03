@@ -155,6 +155,34 @@ def test_missing_values_are_not_fabricated(tmp_path: Path) -> None:
     assert "REGION" not in record.exception_extra_values
 
 
+def test_get_extra_values_fills_later_columns_with_empty_values(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    repo.record_exceptions(
+        DATE_1,
+        [_occurrence(day=DATE_1, extra_values={"SEGMENT": "Retail"})],
+        extra_columns=["SEGMENT"],
+    )
+    repo.record_exceptions(
+        DATE_2,
+        [
+            _occurrence(
+                day=DATE_2,
+                extra_values={"SEGMENT": "Wholesale", "REGION": "EMEA"},
+            )
+        ],
+        extra_columns=["SEGMENT", "REGION"],
+    )
+
+    older = repo.get_extra_values(
+        DATE_1, columns=repo.get_extra_column_union()
+    )
+    assert older[f"{RULE}_A"] == {"SEGMENT": "Retail", "REGION": ""}
+    # Without an explicit column list, the date's own recorded selection is used.
+    assert repo.get_extra_values(DATE_1)[f"{RULE}_A"] == {"SEGMENT": "Retail"}
+
+
 def test_empty_selection_adds_no_columns_and_preserves_stored_values(
     tmp_path: Path,
 ) -> None:

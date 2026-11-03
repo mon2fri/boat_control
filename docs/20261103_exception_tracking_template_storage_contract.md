@@ -63,6 +63,11 @@ class ExceptionTrackingRepository:
         self, as_of_date: date | str | None = None
     ) -> tuple[str, ...]: ...
     def get_extra_column_union(self) -> tuple[str, ...]: ...
+    def get_extra_values(
+        self,
+        as_of_date: date | str,
+        columns: Sequence[str] | None = None,
+    ) -> dict[str, dict[str, str]]: ...
     def migrate_schema(self) -> None: ...
 
 # apps.exception_tracking.store (Worker C seam)
@@ -107,13 +112,16 @@ union = repository.get_extra_column_union()          # stable all-time schema or
 records = repository.list_exceptions(as_of_date)
 record.exception_rule_index                          # historical run-local Rxxx
 record.exception_extra_values                        # {"SEGMENT": "Retail", ...}
+values = repository.get_extra_values(as_of_date, columns=union)
+# values[exception_id] contains every requested column, with "" when missing
 ```
 
 The API record field names proposed for B are `exception_rule_index` (string)
 and `exception_extra_values` (object). B may expose the ordered selection as
-`extra_columns` on date/list responses. B must use the selected columns as the
-sole source of appended data columns; A stores values but does not choose
-workbook layout.
+`extra_columns` on date/list responses. `get_extra_values(..., columns=union)`
+is the convenience read that guarantees later-added columns appear as empty on
+older records. B must use the selected columns as the sole source of appended
+data columns; A stores values but does not choose workbook layout.
 
 ## Schema additions
 

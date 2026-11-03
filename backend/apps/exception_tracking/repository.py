@@ -21,6 +21,7 @@ from apps.exception_tracking.columns import (
     deserialize_column_selection,
     deserialize_extra_values,
     merge_extra_values,
+    normalize_column_key,
     normalize_extra_values,
     serialize_column_selection,
     serialize_extra_values,
@@ -556,6 +557,37 @@ class ExceptionTrackingRepository:
         """Return all columns ever selected, in stable first-seen order."""
 
         return self.get_extra_columns(None)
+
+    def get_extra_values(
+        self,
+        as_of_date: date | str,
+        columns: Sequence[str] | None = None,
+    ) -> dict[str, dict[str, str]]:
+        """Return selected values per exception, filling missing columns with ``""``.
+
+        With ``columns=None`` the date's recorded ordered selection is used.  B
+        may pass the current configuration selection or
+        ``get_extra_column_union()`` to render columns introduced on later dates
+        as empty on older records.
+        """
+
+        parsed_date = parse_as_of_date(as_of_date)
+        selected = (
+            tuple(columns)
+            if columns is not None
+            else self.get_extra_columns(parsed_date)
+        )
+        result: dict[str, dict[str, str]] = {}
+        for record in self.list_exceptions(parsed_date):
+            by_key = {
+                normalize_column_key(name): value
+                for name, value in record.exception_extra_values.items()
+            }
+            result[record.exception_id] = {
+                column: by_key.get(normalize_column_key(column), "")
+                for column in selected
+            }
+        return result
 
     def migrate_schema(self) -> None:
         """Explicitly upgrade every existing date table and metadata schema.
@@ -1126,6 +1158,16 @@ def get_extra_columns(
 
 def get_extra_column_union(database_path: str | Path) -> tuple[str, ...]:
     return ExceptionTrackingRepository(database_path).get_extra_column_union()
+
+
+def get_extra_values(
+    database_path: str | Path,
+    as_of_date: date | str,
+    columns: Sequence[str] | None = None,
+) -> dict[str, dict[str, str]]:
+    return ExceptionTrackingRepository(database_path).get_extra_values(
+        as_of_date, columns
+    )
 
 
 def migrate_schema(database_path: str | Path) -> None:
