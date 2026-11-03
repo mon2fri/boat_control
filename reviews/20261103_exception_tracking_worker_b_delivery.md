@@ -34,6 +34,7 @@ patterns before implementing.
 - `8b4fa17` — test: add skipped real-repository integration boundary
 - `a9d937a` — test: verify tracking API against real storage adapter
 - `e364f30` — fix: preserve literal apostrophes in commentary workbook
+- `34d5b11` — fix: accept Excel date cells for workbook as-of date
 
 ## Changed files
 
@@ -121,7 +122,7 @@ Settings:
 ```text
 uv run pytest -q tests/backend/test_exception_tracking_workbook.py \
   tests/backend/test_exception_tracking_api.py tests/backend/test_settings.py
-38 passed
+39 passed
 
 uv run pytest -q tests/backend tests/contracts tests/integration
 319 passed, 4 skipped, 1 failed
