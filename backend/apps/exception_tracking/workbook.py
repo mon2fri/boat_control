@@ -119,16 +119,50 @@ def _style_header(sheet: Any) -> None:
         cell.alignment = Alignment(vertical="top", wrap_text=True)
 
 
+def _header_key(value: object) -> str:
+    return " ".join(str(value).split()).casefold()
+
+
+def _unique_detail_columns(columns: Iterable[str]) -> tuple[str, ...]:
+    used = {_header_key(header) for header in EXCEPTION_HEADERS}
+    result: list[str] = []
+    for raw in columns:
+        name = str(raw).strip()
+        if not name:
+            continue
+        key = _header_key(name)
+        if key in used:
+            continue
+        used.add(key)
+        result.append(name)
+    return tuple(result)
+
+
+def _detail_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
 def build_commentary_workbook(
     records: Iterable[Mapping[str, Any]],
     as_of_date: date,
     *,
     generated_at: datetime | None = None,
+    detail_columns: Iterable[str] = (),
+    detail_values: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> bytes:
     """Build the shared EXCEPTION commentary template.
 
     ``records`` uses the API record shape (the ten persisted columns plus
     ``status``). Text is written literally with formula-injection protection.
+    ``detail_columns`` are informational exception-table columns appended after
+    the original nine; their values are keyed by exception ID in
+    ``detail_values`` and are never used by import validation.
     """
     workbook = Workbook()
     template = workbook.active
@@ -146,27 +180,44 @@ def build_commentary_workbook(
     template["A5"] = "Instructions"
     template["B5"] = _protect_text(
         "Edit only the Exception Commentary column. A blank commentary cell clears "
-        "the value for this as-of date. Do not change exception IDs."
+        "the value for this as-of date. Do not change exception IDs. Columns after "
+        "Status are informational context and are ignored during upload."
     )
     template.column_dimensions["A"].width = 24
     template.column_dimensions["B"].width = 90
 
+    appended = _unique_detail_columns(detail_columns)
+    headers = [*EXCEPTION_HEADERS, *appended]
     sheet = workbook.create_sheet(EXCEPTIONS_SHEET)
-    sheet.append(list(EXCEPTION_HEADERS))
+    sheet.append(headers)
     _style_header(sheet)
 
+    values_by_id = detail_values or {}
     ordered = sorted(records, key=lambda item: _record_value(item, "exception_id"))
     for record in ordered:
-        sheet.append([_protect_text(_record_value(record, field)) for field in _EXCEPTION_FIELDS])
+        exception_id = _record_value(record, "exception_id")
+        detail = values_by_id.get(exception_id) or {}
+        sheet.append(
+            [
+                *[
+                    _protect_text(_record_value(record, field))
+                    for field in _EXCEPTION_FIELDS
+                ],
+                *[
+                    _protect_text(_detail_text(detail.get(column)))
+                    for column in appended
+                ],
+            ]
+        )
 
-    widths = (52, 34, 42, 26, 52, 22, 28, 28, 16)
+    widths = (52, 34, 42, 26, 52, 22, 28, 28, 16, *([24] * len(appended)))
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[get_column_letter(index)].width = width
     for row in sheet.iter_rows(min_row=2):
         for cell in row:
             cell.alignment = Alignment(vertical="top", wrap_text=True)
     sheet.freeze_panes = "A2"
-    sheet.auto_filter.ref = f"A1:{get_column_letter(len(EXCEPTION_HEADERS))}{max(sheet.max_row, 1)}"
+    sheet.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{max(sheet.max_row, 1)}"
 
     buffer = io.BytesIO()
     workbook.save(buffer)
@@ -178,15 +229,12 @@ def _validated_headers(row: tuple[Any, ...]) -> tuple[str, ...]:
     expected = len(EXCEPTION_HEADERS)
     if len(headers) < expected or headers[:expected] != EXCEPTION_HEADERS:
         raise WorkbookValidationError(
-            "The Exceptions sheet headers do not match the commentary template.",
-            details={"expected_headers": list(EXCEPTION_HEADERS)},
+            "The Exceptions sheet's original commentary columns are missing or out of order.",
+            details={"expected_columns": list(EXCEPTION_HEADERS)},
         )
-    if any(headers[expected:]):
-        raise WorkbookValidationError(
-            "The Exceptions sheet contains unexpected extra columns.",
-            details={"expected_headers": list(EXCEPTION_HEADERS)},
-        )
-    return headers
+    # Trailing columns are informational exception context. Their names and
+    # values are intentionally ignored during import.
+    return headers[:expected]
 
 
 def parse_commentary_workbook(
@@ -252,7 +300,10 @@ def parse_commentary_workbook(
                 )
             cells = list(row) + [None] * (len(EXCEPTION_HEADERS) - len(row))
             values = [cell.value if cell is not None else None for cell in cells]
-            if not any(value not in (None, "") for value in values):
+            original_values = values[: len(EXCEPTION_HEADERS)]
+            if not any(value not in (None, "") for value in original_values):
+                # Entirely blank required cells. Appended informational values
+                # alone never create or invalidate an exception row.
                 continue
 
             raw_id = values[_ID_COLUMN]

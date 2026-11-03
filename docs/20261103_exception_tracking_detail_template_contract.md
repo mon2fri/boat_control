@@ -75,16 +75,17 @@ Deduplication rules:
   do not create another column.
 
 With the reference sample (`key_columns=["id","name"]`,
-`aggregation_columns=["status","region"]`,
+`aggregation_columns=["status","region"]` with labels `Status`/`Region`,
 `exception_columns=["name","status","region","id","score"]`), the appended
 headers are:
 
 ```text
-id, name, Rule Index, status, region, score
+id, name, Rule Index, Region, score
 ```
 
 The duplicated `name`, `status`, `region` and `id` extra columns are skipped
-because the earlier key/aggregation columns already represent them.
+because an earlier column already represents them. The aggregation `Status`
+column is also skipped because the original template already has `Status`.
 
 ## Value mapping
 

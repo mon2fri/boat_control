@@ -125,12 +125,57 @@ def test_rejects_wrong_headers() -> None:
     assert error.value.code == "invalid_workbook"
 
 
-def test_rejects_unexpected_extra_columns() -> None:
-    content = _mutated_workbook(
-        lambda workbook: workbook["Exceptions"].__setitem__("J1", "Unexpected")
+def test_trailing_informational_columns_are_accepted_and_ignored() -> None:
+    def add_informational(workbook: Any) -> None:
+        workbook["Exceptions"]["J1"] = "Region"
+        workbook["Exceptions"]["J2"] = "EMEA"
+
+    content = _mutated_workbook(add_informational)
+    parsed = parse_commentary_workbook(content)
+
+    assert parsed.as_of_date == date(2026, 10, 30)
+    assert parsed.commentaries == {"CBR1_RULE_ID_1": ""}
+    assert parsed.row_count == 1
+
+
+def test_appends_unique_detail_columns_and_values() -> None:
+    record = _record(commentary="Reviewed")
+    content = build_commentary_workbook(
+        [record],
+        date(2026, 10, 30),
+        detail_columns=["id", "name", "Rule Index", "score", "Status", "Status", "id"],
+        detail_values={
+            record["exception_id"]: {
+                "id": "ID",
+                "name": "Alice",
+                "Rule Index": "R001",
+                "score": "10",
+            }
+        },
     )
-    with pytest.raises(WorkbookValidationError):
-        parse_commentary_workbook(content)
+    workbook = load_workbook(io.BytesIO(content))
+    sheet = workbook["Exceptions"]
+
+    assert [cell.value for cell in sheet[1]] == [
+        *EXCEPTION_HEADERS,
+        "id",
+        "name",
+        "Rule Index",
+        "score",
+    ]
+    assert [cell.value for cell in sheet[2]][9:] == ["ID", "Alice", "R001", "10"]
+
+
+def test_detail_values_are_formula_protected_as_literal_text() -> None:
+    record = _record()
+    content = build_commentary_workbook(
+        [record],
+        date(2026, 10, 30),
+        detail_columns=["Region"],
+        detail_values={record["exception_id"]: {"Region": "=HYPERLINK(\"x\")"}},
+    )
+    workbook = load_workbook(io.BytesIO(content))
+    assert workbook["Exceptions"]["J2"].value == "'=HYPERLINK(\"x\")"
 
 
 def test_accepts_excel_date_cell_for_as_of_date() -> None:

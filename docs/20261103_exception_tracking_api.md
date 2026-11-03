@@ -189,8 +189,24 @@ Row 1 is the header. Data starts at row 2. Required columns, in order:
 9. `Status`
 
 Only `Exception ID` and `Exception Commentary` are used to update data. The
-other displayed values are informational and are re-read from the database on
-import; the client cannot change identity or status through this workbook.
+other required displayed values are informational and are re-read from the
+database on import; the client cannot change identity or status through this
+workbook.
+
+### Appended exception-detail columns
+
+After the nine required columns, the backend appends the exception-table context
+for the selected date: configured key columns, `Rule Index`, aggregation
+columns, and configured exception/extra columns. Duplicate header names are
+removed with first-occurrence-wins ordering. See
+`docs/20261103_exception_tracking_detail_template_contract.md` for the exact
+ordered mapping and the shared Exception ID rule used by Results and Exception
+Tracking.
+
+All trailing columns are informational only. Import ignores their headers and
+values completely: editing, clearing, adding, deleting or reordering them never
+changes validation results or exception data. Older workbooks with only the nine
+required columns remain valid.
 
 Formula-injection protection: every text cell written by the backend is
 prefixed with an apostrophe when it begins with `=`, `+`, `-`, `@`, tab, or

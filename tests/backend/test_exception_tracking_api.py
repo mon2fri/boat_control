@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from apps.exception_tracking import api_services
 from apps.exception_tracking.dates import default_as_of_date
-from apps.exception_tracking.workbook import build_commentary_workbook
+from apps.exception_tracking.workbook import EXCEPTION_HEADERS, build_commentary_workbook
 from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import load_workbook
 from rest_framework.test import APIClient
@@ -394,3 +394,217 @@ def test_empty_date_template_round_trips(repository: FakeRepository) -> None:
     assert response.status_code == 200
     assert response.json()["total"] == 0
     assert repository.update_calls == []
+
+
+DETAIL_EXCEPTION_ID = "CBR1_RULE_ID_Alice"
+
+
+def _detail_record(
+    exception_id: str = DETAIL_EXCEPTION_ID, commentary: str = ""
+) -> dict[str, Any]:
+    record = _record(exception_id, TRACKING_DATE, commentary=commentary)
+    record["key_columns"] = '{"id":"ID","name":"Alice"}'
+    return record
+
+
+def _detail_run(
+    exception_id: str = DETAIL_EXCEPTION_ID, *, score: str = "10", rule_id: str = "R001"
+) -> dict[str, Any]:
+    return {
+        "run_id": "run-details",
+        "as_of_date": TRACKING_DATE.isoformat(),
+        "result": {
+            "key_columns": ["id", "name"],
+            "aggregation_columns": ["status", "region"],
+            "aggregation_column_labels": {"status": "Status", "region": "Region"},
+            "exception_columns": ["name", "status", "region", "id", "score"],
+            "rule_bindings": {},
+            "validation": {
+                "rule_summaries": {
+                    rule_id: {"rule_identifier": "CBR1_RULE", "name": "Rule"}
+                },
+                "violations_by_rule": {
+                    rule_id: [
+                        {
+                            "exception_id": exception_id,
+                            "rule_identifier": "CBR1_RULE",
+                            "key_columns": {"id": "ID", "name": "Alice"},
+                            "grouping_values": {
+                                "status": "active",
+                                "region": "EMEA",
+                            },
+                            "extra_values": {
+                                "name": "Alice",
+                                "status": "active",
+                                "region": "EMEA",
+                                "id": "ID",
+                                "score": score,
+                            },
+                        }
+                    ]
+                },
+            },
+        },
+    }
+
+
+def test_export_appends_ordered_exception_detail_columns(
+    repository: FakeRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository.add(_detail_record(commentary="Known"))
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [_detail_run()])
+
+    response = APIClient().get(
+        f"/api/exception-tracking/export/?as_of_date={TRACKING_DATE.isoformat()}"
+    )
+
+    assert response.status_code == 200
+    sheet = load_workbook(io.BytesIO(response.content))["Exceptions"]
+    headers = [cell.value for cell in sheet[1]]
+    assert headers[:9] == list(EXCEPTION_HEADERS)
+    assert headers[9:] == ["id", "name", "Rule Index", "Region", "score"]
+    assert [cell.value for cell in sheet[2]][9:] == [
+        "ID",
+        "Alice",
+        "R001",
+        "EMEA",
+        "10",
+    ]
+
+
+def test_detail_resolver_uses_newest_run_and_old_run_fallback_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    older = _detail_run(score="5")
+    newer = _detail_run(score="99")
+    newer["result"]["validation"]["violations_by_rule"]["R001"][0].pop("exception_id")
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [newer, older])
+    records = [_detail_record()]
+
+    headers, details = api_services.resolve_exception_details(TRACKING_DATE, records)
+
+    assert headers == ("id", "name", "Rule Index", "Region", "score")
+    assert details[DETAIL_EXCEPTION_ID]["score"] == "99"
+    assert details[DETAIL_EXCEPTION_ID]["id"] == "ID"
+
+
+def test_results_and_tracking_downloads_have_matching_detail_content(
+    repository: FakeRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository.add(_detail_record(commentary="Known"))
+    run = _detail_run()
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [run])
+    monkeypatch.setattr(
+        "apps.runs.persistence.load_run",
+        lambda run_id: run if run_id == "run-details" else None,
+    )
+
+    tracking = APIClient().get(
+        f"/api/exception-tracking/export/?as_of_date={TRACKING_DATE.isoformat()}"
+    )
+    results = APIClient().get("/api/exception-tracking/export/?run_id=run-details")
+
+    assert tracking.status_code == results.status_code == 200
+    tracking_sheet = load_workbook(io.BytesIO(tracking.content))["Exceptions"]
+    results_sheet = load_workbook(io.BytesIO(results.content))["Exceptions"]
+    tracking_rows = [[cell.value for cell in row] for row in tracking_sheet.iter_rows()]
+    results_rows = [[cell.value for cell in row] for row in results_sheet.iter_rows()]
+    assert tracking_rows == results_rows
+
+
+def test_import_ignores_edited_and_cleared_detail_values(
+    repository: FakeRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository.add(_detail_record(commentary="Before"))
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [_detail_run()])
+    export = APIClient().get(
+        f"/api/exception-tracking/export/?as_of_date={TRACKING_DATE.isoformat()}"
+    )
+    workbook = load_workbook(io.BytesIO(export.content))
+    sheet = workbook["Exceptions"]
+    sheet["E2"] = "After"
+    sheet["J2"] = "Edited detail"
+    sheet["K2"] = None
+    sheet["L2"] = "=1+1"
+    sheet["M2"] = ""
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    response = APIClient().post(
+        "/api/exception-tracking/import/",
+        {"file": _upload(buffer.getvalue()), "as_of_date": TRACKING_DATE.isoformat()},
+        format="multipart",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated"] == 1
+    assert repository.tables[TRACKING_DATE][0]["exception_commentary"] == "After"
+
+
+def test_import_accepts_workbook_with_informational_columns_deleted(
+    repository: FakeRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository.add(_detail_record(commentary="Before"))
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [_detail_run()])
+    export = APIClient().get(
+        f"/api/exception-tracking/export/?as_of_date={TRACKING_DATE.isoformat()}"
+    )
+    workbook = load_workbook(io.BytesIO(export.content))
+    sheet = workbook["Exceptions"]
+    sheet["E2"] = "After"
+    for _ in range(sheet.max_column - len(EXCEPTION_HEADERS)):
+        sheet.delete_cols(len(EXCEPTION_HEADERS) + 1)
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    response = APIClient().post(
+        "/api/exception-tracking/import/",
+        {"file": _upload(buffer.getvalue())},
+        format="multipart",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["updated"] == 1
+    assert repository.tables[TRACKING_DATE][0]["exception_commentary"] == "After"
+
+
+def test_unknown_id_with_detail_columns_fails_without_partial_update(
+    repository: FakeRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository.add(_detail_record(commentary="Original"))
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [_detail_run()])
+    export = APIClient().get(
+        f"/api/exception-tracking/export/?as_of_date={TRACKING_DATE.isoformat()}"
+    )
+    workbook = load_workbook(io.BytesIO(export.content))
+    workbook["Exceptions"]["A2"] = "UNKNOWN_ID"
+    workbook["Exceptions"]["E2"] = "Changed"
+    workbook["Exceptions"]["M2"] = "Edited detail"
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    response = APIClient().post(
+        "/api/exception-tracking/import/",
+        {"file": _upload(buffer.getvalue()), "as_of_date": TRACKING_DATE.isoformat()},
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "unknown_exception_ids"
+    assert repository.update_calls == []
+    assert repository.tables[TRACKING_DATE][0]["exception_commentary"] == "Original"
+
+
+def test_export_without_saved_run_keeps_original_columns_only(
+    repository: FakeRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository.add(_detail_record(commentary="Known"))
+    monkeypatch.setattr(api_services, "_runs_for_date", lambda _: [])
+
+    response = APIClient().get(
+        f"/api/exception-tracking/export/?as_of_date={TRACKING_DATE.isoformat()}"
+    )
+
+    assert response.status_code == 200
+    sheet = load_workbook(io.BytesIO(response.content))["Exceptions"]
+    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
