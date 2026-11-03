@@ -133,6 +133,15 @@ def test_rejects_unexpected_extra_columns() -> None:
         parse_commentary_workbook(content)
 
 
+def test_accepts_excel_date_cell_for_as_of_date() -> None:
+    def set_date_cell(workbook: Any) -> None:
+        workbook["Template"]["B3"] = datetime(2026, 10, 30)
+
+    content = _mutated_workbook(set_date_cell)
+    parsed = parse_commentary_workbook(content)
+    assert parsed.as_of_date == date(2026, 10, 30)
+
+
 def test_rejects_invalid_as_of_date() -> None:
     def break_date(workbook: Any) -> None:
         workbook["Template"]["B3"] = "30/10/2026"

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -25,6 +25,8 @@ def default_as_of_date(today: date | None = None) -> date:
 
 def parse_iso_date(value: object, *, field: str = "as_of_date") -> date:
     """Strictly parse a calendar date without accepting timestamps or sloppiness."""
+    if isinstance(value, datetime):
+        return value.date()
     if isinstance(value, date):
         return value
     if not isinstance(value, str):
