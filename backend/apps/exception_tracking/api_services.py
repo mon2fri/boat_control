@@ -385,20 +385,20 @@ def list_template_detail_columns(
     # Compatibility fallback for an older repository that persists detail
     # values but does not expose ordered metadata. Limit the fallback to the
     # requested date and later dates when a date was supplied.
-    columns: list[str] = []
+    fallback_columns: list[str] = []
     try:
         dates = list_as_of_dates(repository)
         for date_value in dates:
             if as_of_date is not None and date_value < as_of_date:
                 continue
             for record in repository.list_exceptions(date_value):
-                _append_unique_names(columns, _record_detail_values(record))
+                _append_unique_names(fallback_columns, _record_detail_values(record))
     except (OSError, ValueError) as exc:
         raise TrackingAPIError(
             str(exc),
             code="tracking_database_unavailable",
         ) from exc
-    return columns
+    return fallback_columns
 
 
 def export_commentary(
