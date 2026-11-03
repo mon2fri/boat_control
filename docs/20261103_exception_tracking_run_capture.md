@@ -139,11 +139,13 @@ Worker C integration depends on:
 - Worker A: `backend/apps/exception_tracking/store.py` exposing
   `capture_exceptions(as_of_date, occurrences, *, db_path=None)` with the ordered
   pair mapping shown above. A's published storage contract commit is `bbdc06d`;
-  the implementation commit is required before final verification.
+  the implementation commit is required before final verification. Worker C's
+  pre-integration verification ran against A's implementation snapshot and A's
+  repository/store tests remain A-owned.
 - Worker B: `apps.settings.services.get_exception_tracking_path()`, used to pass
   the configured database path explicitly, and the shared
-  `/api/exception-tracking/export/?run_id=...` results download. B's relevant
-  commits are `9f047d9` and `91ee51d`.
+  `/api/exception-tracking/export/?run_id=...` results download. B's commits are
+  `9f047d9` (settings path) and `91ee51d` (tracking API and shared workbook).
 
 Until both dependency commits are integrated, execute-endpoint tests that reach
 capture fail closed with a visible "Worker A/B integration dependency" message;

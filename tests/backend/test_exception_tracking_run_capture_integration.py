@@ -162,6 +162,42 @@ def test_real_capture_round_trip_and_results_workbook(
         assert loaded["as_of_date"] == "2026-10-30"
 
 
+def test_real_empty_run_creates_selectable_date_and_header_only_workbook(
+    tmp_path: Path,
+) -> None:
+    from apps.exception_tracking.repository import ExceptionTrackingRepository
+    from apps.settings.services import get_exception_tracking_path
+
+    client = APIClient()
+    with override_settings(
+        UPLOADS_DIR=tmp_path / "uploads",
+        RESULTS_DIR=tmp_path / "results",
+    ):
+        session_id = _upload(client, "2026-11-30")
+        response = client.post(
+            "/api/runs/execute/",
+            {
+                "session_id": session_id,
+                "comparison_columns": ["id", "status"],
+                "target_columns": ["status"],
+                "key_columns": ["id"],
+                "rule_ids": [],
+                "as_of_date": "2026-11-30",
+            },
+            format="json",
+        )
+        assert response.status_code == 200
+        run_id = response.json()["run_id"]
+
+        repository = ExceptionTrackingRepository(get_exception_tracking_path())
+        assert repository.list_exceptions(date(2026, 11, 30)) == []
+
+        export = client.get(f"/api/exception-tracking/export/?run_id={run_id}")
+        assert export.status_code == 200
+        workbook = load_workbook(filename=io.BytesIO(export.content))
+        assert workbook["Exceptions"].max_row == 1
+
+
 def test_real_capture_second_date_is_not_commented_and_legacy_export_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -195,3 +231,4 @@ def test_real_capture_second_date_is_not_commented_and_legacy_export_is_rejected
         loaded = load_run(second["run_id"])
         assert loaded is not None
         assert loaded["as_of_date"] == "2026-10-30"
+
