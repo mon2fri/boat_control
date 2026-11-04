@@ -218,7 +218,6 @@ def test_empty_selection_adds_no_columns_and_preserves_stored_values(
     [
         ["Exception ID"],
         ["Exception Status"],
-        ["Status"],
         ["Commentary"],
         ["Rule Index"],
         ["Exception Rule Identifier"],
@@ -741,3 +740,14 @@ def test_module_level_record_accepts_extra_columns(tmp_path: Path) -> None:
     assert summary.extra_columns == ("SEGMENT",)
     assert get_extra_columns(db, DATE_1) == ("SEGMENT",)
     assert get_extra_column_union(db) == ("SEGMENT",)
+
+
+def test_source_status_column_is_distinct_from_tracking_status(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    repo.record_exceptions(
+        DATE_1, [_occurrence(extra_values={"status": "inactive"})],
+        extra_columns=["status"],
+    )
+    record = repo.list_exceptions(DATE_1)[0]
+    assert record.status == "New"
+    assert record.exception_extra_values["status"] == "inactive"

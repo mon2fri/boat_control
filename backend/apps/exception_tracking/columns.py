@@ -27,7 +27,6 @@ def normalize_column_key(value: str) -> str:
 RESERVED_EXTRA_COLUMN_NAMES: tuple[str, ...] = (
     "Exception ID",
     "Exception Status",
-    "Status",
     "Commentary",
     "Exception Commentary",
     "Rule Index",

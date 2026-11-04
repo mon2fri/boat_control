@@ -140,3 +140,26 @@ def test_invalid_selection_is_rejected(
     assert response.status_code == 400
     if message:
         assert message in response.json()["error"]
+
+
+def test_source_status_column_saves_and_passes_run_validation(tmp_path: Path) -> None:
+    from apps.runs.template_columns import validate_concrete_columns
+
+    selection = [{"kind": "column", "name": "status"}]
+    client = APIClient()
+    with override_settings(ROWS_AND_COLUMNS_CONFIG_DIR=tmp_path):
+        created = client.post(
+            "/api/rows-and-columns/configs/",
+            {"name": "status-source", "content": _content()}, format="json",
+        )
+        assert created.status_code == 201, created.content
+        updated = client.put(
+            "/api/rows-and-columns/configs/status-source/",
+            {"version": created.json()["version"], "content": _content(**{FIELD: selection})},
+            format="json",
+        )
+    assert updated.status_code == 200, updated.content
+    assert updated.json()["content"][FIELD] == selection
+    assert validate_concrete_columns(["name", "status", "region"]) == [
+        "name", "status", "region"
+    ]

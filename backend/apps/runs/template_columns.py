@@ -32,7 +32,6 @@ RESERVED_HEADERS = frozenset(
     {
         "exception id",
         "exception status",
-        "status",
         "commentary",
         "exception commentary",
         "rule index",

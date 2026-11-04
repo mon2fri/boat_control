@@ -348,3 +348,15 @@ def test_round_trips_long_commentary_within_excel_cell_limit() -> None:
     content = _workbook_bytes([_record(commentary=commentary)])
     parsed = parse_commentary_workbook(content)
     assert parsed.commentaries["CBR1_RULE_ID_1"] == commentary
+
+
+def test_source_status_exports_separately_from_exception_status() -> None:
+    record = _record()
+    payload = build_commentary_workbook(
+        [record], date(2026, 10, 30), detail_columns=["status"],
+        detail_values={record["exception_id"]: {"status": "inactive"}},
+    )
+    sheet = load_workbook(io.BytesIO(payload))["Exceptions"]
+    headers = [cell.value for cell in sheet[1]]
+    assert sheet.cell(2, headers.index("Exception Status") + 1).value == "New"
+    assert sheet.cell(2, headers.index("status") + 1).value == "inactive"
