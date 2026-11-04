@@ -247,7 +247,7 @@ def build_commentary_workbook(
     for index, width in enumerate(widths, start=1):
         column = get_column_letter(index)
         sheet.column_dimensions[column].width = width
-        if index > VISIBLE_COLUMN_COUNT:
+        if VISIBLE_COLUMN_COUNT < index <= len(EXCEPTION_HEADERS):
             sheet.column_dimensions[column].hidden = True
     for row in sheet.iter_rows(min_row=2):
         for cell in row:

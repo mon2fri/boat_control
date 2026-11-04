@@ -33,3 +33,7 @@ The goal is to keep tracking of exceptions from time to time and provides a bett
 7. The Exception Tracking tab should allow users to download exception list as commentary template for user to input.
 8. The Exception Tracking tab should allow users to upload the commentary template(xlsx) back to the application, and update the exception commentary in the database accordingly. The uploaded commentary template(xlsx) should be validated to ensure that the exception IDs match the existing exceptions in the database.
 9. In the result page, allow user to download the commentary template, which should be the same one that user can download from the Exception Tracking tab. For commented exceptions, the downloaded commentary template should be pre-filled with the existing exception commentary from the database.
+
+### Commentary workbook default column visibility
+
+For downloaded commentary XLSX templates from both Results and Exception Tracking, hide only these six standard metadata columns by default: Exception Rule Identifier, Key Columns, Exception Timestamp, Exception As-of Date, Exception First Seen As-of Date, Exception Last Seen As-of Date. Keep Exception ID, Exception Status, Commentary and Rule Index visible. All appended columns selected in Extra Columns for Commentary Template must remain visible by default. This supersedes earlier workbook requirements to hide all columns after the first four; it does not change the Exception Tracking UI column chooser defaults. Preserve column ordering, values and import behavior.

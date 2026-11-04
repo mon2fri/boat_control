@@ -98,7 +98,7 @@ def test_builds_optimized_metadata_headers_visibility_and_commentary() -> None:
     assert sheet["D2"].value == "R001"
     for index in range(1, len(EXCEPTION_HEADERS) + 1):
         column = sheet.cell(1, index).column_letter
-        expected_hidden = index > VISIBLE_COLUMN_COUNT
+        expected_hidden = VISIBLE_COLUMN_COUNT < index <= len(EXCEPTION_HEADERS)
         assert bool(sheet.column_dimensions[column].hidden) is expected_hidden
 
 
@@ -231,8 +231,8 @@ def test_appends_only_selected_detail_columns_in_order() -> None:
         "10",
         "EMEA",
     ]
-    assert sheet.column_dimensions["K"].hidden is True
-    assert sheet.column_dimensions["L"].hidden is True
+    assert sheet.column_dimensions["K"].hidden is False
+    assert sheet.column_dimensions["L"].hidden is False
 
 
 def test_later_selected_detail_column_is_blank_when_record_has_no_value() -> None:
