@@ -1157,3 +1157,51 @@ class TestCommentaryTemplateColumns:
                 key_columns=["id"],
                 commentary_template_columns=["id", "ID"],
             )
+
+
+def test_required_status_flags_blank_csv_values(tmp_path: Path, rules_file: Path) -> None:
+    import polars as pl
+
+    path = tmp_path / "blank-status.csv"
+    path.write_text("id,status\n43,active\n44,\n45,inactive\n", encoding="utf-8")
+    df = pl.read_csv(path)
+    result = validate_rows(df, load_rules(rules_file).rules, ["status"], ["id"])
+    violations = result.violations_by_rule["R001"]
+    assert [v.key_columns["id"] for v in violations] == [44, 45]
+    assert violations[0].violating_column == "status"
+    assert violations[0].violating_value is None
+
+
+@pytest.mark.parametrize(
+    "operator", ["eq", "neq", "contains", "ncontains", "gt", "lt", "gte", "lte"]
+)
+@pytest.mark.parametrize("format_name", ["value_vs_column", "column_vs_column"])
+def test_missing_required_value_is_a_violation(operator: str, format_name: str) -> None:
+    from apps.rules.services import LogicClause, Rule
+    from apps.runs.services import _check_rule
+
+    rule = Rule(
+        rule_id="R056", name="Required value", description="",
+        conditions=[], condition_relation=None, grouping=None, grouping_tree=None,
+        logic=LogicClause(format_name, "status", operator, "active"),
+    )
+    assert _check_rule({"status": None}, rule, ["status"])[0] is True
+    assert _check_rule({}, rule, ["status"])[0] is True
+    if format_name == "column_vs_column":
+        assert _check_rule(
+            {"status": "active"}, rule, ["status"], {"active": None}
+        )[0] is True
+
+
+def test_missing_value_does_not_override_rule_condition_scope() -> None:
+    from apps.rules.services import Condition, LogicClause, Rule
+    from apps.runs.services import _check_rule
+
+    rule = Rule(
+        rule_id="R056", name="Scoped requirement", description="",
+        logic=LogicClause("value_vs_column", "status", "eq", "active"),
+        conditions=[Condition("region", "eq", "East")],
+        condition_relation=None, grouping=None, grouping_tree=None,
+    )
+    assert _check_rule({"status": None, "region": "East"}, rule, ["status"])[0]
+    assert not _check_rule({"status": None, "region": "West"}, rule, ["status"])[0]

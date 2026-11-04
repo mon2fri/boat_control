@@ -584,11 +584,13 @@ def _check_rule(
 
     logic = rule.logic
     if logic.column_name not in row:
-        return (False, "", None)
+        return (True, logic.column_name, None)
 
     raw = row[logic.column_name]
     if raw is None:
-        return (False, "", None)
+        # Missing data cannot satisfy a required-state rule, regardless of
+        # operator. Keep the row and report the missing value as a violation.
+        return (True, logic.column_name, None)
     val = str(raw)
 
     if logic.format == "column_vs_column":
@@ -598,10 +600,10 @@ def _check_rule(
             else baseline_row if baseline_row is not None else row
         )
         if logic.target_value not in source:
-            return (False, "", None)
+            return (True, logic.column_name, raw)
         raw_target = source[logic.target_value]
         if raw_target is None:
-            return (False, "", None)
+            return (True, logic.column_name, raw)
         target = str(raw_target)
         violating_col = logic.column_name
     else:
