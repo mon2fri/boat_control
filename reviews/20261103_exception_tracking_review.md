@@ -1383,3 +1383,30 @@ deployable frontend. The user's `.config`, requirement edits, planning
 instructions/addendum, sample test data and staged screenshot removals are being
 committed at the user's request; no live database is included. No push, main
 merge, deployment or worktree deletion was performed.
+
+## Preserve canonical rule identity when integrating main (2026-11-07)
+
+The user confirmed that canonical rule identity is critical and must remain.
+Current `origin/main` at `b979633` reverts that foundation. A trial merge
+without restoring it failed Django startup with `ModuleNotFoundError` for
+`apps.rules.identifiers` and also removed `Rule.rule_identifier` and the initial
+rule catalog migration while retaining their consumers.
+
+Integrated `origin/main` into this branch while explicitly retaining all six
+foundation files from accepted commit `c107977`: `identifiers.py`, the initial
+catalog migration and its package marker, `services.py`, and the identifier and
+repository tests. Application and test code remain identical to `c107977`.
+The merge records the decision to preserve the foundation despite main's revert.
+
+Validation of the combined result:
+
+- Django `check`: passed.
+- `makemigrations --check --dry-run`: passed, no changes detected.
+- Full backend/contract/integration suite: **613 passed, 1 failed**, matching
+  the previously documented `test_migration_reconciles_later_file_edits`
+  legacy YAML `KeyError: 'rule_id'` failure.
+- No frontend code changed; frontend checks were not repeated.
+- The separate local main worktree and its uncommitted files were untouched.
+
+This resolves the missing-foundation merge blocker. The known test failure
+remains; no push, merge into main, deployment, or live-data migration was done.
