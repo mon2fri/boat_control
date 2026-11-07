@@ -228,6 +228,8 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                 <SearchableMultiSelect
                     label="Value"
                     options={valueOptions}
+                    selectedFirst
+                    hintTooltip
                     selected={conditionValues(condition)}
                     onChange={(values) => updateCondition(condition.id, { values, value: values[0] ?? "" })}
                     placeholder={condition.column ? "Search or type values…" : "Pick a column first"}
@@ -436,6 +438,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                 placeholder={draft.logic.column ? "Search or type values…" : "Pick a column first"}
                 disabled={!draft.logic.column}
                 freeText
+                hintTooltip
                 hint="Multiple values: equals/contains match if ANY value matches; not equals/not contains match if NO value matches (i.e. not any)."
               />
             </>

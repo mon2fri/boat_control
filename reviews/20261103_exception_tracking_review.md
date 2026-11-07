@@ -1299,3 +1299,87 @@ performs final functional acceptance. User `.config`, requirement edits,
 untracked planning instructions/addendum and `test-data/` remain untouched and
 uncommitted. No merge to main, push, deployment, worker worktree deletion or
 live-data modification occurred.
+
+## User UI acceptance and final change set (2026-11-07)
+
+The user confirmed that UI testing is OK. Final functional acceptance is
+complete. The latest requirement amendment
+`### Commentary workbook default column visibility` supersedes the earlier
+workbook hiding rule: the six standard metadata columns (5–10) are hidden, but
+selected data columns are visible by default. The final workbook source and tests
+match that amendment; the Exception Tracking UI still defaults to its first four
+columns.
+
+Post-review implementation changes included in the final consolidation:
+
+- `234e092` permits a selected source-data column named `Status` without
+  colliding with the standard `Exception Status` column; reserved-name tests
+  cover the distinction.
+- `91d988d` implements the amended XLSX visibility rule and updates workbook
+  tests.
+- `afb974a` plus the staged `services.py`/test changes treat null or absent
+  required source values as rule violations and preserve blank-versus-value
+  changes with `ne_missing`; tests cover missing values, supported operators,
+  condition scope, and comparison blanks.
+- The frontend's selected-first value picker/tooltip behavior, the saved
+  `s35.yaml` rows-and-columns config, updated `.config`, user test fixtures,
+  planning instructions, and screenshot removals are included at the user's
+  explicit request to commit all changes. Test CSVs contain synthetic rows only;
+  no database file is staged.
+
+Final checks after these changes:
+
+- `uv run pytest -q tests/backend tests/contracts tests/integration` — **613
+  passed, 1 known baseline failure** (`test_migration_reconciles_later_file_edits`,
+  unrelated legacy `rule_id` YAML migration error).
+- `npm --prefix frontend test -- --run` — **55 files, 502 tests passed**.
+- `npm --prefix frontend run build` — passed; Vite's existing >500 kB chunk
+  advisory remains. `npm --prefix frontend run build:inspect` — **5 passed**.
+- Django `check` and `makemigrations --check --dry-run` — passed.
+- Full Ruff still has **5 unrelated baseline findings**; full mypy still has
+  **2 unrelated baseline findings**. Targeted tests/linters for the changed
+  feature files passed.
+- Committed code/doc/generated-bundle diffs pass `git diff --check`. The user's
+  requirement text had two trailing spaces during validation; those lines were
+  whitespace-normalized while preserving their wording before final staging.
+
+**ACCEPTED BY USER.** All worker changes, requested reviewer corrections,
+updated user requirements/planning/config/test fixtures, documentation and the
+deployable frontend bundle are committed on the integration branch. No main
+merge, push, deployment, worktree deletion or live-user-data modification was
+performed.
+
+## User acceptance and post-review changes (2026-11-07)
+
+The user confirmed that UI testing is OK. Final product acceptance is therefore
+complete. Three follow-on implementation commits were reviewed against the
+latest requirement text before final consolidation:
+
+- `234e092` permits a source column named `Status`; the standard workbook header
+  is `Exception Status`, so the names do not collide. Reserved-header, API and
+  workbook tests cover the distinction.
+- `91d988d` applies the later **Commentary workbook default column visibility**
+  clarification: only six standard tracking metadata columns are hidden in
+  Excel; the first four and selected commentary data columns are visible. This
+  later clarification supersedes the earlier “hide every column after the first
+  four” requirement. The Exception Tracking UI chooser still defaults to four.
+- `afb974a` reports missing required values as rule violations, while retaining
+  rule-condition scope and detecting blank-vs-value attribute changes.
+
+Current full integrated validation after those changes:
+
+- `uv run pytest -q tests/backend tests/contracts tests/integration` — **613
+  passed, 1 pre-existing failure** (`test_migration_reconciles_later_file_edits`,
+  unrelated `KeyError: 'rule_id'`).
+- `npm --prefix frontend test -- --run` — **55 files, 502 tests passed**.
+- Production frontend build passed; `build:inspect` passed **5 tests**.
+- Django `check` and `makemigrations --check --dry-run` passed. Full Ruff and
+  mypy retain only the already-documented unrelated baseline findings (5 and 2,
+  respectively). Targeted checks for the modified services/workbook/UI pass.
+
+Final disposition: **USER UI ACCEPTANCE COMPLETE**. The integration worktree
+contains the reviewed implementation, user-confirmed UI result, and rebuilt
+deployable frontend. The user's `.config`, requirement edits, planning
+instructions/addendum, sample test data and staged screenshot removals are being
+committed at the user's request; no live database is included. No push, main
+merge, deployment or worktree deletion was performed.

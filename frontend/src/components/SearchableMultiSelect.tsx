@@ -18,6 +18,8 @@ interface Props {
   disabled?: boolean;
   /** Permit comma/Enter input that is not present in the option list. */
   freeText?: boolean;
+  hintTooltip?: boolean;
+  selectedFirst?: boolean;
 }
 
 /**
@@ -34,9 +36,23 @@ export function SearchableMultiSelect({
   hint,
   disabled = false,
   freeText = false,
+  hintTooltip = false,
+  selectedFirst = false,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [openingSelection, setOpeningSelection] = useState<string[]>([]);
+  const [openingOptions, setOpeningOptions] = useState<MultiSelectOption[]>([]);
+  function openDropdown() {
+    if (!open) {
+      const known = new Set(options.flatMap((option) => option.values ?? [option.value]));
+      const custom = selected.filter((value) => !known.has(value))
+        .map((value) => ({ value, label: value }));
+      setOpeningSelection([...selected]);
+      setOpeningOptions([...options, ...custom]);
+    }
+    setOpen(true);
+  }
   const baseId = useId();
   const listId = `${baseId}-list`;
   const hintId = hint ? `${baseId}-hint` : undefined;
@@ -46,9 +62,18 @@ export function SearchableMultiSelect({
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((o) => o.label.toLowerCase().includes(q));
-  }, [options, query]);
+    const source = selectedFirst && open ? openingOptions : options;
+    const known = new Set(source.flatMap((option) => option.values ?? [option.value]));
+    const custom: MultiSelectOption[] = selectedFirst ? selected.filter((value) => !known.has(value))
+      .map((value) => ({ value, label: value })) : [];
+    const openingSet = new Set(openingSelection);
+    const ordered = [...source];
+    if (selectedFirst) ordered.sort((a, b) =>
+      Number((b.values ?? [b.value]).every((value) => openingSet.has(value))) -
+      Number((a.values ?? [a.value]).every((value) => openingSet.has(value))));
+    const all = [...ordered, ...custom];
+    return q ? all.filter((o) => o.label.toLowerCase().includes(q)) : all;
+  }, [options, query, selectedFirst, open, openingOptions, openingSelection, selected]);
 
   const optionValues = useCallback((option: MultiSelectOption) => option.values ?? [option.value], []);
   const optionSelected = useCallback(
@@ -99,10 +124,15 @@ export function SearchableMultiSelect({
       : [];
     const nextValues = [...matchingValues, ...customValues];
     if (nextValues.length > 0) {
+      if (selectedFirst) setOpeningOptions((current) => {
+        const known = new Set(current.flatMap((option) => option.values ?? [option.value]));
+        return [...current, ...nextValues.filter((value) => !known.has(value))
+          .map((value) => ({ value, label: value }))];
+      });
       onChange([...new Set([...selected, ...nextValues])]);
     }
     setQuery("");
-  }, [options, onChange, query, selected, freeText, optionValues]);
+  }, [options, onChange, query, selected, freeText, optionValues, selectedFirst]);
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>): void {
     if (event.key === "Escape") {
@@ -121,8 +151,13 @@ export function SearchableMultiSelect({
     <div className="field">
       <label id={`${baseId}-label`} htmlFor={`${baseId}-input`}>
         {label}
+        {hint && hintTooltip && (
+          <span className="value-hint" tabIndex={0} aria-label={hint}>
+            !<span role="tooltip" id={hintId}>{hint}</span>
+          </span>
+        )}
       </label>
-      {hint && (
+      {hint && !hintTooltip && (
         <span id={hintId} className="field-hint-inline">
           {hint}
         </span>
@@ -137,6 +172,7 @@ export function SearchableMultiSelect({
           id={`${baseId}-input`}
           type="text"
           role="searchbox"
+          aria-label={label}
           autoComplete="off"
           aria-autocomplete="list"
           aria-controls={listId}
@@ -146,9 +182,9 @@ export function SearchableMultiSelect({
           value={open ? query : ""}
           onChange={(e) => {
             setQuery(e.target.value);
-            setOpen(true);
+            openDropdown();
           }}
-          onFocus={() => { window.clearTimeout(blurTimer.current); setOpen(true); }}
+          onFocus={() => { window.clearTimeout(blurTimer.current); openDropdown(); }}
           onBlur={() => {
             blurTimer.current = window.setTimeout(() => setOpen(false), 150);
           }}
@@ -208,6 +244,7 @@ export function SearchableMultiSelect({
           </ul>
         )}
       </div>
+
     </div>
   );
 }

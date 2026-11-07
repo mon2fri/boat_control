@@ -84,10 +84,12 @@ export function FilterRowEditor({
       <SearchableMultiSelect
         label="Value"
         options={valueOptions}
+        selectedFirst
         selected={row.values}
         onChange={(values) => onChange({ ...row, values })}
         placeholder={row.column ? "Search values…" : "Pick a column first"}
         disabled={!row.column || loadingValues}
+        hintTooltip={!loadingValues}
         hint={
           loadingValues
             ? "Loading values…"

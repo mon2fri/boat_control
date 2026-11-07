@@ -17,7 +17,7 @@ aggregationColumns:
 aggregationColumnLabels: {}
 filters: []
 targetColumns: []
-exceptionColumns:
+extraColumns:
 - kind: column
   name: name
 - kind: column
@@ -28,7 +28,22 @@ exceptionColumns:
   name: id
 - kind: column
   name: score
-nestedAggregationEnabled: false
+commentaryTemplateColumns:
+- kind: column
+  name: name
+- kind: column
+  name: status
+- kind: column
+  name: score
+extraColumnDisplay:
+  overallResultPage: true
+  overallHtmlReport: true
+  overallExcelReport: true
+  newBooksResultPage: true
+  newBooksHtmlReport: true
+  newBooksExcelReport: true
+  exceptionTables: false
+nestedAggregationEnabled: true
 comparisonSections:
 - id: cs-1
   name: TBBBB
@@ -46,4 +61,4 @@ comparisonSections:
   - kind: column
     name: status
   extraColumns: []
-_version: 4
+_version: 7

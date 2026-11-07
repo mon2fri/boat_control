@@ -1205,3 +1205,45 @@ def test_missing_value_does_not_override_rule_condition_scope() -> None:
     )
     assert _check_rule({"status": None, "region": "East"}, rule, ["status"])[0]
     assert not _check_rule({"status": None, "region": "West"}, rule, ["status"])[0]
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "expected"),
+    [
+        ("YES", None, 1), (None, "YES", 1),
+        ("YES", "", 1), ("", "YES", 1),
+        ("YES", " ", 1), (" ", "YES", 1),
+        ("", " ", 1), (None, " ", 1), (None, "", 1),
+        (None, None, 0), ("", "", 0), (" ", " ", 0),
+    ],
+)
+def test_attribute_comparison_preserves_blank_and_space_changes(
+    before: str | None, after: str | None, expected: int
+) -> None:
+    import polars as pl
+
+    schema = {"id": pl.String, "flag": pl.String}
+    baseline = pl.DataFrame({"id": ["1"], "flag": [before]}, schema=schema)
+    comparison = pl.DataFrame({"id": ["1"], "flag": [after]}, schema=schema)
+    result = compare_rows(baseline, comparison, ["flag"], ["id"])
+    assert result.rows_with_changes == expected
+    assert result.total_attribute_changes == expected
+    if expected:
+        change = result.row_details[0].attribute_changes[0]
+        assert change.file_a_value == before
+        assert change.file_b_value == after
+
+
+def test_attribute_comparison_detects_empty_csv_cell(tmp_path: Path) -> None:
+    import polars as pl
+
+    baseline = tmp_path / "baseline.csv"
+    comparison = tmp_path / "comparison.csv"
+    baseline.write_text("id,flag\n1,YES\n2,YES\n", encoding="utf-8")
+    comparison.write_text("id,flag\n1,\n2, \n", encoding="utf-8")
+    result = compare_rows(
+        pl.read_csv(baseline, infer_schema=False),
+        pl.read_csv(comparison, infer_schema=False), ["flag"], ["id"],
+    )
+    assert result.rows_with_changes == 2
+    assert result.total_attribute_changes == 2

@@ -2831,3 +2831,10 @@ dl.card dd {
     transform: translateY(0);
   }
 }
+
+/* Value pickers keep selections in the dropdown rather than widening rows. */
+.value-hint { position: relative; display: inline-flex; align-items: center; justify-content: center; margin-left: 0.4rem; width: 1rem; height: 1rem; border: 1px solid currentColor; border-radius: 50%; cursor: help; }
+.value-hint [role="tooltip"] { display: none; position: absolute; top: 100%; left: 0; z-index: 100; width: min(24rem, 75vw); padding: 0.6rem; background: var(--color-surface, white); color: var(--color-text); border: 1px solid currentColor; font-size: 0.8rem; font-weight: normal; text-transform: none; }
+.value-hint:hover [role="tooltip"], .value-hint:focus [role="tooltip"] { display: block; }
+.combobox-list { max-height: calc(40rem + 8px); overflow-y: auto; }
+.combobox-option { height: 2rem; box-sizing: border-box; white-space: nowrap; }

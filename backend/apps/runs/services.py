@@ -201,7 +201,8 @@ def compare_rows(
     matched_rows = inner_joined.height
 
     change_conditions = [
-        pl.col(col) != pl.col(f"{col}_b") for col in target_columns if f"{col}_b" in merged.columns
+        pl.col(col).ne_missing(pl.col(f"{col}_b"))
+        for col in target_columns if f"{col}_b" in merged.columns
     ]
     if not change_conditions:
         return ComparisonResult(
