@@ -42,3 +42,18 @@ describe("SearchableMultiSelect family options", () => {
     expect(onChange).toHaveBeenLastCalledWith([]);
   });
 });
+
+
+describe("selected-first values", () => {
+  it("includes custom values and keeps ordering fixed until dismissed", () => {
+    const onChange = vi.fn();
+    const props = {label: "Value", options: [{value: "A", label: "A"}, {value: "B", label: "B"}], onChange, selectedFirst: true};
+    const {rerender} = render(<SearchableMultiSelect {...props} selected={["B", "custom"]} />);
+    fireEvent.focus(screen.getByRole("searchbox"));
+    expect(screen.getAllByRole("option").slice(1).map(e => e.textContent)).toEqual(["☑B", "☑custom", "☐A"]);
+    rerender(<SearchableMultiSelect {...props} selected={["custom", "A"]} />);
+    expect(screen.getAllByRole("option").slice(1).map(e => e.textContent)).toEqual(["☐B", "☑custom", "☑A"]);
+    fireEvent.mouseDown(screen.getByRole("option", {name: /custom/}));
+    expect(onChange).toHaveBeenCalledWith(["A"]);
+  });
+});

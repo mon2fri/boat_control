@@ -6,6 +6,10 @@ import { useRunExecution } from "./useRunExecution";
 import type { RunRequest } from "../../api/domain";
 import { WorkflowProvider } from "../../state/WorkflowContext";
 import { makeClient } from "../../test/utils";
+import {
+  EXCEPTION_TRACKING_DATES_KEY,
+  EXCEPTION_TRACKING_KEY,
+} from "../tracking/queryKeys";
 
 const request: RunRequest = {
   sessionId: "s1",
@@ -57,6 +61,7 @@ describe("useRunExecution", () => {
     );
     const onSuccess = vi.fn();
     const client = makeClient();
+    const invalidateQueries = vi.spyOn(client, "invalidateQueries");
     const { result: hook } = renderHook(() => useRunExecution(onSuccess), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client }, createElement(WorkflowProvider, null, children)),
@@ -67,6 +72,12 @@ describe("useRunExecution", () => {
     await waitFor(() => expect(hook.current.status).toBe("success"));
     expect(onSuccess).toHaveBeenCalledWith(
       expect.objectContaining({ id: "run-1", reportName: "a_vs_b" }),
+    );
+    expect(invalidateQueries).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: EXCEPTION_TRACKING_DATES_KEY }),
+    );
+    expect(invalidateQueries).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: EXCEPTION_TRACKING_KEY }),
     );
     vi.unstubAllGlobals();
   });
@@ -81,6 +92,7 @@ describe("useRunExecution", () => {
       }),
     );
     const client = makeClient();
+    const invalidateQueries = vi.spyOn(client, "invalidateQueries");
     const { result: hook } = renderHook(() => useRunExecution(() => {}), {
       wrapper: ({ children }) =>
         createElement(QueryClientProvider, { client }, createElement(WorkflowProvider, null, children)),
@@ -90,6 +102,7 @@ describe("useRunExecution", () => {
     });
     await waitFor(() => expect(hook.current.status).toBe("error"));
     expect(hook.current.error).toBe("bad filter");
+    expect(invalidateQueries).not.toHaveBeenCalled();
     vi.unstubAllGlobals();
   });
 });

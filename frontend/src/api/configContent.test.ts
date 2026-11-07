@@ -62,6 +62,64 @@ describe("ordered-list family compression round-trip", () => {
       .toEqual(extraColumnDisplay);
   });
 
+  it("round-trips the ordered commentary-template selection independently from Extra Columns", () => {
+    const config = mapWorkflowToRowsColumnsConfig({
+      comparisonColumns: ["name", "status", "score", "region"],
+      keyColumns: [],
+      aggregationColumns: [],
+      filters: [],
+      targetColumns: [],
+      exceptionColumns: ["status"],
+      commentaryColumns: ["score", "name"],
+      nestedAggregationEnabled: false,
+      comparisonSections: [],
+    }, families);
+
+    expect(config.extraColumns).toEqual([{ kind: "column", name: "status" }]);
+    expect(config.commentaryTemplateColumns).toEqual([
+      { kind: "column", name: "score" },
+      { kind: "column", name: "name" },
+    ]);
+    const resolved = resolveRowsColumnsConfig(
+      config,
+      families,
+      ["name", "status", "score", "region"],
+    );
+    expect(resolved.exceptionColumns).toEqual(["status"]);
+    expect(resolved.commentaryColumns).toEqual(["score", "name"]);
+  });
+
+  it("clears the commentary-template selection when loading a legacy config without the field", () => {
+    const legacy = {
+      comparisonColumns: ["name"],
+      keyColumns: ["name"],
+      aggregationColumns: [],
+      filters: [],
+      targetColumns: [],
+      extraColumns: ["name"],
+      nestedAggregationEnabled: false,
+      comparisonSections: [],
+    };
+    const resolved = resolveRowsColumnsConfig(legacy, families, ["name", "status"]);
+    expect(resolved.exceptionColumns).toEqual(["name"]);
+    expect(resolved.commentaryColumns).toEqual([]);
+  });
+
+  it("keeps the commentary-template selection empty when explicitly empty", () => {
+    const config = mapWorkflowToRowsColumnsConfig({
+      comparisonColumns: ["name"],
+      keyColumns: [],
+      aggregationColumns: [],
+      filters: [],
+      targetColumns: [],
+      commentaryColumns: [],
+      nestedAggregationEnabled: false,
+      comparisonSections: [],
+    }, families);
+    expect(config.commentaryTemplateColumns).toEqual([]);
+    expect(resolveRowsColumnsConfig(config, families, ["name"]).commentaryColumns).toEqual([]);
+  });
+
   it("serializes aggregationColumns as explicit column refs, not family refs", () => {
     const state = {
       comparisonColumns: [],

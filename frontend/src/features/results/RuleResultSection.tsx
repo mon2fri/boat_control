@@ -3,10 +3,12 @@ import type { GroupStat, RuleResult } from "../../api/domain";
 import { DetailTable, filterDetailRows } from "./DetailTable";
 import { GroupStatisticsPanel } from "./GroupStatisticsPanel";
 import { sectionId } from "./anchors";
+import { resolveExceptionId } from "../../lib/exceptionIdentity";
 
 /**
  * One rule's result: heading with its identifier, the rule logic shown under
- * the title, its violation counts, and a virtualized detail table.
+ * the title, its violation counts, and a virtualized detail table. Exception
+ * detail rows use the stable Exception ID as their identifier.
  */
 export function RuleResultSection({
   result,
@@ -73,6 +75,20 @@ export function RuleResultSection({
     () => filterDetailRows(result.details, activeFilters),
     [result.details, activeFilters],
   );
+  const rowsWithIdentity = useMemo(
+    () =>
+      filteredRows.map((row) => {
+        if (row.kind !== "exception") return row;
+        const exceptionId = resolveExceptionId(
+          row.exceptionId,
+          result.ruleIdentifier,
+          keyColumnNames,
+          row.keyColumns,
+        );
+        return exceptionId ? { ...row, exceptionId } : row;
+      }),
+    [filteredRows, result.ruleIdentifier, keyColumnNames],
+  );
 
   const headingId = `heading-${result.ruleIndex}`;
   return (
@@ -116,7 +132,7 @@ export function RuleResultSection({
         <GroupStatisticsPanel stats={groupStats} columnLabels={aggregationColumnLabels} />
       )}
       <DetailTable
-        rows={filteredRows}
+        rows={rowsWithIdentity}
         total={result.details.length}
         caption={`Detail rows for ${result.ruleIndex}`}
         keyColumnNames={keyColumnNames}
@@ -125,6 +141,7 @@ export function RuleResultSection({
         activeFilters={activeFilters}
         onFilterChange={handleFilterChange}
         hideComparison={result.hideComparison ?? false}
+        showExceptionId
       />
     </section>
   );

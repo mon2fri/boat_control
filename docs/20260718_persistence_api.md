@@ -14,17 +14,26 @@ Lists all saved runs in reverse chronological order.
     "report_name": "file_a_vs_file_b",
     "file_a_name": "file_a.csv",
     "file_b_name": "file_b.csv",
-    "created_at": "2026-07-18T12:00:00",
+    "created_at": "2026-07-18T12:00:00+00:00",
+    "as_of_date": "2026-06-30",
+    "new_exceptions_only": true,
     "file_path": "/path/to/results/abc123def456_file_a_vs_file_b.json"
   }
 ]
 ```
 
+`as_of_date` is the ISO calendar date used for exception tracking. It is `null`
+for historical runs created before exception tracking; those runs remain
+readable and are never retroactively tracked. `new_exceptions_only` is the saved
+display/report scope and defaults to `true` for older index entries.
+
 ### `GET /api/runs/<run_id>/`
 
 Loads a specific run's full result data.
 
-**Response (200):** Full execution result JSON.
+**Response (200):** Full execution result JSON. New documents include a top-level
+`as_of_date` string (or `null` when a direct caller did not supply one). The
+Exception Tracking workbook download resolves this field by `run_id`.
 
 New result documents persist a `rule_bindings` map from each run-local `Rxxx` to
 its canonical `CBR1_...` identifier, plus `rule_identifier` on violations and rule

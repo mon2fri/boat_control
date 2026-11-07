@@ -1039,3 +1039,211 @@ class TestExecuteComparisonNestedAggregation:
             {"id": "s1", "name": "Region", "columns": ["score"]},
             {"id": "s2", "name": "Type", "columns": ["status"]},
         ]
+
+
+class TestCommentaryTemplateColumns:
+    @pytest.fixture
+    def template_rule(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from apps.rules.services import LogicClause, Rule
+
+        rule = Rule(
+            rule_id="R001",
+            name="Status must be active",
+            description="",
+            conditions=[],
+            condition_relation=None,
+            grouping=None,
+            grouping_tree=None,
+            logic=LogicClause("value_vs_column", "status", "eq", "active"),
+            rule_identifier="CBR1_00000000000000000000",
+        )
+        monkeypatch.setattr(
+            "apps.runs.services.load_rules",
+            lambda: RulesFile(version=1, rules=[rule], next_index=2),
+        )
+
+    def test_captures_only_selected_detail_columns_in_order(
+        self, tmp_path: Path, template_rule: None
+    ) -> None:
+        file_a = tmp_path / "a.csv"
+        file_b = tmp_path / "b.csv"
+        file_a.write_text("id,status,region,score\n1,active,EMEA,10\n")
+        file_b.write_text("id,status,region,score\n1,inactive,APAC,20\n")
+
+        result = execute_comparison(
+            path_a=file_a,
+            path_b=file_b,
+            comparison_columns=["id", "status", "region", "score"],
+            target_columns=["status"],
+            key_columns=["id"],
+            exception_columns=["score"],
+            commentary_template_columns=["score", "region"],
+        )
+
+        violation = result.validation.violations_by_rule["R001"][0]
+        assert result.commentary_template_columns == ["score", "region"]
+        assert violation.detail_values == {"score": "20", "region": "APAC"}
+        # The existing Extra Column selection remains independent.
+        assert violation.extra_values == {"score": "20"}
+
+    def test_selected_column_missing_from_one_side_uses_the_available_side(
+        self, tmp_path: Path, template_rule: None
+    ) -> None:
+        file_a = tmp_path / "a.csv"
+        file_b = tmp_path / "b.csv"
+        file_a.write_text("id,status,baseline_only\n1,active,A1\n")
+        file_b.write_text("id,status,comparison_only\n1,inactive,B1\n")
+
+        result = execute_comparison(
+            path_a=file_a,
+            path_b=file_b,
+            comparison_columns=["id", "status"],
+            target_columns=["status"],
+            key_columns=["id"],
+            commentary_template_columns=["baseline_only", "comparison_only"],
+        )
+
+        violation = result.validation.violations_by_rule["R001"][0]
+        assert violation.detail_values == {
+            "baseline_only": "A1",
+            "comparison_only": "B1",
+        }
+
+    def test_empty_selection_adds_no_detail_values(
+        self, tmp_path: Path, template_rule: None
+    ) -> None:
+        file_a = tmp_path / "a.csv"
+        file_b = tmp_path / "b.csv"
+        file_a.write_text("id,status\n1,active\n")
+        file_b.write_text("id,status\n1,inactive\n")
+
+        result = execute_comparison(
+            path_a=file_a,
+            path_b=file_b,
+            target_columns=["status"],
+            key_columns=["id"],
+        )
+
+        violation = result.validation.violations_by_rule["R001"][0]
+        assert result.commentary_template_columns == []
+        assert violation.detail_values == {}
+
+    def test_unknown_selected_column_is_rejected(self, csv_a: Path, csv_b: Path) -> None:
+        with pytest.raises(ValueError, match="Invalid commentary template columns"):
+            execute_comparison(
+                path_a=csv_a,
+                path_b=csv_b,
+                target_columns=["status"],
+                key_columns=["id"],
+                commentary_template_columns=["not_a_column"],
+            )
+
+    def test_reserved_or_duplicate_selection_is_rejected(
+        self, csv_a: Path, csv_b: Path
+    ) -> None:
+        with pytest.raises(ValueError, match="reserved template header"):
+            execute_comparison(
+                path_a=csv_a,
+                path_b=csv_b,
+                target_columns=["status"],
+                key_columns=["id"],
+                commentary_template_columns=["Rule Index"],
+            )
+        with pytest.raises(ValueError, match="duplicate column"):
+            execute_comparison(
+                path_a=csv_a,
+                path_b=csv_b,
+                target_columns=["status"],
+                key_columns=["id"],
+                commentary_template_columns=["id", "ID"],
+            )
+
+
+def test_required_status_flags_blank_csv_values(tmp_path: Path, rules_file: Path) -> None:
+    import polars as pl
+
+    path = tmp_path / "blank-status.csv"
+    path.write_text("id,status\n43,active\n44,\n45,inactive\n", encoding="utf-8")
+    df = pl.read_csv(path)
+    result = validate_rows(df, load_rules(rules_file).rules, ["status"], ["id"])
+    violations = result.violations_by_rule["R001"]
+    assert [v.key_columns["id"] for v in violations] == [44, 45]
+    assert violations[0].violating_column == "status"
+    assert violations[0].violating_value is None
+
+
+@pytest.mark.parametrize(
+    "operator", ["eq", "neq", "contains", "ncontains", "gt", "lt", "gte", "lte"]
+)
+@pytest.mark.parametrize("format_name", ["value_vs_column", "column_vs_column"])
+def test_missing_required_value_is_a_violation(operator: str, format_name: str) -> None:
+    from apps.rules.services import LogicClause, Rule
+    from apps.runs.services import _check_rule
+
+    rule = Rule(
+        rule_id="R056", name="Required value", description="",
+        conditions=[], condition_relation=None, grouping=None, grouping_tree=None,
+        logic=LogicClause(format_name, "status", operator, "active"),
+    )
+    assert _check_rule({"status": None}, rule, ["status"])[0] is True
+    assert _check_rule({}, rule, ["status"])[0] is True
+    if format_name == "column_vs_column":
+        assert _check_rule(
+            {"status": "active"}, rule, ["status"], {"active": None}
+        )[0] is True
+
+
+def test_missing_value_does_not_override_rule_condition_scope() -> None:
+    from apps.rules.services import Condition, LogicClause, Rule
+    from apps.runs.services import _check_rule
+
+    rule = Rule(
+        rule_id="R056", name="Scoped requirement", description="",
+        logic=LogicClause("value_vs_column", "status", "eq", "active"),
+        conditions=[Condition("region", "eq", "East")],
+        condition_relation=None, grouping=None, grouping_tree=None,
+    )
+    assert _check_rule({"status": None, "region": "East"}, rule, ["status"])[0]
+    assert not _check_rule({"status": None, "region": "West"}, rule, ["status"])[0]
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "expected"),
+    [
+        ("YES", None, 1), (None, "YES", 1),
+        ("YES", "", 1), ("", "YES", 1),
+        ("YES", " ", 1), (" ", "YES", 1),
+        ("", " ", 1), (None, " ", 1), (None, "", 1),
+        (None, None, 0), ("", "", 0), (" ", " ", 0),
+    ],
+)
+def test_attribute_comparison_preserves_blank_and_space_changes(
+    before: str | None, after: str | None, expected: int
+) -> None:
+    import polars as pl
+
+    schema = {"id": pl.String, "flag": pl.String}
+    baseline = pl.DataFrame({"id": ["1"], "flag": [before]}, schema=schema)
+    comparison = pl.DataFrame({"id": ["1"], "flag": [after]}, schema=schema)
+    result = compare_rows(baseline, comparison, ["flag"], ["id"])
+    assert result.rows_with_changes == expected
+    assert result.total_attribute_changes == expected
+    if expected:
+        change = result.row_details[0].attribute_changes[0]
+        assert change.file_a_value == before
+        assert change.file_b_value == after
+
+
+def test_attribute_comparison_detects_empty_csv_cell(tmp_path: Path) -> None:
+    import polars as pl
+
+    baseline = tmp_path / "baseline.csv"
+    comparison = tmp_path / "comparison.csv"
+    baseline.write_text("id,flag\n1,YES\n2,YES\n", encoding="utf-8")
+    comparison.write_text("id,flag\n1,\n2, \n", encoding="utf-8")
+    result = compare_rows(
+        pl.read_csv(baseline, infer_schema=False),
+        pl.read_csv(comparison, infer_schema=False), ["flag"], ["id"],
+    )
+    assert result.rows_with_changes == 2
+    assert result.total_attribute_changes == 2

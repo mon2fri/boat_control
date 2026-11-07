@@ -105,4 +105,41 @@ describe("ExportControls", () => {
     );
     vi.unstubAllGlobals();
   });
+
+  it("downloads the same selected-date commentary template used by the tracking tab", async () => {
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:commentary");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": 'attachment; filename="exception_commentary_2026-10-30.xlsx"',
+      }),
+      blob: () => Promise.resolve(new Blob(["xlsx"])),
+      text: () => Promise.resolve(""),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ExportControls runId="run-1" reportName="my_run" asOfDate="2026-10-30" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Download commentary template" }));
+    await waitFor(() =>
+      expect(screen.getByText(/Saved as/)).toHaveTextContent(
+        "exception_commentary_2026-10-30.xlsx",
+      ),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/exception-tracking/export/?as_of_date=2026-10-30",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(click).toHaveBeenCalled();
+  });
+
+  it("disables commentary download for a historical run without an As-of Date", () => {
+    render(<ExportControls runId="legacy" reportName="old_run" />);
+    expect(
+      screen.getByRole("button", { name: "Download commentary template" }),
+    ).toBeDisabled();
+  });
 });

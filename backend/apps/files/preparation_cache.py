@@ -134,7 +134,7 @@ def load_preparation(
 
     for cache_path in cache_paths:
         try:
-            raw: dict[str, Any] = json.loads(cache_path.read_text())
+            raw: dict[str, Any] = json.loads(cache_path.read_text(encoding="utf-8"))
             result = _read_result(raw)
             if "file_hashes" in raw:
                 _, is_canonical = _ordered_file_identities(path_a, path_b)
@@ -188,9 +188,9 @@ def delete_for_upload(path: Path) -> int:
     removed = 0
     for cache_path in cache_dir.glob("*.json"):
         try:
-            raw = json.loads(cache_path.read_text())
+            raw = json.loads(cache_path.read_text(encoding="utf-8"))
             references = raw.get("upload_refs", [])
-        except (OSError, TypeError, json.JSONDecodeError):
+        except (OSError, UnicodeError, TypeError, json.JSONDecodeError):
             references = []
         if upload_ref in references:
             cache_path.unlink(missing_ok=True)
@@ -206,8 +206,8 @@ def upload_is_referenced(path: Path) -> bool:
     upload_ref = path.resolve().name
     for cache_path in cache_dir.glob("*.json"):
         try:
-            raw = json.loads(cache_path.read_text())
-        except (OSError, TypeError, json.JSONDecodeError):
+            raw = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, TypeError, json.JSONDecodeError):
             continue
         if upload_ref in raw.get("upload_refs", []):
             return True

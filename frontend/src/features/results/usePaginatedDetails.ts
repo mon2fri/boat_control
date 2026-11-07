@@ -18,12 +18,14 @@ interface PageResponse {
 }
 
 const PAGE_SIZE = 200;
+const EMPTY_FILTERS: Record<string, string[]> = {};
 
 export function usePaginatedDetails(
   runId: string,
   kind: "changed" | "violation",
-  filters: Record<string, string[]> = {},
+  filters: Record<string, string[]> = EMPTY_FILTERS,
   sectionColumns?: string[],
+  keyColumnNames?: string[],
 ) {
   const [pages, setPages] = useState<PageResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,9 +37,17 @@ export function usePaginatedDetails(
   const loadingMoreRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const filtersRef = useRef(filters);
-  filtersRef.current = filters;
   const sectionColumnsRef = useRef(sectionColumns);
-  sectionColumnsRef.current = sectionColumns;
+  const keyColumnNamesRef = useRef(keyColumnNames);
+  const filtersKey = JSON.stringify(filters);
+  const sectionColumnsKey = JSON.stringify(sectionColumns ?? null);
+  const keyColumnNamesKey = JSON.stringify(keyColumnNames ?? null);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+    sectionColumnsRef.current = sectionColumns;
+    keyColumnNamesRef.current = keyColumnNames;
+  }, [filters, sectionColumns, keyColumnNames]);
 
   const reset = useCallback(() => {
     abortRef.current?.abort();
@@ -67,8 +77,9 @@ export function usePaginatedDetails(
       offset: 0,
       limit: PAGE_SIZE,
       signal: controller.signal,
-      filters,
+      filters: filtersRef.current,
       sectionColumns: sectionColumnsRef.current,
+      keyColumnNames: keyColumnNamesRef.current,
     })
       .then((page) => {
         totalRef.current = page.total;
@@ -84,7 +95,14 @@ export function usePaginatedDetails(
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [runId, kind, reset, JSON.stringify(filters), sectionColumns ? sectionColumns.join("|") : ""]);
+  }, [
+    runId,
+    kind,
+    reset,
+    filtersKey,
+    sectionColumnsKey,
+    keyColumnNamesKey,
+  ]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const loadMore = useCallback(() => {
@@ -100,6 +118,7 @@ export function usePaginatedDetails(
       signal: controller.signal,
       filters: filtersRef.current,
       sectionColumns: sectionColumnsRef.current,
+      keyColumnNames: keyColumnNamesRef.current,
     })
       .then((page) => {
         totalRef.current = page.total;

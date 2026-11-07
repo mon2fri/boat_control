@@ -101,6 +101,7 @@ class Rule:
     logic: LogicClause
     extra_columns: tuple[str, ...] = ()
     hide_comparison: bool = False
+    rule_identifier: str | None = None
 
 
 @dataclass(frozen=True)

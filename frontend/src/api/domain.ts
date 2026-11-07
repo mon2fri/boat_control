@@ -22,6 +22,8 @@ export interface HeaderReport {
   file1Deduplicated: boolean;
   /** True when file 2's bytes matched a file already in the upload store. */
   file2Deduplicated: boolean;
+  /** Backend-echoed As-of Date for exception tracking, when supplied. */
+  asOfDate?: string;
   common: string[];
   file1Only: string[];
   file2Only: string[];
@@ -126,6 +128,8 @@ export type GroupNode =
 
 export interface RunRequest {
   sessionId: string;
+  /** ISO calendar date propagated to run capture and history metadata. */
+  asOfDate?: string;
   comparisonColumns: string[];
   filters: FilterRow[];
   targetColumns: string[];
@@ -147,6 +151,10 @@ export interface RunRequest {
   confirmFullSet: boolean;
   /** Extra columns selected for the cross-rule exception table. */
   exceptionColumns?: string[];
+  /** Ordered source columns appended to the commentary template/tracking table. */
+  commentaryColumns?: string[];
+  /** Result/report scope; checked by default includes New and NotCommented. */
+  newExceptionsOnly?: boolean;
   /** Places where selected extra columns are shown outside the exception table. */
   extraColumnDisplay?: ExtraColumnDisplay;
 }
@@ -172,6 +180,8 @@ export interface OverallSummary {
 
 export interface DetailRow {
   rowKey: string;
+  /** Stable exception identity supplied by the backend, when available. */
+  exceptionId?: string;
   keyColumns: Record<string, string | null>;
   column: string;
   file1Value: string | null;
@@ -204,6 +214,8 @@ export interface RunResult {
   id: string;
   reportName: string;
   createdAt: string;
+  /** ISO calendar date used for exception tracking; absent on historical runs. */
+  asOfDate?: string;
   file1Name: string;
   file2Name: string;
   overall: OverallSummary;
@@ -227,6 +239,10 @@ export interface RunResult {
   keyColumns?: string[];
   /** Extra columns selected for the cross-rule exception table; persisted with the run. */
   exceptionColumns?: string[];
+  /** Ordered commentary-template columns persisted with the run. */
+  commentaryColumns?: string[];
+  /** Whether this run/result was scoped to New + NotCommented exceptions. */
+  newExceptionsOnly?: boolean;
   extraColumnDisplay?: ExtraColumnDisplay;
   ruleBindings?: Record<string, string | null>;
 }
@@ -235,8 +251,75 @@ export interface RunSummary {
   id: string;
   reportName: string;
   createdAt: string;
+  /** ISO calendar date used for exception tracking; absent on historical runs. */
+  asOfDate?: string;
   file1Name: string;
   file2Name: string;
+}
+
+/** User-visible exception tracking status, as derived by the backend. */
+export type ExceptionStatus = "New" | "Commented" | "NotCommented";
+
+/**
+ * One exception occurrence for a selected As-of Date. `keyColumns` is the
+ * display form of the backend's documented lossless `key_columns`
+ * representation; the raw wire value stays on the API boundary.
+ */
+export interface TrackedException {
+  exceptionId: string;
+  exceptionRuleIdentifier: string;
+  /** Historical run-local rule index (Rxxx); never part of exception identity. */
+  ruleIndex: string;
+  keyColumns: string;
+  exceptionTimestamp: string;
+  exceptionCommentary: string;
+  exceptionAsOfDate: string;
+  exceptionFirstSeenAsOfDate: string;
+  exceptionLastSeenAsOfDate: string;
+  exceptionFirstSeenTimestamp?: string;
+  exceptionLastSeenTimestamp?: string;
+  /** Values for the configured Extra Columns for Commentary Template. */
+  detailValues: Record<string, string>;
+  status: ExceptionStatus;
+}
+
+export interface ExceptionTrackingColumn {
+  key: string;
+  label: string;
+  visible: boolean;
+  sortable: boolean;
+  filterable: boolean;
+  source: "standard" | "detail";
+}
+
+export interface ExceptionTrackingResult {
+  asOfDate: string | null;
+  exceptions: TrackedException[];
+  /** Ordered additional data columns returned by the complete-dataset API. */
+  detailColumns: string[];
+  total: number;
+  unfilteredTotal: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  sort: string | null;
+  order: "asc" | "desc";
+  columns: ExceptionTrackingColumn[];
+  availableFilters: Record<string, string[]>;
+}
+
+export interface ExceptionTrackingDates {
+  dates: string[];
+  /** Backend-authoritative default; `null` when it did not supply one. */
+  defaultDate: string | null;
+}
+
+export interface CommentaryImportResult {
+  asOfDate: string | null;
+  updatedCount: number;
+  clearedCount: number;
+  unchangedCount: number;
+  message: string | null;
 }
 
 /** Draft used to create or update a rule (server may assign `index`). */
@@ -262,6 +345,8 @@ export interface AppSettings {
   familyConfigPath: string;
   fullSetConfirmationRows: number;
   runHistoryPath: string;
+  /** Absolute Linux or Windows path to the separate exception-tracking SQLite file. */
+  exceptionTrackingPath: string;
 }
 
 /**

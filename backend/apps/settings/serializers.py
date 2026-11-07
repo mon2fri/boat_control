@@ -10,3 +10,4 @@ class SettingsSerializer(serializers.Serializer):  # type: ignore[misc]
     family_config_path = serializers.CharField(required=False, allow_blank=False)
     full_set_confirmation_rows = serializers.IntegerField(min_value=1, required=False)
     run_history_path = serializers.CharField(required=False, allow_blank=False)
+    exception_tracking_path = serializers.CharField(required=False, allow_blank=False)

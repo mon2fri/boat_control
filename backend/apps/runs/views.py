@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rest_framework.request import Request
@@ -8,8 +9,16 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.files.sessions import get_session
+from apps.runs.as_of_date import AsOfDateError, resolve_as_of_date
 from apps.runs.persistence import save_run
 from apps.runs.services import execute_comparison
+from apps.runs.template_columns import TemplateColumnError, validate_concrete_columns
+from apps.runs.tracking_capture import ExceptionCaptureError, capture_run_exceptions
+from apps.runs.tracking_context import (
+    enrich_execution_result,
+    parse_new_exceptions_only,
+    resolve_run_document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +63,17 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 {"error": "Upload files no longer available. Please re-upload."},
                 status=404,
             )
+
+        # The As-of Date is part of the run identity for exception tracking.
+        # Precedence: explicit request date, then the date retained by the upload
+        # session, then the backend's last-weekday-of-previous-month default.
+        try:
+            as_of_date = resolve_as_of_date(
+                request.data.get("as_of_date"),
+                fallback=getattr(session, "as_of_date", None),
+            )
+        except AsOfDateError as exc:
+            return Response({"error": str(exc)}, status=400)
 
         # Use the user's comparison-column selection as the effective
         # common set; fall back to the session's raw common columns when
@@ -115,6 +135,33 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
             extra_column_display = {}
 
         try:
+            commentary_template_columns = validate_concrete_columns(
+                request.data.get("commentary_template_columns", [])
+            )
+            available_columns = set(
+                getattr(session, "columns_a", [])
+            ) | set(getattr(session, "columns_b", []))
+            missing_template_columns = [
+                column
+                for column in commentary_template_columns
+                if column not in available_columns
+            ]
+            if missing_template_columns:
+                return Response(
+                    {
+                        "error": "Invalid commentary template columns: "
+                        + ", ".join(missing_template_columns)
+                    },
+                    status=400,
+                )
+            new_exceptions_only = parse_new_exceptions_only(
+                request.data.get("new_exceptions_only"),
+                default=True,
+            )
+        except (TemplateColumnError, ValueError) as exc:
+            return Response({"error": str(exc)}, status=400)
+
+        try:
             # Nested aggregation is read independently of comparison sections:
             # a user can opt into the tree view without defining any sections.
             nested_agg_enabled = bool(request.data.get("nested_aggregation_enabled", False))
@@ -152,6 +199,9 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                     "new_books_result_page", "new_books_html_report", "new_books_excel_report",
                     "exception_tables",
                 )},
+                as_of_date=as_of_date,
+                commentary_template_columns=commentary_template_columns,
+                new_exceptions_only=new_exceptions_only,
             )
         except Exception as exc:
             logger.warning("execute_comparison failed: %s", exc)
@@ -163,15 +213,50 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 {"error": "An internal error occurred."}, status=500
             )
 
+        # Capture tracking before publishing the run. If this fails, no run is
+        # saved: the caller sees an actionable failure instead of a successful
+        # run whose tracking rows are silently missing. Same-date retries are
+        # idempotent in the tracking store.
+        captured_at = datetime.now(UTC)
+        try:
+            capture_run_exceptions(
+                result,
+                as_of_date,
+                captured_at=captured_at,
+                template_columns=commentary_template_columns,
+            )
+            result = enrich_execution_result(result, as_of_date)
+        except ExceptionCaptureError as exc:
+            logger.exception("Exception tracking capture failed for run")
+            return Response(
+                {
+                    "error": str(exc),
+                    "tracking_failed": True,
+                    "retryable": True,
+                    "as_of_date": as_of_date.isoformat(),
+                },
+                status=500,
+            )
+
         meta = save_run(
             result=result,
             file_a_name=session.file_a_name,
             file_b_name=session.file_b_name,
             file_a_path=path_a,
             file_b_path=path_b,
+            as_of_date=as_of_date,
+            created_at=captured_at,
         )
 
         from apps.runs.persistence import load_run
 
         full_data = load_run(meta.run_id)
-        return Response(full_data)
+        if full_data is None:
+            return Response({"error": "Saved run could not be loaded."}, status=500)
+        return Response(
+            resolve_run_document(
+                full_data,
+                new_exceptions_only=new_exceptions_only,
+                refresh=False,
+            )
+        )

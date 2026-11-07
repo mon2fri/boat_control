@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RuleResult } from "../../api/domain";
+import { resolveExceptionId } from "../../lib/exceptionIdentity";
 
 interface ExceptionRow {
+  exceptionId: string | null;
   ruleIndex: string;
   ruleName: string;
   keyColumns: Record<string, string | null>;
@@ -18,7 +20,9 @@ interface Props {
 
 /**
  * Builds the exception table rows from all rule results.
- * Each violation row becomes an exception table row, with key columns + rule index as identifiers.
+ * Each violation row becomes an exception table row with a stable Exception ID
+ * (backend-supplied or derived from canonical rule identifier + ordered key
+ * values), while key columns, rule index, aggregation and extra values remain.
  */
 function buildExceptionRows(
   ruleResults: RuleResult[],
@@ -50,6 +54,12 @@ function buildExceptionRows(
       }
 
       rows.push({
+        exceptionId: resolveExceptionId(
+          detail.exceptionId,
+          rule.ruleIdentifier,
+          keyColumnNames,
+          detail.keyColumns,
+        ),
         ruleIndex: rule.ruleIndex,
         ruleName: rule.ruleName,
         keyColumns: keyValues,
@@ -64,8 +74,8 @@ function buildExceptionRows(
 
 /**
  * Exception table that aggregates all rule violations.
- * Key columns + Rule Index form the identifier.
- * Aggregation columns and user-selected extra columns are included.
+ * The stable Exception ID identifies each row; key columns, Rule Index,
+ * aggregation columns and user-selected extra columns are all retained.
  */
 export function ExceptionTable({
   ruleResults,
@@ -106,6 +116,9 @@ export function ExceptionTable({
   // Collect unique values for each column for filtering
   const columnOptions = useMemo(() => {
     const options: Record<string, string[]> = {};
+    options["exceptionId"] = [...new Set(
+      allRows.map((row) => row.exceptionId).filter((id): id is string => Boolean(id)),
+    )].sort();
     for (const kc of keyColumnNames) {
       const vals = new Set<string>();
       for (const row of allRows) {
@@ -152,7 +165,9 @@ export function ExceptionTable({
       for (const [filterKey, filterValues] of Object.entries(activeFilters)) {
         if (filterValues.length === 0) continue;
         let cellValue: string | null = null;
-        if (filterKey.startsWith("key_")) {
+        if (filterKey === "exceptionId") {
+          cellValue = row.exceptionId;
+        } else if (filterKey.startsWith("key_")) {
           const col = filterKey.slice(4);
           cellValue = row.keyColumns[col] != null ? String(row.keyColumns[col]) : null;
         } else if (filterKey === "ruleIndex") {
@@ -178,7 +193,10 @@ export function ExceptionTable({
     return [...filteredRows].sort((a, b) => {
       let aVal: string = "";
       let bVal: string = "";
-      if (sortKey.startsWith("key_")) {
+      if (sortKey === "exceptionId") {
+        aVal = a.exceptionId ?? "";
+        bVal = b.exceptionId ?? "";
+      } else if (sortKey.startsWith("key_")) {
         const col = sortKey.slice(4);
         aVal = a.keyColumns[col] != null ? String(a.keyColumns[col]) : "";
         bVal = b.keyColumns[col] != null ? String(b.keyColumns[col]) : "";
@@ -244,12 +262,14 @@ export function ExceptionTable({
 
   const hasRows = allRows.length > 0;
   const columnTemplate = [
+    "minmax(260px, 1.4fr)",
     ...keyColumnNames.map(() => "minmax(150px, 1fr)"),
     "minmax(130px, 0.85fr)",
     ...aggColumnNames.map(() => "minmax(150px, 1fr)"),
     ...extraColumnNames.map(() => "minmax(180px, 1.2fr)"),
   ].join(" ");
-  const tableMinWidth = keyColumnNames.length * 150
+  const tableMinWidth = 260
+    + keyColumnNames.length * 150
     + 130
     + aggColumnNames.length * 150
     + extraColumnNames.length * 180;
@@ -277,6 +297,33 @@ export function ExceptionTable({
             <div className="detail-grid" role="table" style={{ minWidth: tableMinWidth }}>
               <div className="detail-grid-header results-layer-table-header" role="rowgroup">
                 <div className="detail-grid-row" role="row" style={{ gridTemplateColumns: columnTemplate }}>
+                  <div
+                    role="columnheader"
+                    className="filterable-th sortable-th"
+                  >
+                    <span>Exception ID</span>
+                    <button
+                      type="button"
+                      className="th-sort-btn"
+                      onClick={() => handleSort("exceptionId")}
+                      data-detail-sort="exceptionId"
+                      data-sort-direction={sortKey === "exceptionId" ? sortDir : "none"}
+                      aria-label="Sort by Exception ID"
+                    >
+                      <span className="sort-icon sort-icon--none">⇅</span>
+                      <span className="sort-icon sort-icon--asc">↑</span>
+                      <span className="sort-icon sort-icon--desc">↓</span>
+                    </button>
+                    {(columnOptions["exceptionId"]?.length ?? 0) > 0 && (
+                      <FilterDropdown
+                        column="exceptionId"
+                        label="Exception ID"
+                        options={columnOptions["exceptionId"]!}
+                        active={activeFilters["exceptionId"] ?? []}
+                        onChange={handleFilterChange}
+                      />
+                    )}
+                  </div>
                   {keyColumnNames.map((kc) => (
                     <div
                       key={`key_${kc}`}
@@ -403,6 +450,9 @@ export function ExceptionTable({
                     key={`${row.ruleIndex}-${idx}`}
                     style={{ gridTemplateColumns: columnTemplate }}
                   >
+                    <div role="cell" className="exception-detail-id">
+                      <code>{row.exceptionId ?? "—"}</code>
+                    </div>
                     {keyColumnNames.map((kc) => (
                       <div key={`key_${kc}`} role="cell">
                         {row.keyColumns[kc] != null ? String(row.keyColumns[kc]) : "—"}
@@ -439,12 +489,13 @@ export function ExceptionTable({
 
 interface FilterDropdownProps {
   column: string;
+  label?: string;
   options: string[];
   active: string[];
   onChange: (column: string, values: string[]) => void;
 }
 
-function FilterDropdown({ column, options, active, onChange }: FilterDropdownProps) {
+function FilterDropdown({ column, label, options, active, onChange }: FilterDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -517,7 +568,7 @@ function FilterDropdown({ column, options, active, onChange }: FilterDropdownPro
         className={`th-filter-btn ${active.length > 0 ? "th-filter-btn--active" : ""}`}
         onClick={toggleMenu}
         aria-expanded={isOpen}
-        aria-label={`Filter by ${column}`}
+        aria-label={`Filter by ${label ?? column}`}
       >
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M1 2h10M3 6h6M5 10h2" strokeLinecap="round" />

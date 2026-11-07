@@ -41,6 +41,24 @@ from django.conf import settings as django_settings  # noqa: E402
 
 ORIGINAL_RULES_FILE = Path(django_settings.RULES_FILE)
 _ISOLATED_RULES_FILE: Path | None = None
+_ISOLATED_TRACKING_DIR: Path | None = None
+
+
+def _isolate_tracking_db() -> Path:
+    """Point exception tracking at a throwaway directory for the walker."""
+    global _ISOLATED_TRACKING_DIR
+    directory = Path(tempfile.mkdtemp(prefix="walker-tracking-"))
+    django_settings.EXCEPTION_TRACKING_DB = directory / "exception_tracking.db"  # type: ignore[attr-defined]
+    _ISOLATED_TRACKING_DIR = directory
+    return directory
+
+
+def _restore_tracking_db() -> None:
+    if _ISOLATED_TRACKING_DIR is not None:
+        with contextlib.suppress(OSError):
+            shutil.rmtree(_ISOLATED_TRACKING_DIR)
+        if hasattr(django_settings, "EXCEPTION_TRACKING_DB"):
+            delattr(django_settings, "EXCEPTION_TRACKING_DB")
 
 
 def _isolate_rules_file() -> Path:
@@ -68,6 +86,7 @@ def _restore_rules_file() -> None:
 
 
 _isolate_rules_file()
+_isolate_tracking_db()
 
 from django.core.files.uploadedfile import SimpleUploadedFile  # type: ignore[import-untyped]  # noqa: E402
 from rest_framework.test import APIClient  # type: ignore[import-untyped]  # noqa: E402
@@ -395,4 +414,5 @@ if __name__ == "__main__":
         rc = main()
     finally:
         _restore_rules_file()
+        _restore_tracking_db()
     sys.exit(rc)

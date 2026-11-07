@@ -28,6 +28,7 @@ function reducer(state: WorkflowState, action: any): WorkflowState {
 function base(): WorkflowState {
   return {
     header: null,
+    asOfDate: "2026-10-30",
     comparisonColumns: [],
     filters: [],
     targetColumns: [],
@@ -37,6 +38,8 @@ function base(): WorkflowState {
     nestedAggregationEnabled: false,
   comparisonSections: [],
   exceptionColumns: [],
+  commentaryColumns: [],
+  newExceptionsOnly: true,
   selectedRuleIndexes: [],
     confirmFullSet: false,
     page2Complete: false,

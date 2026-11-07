@@ -7,6 +7,10 @@ from rest_framework.views import APIView
 from apps.reports.serializers import ExportRequestSerializer
 from apps.reports.services import export_excel, export_html
 from apps.runs.persistence import load_run
+from apps.runs.tracking_context import (
+    filter_result_for_new_exceptions,
+    resolve_run_document,
+)
 
 
 class ExportView(APIView):  # type: ignore[misc]
@@ -20,6 +24,7 @@ class ExportView(APIView):  # type: ignore[misc]
         report_name = data.get("report_name", "export")
         created_at = None
         fmt = data["format"]
+        requested_scope = data.get("new_exceptions_only")
 
         if run_id:
             loaded = load_run(run_id)
@@ -27,9 +32,33 @@ class ExportView(APIView):  # type: ignore[misc]
                 return HttpResponse(
                     f"Run {run_id} not found.", status=404, content_type="text/plain"
                 )
-            result_data = loaded.get("result", {})
+            stored_scope = bool(
+                (loaded.get("result") or {}).get("new_exceptions_only", True)
+            )
+            effective_scope = (
+                requested_scope if requested_scope is not None else stored_scope
+            )
+            viewed = resolve_run_document(
+                loaded,
+                new_exceptions_only=effective_scope,
+                refresh=True,
+            )
+            result_data = viewed.get("result", {})
             report_name = loaded.get("report_name", report_name)
             created_at = loaded.get("created_at")
+        elif result_data is not None:
+            if not isinstance(result_data, dict):
+                return HttpResponse(
+                    "No result data provided.", status=400, content_type="text/plain"
+                )
+            effective_scope = (
+                requested_scope
+                if requested_scope is not None
+                else bool(result_data.get("new_exceptions_only", True))
+            )
+            result_data = filter_result_for_new_exceptions(
+                result_data, effective_scope
+            )
 
         if result_data is None:
             return HttpResponse("No result data provided.", status=400, content_type="text/plain")

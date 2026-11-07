@@ -5,9 +5,12 @@
  */
 import type {
   AppSettings,
+  CommentaryImportResult,
   ComparisonSection,
   Condition,
   DetailRow,
+  ExceptionStatus,
+  ExceptionTrackingDates,
   Family,
   FilterOperator,
   FilterRow,
@@ -27,11 +30,14 @@ import type {
   RunSummary,
   SavedFilter,
   SourceFile,
+  TrackedException,
 } from "./domain";
 import type {
   WireAttributeChange,
   WireColumnValue,
   WireCondition,
+  WireExceptionTrackingDates,
+  WireExceptionTrackingList,
   WireFamily,
   WireFilterRow,
   WireGroupNode,
@@ -48,10 +54,12 @@ import type {
   WireSavedFilter,
   WireSettings,
   WireSourceFile,
+  WireTrackedException,
   wireScalarSchema,
   WireViolation,
 } from "./wire";
 import type { z } from "zod";
+import { resolveExceptionId } from "../lib/exceptionIdentity";
 
 type WireScalar = z.infer<typeof wireScalarSchema>;
 type MappableViolation = Omit<WireViolation, "rule_identifier"> & {
@@ -116,6 +124,7 @@ export function mapUploadToHeader(
     file_b_name: string;
     file_a_deduplicated: boolean;
     file_b_deduplicated: boolean;
+    as_of_date?: string | undefined;
     inspection: {
       columns_a: string[];
       columns_b: string[];
@@ -131,6 +140,7 @@ export function mapUploadToHeader(
     file2Name: response.file_b_name,
     file1Deduplicated: response.file_a_deduplicated,
     file2Deduplicated: response.file_b_deduplicated,
+    ...(response.as_of_date ? { asOfDate: response.as_of_date } : {}),
     common: response.inspection.common_columns,
     file1Only: response.inspection.only_in_a,
     file2Only: response.inspection.only_in_b,
@@ -295,6 +305,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
 
 export function mapRunRequestToWire(request: {
   sessionId: string;
+  asOfDate?: string;
   comparisonColumns: string[];
   filters: FilterRow[];
   targetColumns: string[];
@@ -305,10 +316,13 @@ export function mapRunRequestToWire(request: {
   comparisonSections?: ComparisonSection[] | undefined;
   ruleIndexes: string[];
   exceptionColumns?: string[];
+  commentaryColumns?: string[];
+  newExceptionsOnly?: boolean;
   extraColumnDisplay?: import("./domain").ExtraColumnDisplay;
 }): WireRunRequest {
   return {
     session_id: request.sessionId,
+    ...(request.asOfDate ? { as_of_date: request.asOfDate } : {}),
     comparison_columns: [...request.comparisonColumns],
     target_columns: request.targetColumns.length > 0 ? request.targetColumns : null,
     // Always send `key_columns` as an array (even when empty) so the backend
@@ -338,6 +352,10 @@ export function mapRunRequestToWire(request: {
     ...(request.exceptionColumns && request.exceptionColumns.length > 0
       ? { exception_columns: [...request.exceptionColumns] }
       : {}),
+    ...(request.commentaryColumns
+      ? { commentary_template_columns: [...request.commentaryColumns] }
+      : {}),
+    new_exceptions_only: request.newExceptionsOnly !== false,
     ...(request.extraColumnDisplay ? { extra_column_display: {
       overall_result_page: request.extraColumnDisplay.overallResultPage,
       overall_html_report: request.extraColumnDisplay.overallHtmlReport,
@@ -389,6 +407,10 @@ export function mapAttributeChange(
 export function mapViolation(
   violation: MappableViolation,
   index: number,
+  options: {
+    ruleIdentifier?: string | null;
+    keyColumnNames?: string[];
+  } = {},
 ): DetailRow {
   const column = violation.violating_column ?? violation.rule_id;
   const violatingValue = violation.violating_value !== undefined
@@ -398,9 +420,19 @@ export function mapViolation(
     ? displayScalar(violation.comparison_value)
     : null;
   const aggregationValues = mapGroupingValues(violation.grouping_values);
+  const keyColumns = Object.fromEntries(
+    Object.entries(violation.key_columns).map(([k, v]) => [k, displayScalar(v)]),
+  );
+  const exceptionId = resolveExceptionId(
+    violation.exception_id,
+    options.ruleIdentifier ?? violation.rule_identifier,
+    options.keyColumnNames ?? Object.keys(violation.key_columns),
+    keyColumns,
+  );
   return {
     rowKey: `${rowKeyOf(violation.key_columns, violation.row_index)}#${index}`,
-    keyColumns: Object.fromEntries(Object.entries(violation.key_columns).map(([k, v]) => [k, displayScalar(v)])),
+    ...(exceptionId ? { exceptionId } : {}),
+    keyColumns,
     column,
     file1Value: comparisonValue,
     file2Value: violatingValue,
@@ -423,6 +455,7 @@ export function mapViolation(
 export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocument): RunResult {
   const result = doc.result;
   const validation = result.validation;
+  const newExceptionsOnly = doc.new_exceptions_only ?? result.new_exceptions_only;
 
   // Prefer the backend's explicit distinct counts; fall back to a local
   // derivation only if the server omitted them.
@@ -452,9 +485,14 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
         validation.violating_attributes_by_rule?.[ruleId] ?? violations.length;
       const sample = violations[0];
       const persistedSummary = validation.rule_summaries?.[ruleId];
+      const ruleIdentifier =
+        sample?.rule_identifier
+        ?? result.rule_bindings?.[ruleId]
+        ?? persistedSummary?.rule_identifier
+        ?? null;
       return {
         ruleIndex: ruleId,
-        ruleIdentifier: persistedSummary?.rule_identifier ?? sample?.rule_identifier ?? null,
+        ruleIdentifier,
         ruleName: persistedSummary?.name ?? sample?.rule_name ?? ruleId,
         ...(persistedSummary?.description
           ? { ruleDescription: persistedSummary.description }
@@ -470,7 +508,14 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
           : {}),
         violationRowCount: perRuleRowCount,
         violationAttributeCount: perRuleAttributeCount,
-        details: violations.map((v, i) => mapViolation(v, i)),
+        details: violations.map((v, i) =>
+          mapViolation(v, i, {
+            ruleIdentifier,
+            ...(result.key_columns && result.key_columns.length > 0
+              ? { keyColumnNames: result.key_columns }
+              : {}),
+          }),
+        ),
         hideComparison: persistedSummary?.hide_comparison ?? false,
       };
     },
@@ -522,6 +567,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
     id: doc.run_id,
     reportName: doc.report_name,
     createdAt: doc.created_at,
+    ...(doc.as_of_date ? { asOfDate: doc.as_of_date } : {}),
     file1Name: doc.file_a_name,
     file2Name: doc.file_b_name,
     overall,
@@ -561,6 +607,10 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
     ...(result.exception_columns && result.exception_columns.length > 0
       ? { exceptionColumns: [...result.exception_columns] }
       : {}),
+    ...(result.commentary_template_columns
+      ? { commentaryColumns: [...result.commentary_template_columns] }
+      : {}),
+    ...(newExceptionsOnly !== undefined ? { newExceptionsOnly } : {}),
     ...(result.extra_column_display ? { extraColumnDisplay: {
       overallResultPage: result.extra_column_display.overall_result_page,
       overallHtmlReport: result.extra_column_display.overall_html_report,
@@ -647,6 +697,7 @@ export function mapRunMetadata(meta: WireRunMetadata): RunSummary {
     id: meta.run_id,
     reportName: meta.report_name,
     createdAt: meta.created_at,
+    ...(meta.as_of_date ? { asOfDate: meta.as_of_date } : {}),
     file1Name: meta.file_a_name,
     file2Name: meta.file_b_name,
   };
@@ -657,6 +708,7 @@ export function mapRunDocumentMetadata(doc: WireRunDocument): RunSummary {
     id: doc.run_id,
     reportName: doc.report_name,
     createdAt: doc.created_at,
+    ...(doc.as_of_date ? { asOfDate: doc.as_of_date } : {}),
     file1Name: doc.file_a_name,
     file2Name: doc.file_b_name,
   };
@@ -674,6 +726,7 @@ export function mapSettings(wire: WireSettings): AppSettings {
     familyConfigPath: wire.family_config_path,
     fullSetConfirmationRows: wire.full_set_confirmation_rows,
     runHistoryPath: wire.run_history_path,
+    exceptionTrackingPath: wire.exception_tracking_path,
   };
 }
 
@@ -687,6 +740,173 @@ export function mapSettingsToWire(settings: AppSettings): WireSettings {
     family_config_path: settings.familyConfigPath,
     full_set_confirmation_rows: settings.fullSetConfirmationRows,
     run_history_path: settings.runHistoryPath,
+    exception_tracking_path: settings.exceptionTrackingPath,
+  };
+}
+
+// --- Exception tracking --------------------------------------------------
+
+function displayScalarValue(value: string | number | boolean | null): string {
+  if (value === null) return "";
+  return String(value);
+}
+
+/** Render the documented lossless `key_columns` representation for display. */
+export function formatKeyColumns(value: WireTrackedException["key_columns"]): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => displayScalarValue(item)).join(", ");
+  }
+  return Object.entries(value)
+    .map(([key, item]) => `${key}=${displayScalarValue(item)}`)
+    .join(", ");
+}
+
+function fallbackExceptionStatus(
+  exception: WireTrackedException,
+): ExceptionStatus {
+  if ((exception.exception_commentary ?? "").trim().length > 0) return "Commented";
+  return exception.exception_first_seen_as_of_date === exception.exception_as_of_date
+    ? "New"
+    : "NotCommented";
+}
+
+export function mapTrackedException(wire: WireTrackedException): TrackedException {
+  const detailValues = Object.fromEntries(
+    Object.entries(wire.detail_values ?? wire.extra_values ?? {}).map(([key, value]) => [
+      key,
+      value === null ? "" : String(value),
+    ]),
+  );
+  const exception: TrackedException = {
+    exceptionId: wire.exception_id,
+    exceptionRuleIdentifier: wire.exception_rule_identifier,
+    ruleIndex: wire.rule_index ?? "",
+    keyColumns: formatKeyColumns(wire.key_columns),
+    exceptionTimestamp: wire.exception_timestamp,
+    exceptionCommentary: wire.exception_commentary ?? "",
+    exceptionAsOfDate: wire.exception_as_of_date,
+    exceptionFirstSeenAsOfDate: wire.exception_first_seen_as_of_date,
+    exceptionLastSeenAsOfDate: wire.exception_last_seen_as_of_date,
+    detailValues,
+    status: wire.status ?? fallbackExceptionStatus(wire),
+  };
+  if (wire.exception_first_seen_timestamp) {
+    exception.exceptionFirstSeenTimestamp = wire.exception_first_seen_timestamp;
+  }
+  if (wire.exception_last_seen_timestamp) {
+    exception.exceptionLastSeenTimestamp = wire.exception_last_seen_timestamp;
+  }
+  return exception;
+}
+
+export function mapTrackingDates(wire: WireExceptionTrackingDates): ExceptionTrackingDates {
+  const raw = wire.dates ?? wire.available_dates ?? [];
+  const dates = [...new Set(raw)].sort((a, b) => b.localeCompare(a));
+  return {
+    dates,
+    defaultDate: wire.default_as_of_date ?? wire.default_date ?? null,
+  };
+}
+
+export function mapExceptionTrackingList(
+  wire: WireExceptionTrackingList,
+): import("./domain").ExceptionTrackingResult {
+  if (Array.isArray(wire)) {
+    const exceptions = wire.map(mapTrackedException);
+    const detailColumns = exceptionDetailColumnUnion(exceptions);
+    return {
+      asOfDate: wire[0]?.exception_as_of_date ?? null,
+      exceptions,
+      detailColumns,
+      total: exceptions.length,
+      unfilteredTotal: exceptions.length,
+      offset: 0,
+      limit: exceptions.length,
+      hasMore: false,
+      sort: null,
+      order: "asc",
+      columns: fallbackTrackingColumns(detailColumns),
+      availableFilters: {},
+    };
+  }
+  const exceptions = wire.exceptions.map(mapTrackedException);
+  const declared = wire.detail_columns ?? wire.available_columns;
+  const detailColumns = declared && declared.length > 0
+    ? [...declared]
+    : exceptionDetailColumnUnion(exceptions);
+  return {
+    asOfDate: wire.as_of_date ?? null,
+    exceptions,
+    detailColumns,
+    total: wire.total ?? exceptions.length,
+    unfilteredTotal: wire.unfiltered_total ?? wire.total ?? exceptions.length,
+    offset: wire.offset ?? 0,
+    limit: wire.limit ?? exceptions.length,
+    hasMore: wire.has_more ?? false,
+    sort: wire.sort ?? null,
+    order: wire.order ?? "asc",
+    columns: wire.columns ?? fallbackTrackingColumns(detailColumns),
+    availableFilters: wire.available_filters ?? {},
+  };
+}
+
+function fallbackTrackingColumns(detailColumns: string[]): import("./domain").ExceptionTrackingColumn[] {
+  const standard: Array<[string, string, boolean]> = [
+    ["exception_id", "Exception ID", true],
+    ["status", "Exception Status", true],
+    ["commentary", "Commentary", true],
+    ["rule_index", "Rule Index", true],
+    ["exception_rule_identifier", "Exception Rule Identifier", false],
+    ["key_columns", "Key Columns", false],
+    ["exception_timestamp", "Exception Timestamp", false],
+    ["exception_as_of_date", "Exception As-of Date", false],
+    ["exception_first_seen_as_of_date", "Exception First Seen As-of Date", false],
+    ["exception_last_seen_as_of_date", "Exception Last Seen As-of Date", false],
+  ];
+  return [
+    ...standard.map(([key, label, visible]) => ({
+      key, label, visible, sortable: true, filterable: true, source: "standard" as const,
+    })),
+    ...detailColumns.map((label) => ({
+      key: `detail:${label}`,
+      label,
+      visible: false,
+      sortable: true,
+      filterable: true,
+      source: "detail" as const,
+    })),
+  ];
+}
+
+function exceptionDetailColumnUnion(exceptions: TrackedException[]): string[] {
+  const columns: string[] = [];
+  for (const exception of exceptions) {
+    for (const column of Object.keys(exception.detailValues)) {
+      if (!columns.includes(column)) columns.push(column);
+    }
+  }
+  return columns;
+}
+
+export function mapCommentaryImportResult(
+  wire: {
+    as_of_date?: string | undefined;
+    updated?: number | undefined;
+    updated_count?: number | undefined;
+    cleared?: number | undefined;
+    unchanged?: number | undefined;
+    imported?: number | undefined;
+    message?: string | undefined;
+  },
+): CommentaryImportResult {
+  return {
+    asOfDate: wire.as_of_date ?? null,
+    updatedCount: wire.updated ?? wire.updated_count ?? wire.imported ?? 0,
+    clearedCount: wire.cleared ?? 0,
+    unchangedCount: wire.unchanged ?? 0,
+    message: wire.message ?? null,
   };
 }
 

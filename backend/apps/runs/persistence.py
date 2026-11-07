@@ -5,7 +5,7 @@ import tempfile
 import threading
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +31,8 @@ class RunMetadata:
     file_b_name: str
     created_at: str
     file_path: str
+    as_of_date: str | None = None
+    new_exceptions_only: bool = True
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,8 @@ def _load_index() -> RunsIndex:
             file_b_name=r["file_b_name"],
             created_at=r["created_at"],
             file_path=r["file_path"],
+            as_of_date=r.get("as_of_date"),
+            new_exceptions_only=bool(r.get("new_exceptions_only", True)),
         )
         for r in data.get("runs", [])
     ]
@@ -87,6 +91,8 @@ def _save_index(index: RunsIndex) -> None:
                 "file_b_name": r.file_b_name,
                 "created_at": r.created_at,
                 "file_path": r.file_path,
+                "as_of_date": r.as_of_date,
+                "new_exceptions_only": r.new_exceptions_only,
             }
             for r in index.runs
         ]
@@ -108,6 +114,8 @@ def save_run(
     report_name: str | None = None,
     file_a_path: Path | None = None,
     file_b_path: Path | None = None,
+    as_of_date: date | None = None,
+    created_at: datetime | None = None,
 ) -> RunMetadata:
     expired_upload_paths: list[Path] = []
     with _runs_lock:
@@ -116,13 +124,23 @@ def save_run(
         safe_name = _sanitize_report_name(effective_name)
         comparison = asdict(result.comparison)
         new_book_details = comparison.pop("new_book_rows")
+        effective_as_of_date = as_of_date or result.as_of_date
+        created_at_value = created_at or datetime.now(UTC)
+        if created_at_value.tzinfo is None or created_at_value.utcoffset() is None:
+            created_at_value = created_at_value.replace(tzinfo=UTC)
+        created_at_text = created_at_value.astimezone(UTC).isoformat()
 
         run_data: dict[str, Any] = {
             "run_id": run_id,
             "report_name": effective_name,
             "file_a_name": file_a_name,
             "file_b_name": file_b_name,
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": created_at_text,
+            "as_of_date": (
+                effective_as_of_date.isoformat()
+                if effective_as_of_date is not None
+                else None
+            ),
             "upload_refs": list(
                 dict.fromkeys(
                     path.name
@@ -165,6 +183,8 @@ def save_run(
                 "exception_columns": result.exception_columns,
                 "extra_column_display": result.extra_column_display,
                 "group_statistics": result.group_statistics,
+                "commentary_template_columns": result.commentary_template_columns,
+                "new_exceptions_only": result.new_exceptions_only,
             },
         }
 
@@ -185,8 +205,10 @@ def save_run(
             report_name=effective_name,
             file_a_name=file_a_name,
             file_b_name=file_b_name,
-            created_at=run_data["created_at"],
+            created_at=created_at_text,
             file_path=str(file_path),
+            as_of_date=run_data["as_of_date"],
+            new_exceptions_only=result.new_exceptions_only,
         )
 
         index = _load_index()
@@ -235,6 +257,8 @@ def rename_run(run_id: str, new_report_name: str) -> RunMetadata:
                     file_b_name=meta.file_b_name,
                     created_at=meta.created_at,
                     file_path=str(new_path),
+                    as_of_date=meta.as_of_date,
+                    new_exceptions_only=meta.new_exceptions_only,
                 )
                 index.runs[i] = updated
                 _save_index(index)
@@ -251,6 +275,11 @@ def load_run(run_id: str) -> dict[str, Any] | None:
             if file_path.exists():
                 with open(file_path) as f:
                     data: dict[str, Any] = json.load(f)
+                    # Historical runs may predate exception tracking. Expose an
+                    # explicit null rather than inventing a date (and never touch
+                    # tracking rows on read).
+                    if "as_of_date" not in data:
+                        data["as_of_date"] = meta.as_of_date
                     # Backward compatibility: accept legacy grouping_columns
                     result = data.get("result", {})
                     if "aggregation_columns" not in result:
@@ -270,6 +299,21 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                     if "rule_bindings" not in result:
                         # Legacy runs cannot be linked safely from their local Rxxx IDs.
                         result["rule_bindings"] = {}
+                    if "commentary_template_columns" not in result:
+                        result["commentary_template_columns"] = []
+                    if "new_exceptions_only" not in result:
+                        result["new_exceptions_only"] = True
+                    validation = result.get("validation") or {}
+                    if isinstance(validation, dict):
+                        for violations in (validation.get("violations_by_rule") or {}).values():
+                            if not isinstance(violations, list):
+                                continue
+                            for violation in violations:
+                                if not isinstance(violation, dict):
+                                    continue
+                                violation.setdefault("detail_values", {})
+                                violation.setdefault("exception_id", None)
+                                violation.setdefault("exception_status", None)
                     comparison = result.get("comparison", {})
                     if "new_book_count" not in comparison:
                         comparison["new_book_count"] = 0

@@ -22,6 +22,8 @@ interface StaticProps {
   extraColumnLabels?: Record<string, string>;
   hideComparison?: boolean;
   emptyMessage?: string;
+  /** Show the stable Exception ID as the leading row identifier. */
+  showExceptionId?: boolean;
   /** Optional column filters shown as filterable headers. */
   columnFilters?: ColumnFilter[];
   /** Active filter values per column key. */
@@ -39,6 +41,7 @@ type SortDirection = "asc" | "desc";
 
 function detailCellValue(row: DetailRow, key: string): string {
   if (key === "row") return String(row.rowKey ?? "");
+  if (key === "exceptionId") return String(row.exceptionId ?? "");
   if (key === "column") return String(row.column ?? "");
   if (key === "file1") return String(row.file1Value ?? "");
   if (key === "file2") return String(row.file2Value ?? "");
@@ -81,6 +84,7 @@ export function DetailTable({
   extraColumnLabels = {},
   hideComparison = false,
   emptyMessage = "No detail rows.",
+  showExceptionId = false,
   columnFilters = [],
   activeFilters = {},
   onFilterChange,
@@ -146,15 +150,17 @@ export function DetailTable({
   // creates a scrollable but unrenderable tail, which appears as blank table cells.
   const renderedTotal = virtualized ? virtualizer.getTotalSize() : undefined;
 
-  const keyColCount = keyColumnNames.length || 1;
+  const keyColCount = keyColumnNames.length || (showExceptionId ? 0 : 1);
   const extraColumnNames = configuredExtraColumnNames
     ?? [...new Set(renderedRows.flatMap((row) => Object.keys(row.extraValues ?? {})))];
   const colWidths: number[] = [];
+  if (showExceptionId) colWidths.push(260);
   for (let i = 0; i < keyColCount; i++) colWidths.push(150);
   colWidths.push(...extraColumnNames.map(() => 180));
   if (!hideComparison) colWidths.push(150, 180, 180);
   const tableMinWidth = colWidths.reduce((a, b) => a + b, 0);
   const colTemplate = [
+    ...(showExceptionId ? ["minmax(260px, 1.4fr)"] : []),
     ...Array.from({ length: keyColCount }, () => "minmax(150px, 1fr)"),
     ...extraColumnNames.map(() => "minmax(180px, 1.2fr)"),
     ...(!hideComparison
@@ -164,6 +170,14 @@ export function DetailTable({
 
   const headerCells = (
     <>
+      {showExceptionId && (
+        <SortableTh
+          label="Exception ID"
+          sortKey="exceptionId"
+          sort={sort}
+          onSort={toggleSort}
+        />
+      )}
       {keyColumnNames.length > 0 ? (
         keyColumnNames.map((name) => {
           const cf = columnFilters.find((f) => f.key === `key_${name}`);
@@ -183,7 +197,7 @@ export function DetailTable({
             <SortableTh key={name} label={name} sortKey={`key_${name}`} sort={sort} onSort={toggleSort} />
           );
         })
-      ) : (
+      ) : showExceptionId ? null : (
         <SortableTh label="Row" sortKey="row" sort={sort} onSort={toggleSort} />
       )}
       {extraColumnNames.map((name) => {
@@ -286,11 +300,16 @@ export function DetailTable({
                     }
                   : { gridTemplateColumns: colTemplate }}
               >
+                {showExceptionId && (
+                  <div role="cell" className="exception-detail-id">
+                    <code>{row.exceptionId ?? "—"}</code>
+                  </div>
+                )}
                 {keyColumnNames.length > 0 ? (
                   keyColumnNames.map((name) => (
                     <div role="cell" key={name}>{row.keyColumns[name] ?? "—"}</div>
                   ))
-                ) : (
+                ) : showExceptionId ? null : (
                   <div role="cell">{row.rowKey}</div>
                 )}
                 {extraColumnNames.map((name) => (

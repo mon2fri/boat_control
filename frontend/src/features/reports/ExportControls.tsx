@@ -1,10 +1,18 @@
 import { useRef, useState } from "react";
-import { downloadExport, ExportError } from "../../api/endpoints";
+import {
+  downloadExceptionCommentaryTemplate,
+  downloadExport,
+  ExportError,
+} from "../../api/endpoints";
 import { exportRenderedHtml } from "./exportRenderedHtml";
 
 interface Props {
   runId: string;
   reportName: string;
+  /** Persisted As-of Date; same date/template as the Exception Tracking tab. */
+  asOfDate?: string;
+  /** Result/report scope; does not narrow the commentary template. */
+  newExceptionsOnly?: boolean;
 }
 
 interface DownloadState {
@@ -25,11 +33,26 @@ interface DownloadState {
  * distinguishes between user-cancelled, network interruption, and server
  * errors.
  */
-export function ExportControls({ runId, reportName }: Props) {
+export function ExportControls({ runId, reportName, asOfDate, newExceptionsOnly }: Props) {
   const [busy, setBusy] = useState<DownloadState | null>(null);
+  const [commentaryBusy, setCommentaryBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  function saveBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.rel = "noopener";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    setSuccess(filename);
+  }
 
   async function download(format: "html" | "excel"): Promise<void> {
     setError(null);
@@ -54,21 +77,12 @@ export function ExportControls({ runId, reportName }: Props) {
           })()
         : await downloadExport(runId, format, reportName, {
             signal: controller.signal,
+            ...(newExceptionsOnly !== undefined ? { newExceptionsOnly } : {}),
             onProgress: (received, total) => {
               setBusy({ format, received, total });
             },
           });
-      const url = URL.createObjectURL(result.blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = result.filename;
-      a.rel = "noopener";
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      setSuccess(result.filename);
+      saveBlob(result.blob, result.filename);
     } catch (err) {
       if (controller.signal.aborted) {
         setError("Export cancelled.");
@@ -86,20 +100,55 @@ export function ExportControls({ runId, reportName }: Props) {
     }
   }
 
+  async function downloadCommentary(): Promise<void> {
+    if (!asOfDate) return;
+    setError(null);
+    setSuccess(null);
+    setCommentaryBusy(true);
+    try {
+      const result = await downloadExceptionCommentaryTemplate(asOfDate);
+      saveBlob(result.blob, result.filename);
+    } catch (err) {
+      setError(
+        err instanceof ExportError
+          ? `Commentary template failed: ${err.message}`
+          : err instanceof Error
+            ? `Commentary template failed: ${err.message}`
+            : "Commentary template failed for an unknown reason.",
+      );
+    } finally {
+      setCommentaryBusy(false);
+    }
+  }
+
   function cancel(): void {
     abortRef.current?.abort();
   }
 
   const percent =
     busy && busy.total && busy.total > 0 ? Math.min(100, Math.round((busy.received / busy.total) * 100)) : null;
+  const anyBusy = busy !== null || commentaryBusy;
 
   return (
     <div className="export-controls" role="group" aria-label="Export result" data-export-exclude>
-      <button type="button" className="btn" onClick={() => void download("html")} disabled={busy !== null}>
+      <button type="button" className="btn" onClick={() => void download("html")} disabled={anyBusy}>
         {busy?.format === "html" ? "Generating HTML…" : "Export HTML"}
       </button>
-      <button type="button" className="btn" onClick={() => void download("excel")} disabled={busy !== null}>
+      <button type="button" className="btn" onClick={() => void download("excel")} disabled={anyBusy}>
         {busy?.format === "excel" ? "Generating Excel…" : "Export Excel"}
+      </button>
+      <button
+        type="button"
+        className="btn"
+        onClick={() => void downloadCommentary()}
+        disabled={anyBusy || !asOfDate}
+        title={
+          asOfDate
+            ? `Download the selected-date commentary template (As-of Date ${asOfDate})`
+            : "This run has no As-of Date, so no commentary template is available."
+        }
+      >
+        {commentaryBusy ? "Preparing commentary template…" : "Download commentary template"}
       </button>
 
       {busy && (

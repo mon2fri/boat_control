@@ -130,11 +130,46 @@ describe("result components", () => {
     );
 
     const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
-    expect(headers.slice(0, 3)).toEqual(["id", "region", "Column"]);
+    expect(headers.slice(0, 4)).toEqual(["Exception ID", "id", "region", "Column"]);
     fireEvent.click(screen.getByRole("button", { name: "Filter region" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "EMEA" }));
     expect(screen.getByRole("cell", { name: "EMEA" })).toBeInTheDocument();
     expect(screen.queryByRole("cell", { name: "APAC" })).not.toBeInTheDocument();
+  });
+
+  it("renders the stable Exception ID in the rule exception-detail table", () => {
+    const ruleIdentifier = "CBR1_0123456789ABCDEFGHJK";
+    render(
+      <RuleResultSection
+        keyColumnNames={["id", "region"]}
+        result={{
+          ...ruleResult,
+          ruleIdentifier,
+          details: [{
+            rowKey: "#0",
+            keyColumns: { id: "1", region: "EMEA" },
+            column: "status",
+            file1Value: "old",
+            file2Value: "new",
+            kind: "exception",
+          }],
+        }}
+      />,
+    );
+
+    const region = screen.getByRole("region", { name: "Detail rows for R001" });
+    const table = within(region).getByRole("table");
+    expect(within(table).getByRole("columnheader", { name: "Exception ID" })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("cell", { name: `${ruleIdentifier}_1_EMEA` }),
+    ).toBeInTheDocument();
+    expect(within(table).queryByRole("columnheader", { name: "Row" })).not.toBeInTheDocument();
+    // All pre-existing detail columns remain.
+    expect(within(table).getByRole("columnheader", { name: "id" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "region" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Column" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "In Baseline" })).toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "In Comparison" })).toBeInTheDocument();
   });
 
   it("hides comparison columns for rules configured to hide comparison", () => {
@@ -204,6 +239,56 @@ describe("result components", () => {
     expect(screen.queryByRole("columnheader", { name: "Kind" })).not.toBeInTheDocument();
     rerender(<DetailTable rows={[]} caption="Changes" />);
     expect(screen.getByText("No detail rows.")).toBeInTheDocument();
+  });
+
+  it("uses the stable Exception ID as the exception-detail row identifier", () => {
+    const exceptionId = "CBR1_0123456789ABCDEFGHJK_1_EMEA";
+    render(
+      <DetailTable
+        rows={[{
+          rowKey: "#0",
+          exceptionId,
+          keyColumns: { id: "1", region: "EMEA" },
+          column: "status",
+          file1Value: "old",
+          file2Value: "new",
+          kind: "exception",
+        }]}
+        caption="Exception details"
+        keyColumnNames={["id", "region"]}
+        showExceptionId
+      />,
+    );
+
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "Exception ID", "id", "region", "Column", "In Baseline", "In Comparison",
+    ]);
+    expect(within(table).queryByRole("columnheader", { name: "Row" })).not.toBeInTheDocument();
+    const cells = within(table).getAllByRole("row")[1]!;
+    expect(within(cells).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      exceptionId, "1", "EMEA", "status", "old", "new",
+    ]);
+  });
+
+  it("never substitutes a row position when no stable Exception ID is available", () => {
+    render(
+      <DetailTable
+        rows={[{
+          rowKey: "#0",
+          keyColumns: {},
+          column: "status",
+          file1Value: "old",
+          file2Value: "new",
+          kind: "exception",
+        }]}
+        caption="Identity unavailable"
+        showExceptionId
+      />,
+    );
+    const table = screen.getByRole("table");
+    expect(within(table).queryByRole("columnheader", { name: "Row" })).not.toBeInTheDocument();
+    expect(within(table).getAllByRole("cell")[0]).toHaveTextContent("—");
   });
 
   it("shows a provided rule description in the result section", () => {

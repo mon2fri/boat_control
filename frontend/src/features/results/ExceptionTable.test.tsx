@@ -24,6 +24,7 @@ function makeExceptionRow(
 
 const RULE_A: RuleResult = {
   ruleIndex: "R001",
+  ruleIdentifier: "CBR1_00000000000000000001",
   ruleName: "Rule A",
   logicSummary: "score lt 20",
   violationRowCount: 2,
@@ -36,6 +37,7 @@ const RULE_A: RuleResult = {
 
 const RULE_B: RuleResult = {
   ruleIndex: "R002",
+  ruleIdentifier: "CBR1_00000000000000000002",
   ruleName: "Rule B",
   logicSummary: "score eq 10",
   violationRowCount: 1,
@@ -83,9 +85,71 @@ describe("ExceptionTable", () => {
       />,
     );
     expect(screen.getByText("id")).toBeInTheDocument();
+    expect(screen.getByText("Exception ID")).toBeInTheDocument();
     expect(screen.getByText("Rule Index")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
     expect(screen.getByText("region")).toBeInTheDocument();
+  });
+
+  it("uses stable canonical Exception IDs instead of row positions", () => {
+    const { container } = render(
+      <ExceptionTable
+        ruleResults={[RULE_A, RULE_B]}
+        keyColumnNames={["id"]}
+        aggregationColumnLabels={{}}
+        exceptionColumns={["region"]}
+      />,
+    );
+    container.querySelector("details")?.setAttribute("open", "");
+    const ids = [...container.querySelectorAll(".detail-grid-body .exception-detail-id")]
+      .map((cell) => cell.textContent);
+    expect(ids).toEqual([
+      "CBR1_00000000000000000001_1",
+      "CBR1_00000000000000000001_2",
+      "CBR1_00000000000000000002_3",
+    ]);
+    expect(ids).not.toContain("1");
+    expect(ids).not.toContain("2");
+  });
+
+  it("prefers a backend-supplied Exception ID over the frontend fallback", () => {
+    const supplied: RuleResult = {
+      ...RULE_A,
+      details: [{
+        ...RULE_A.details[0]!,
+        exceptionId: "BACKEND_SUPPLIED_ID",
+      }],
+    };
+    const { container } = render(
+      <ExceptionTable
+        ruleResults={[supplied]}
+        keyColumnNames={["id"]}
+        aggregationColumnLabels={{}}
+        exceptionColumns={["region"]}
+      />,
+    );
+    container.querySelector("details")?.setAttribute("open", "");
+    expect(container.querySelector(".exception-detail-id code")).toHaveTextContent(
+      "BACKEND_SUPPLIED_ID",
+    );
+  });
+
+  it("shows a dash rather than a row number when no stable identity exists", () => {
+    const legacy: RuleResult = {
+      ...RULE_A,
+      ruleIdentifier: null,
+      details: [RULE_A.details[0]!],
+    };
+    const { container } = render(
+      <ExceptionTable
+        ruleResults={[legacy]}
+        keyColumnNames={["id"]}
+        aggregationColumnLabels={{}}
+        exceptionColumns={["region"]}
+      />,
+    );
+    container.querySelector("details")?.setAttribute("open", "");
+    expect(container.querySelector(".exception-detail-id code")).toHaveTextContent("—");
   });
 
   it("aggregates rows across multiple rules", () => {
@@ -126,8 +190,10 @@ describe("ExceptionTable", () => {
       />,
     );
     container.querySelector("details")?.setAttribute("open", "");
-    const filterMenu = container.querySelector(".th-filter-dropdown");
     const filterButton = screen.getByRole("button", { name: "Filter by key_id" });
+    const filterMenu = filterButton
+      .closest(".th-filter-wrapper")
+      ?.querySelector(".th-filter-dropdown");
 
     expect(filterMenu).toHaveAttribute("hidden");
     expect(filterButton).toHaveAttribute("aria-expanded", "false");

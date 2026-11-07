@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 import tempfile
 import threading
 from dataclasses import asdict, dataclass
@@ -20,6 +22,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "family_config_path": "config/families",
     "full_set_confirmation_rows": 2000,
     "run_history_path": "data/results",
+    "exception_tracking_path": "data/exception_tracking.db",
 }
 
 
@@ -33,6 +36,7 @@ class AppSettings:
     family_config_path: str = "config/families"
     full_set_confirmation_rows: int = 2000
     run_history_path: str = "data/results"
+    exception_tracking_path: str = "data/exception_tracking.db"
 
     @property
     def preset_source_paths(self) -> list[str]:
@@ -57,6 +61,87 @@ def _configured_path(value: str, setting_name: str, default: str) -> Path:
     django_path = Path(getattr(settings, setting_name)).resolve()
     default_path = _project_path(default)
     return django_path if django_path != default_path else configured
+
+
+_DEFAULT_TRACKING_PATH = str(DEFAULT_SETTINGS["exception_tracking_path"])
+_WINDOWS_ABSOLUTE = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\)")
+
+
+def _is_windows_absolute(value: str) -> bool:
+    return bool(_WINDOWS_ABSOLUTE.match(value))
+
+
+def _is_posix_absolute(value: str) -> bool:
+    return value.startswith("/")
+
+
+def _tracking_path_location(value: str, *, base_dir: Path | None = None) -> Path:
+    """Return the host path for a configured tracking path without rewriting the raw value.
+
+    Foreign absolute paths are deliberately rejected instead of being joined to
+    the project root. The stored ``exception_tracking_path`` value is never
+    changed by this function.
+    """
+    raw = str(value).strip()
+    if not raw:
+        raise ValueError("exception_tracking_path must not be empty")
+
+    if _is_windows_absolute(raw):
+        if os.name != "nt":
+            raise ValueError(
+                "This Windows absolute path cannot be used on the current non-Windows host: "
+                f"{raw}"
+            )
+        return Path(raw).expanduser()
+
+    if _is_posix_absolute(raw):
+        if os.name == "nt":
+            raise ValueError(
+                "This Linux absolute path cannot be used on the current Windows host: "
+                f"{raw}"
+            )
+        return Path(raw).expanduser()
+
+    if raw.startswith("~"):
+        return Path(raw).expanduser()
+
+    if "\\" in raw and os.name != "nt":
+        raise ValueError(
+            "Relative paths must use the current host's separator; "
+            f"enter an absolute path instead: {raw}"
+        )
+
+    root = Path(base_dir) if base_dir is not None else Path(settings.BASE_DIR)
+    return (root / raw).expanduser()
+
+
+def validate_exception_tracking_path(
+    value: str, *, base_dir: Path | None = None
+) -> Path:
+    """Validate that a tracking database path is usable on this host.
+
+    The parent directory is created when needed. The database file itself is
+    not created until the tracking repository opens it.
+    """
+    path = _tracking_path_location(value, base_dir=base_dir)
+    if path.exists() and path.is_dir():
+        raise ValueError(f"exception_tracking_path points to a directory: {path}")
+
+    parent = path.parent
+    try:
+        parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ValueError(
+            f"Cannot create the exception tracking directory {parent}: {exc}"
+        ) from exc
+
+    if not os.access(parent, os.W_OK | os.X_OK):
+        raise ValueError(
+            f"The exception tracking directory is not writable on this host: {parent}"
+        )
+    if path.exists() and not os.access(path, os.W_OK):
+        raise ValueError(f"The exception tracking database is not writable: {path}")
+    return path
 
 
 def load_settings() -> AppSettings:
@@ -84,6 +169,12 @@ def load_settings() -> AppSettings:
         ),
         full_set_confirmation_rows=threshold,
         run_history_path=str(values["run_history_path"]),
+        exception_tracking_path=str(
+            values.get(
+                "exception_tracking_path",
+                DEFAULT_SETTINGS["exception_tracking_path"],
+            )
+        ),
     )
 
 
@@ -133,9 +224,12 @@ def update_settings(updates: dict[str, Any]) -> AppSettings:
             "filter_config_path",
             "family_config_path",
             "run_history_path",
+            "exception_tracking_path",
         ):
             if not str(getattr(current, field_name)).strip():
                 raise ValueError(f"{field_name} must not be empty")
+
+        validate_exception_tracking_path(current.exception_tracking_path)
 
         save_settings(current)
         return current
@@ -184,3 +278,22 @@ def get_run_history_dir(app_settings: AppSettings | None = None) -> Path:
 def get_family_config_dir(app_settings: AppSettings | None = None) -> Path:
     current = app_settings or load_settings()
     return _configured_path(current.family_config_path, "FAMILY_CONFIG_DIR", "config/families")
+
+
+def get_exception_tracking_path(app_settings: AppSettings | None = None) -> Path:
+    """Resolve the tracking database path for the current host.
+
+    A Django test/deployment override (``EXCEPTION_TRACKING_DB``) wins when it
+    differs from the normal project-root default, matching how the other
+    configurable directories retain explicit overrides.
+    """
+    current = app_settings or load_settings()
+    override = getattr(settings, "EXCEPTION_TRACKING_DB", None)
+    if override is not None:
+        override_path = Path(override)
+        default_path = _tracking_path_location(
+            _DEFAULT_TRACKING_PATH, base_dir=Path(settings.BASE_DIR)
+        )
+        if override_path.resolve() != default_path.resolve():
+            return override_path
+    return validate_exception_tracking_path(current.exception_tracking_path)

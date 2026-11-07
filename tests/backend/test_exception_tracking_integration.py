@@ -1,0 +1,267 @@
+"""B/A integration boundary: real repository + B workbook/API services.
+
+This file is skipped until the reviewer integrates Worker A's repository
+commit. It is intentionally not a mock: it exercises the accepted storage
+contract, cross-date history/status, commentary carry-forward, and rollback
+behavior with the real SQLite implementation.
+"""
+
+from __future__ import annotations
+
+import io
+from datetime import UTC, date, datetime
+from pathlib import Path
+
+import pytest
+from apps.exception_tracking import api_services
+from apps.exception_tracking.api_services import (
+    TrackingAPIError,
+    export_commentary,
+    import_commentary,
+    list_exceptions,
+)
+from apps.exception_tracking.workbook import EXCEPTION_HEADERS, build_commentary_workbook
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test.utils import override_settings
+from openpyxl import load_workbook
+from rest_framework.test import APIClient
+
+try:
+    from apps.exception_tracking import domain as domain_module
+    from apps.exception_tracking import repository as repository_module
+
+    _REPOSITORY_AVAILABLE = True
+except ImportError:  # Worker A foundation is integrated separately
+    domain_module = None  # type: ignore[assignment]
+    repository_module = None  # type: ignore[assignment]
+    _REPOSITORY_AVAILABLE = False
+
+pytestmark = pytest.mark.skipif(
+    not _REPOSITORY_AVAILABLE,
+    reason="Worker A exception tracking repository is not integrated yet",
+)
+
+RULE_IDENTIFIER = "CBR1_00000000000000000000"
+FIRST_DATE = date(2026, 9, 30)
+SECOND_DATE = date(2026, 10, 30)
+
+
+def _occurrence(
+    *, commentary: str | None = None, timestamp: datetime | None = None
+):  # type: ignore[no-untyped-def]
+    return domain_module.ExceptionOccurrence(
+        exception_rule_identifier=RULE_IDENTIFIER,
+        key_columns={"id": "A", "region": "EMEA"},
+        key_column_order=["id", "region"],
+        exception_timestamp=timestamp or datetime(2026, 9, 30, 9, 0, tzinfo=UTC),
+        exception_commentary=commentary,
+    )
+
+
+def test_real_store_round_trip_prefill_and_carry_forward(tmp_path: Path) -> None:
+    repository = repository_module.ExceptionTrackingRepository(tmp_path / "tracking.db")
+    repository.record_exceptions(FIRST_DATE, [_occurrence(commentary="Known upstream defect")])
+    repository.record_exceptions(SECOND_DATE, [_occurrence()])
+
+    first_records = list_exceptions(FIRST_DATE, repository)
+    second_records = list_exceptions(SECOND_DATE, repository)
+    assert first_records[0]["status"] == "Commented"
+    assert first_records[0]["exception_first_seen_as_of_date"] == "2026-09-30"
+    assert first_records[0]["exception_last_seen_as_of_date"] == "2026-10-30"
+    assert second_records[0]["exception_commentary"] == "Known upstream defect"
+    assert second_records[0]["status"] == "Commented"
+
+    template = export_commentary(SECOND_DATE, repository)
+    workbook = load_workbook(io.BytesIO(template))
+    assert workbook["Template"]["B3"].value == "2026-10-30"
+    assert workbook["Exceptions"]["C2"].value == "Known upstream defect"
+
+    edited = build_commentary_workbook(
+        [{**second_records[0], "exception_commentary": "Reviewed"}], SECOND_DATE
+    )
+    result = import_commentary(
+        edited, requested_as_of_date="2026-10-30", repository=repository
+    )
+    assert result["updated"] == 1
+    assert result["exceptions"][0]["exception_commentary"] == "Reviewed"
+    assert result["exceptions"][0]["status"] == "Commented"
+
+
+def test_real_store_blank_commentary_clears_selected_date_only(tmp_path: Path) -> None:
+    repository = repository_module.ExceptionTrackingRepository(tmp_path / "tracking.db")
+    repository.record_exceptions(FIRST_DATE, [_occurrence(commentary="Known")])
+    repository.record_exceptions(SECOND_DATE, [_occurrence(commentary="Known")])
+    second_records = list_exceptions(SECOND_DATE, repository)
+
+    cleared = build_commentary_workbook(
+        [{**second_records[0], "exception_commentary": ""}], SECOND_DATE
+    )
+    result = import_commentary(
+        cleared, requested_as_of_date="2026-10-30", repository=repository
+    )
+
+    assert result["cleared"] == 1
+    assert result["exceptions"][0]["status"] == "NotCommented"
+    assert list_exceptions(FIRST_DATE, repository)[0]["exception_commentary"] == "Known"
+
+
+def test_real_store_is_untouched_when_workbook_ids_do_not_match(tmp_path: Path) -> None:
+    repository = repository_module.ExceptionTrackingRepository(tmp_path / "tracking.db")
+    repository.record_exceptions(FIRST_DATE, [_occurrence(commentary="Original")])
+    record = list_exceptions(FIRST_DATE, repository)[0]
+    template = build_commentary_workbook(
+        [{**record, "exception_id": "UNKNOWN_ID", "exception_commentary": "Changed"}],
+        FIRST_DATE,
+    )
+
+    with pytest.raises(TrackingAPIError) as error:
+        import_commentary(template, requested_as_of_date="2026-09-30", repository=repository)
+
+    assert error.value.code == "unknown_exception_ids"
+    assert list_exceptions(FIRST_DATE, repository)[0]["exception_commentary"] == "Original"
+
+
+def test_api_adapter_opens_configured_real_database(tmp_path: Path) -> None:
+    database_path = tmp_path / "configured-tracking.db"
+    repository = repository_module.ExceptionTrackingRepository(database_path)
+    repository.record_exceptions(FIRST_DATE, [_occurrence(commentary="Known")])
+
+    with override_settings(
+        EXCEPTION_TRACKING_DB=database_path,
+        SETTINGS_FILE=tmp_path / ".config",
+    ):
+        client = APIClient()
+        dates = client.get("/api/exception-tracking/dates/")
+        listing = client.get("/api/exception-tracking/?as_of_date=2026-09-30")
+        export = client.get("/api/exception-tracking/export/?as_of_date=2026-09-30")
+
+        assert dates.status_code == 200
+        assert dates.json()["dates"] == ["2026-09-30"]
+        assert listing.status_code == 200
+        assert listing.json()["exceptions"][0]["status"] == "Commented"
+        assert export.status_code == 200
+
+        workbook = load_workbook(io.BytesIO(export.content))
+        workbook["Exceptions"]["C2"] = "Reviewed"
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        uploaded = SimpleUploadedFile(
+            "template.xlsx",
+            buffer.getvalue(),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+        imported = client.post(
+            "/api/exception-tracking/import/",
+            {"file": uploaded, "as_of_date": "2026-09-30"},
+            format="multipart",
+        )
+
+        assert imported.status_code == 200
+        assert imported.json()["updated"] == 1
+        assert imported.json()["exceptions"][0]["exception_commentary"] == "Reviewed"
+
+
+def test_real_store_export_uses_standard_columns_without_detail_metadata(
+    tmp_path: Path,
+) -> None:
+    repository = repository_module.ExceptionTrackingRepository(tmp_path / "tracking.db")
+    repository.record_exceptions(FIRST_DATE, [_occurrence(commentary="Known")])
+
+    template = export_commentary(FIRST_DATE, repository)
+    workbook = load_workbook(io.BytesIO(template))
+    sheet = workbook["Exceptions"]
+
+    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert sheet["A2"].value == list_exceptions(FIRST_DATE, repository)[0]["exception_id"]
+    assert sheet["B2"].value == "Commented"
+    assert sheet["C2"].value == "Known"
+
+
+def test_real_store_date_scoped_template_columns_and_later_historical_union(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = repository_module.ExceptionTrackingRepository(tmp_path / "tracking.db")
+    occurrence_type = domain_module.ExceptionOccurrence
+    repository.record_exceptions(
+        FIRST_DATE,
+        [
+            occurrence_type(
+                exception_rule_identifier=RULE_IDENTIFIER,
+                key_columns={"id": "A", "region": "EMEA"},
+                key_column_order=["id", "region"],
+                exception_timestamp=datetime(2026, 8, 31, 9, tzinfo=UTC),
+                exception_rule_index="R001",
+                exception_extra_values={"REGION": "EMEA", "SEGMENT": "Retail"},
+            )
+        ],
+        extra_columns=["REGION", "SEGMENT"],
+    )
+    repository.record_exceptions(
+        SECOND_DATE,
+        [
+            occurrence_type(
+                exception_rule_identifier=RULE_IDENTIFIER,
+                key_columns={"id": "A", "region": "EMEA"},
+                key_column_order=["id", "region"],
+                exception_timestamp=datetime(2026, 9, 30, 9, tzinfo=UTC),
+                exception_rule_index="R001",
+                exception_extra_values={
+                    "SEGMENT": "Wholesale",
+                    "PORTFOLIO": "Growth",
+                },
+            )
+        ],
+        extra_columns=["SEGMENT", "PORTFOLIO"],
+    )
+    monkeypatch.setattr(api_services, "get_repository", lambda: repository)
+
+    august_columns = api_services.list_template_detail_columns(repository, FIRST_DATE)
+    september_columns = api_services.list_template_detail_columns(
+        repository, SECOND_DATE
+    )
+    assert august_columns == ["REGION", "SEGMENT", "PORTFOLIO"]
+    assert september_columns == ["SEGMENT", "PORTFOLIO"]
+
+    august_listing = APIClient().get(
+        f"/api/exception-tracking/?as_of_date={FIRST_DATE.isoformat()}"
+    ).json()
+    september_listing = APIClient().get(
+        f"/api/exception-tracking/?as_of_date={SECOND_DATE.isoformat()}"
+    ).json()
+    assert august_listing["detail_columns"] == august_columns
+    assert august_listing["exceptions"][0]["detail_values"] == {
+        "REGION": "EMEA",
+        "SEGMENT": "Retail",
+        "PORTFOLIO": "",
+    }
+    assert september_listing["detail_columns"] == september_columns
+    assert september_listing["exceptions"][0]["detail_values"] == {
+        "SEGMENT": "Wholesale",
+        "PORTFOLIO": "Growth",
+    }
+
+    august = load_workbook(io.BytesIO(export_commentary(FIRST_DATE, repository)))
+    september = load_workbook(io.BytesIO(export_commentary(SECOND_DATE, repository)))
+    august_sheet = august["Exceptions"]
+    september_sheet = september["Exceptions"]
+    assert [cell.value for cell in august_sheet[1]][len(EXCEPTION_HEADERS) :] == [
+        "REGION",
+        "SEGMENT",
+        "PORTFOLIO",
+    ]
+    assert [cell.value for cell in august_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+        "EMEA",
+        "Retail",
+        None,
+    ]
+    assert [cell.value for cell in september_sheet[1]] == [
+        *EXCEPTION_HEADERS,
+        "SEGMENT",
+        "PORTFOLIO",
+    ]
+    assert [cell.value for cell in september_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+        "Wholesale",
+        "Growth",
+    ]

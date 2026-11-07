@@ -7,6 +7,7 @@ import type {
   RunResult,
   ExtraColumnDisplay,
 } from "../api/domain";
+import { defaultAsOfDate, isValidIsoDate } from "../lib/asOfDate";
 
 export interface PreparedDataCache {
   sessionId: string;
@@ -22,6 +23,8 @@ export interface PreparedDataCache {
  */
 export interface WorkflowState {
   header: HeaderReport | null;
+  /** Calendar date used for exception tracking; carried through run and restoration. */
+  asOfDate: string;
   /** Shared columns selected for comparison. Initialized to all common columns on upload. */
   comparisonColumns: string[];
   filters: FilterRow[];
@@ -38,6 +41,10 @@ export interface WorkflowState {
   comparisonSections: ComparisonSection[];
   /** Extra columns included in the exception table beyond key + aggregation columns. */
   exceptionColumns: string[];
+  /** Ordered source columns appended to the commentary template and tracking table. */
+  commentaryColumns: string[];
+  /** Display/report scope: include New + NotCommented, exclude Commented. */
+  newExceptionsOnly: boolean;
   extraColumnDisplay?: ExtraColumnDisplay;
   /** Page-two CSV scan result, reusable while files and columns are unchanged. */
   preparedData?: PreparedDataCache | null;
@@ -55,6 +62,7 @@ export interface WorkflowState {
 
 const initialState: WorkflowState = {
   header: null,
+  asOfDate: defaultAsOfDate(),
   comparisonColumns: [],
   filters: [],
   targetColumns: [],
@@ -64,6 +72,8 @@ const initialState: WorkflowState = {
   nestedAggregationEnabled: false,
   comparisonSections: [],
   exceptionColumns: [],
+  commentaryColumns: [],
+  newExceptionsOnly: true,
   extraColumnDisplay: { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true },
   preparedData: null,
   selectedRuleIndexes: [],
@@ -76,6 +86,7 @@ const initialState: WorkflowState = {
 
 type Action =
   | { type: "setHeader"; header: HeaderReport }
+  | { type: "setAsOfDate"; date: string }
   | { type: "setComparisonColumns"; columns: string[] }
   | { type: "removeComparisonColumn"; column: string }
   | { type: "setAggregationColumns"; columns: string[] }
@@ -83,6 +94,8 @@ type Action =
   | { type: "setNestedAggregationEnabled"; enabled: boolean }
   | { type: "setComparisonSections"; sections: ComparisonSection[] }
   | { type: "setExceptionColumns"; columns: string[] }
+  | { type: "setCommentaryColumns"; columns: string[] }
+  | { type: "setNewExceptionsOnly"; enabled: boolean }
   | { type: "setExtraColumnDisplay"; display: ExtraColumnDisplay }
   | { type: "setPreparedData"; cache: PreparedDataCache }
   | { type: "setFilters"; filters: FilterRow[] }
@@ -100,7 +113,18 @@ type Action =
 function reducer(state: WorkflowState, action: Action): WorkflowState {
   switch (action.type) {
     case "setHeader":
-      return { ...initialState, header: action.header, comparisonColumns: [...action.header.common] };
+      return {
+        ...initialState,
+        // Keep the date the user chose before/while loading files; a
+        // backend-echoed date is authoritative when present.
+        asOfDate: action.header.asOfDate && isValidIsoDate(action.header.asOfDate)
+          ? action.header.asOfDate
+          : state.asOfDate || initialState.asOfDate,
+        header: action.header,
+        comparisonColumns: [...action.header.common],
+      };
+    case "setAsOfDate":
+      return { ...state, asOfDate: action.date };
     case "setComparisonColumns": {
       const cols = action.columns;
       const colSet = new Set(cols);
@@ -123,6 +147,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
           }))
           .filter((s) => s.columns.length > 0),
         exceptionColumns: state.exceptionColumns.filter((c) => colSet.has(c)),
+        commentaryColumns: state.commentaryColumns.filter((c) => colSet.has(c)),
         filters: state.filters.map((f) =>
           colSet.has(f.column) ? f : { ...f, column: "" },
         ),
@@ -150,6 +175,7 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
           }))
           .filter((s) => s.columns.length > 0),
         exceptionColumns: state.exceptionColumns.filter((c) => c !== col),
+        commentaryColumns: state.commentaryColumns.filter((c) => c !== col),
         filters: state.filters.map((f) =>
           f.column === col ? { ...f, column: "" } : f,
         ),
@@ -184,6 +210,10 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
       };
     case "setExceptionColumns":
       return { ...state, exceptionColumns: action.columns };
+    case "setCommentaryColumns":
+      return { ...state, commentaryColumns: action.columns };
+    case "setNewExceptionsOnly":
+      return { ...state, newExceptionsOnly: action.enabled };
     case "setExtraColumnDisplay":
       return { ...state, extraColumnDisplay: action.display };
     case "setPreparedData":

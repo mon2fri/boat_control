@@ -25,6 +25,7 @@ class UploadSession:
     only_in_a: list[str]
     only_in_b: list[str]
     created_at: str
+    as_of_date: str | None = None
 
 
 _SESSION_TTL = timedelta(hours=24)
@@ -42,6 +43,7 @@ def create_session(
     columns_b: list[str],
     only_in_a: list[str],
     only_in_b: list[str],
+    as_of_date: str | None = None,
 ) -> UploadSession:
     session_id = uuid.uuid4().hex[:12]
     session = UploadSession(
@@ -56,6 +58,7 @@ def create_session(
         only_in_a=only_in_a,
         only_in_b=only_in_b,
         created_at=datetime.now(UTC).isoformat(),
+        as_of_date=as_of_date,
     )
     with _lock:
         _sessions[session_id] = session

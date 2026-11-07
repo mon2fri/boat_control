@@ -38,6 +38,10 @@ from apps.rules.repository import (
 )
 from apps.rules.serializers import RuleSerializer
 from apps.rules.services import _serialize_grouping_tree, validate_rule
+from apps.runs.template_columns import (
+    TemplateColumnError,
+    normalize_rows_and_columns_content,
+)
 from apps.settings.services import (
     get_filter_config_dir,
     get_rows_and_columns_config_dir,
@@ -361,8 +365,66 @@ class RowsAndColumnsConfigListView(BaseConfigListView):
     def directory(self) -> Path:
         return get_rows_and_columns_config_dir()
 
+    def post(self, request: Request) -> Response:
+        serializer = ConfigCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            content = normalize_rows_and_columns_content(
+                serializer.validated_data["content"]
+            )
+            config = create_config(
+                self.directory,
+                serializer.validated_data["name"],
+                content,
+            )
+        except TemplateColumnError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except ConfigNameError as exc:
+            return Response({"error": str(exc)}, status=400)
+        return Response(
+            {"name": config.name, "version": config.version},
+            status=201,
+        )
+
 
 class RowsAndColumnsConfigDetailView(BaseConfigDetailView):
     @property
     def directory(self) -> Path:
         return get_rows_and_columns_config_dir()
+
+    def get(self, request: Request, name: str) -> Response:
+        config = get_config(self.directory, name)
+        if config is None:
+            return Response(
+                {"error": f"Configuration '{name}' not found."}, status=404
+            )
+        try:
+            content = normalize_rows_and_columns_content(config.content)
+        except TemplateColumnError as exc:
+            return Response({"error": str(exc)}, status=400)
+        return Response(
+            {"name": config.name, "version": config.version, "content": content}
+        )
+
+    def put(self, request: Request, name: str) -> Response:
+        serializer = ConfigUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            content = normalize_rows_and_columns_content(
+                serializer.validated_data["content"]
+            )
+            config = update_config(
+                self.directory,
+                name,
+                content,
+                serializer.validated_data["version"],
+            )
+        except TemplateColumnError as exc:
+            return Response({"error": str(exc)}, status=400)
+        except ConfigNotFoundError as exc:
+            return Response({"error": str(exc)}, status=404)
+        except ConfigConflictError as exc:
+            return Response({"error": str(exc)}, status=409)
+        except ConfigNameError as exc:
+            return Response({"error": str(exc)}, status=400)
+        return Response(_config_to_response(config))

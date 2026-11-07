@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from apps.rules.services import (
     Rule,
     load_rules,
 )
+from apps.runs.template_columns import validate_concrete_columns
 
 
 def _evaluate_grouping_tree(node: GroupingLeaf | GroupingBranch, cond_results: list[bool]) -> bool:
@@ -73,6 +75,9 @@ class ValidationViolation:
     extra_values: dict[str, Any] = field(default_factory=dict)
     grouping_values: dict[str, Any] = field(default_factory=dict)
     rule_identifier: str | None = None
+    detail_values: dict[str, str] = field(default_factory=dict)
+    exception_id: str | None = None
+    exception_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -115,6 +120,9 @@ class ExecutionResult:
     extra_column_display: dict[str, bool] = field(default_factory=dict)
     group_statistics: dict[str, Any] | None = None
     rule_bindings: dict[str, str] = field(default_factory=dict)
+    as_of_date: date | None = None
+    commentary_template_columns: list[str] = field(default_factory=list)
+    new_exceptions_only: bool = True
 
 
 def apply_filters(
@@ -193,7 +201,8 @@ def compare_rows(
     matched_rows = inner_joined.height
 
     change_conditions = [
-        pl.col(col) != pl.col(f"{col}_b") for col in target_columns if f"{col}_b" in merged.columns
+        pl.col(col).ne_missing(pl.col(f"{col}_b"))
+        for col in target_columns if f"{col}_b" in merged.columns
     ]
     if not change_conditions:
         return ComparisonResult(
@@ -269,6 +278,16 @@ def compare_rows(
     )
 
 
+def _detail_text(value: Any) -> str:
+    """Render a captured detail value as lossless literal text."""
+
+    if value is None:
+        return ""
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value)
+
+
 def validate_rows(
     df: pl.DataFrame,
     rules: list[Rule],
@@ -277,6 +296,7 @@ def validate_rows(
     comparison_df: pl.DataFrame | None = None,
     aggregation_columns: list[str] | None = None,
     exception_columns: list[str] | None = None,
+    commentary_template_columns: list[str] | None = None,
 ) -> ValidationResult:
     """Validate rows from the comparison file against rules.
 
@@ -341,6 +361,15 @@ def validate_rows(
                     extra_values[column] = row.get(column)
                 for column in (exception_columns or []):
                     extra_values[column] = row.get(column)
+                detail_values: dict[str, str] = {}
+                for column in commentary_template_columns or []:
+                    if column in row:
+                        raw_detail = row.get(column)
+                    elif baseline_row is not None and column in baseline_row:
+                        raw_detail = baseline_row.get(column)
+                    else:
+                        raw_detail = None
+                    detail_values[column] = _detail_text(raw_detail)
                 violations.append(
                     ValidationViolation(
                         row_index=idx,
@@ -357,6 +386,7 @@ def validate_rows(
                         extra_values=extra_values,
                         grouping_values=agg_vals,
                         rule_identifier=rule.rule_identifier,
+                        detail_values=detail_values,
                     )
                 )
                 rule_rows.add(idx)
@@ -555,11 +585,13 @@ def _check_rule(
 
     logic = rule.logic
     if logic.column_name not in row:
-        return (False, "", None)
+        return (True, logic.column_name, None)
 
     raw = row[logic.column_name]
     if raw is None:
-        return (False, "", None)
+        # Missing data cannot satisfy a required-state rule, regardless of
+        # operator. Keep the row and report the missing value as a violation.
+        return (True, logic.column_name, None)
     val = str(raw)
 
     if logic.format == "column_vs_column":
@@ -569,10 +601,10 @@ def _check_rule(
             else baseline_row if baseline_row is not None else row
         )
         if logic.target_value not in source:
-            return (False, "", None)
+            return (True, logic.column_name, raw)
         raw_target = source[logic.target_value]
         if raw_target is None:
-            return (False, "", None)
+            return (True, logic.column_name, raw)
         target = str(raw_target)
         violating_col = logic.column_name
     else:
@@ -791,12 +823,26 @@ def execute_comparison(
     comparison_sections: list[dict[str, Any]] | None = None,
     exception_columns: list[str] | None = None,
     extra_column_display: dict[str, bool] | None = None,
+    as_of_date: date | None = None,
+    commentary_template_columns: list[str] | None = None,
+    new_exceptions_only: bool = True,
 ) -> ExecutionResult:
     if filters is None:
         filters = []
 
     headers_a = pl.scan_csv(path_a, infer_schema=False).head(1).collect().columns
     headers_b = pl.scan_csv(path_b, infer_schema=False).head(1).collect().columns
+    template_columns = validate_concrete_columns(commentary_template_columns)
+    missing_template_columns = [
+        column
+        for column in template_columns
+        if column not in headers_a and column not in headers_b
+    ]
+    if missing_template_columns:
+        raise ValueError(
+            "Invalid commentary template columns: "
+            f"{', '.join(missing_template_columns)}"
+        )
 
     all_common_columns = [c for c in headers_a if c in headers_b]
 
@@ -886,14 +932,16 @@ def execute_comparison(
     for col in (exception_columns or []):
         if col in valid_filter_cols:
             needed_columns.add(col)
+    needed_columns.update(template_columns)
 
     if not needed_columns:
         raise ValueError("No columns to process")
 
-    needed_list = sorted(needed_columns)
+    needed_a = sorted(column for column in needed_columns if column in headers_a)
+    needed_b = sorted(column for column in needed_columns if column in headers_b)
 
-    df_a_lazy = pl.scan_csv(path_a, infer_schema=False).select(pl.col(needed_list))
-    df_b_lazy = pl.scan_csv(path_b, infer_schema=False).select(pl.col(needed_list))
+    df_a_lazy = pl.scan_csv(path_a, infer_schema=False).select(pl.col(needed_a))
+    df_b_lazy = pl.scan_csv(path_b, infer_schema=False).select(pl.col(needed_b))
 
     # Phase 2: filter only the comparison file (df_b)
     _, df_b_lazy = apply_filters(df_a_lazy, df_b_lazy, filters)
@@ -971,6 +1019,7 @@ def execute_comparison(
         comparison_df=df_a_final,
         aggregation_columns=aggregation_columns or [],
         exception_columns=(exception_columns or []) if display.get("exception_tables") else [],
+        commentary_template_columns=template_columns,
     )
 
     grp_stats = None
@@ -998,4 +1047,7 @@ def execute_comparison(
         extra_column_display=display,
         group_statistics=grp_stats,
         rule_bindings=rule_bindings,
+        as_of_date=as_of_date,
+        commentary_template_columns=template_columns,
+        new_exceptions_only=new_exceptions_only,
     )

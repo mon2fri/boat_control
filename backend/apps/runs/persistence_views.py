@@ -14,6 +14,7 @@ from apps.runs.persistence_serializers import (
     RenameRunRequestSerializer,
     RunMetadataSerializer,
 )
+from apps.runs.tracking_context import parse_new_exceptions_only, resolve_run_document
 
 
 class RunsListView(APIView):  # type: ignore[misc]
@@ -27,7 +28,26 @@ class RunDetailView(APIView):  # type: ignore[misc]
         data = load_run(run_id)
         if data is None:
             return Response({"error": f"Run {run_id} not found."}, status=404)
-        return Response(data)
+        try:
+            stored_result = data.get("result")
+            stored_scope = (
+                bool(stored_result.get("new_exceptions_only", True))
+                if isinstance(stored_result, dict)
+                else True
+            )
+            requested = parse_new_exceptions_only(
+                request.query_params.get("new_exceptions_only"),
+                default=stored_scope,
+            )
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=400)
+        return Response(
+            resolve_run_document(
+                data,
+                new_exceptions_only=requested,
+                refresh=True,
+            )
+        )
 
     def delete(self, request: Request, run_id: str) -> Response:
         try:

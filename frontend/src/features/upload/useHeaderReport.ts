@@ -44,12 +44,14 @@ export function useHeaderReport(onSuccess: (report: HeaderReport) => void) {
   );
 
   const submitUpload = useCallback(
-    (file1: File, file2: File) => run((signal) => uploadFiles(file1, file2, signal)),
+    (file1: File, file2: File, asOfDate?: string) =>
+      run((signal) => uploadFiles(file1, file2, asOfDate, signal)),
     [run],
   );
 
   const submitFromPreset = useCallback(
-    (fileAId: string, fileBId: string | null) => run((signal) => loadPresetFiles(fileAId, fileBId, signal)),
+    (fileAId: string, fileBId: string | null, asOfDate?: string) =>
+      run((signal) => loadPresetFiles(fileAId, fileBId, asOfDate, signal)),
     [run],
   );
 

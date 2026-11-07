@@ -16,6 +16,7 @@ def _settings_response(app_settings: AppSettings) -> dict[str, object]:
         "family_config_path": app_settings.family_config_path,
         "full_set_confirmation_rows": app_settings.full_set_confirmation_rows,
         "run_history_path": app_settings.run_history_path,
+        "exception_tracking_path": app_settings.exception_tracking_path,
     }
 
 
@@ -28,5 +29,8 @@ class SettingsView(APIView):  # type: ignore[misc]
     def put(self, request: Request) -> Response:
         serializer = SettingsSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        updated = update_settings(serializer.validated_data)
+        try:
+            updated = update_settings(serializer.validated_data)
+        except ValueError as error:
+            return Response({"error": str(error)}, status=400)
         return Response(_settings_response(updated))

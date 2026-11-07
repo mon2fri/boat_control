@@ -22,6 +22,7 @@ const okSettings = {
   family_config_path: "config/families",
   full_set_confirmation_rows: 2000,
   run_history_path: "data/results",
+  exception_tracking_path: "data/exception_tracking.db",
 };
 
 function jsonResponse(body: unknown, status = 200) {
@@ -64,6 +65,9 @@ describe("SettingsPage", () => {
     expect(screen.getByLabelText("Column/Value Family Config Path")).toHaveValue("config/families");
     expect(screen.getByLabelText("Full set confirmation (Rows)")).toHaveValue(2000);
     expect(screen.getByLabelText("Run history Path")).toHaveValue("data/results");
+    expect(screen.getByLabelText("Exception tracking database path")).toHaveValue(
+      "data/exception_tracking.db",
+    );
     vi.unstubAllGlobals();
   });
 
@@ -127,6 +131,68 @@ describe("SettingsPage", () => {
     expect(
       screen.getByText(/Full set confirmation \(Rows\) must be a positive integer/),
     ).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("saves an absolute Linux exception-tracking database path", async () => {
+    const saved = { ...okSettings, exception_tracking_path: "/srv/boat/exception_tracking.db" };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(okSettings))
+      .mockResolvedValueOnce(jsonResponse(saved));
+    vi.stubGlobal("fetch", fetchMock);
+    withQuery(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Exception tracking database path")).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText("Exception tracking database path"), {
+      target: { value: "/srv/boat/exception_tracking.db" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(screen.getByText("Settings saved.")).toBeInTheDocument());
+    const body = JSON.parse(
+      (fetchMock.mock.calls[1]![1] as RequestInit).body as string,
+    ) as Record<string, unknown>;
+    expect(body.exception_tracking_path).toBe("/srv/boat/exception_tracking.db");
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the absolute text input when no system picker is available", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(okSettings))
+      .mockResolvedValueOnce(jsonResponse({ detail: "Not found" }, 404));
+    vi.stubGlobal("fetch", fetchMock);
+    withQuery(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Exception tracking database path")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Browse…" }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(/absolute path/),
+    );
+    expect(screen.getByLabelText("Exception tracking database path")).toHaveValue(
+      "data/exception_tracking.db",
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("uses a desktop host picker when one exposes an absolute path", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(okSettings)));
+    const pickPath = vi.fn().mockResolvedValue("C:\\Boat\\exception_tracking.db");
+    (window as unknown as { boatControlHost: { pickPath: typeof pickPath } }).boatControlHost = {
+      pickPath,
+    };
+    withQuery(<SettingsPage />);
+    await waitFor(() =>
+      expect(screen.getByLabelText("Exception tracking database path")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Browse…" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Exception tracking database path")).toHaveValue(
+        "C:\\Boat\\exception_tracking.db",
+      ),
+    );
+    expect(pickPath).toHaveBeenCalled();
+    Reflect.deleteProperty(window, "boatControlHost");
     vi.unstubAllGlobals();
   });
 });

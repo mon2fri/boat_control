@@ -14,6 +14,15 @@ import type { WorkflowState } from "./WorkflowContext";
 // (WorkflowContext only exports the provider/hook, not the reducer directly.)
 function reducer(state: WorkflowState, action: any): WorkflowState {
   switch (action.type) {
+    case "setHeader":
+      return {
+        ...state,
+        asOfDate: action.header.asOfDate ?? state.asOfDate,
+        header: action.header,
+        comparisonColumns: [...action.header.common],
+      };
+    case "setAsOfDate":
+      return { ...state, asOfDate: action.date };
     case "setComparisonColumns": {
       const cols = action.columns;
       const colSet = new Set(cols);
@@ -65,6 +74,7 @@ function reducer(state: WorkflowState, action: any): WorkflowState {
 function base(): WorkflowState {
   return {
     header: null,
+    asOfDate: "2026-10-30",
     comparisonColumns: ["region", "status", "owner", "type"],
     filters: [],
     targetColumns: [],
@@ -77,6 +87,8 @@ function base(): WorkflowState {
       { id: "s2", name: "Ownership", columns: ["status", "owner"] },
     ],
     exceptionColumns: [],
+  commentaryColumns: [],
+  newExceptionsOnly: true,
     selectedRuleIndexes: [],
     confirmFullSet: false,
     page2Complete: false,
@@ -209,6 +221,51 @@ describe("Workflow reducer — comparisonSections pruning", () => {
         columns: [],
       });
       expect(next.exceptionColumns).toEqual([]);
+    });
+  });
+
+  describe("As-of Date propagation", () => {
+    it("stores a selected date", () => {
+      const next = reducer(base(), { type: "setAsOfDate", date: "2026-10-30" });
+      expect(next.asOfDate).toBe("2026-10-30");
+    });
+
+    it("keeps the selected date when a header arrives without a backend date", () => {
+      const state = { ...base(), asOfDate: "2026-10-30" };
+      const next = reducer(state, {
+        type: "setHeader",
+        header: {
+          sessionId: "s1",
+          file1Name: "a.csv",
+          file2Name: "b.csv",
+          file1Deduplicated: false,
+          file2Deduplicated: false,
+          common: ["id"],
+          file1Only: [],
+          file2Only: [],
+        },
+      });
+      expect(next.asOfDate).toBe("2026-10-30");
+      expect(next.comparisonColumns).toEqual(["id"]);
+    });
+
+    it("prefers a backend-echoed date as authoritative", () => {
+      const state = { ...base(), asOfDate: "2026-10-30" };
+      const next = reducer(state, {
+        type: "setHeader",
+        header: {
+          sessionId: "s1",
+          file1Name: "a.csv",
+          file2Name: "b.csv",
+          file1Deduplicated: false,
+          file2Deduplicated: false,
+          asOfDate: "2026-11-30",
+          common: ["id"],
+          file1Only: [],
+          file2Only: [],
+        },
+      });
+      expect(next.asOfDate).toBe("2026-11-30");
     });
   });
 });

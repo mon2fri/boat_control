@@ -14,6 +14,7 @@ from apps.files.preset_services import (
 )
 from apps.files.services import inspect_headers, store_file
 from apps.files.sessions import create_session
+from apps.runs.as_of_date import AsOfDateError, resolve_as_of_date
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,11 @@ class PresetLoadView(APIView):  # type: ignore[misc]
         preset_id = request.data.get("preset_id")
         file_a_id = request.data.get("file_a_id")
         file_b_id = request.data.get("file_b_id")
+
+        try:
+            as_of_date = resolve_as_of_date(request.data.get("as_of_date"))
+        except AsOfDateError as exc:
+            return Response({"error": str(exc)}, status=400)
 
         if preset_id:
             preset = get_preset_source(preset_id)
@@ -127,12 +133,14 @@ class PresetLoadView(APIView):  # type: ignore[misc]
             columns_b=result.columns_b,
             only_in_a=result.only_in_a,
             only_in_b=result.only_in_b,
+            as_of_date=as_of_date.isoformat(),
         )
 
         return Response({
             "session_id": session.session_id,
             "file_a_name": file_a_name,
             "file_b_name": file_b_name,
+            "as_of_date": session.as_of_date,
             "file_a_deduplicated": dedup_a,
             "file_b_deduplicated": dedup_b,
             "inspection": {

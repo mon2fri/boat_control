@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { to: "/results", label: "3. Results" },
   { to: "/families", label: "Column/Value Family" },
   { to: "/history", label: "History" },
+  { to: "/exception-tracking", label: "Exception Tracking" },
   { to: "/settings", label: "Settings" },
 ];
 

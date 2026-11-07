@@ -65,6 +65,55 @@ describe("usePaginatedDetails", () => {
     vi.unstubAllGlobals();
   });
 
+  it("derives stable exception IDs from existing API rule identifiers across violation pages", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(json({
+        run_id: "run-1",
+        section: "violations",
+        offset: 0,
+        total: 2,
+        has_more: true,
+        details: [{
+          row_key: "id=1",
+          key_columns: { id: "1", region: "EMEA" },
+          rule_identifier: "CBR1_00000000000000000001",
+          column: "status",
+          file_a_value: "old",
+          file_b_value: "new",
+        }],
+      }))
+      .mockResolvedValueOnce(json({
+        run_id: "run-1",
+        section: "violations",
+        offset: 1,
+        total: 2,
+        has_more: false,
+        details: [{
+          row_key: "id=2",
+          key_columns: { id: "2", region: "APAC" },
+          rule_identifier: "CBR1_00000000000000000001",
+          column: "status",
+          file_a_value: "old",
+          file_b_value: "new",
+        }],
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { result } = renderHook(() =>
+      usePaginatedDetails("run-1", "violation", {}, undefined, ["id", "region"]),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    act(() => {
+      result.current.loadMore();
+    });
+    await waitFor(() => expect(result.current.hasMore).toBe(false));
+    expect(result.current.rows.map((row) => row.exceptionId)).toEqual([
+      "CBR1_00000000000000000001_1_EMEA",
+      "CBR1_00000000000000000001_2_APAC",
+    ]);
+    vi.unstubAllGlobals();
+  });
+
   it("resets when the runId changes", async () => {
     const fetchMock = vi
       .fn()

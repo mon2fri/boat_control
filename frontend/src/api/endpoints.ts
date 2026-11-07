@@ -12,6 +12,9 @@ import {
   validateTargetsResponseSchema,
   wireColumnValuesPageSchema,
   wireDetailPageSchema,
+  wireExceptionTrackingDatesSchema,
+  wireExceptionTrackingListSchema,
+  wireCommentaryImportResponseSchema,
   wireFamilyListSchema,
   wireFamilySchema,
   wirePresetListSchema,
@@ -30,6 +33,8 @@ import {
 } from "./wire";
 import {
   mapColumnValue,
+  mapCommentaryImportResult,
+  mapExceptionTrackingList,
   mapFamily,
   mapPresetSource,
   mapRunDocumentToResult,
@@ -41,12 +46,16 @@ import {
   mapSettings,
   mapSettingsToWire,
   mapSourceFile,
+  mapTrackingDates,
   mapUploadToHeader,
   mapWireRule,
 } from "./mapping";
 import type {
   AppSettings,
+  CommentaryImportResult,
   DetailRow,
+  ExceptionTrackingDates,
+  ExceptionTrackingResult,
   Family,
   Rule as DomainRule,
   FilterRow,
@@ -59,6 +68,7 @@ import type {
   SourceFile,
 } from "./domain";
 import { z } from "zod";
+import { resolveExceptionId } from "../lib/exceptionIdentity";
 
 /** All API calls go through this module; the wire ↔ domain boundary lives here. */
 
@@ -67,11 +77,13 @@ import { z } from "zod";
 export function uploadFiles(
   file1: File,
   file2: File,
+  asOfDate?: string,
   signal?: AbortSignal,
 ): Promise<HeaderReport> {
   const formData = new FormData();
   formData.append("file_a", file1);
   formData.append("file_b", file2);
+  if (asOfDate) formData.append("as_of_date", asOfDate);
   return apiRequest("/files/upload/", { method: "POST", formData, schema: uploadResponseSchema, signal }).then(
     mapUploadToHeader,
   );
@@ -156,6 +168,7 @@ export function fetchDetailPage(
     signal?: AbortSignal;
     filters?: Record<string, string[]>;
     sectionColumns?: string[] | undefined;
+    keyColumnNames?: string[] | undefined;
   } = {},
 ): Promise<{
   rows: DetailRow[];
@@ -183,40 +196,52 @@ export function fetchDetailPage(
     total: r.total,
     hasMore: r.has_more,
     availableFilters: r.available_filters ?? {},
-    rows: r.details.map((row) => ({
-      rowKey: row.row_key,
-      keyColumns: row.key_columns
+    rows: r.details.map((row) => {
+      const keyColumns = row.key_columns
         ? Object.fromEntries(Object.entries(row.key_columns).map(([k, v]) => [k, v === null ? null : String(v)]))
-        : {},
-      column: row.column,
-      file1Value: row.file_a_value === null ? null : String(row.file_a_value),
-      file2Value: row.file_b_value === null ? null : String(row.file_b_value),
-      kind: kind === "violation" ? "exception" : kind,
-      ...(row.violating_column ? { violatingColumn: row.violating_column } : {}),
-      ...(row.violating_value !== undefined
-        ? { violatingValue: row.violating_value === null ? null : String(row.violating_value) }
-        : {}),
-      ...(row.extra_values
-        ? {
-            extraValues: Object.fromEntries(
-              Object.entries(row.extra_values).map(([key, value]) => [
-                key,
-                value === null ? null : String(value),
-              ]),
-            ),
-          }
-        : {}),
-      ...(row.grouping_values
-        ? {
-            aggregationValues: Object.fromEntries(
-              Object.entries(row.grouping_values).map(([key, value]) => [
-                key,
-                value === null ? null : String(value),
-              ]),
-            ),
-          }
-        : {}),
-    })),
+        : {};
+      const exceptionId = kind === "violation"
+        ? resolveExceptionId(
+            row.exception_id,
+            row.rule_identifier,
+            options.keyColumnNames ?? Object.keys(keyColumns),
+            keyColumns,
+          )
+        : undefined;
+      return {
+        rowKey: row.row_key,
+        ...(exceptionId ? { exceptionId } : {}),
+        keyColumns,
+        column: row.column,
+        file1Value: row.file_a_value === null ? null : String(row.file_a_value),
+        file2Value: row.file_b_value === null ? null : String(row.file_b_value),
+        kind: kind === "violation" ? "exception" : kind,
+        ...(row.violating_column ? { violatingColumn: row.violating_column } : {}),
+        ...(row.violating_value !== undefined
+          ? { violatingValue: row.violating_value === null ? null : String(row.violating_value) }
+          : {}),
+        ...(row.extra_values
+          ? {
+              extraValues: Object.fromEntries(
+                Object.entries(row.extra_values).map(([key, value]) => [
+                  key,
+                  value === null ? null : String(value),
+                ]),
+              ),
+            }
+          : {}),
+        ...(row.grouping_values
+          ? {
+              aggregationValues: Object.fromEntries(
+                Object.entries(row.grouping_values).map(([key, value]) => [
+                  key,
+                  value === null ? null : String(value),
+                ]),
+              ),
+            }
+          : {}),
+      };
+    }),
   }));
 }
 
@@ -437,10 +462,16 @@ export function loadRunHistory(): Promise<RunSummary[]> {
   );
 }
 
-export function loadRun(id: string): Promise<RunResult> {
-  return apiRequest(`/runs/${encodeURIComponent(id)}/`, { schema: wireRunDocumentResponseSchema }).then(
-    mapRunDocumentToResult,
-  );
+export function loadRun(
+  id: string,
+  newExceptionsOnly?: boolean,
+): Promise<RunResult> {
+  const query = newExceptionsOnly === undefined
+    ? ""
+    : `?new_exceptions_only=${newExceptionsOnly ? "true" : "false"}`;
+  return apiRequest(`/runs/${encodeURIComponent(id)}/${query}`, {
+    schema: wireRunDocumentResponseSchema,
+  }).then(mapRunDocumentToResult);
 }
 
 export function deleteRun(id: string): Promise<void> {
@@ -497,6 +528,7 @@ export async function downloadExport(
   options: {
     onProgress?: (received: number, total: number | null) => void;
     signal?: AbortSignal;
+    newExceptionsOnly?: boolean;
   } = {},
 ): Promise<ExportResult> {
   // The export endpoint is the only one whose response is not JSON; bypass
@@ -509,7 +541,13 @@ export async function downloadExport(
     method: "POST",
     credentials: "same-origin",
     headers: { ...headers, "Content-Type": "application/json" },
-    body: JSON.stringify({ run_id: runId, format }),
+    body: JSON.stringify({
+      run_id: runId,
+      format,
+      ...(options.newExceptionsOnly !== undefined
+        ? { new_exceptions_only: options.newExceptionsOnly }
+        : {}),
+    }),
     ...(options.signal ? { signal: options.signal } : {}),
   });
   if (!response.ok) {
@@ -578,6 +616,122 @@ function mapOperatorForWire(op: FilterRow["operator"]): string {
   return map[op];
 }
 
+// --- Exception tracking --------------------------------------------------
+
+/**
+ * Wire contract consumed by Worker D (to be frozen by the coordinator):
+ *
+ *   GET  /api/exception-tracking/dates/
+ *        -> { dates: ["2026-10-30"], default_as_of_date: "2026-10-30" }
+ *   GET  /api/exception-tracking/?as_of_date=2026-10-30
+ *        -> { as_of_date, exceptions: [ ...tracked exception... ] }
+ *   GET  /api/exception-tracking/export/?as_of_date=2026-10-30
+ *        -> XLSX attachment
+ *   POST /api/exception-tracking/import/  (multipart: file, as_of_date)
+ *        -> { as_of_date, updated, cleared, unchanged, total }
+ *
+ * The results page uses the same export endpoint with the run's persisted
+ * As-of Date, so its workbook is the tracking template rather than a second
+ * format.
+ */
+export function loadExceptionTrackingDates(): Promise<ExceptionTrackingDates> {
+  return apiRequest("/exception-tracking/dates/", {
+    schema: wireExceptionTrackingDatesSchema,
+  }).then(mapTrackingDates);
+}
+
+export interface ExceptionTrackingQuery {
+  offset?: number;
+  limit?: number;
+  sort?: string | null;
+  order?: "asc" | "desc";
+  filters?: Record<string, string[]>;
+}
+
+export function loadExceptionTracking(
+  asOfDate: string,
+  options: ExceptionTrackingQuery = {},
+): Promise<ExceptionTrackingResult> {
+  const params = new URLSearchParams({ as_of_date: asOfDate });
+  if (options.offset !== undefined) params.set("offset", String(options.offset));
+  if (options.limit !== undefined) params.set("limit", String(options.limit));
+  if (options.sort) params.set("sort", options.sort);
+  if (options.order) params.set("order", options.order);
+  for (const [key, values] of Object.entries(options.filters ?? {})) {
+    if (values.length > 0) params.set(`filter_${key}`, values.join(","));
+  }
+  return apiRequest(`/exception-tracking/?${params.toString()}`, {
+    schema: wireExceptionTrackingListSchema,
+  }).then(mapExceptionTrackingList);
+}
+
+export interface BinaryDownload {
+  filename: string;
+  blob: Blob;
+  contentType: string;
+  size: number;
+}
+
+async function requestBinaryDownload(
+  path: string,
+  fallbackFilename: string,
+): Promise<BinaryDownload> {
+  // Binary endpoints bypass `apiRequest` because their bodies are not JSON.
+  const headers: Record<string, string> = { Accept: "*/*" };
+  const csrf = readCookie("csrftoken");
+  if (csrf) headers["X-CSRFToken"] = csrf;
+  // eslint-disable-next-line no-restricted-globals -- download, not a JSON request
+  const response = await fetch(`/api${path}`, {
+    method: "GET",
+    credentials: "same-origin",
+    headers,
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    const parsed: unknown = safeJson(text);
+    const message =
+      parsed && typeof parsed === "object" && "error" in parsed
+        ? String(parsed.error)
+        : parsed && typeof parsed === "object" && "detail" in parsed
+          ? String(parsed.detail)
+          : text || `Download failed (${response.status})`;
+    throw new ExportError(message, response.status);
+  }
+  const contentType = response.headers.get("Content-Type") ?? "application/octet-stream";
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  return {
+    filename: parseFilename(disposition) ?? fallbackFilename,
+    blob,
+    contentType,
+    size: blob.size,
+  };
+}
+
+export function downloadExceptionCommentaryTemplate(
+  asOfDate: string,
+): Promise<BinaryDownload> {
+  const query = `?as_of_date=${encodeURIComponent(asOfDate)}`;
+  return requestBinaryDownload(
+    `/exception-tracking/export/${query}`,
+    `exception_commentary_${asOfDate}.xlsx`,
+  );
+}
+
+export function importExceptionCommentary(
+  asOfDate: string,
+  file: File,
+): Promise<CommentaryImportResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("as_of_date", asOfDate);
+  return apiRequest("/exception-tracking/import/", {
+    method: "POST",
+    formData,
+    schema: wireCommentaryImportResponseSchema,
+  }).then(mapCommentaryImportResult);
+}
+
 // --- Settings, saved filters, presets ----------------------------------
 //
 // These endpoints are part of the Priority 1 follow-ups and depend on
@@ -639,10 +793,10 @@ export function listSourceFiles(sourceId: string): Promise<SourceFile[]> {
   }).then((items) => items.map(mapSourceFile));
 }
 
-export function loadPresetSource(id: string): Promise<HeaderReport> {
+export function loadPresetSource(id: string, asOfDate?: string): Promise<HeaderReport> {
   return apiRequest("/files/presets/load/", {
     method: "POST",
-    body: { preset_id: id },
+    body: { preset_id: id, ...(asOfDate ? { as_of_date: asOfDate } : {}) },
     schema: uploadResponseSchema,
   }).then(mapUploadToHeader);
 }
@@ -650,11 +804,16 @@ export function loadPresetSource(id: string): Promise<HeaderReport> {
 export function loadPresetFiles(
   fileAId: string,
   fileBId: string | null,
+  asOfDate?: string,
   signal?: AbortSignal,
 ): Promise<HeaderReport> {
   return apiRequest("/files/presets/load/", {
     method: "POST",
-    body: { file_a_id: fileAId, file_b_id: fileBId },
+    body: {
+      file_a_id: fileAId,
+      file_b_id: fileBId,
+      ...(asOfDate ? { as_of_date: asOfDate } : {}),
+    },
     schema: uploadResponseSchema,
     signal,
   }).then(mapUploadToHeader);

@@ -1,5 +1,13 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { createRule, exportRulesConfig, loadRulesPage, replaceRules, saveRulesConfig, setRulesEnabled } from "./endpoints";
+import {
+  createRule,
+  downloadExport,
+  exportRulesConfig,
+  loadRulesPage,
+  replaceRules,
+  saveRulesConfig,
+  setRulesEnabled,
+} from "./endpoints";
 import type { RuleDraft } from "./domain";
 
 function jsonResponse(body: unknown, ok = true, status = 200) {
@@ -160,5 +168,42 @@ describe("rules config save", () => {
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(String(fetchMock.mock.calls[0]![0])).toContain("/rules/configs/prod/");
     expect(JSON.parse(init.body as string)).toEqual({ version: 1 });
+  });
+});
+
+
+describe("result exports — New Exceptions Only scope", () => {
+  it("passes the requested scope to the Excel export endpoint", async () => {
+    let read = false;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": 'attachment; filename="report.xlsx"',
+      }),
+      body: {
+        getReader: () => ({
+          read: () => {
+            if (read) return Promise.resolve({ done: true, value: undefined });
+            read = true;
+            return Promise.resolve({ done: false, value: new Uint8Array([1, 2, 3]) });
+          },
+        }),
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await downloadExport("run-1", "excel", "report", {
+      newExceptionsOnly: false,
+    });
+
+    expect(result.filename).toBe("report.xlsx");
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      run_id: "run-1",
+      format: "excel",
+      new_exceptions_only: false,
+    });
   });
 });

@@ -20,6 +20,11 @@ class ExecuteComparisonRequestSerializer(serializers.Serializer):  # type: ignor
     )
     filters = FilterSerializer(many=True, required=False, default=list)
     rule_ids = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
+    as_of_date = serializers.DateField(required=False, allow_null=True)
+    commentary_template_columns = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list
+    )
+    new_exceptions_only = serializers.BooleanField(required=False, default=True)
 
 
 class AttributeChangeSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -73,6 +78,13 @@ class ValidationViolationSerializer(serializers.Serializer):  # type: ignore[mis
     )
     rule_logic = serializers.CharField(required=False)
     rule_identifier = serializers.CharField(required=False, allow_null=True)
+    detail_values = serializers.DictField(
+        child=serializers.CharField(allow_blank=True),
+        required=False,
+        default=dict,
+    )
+    exception_id = serializers.CharField(required=False, allow_null=True)
+    exception_status = serializers.CharField(required=False, allow_null=True)
 
 
 class ValidationResultSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -98,3 +110,7 @@ class ExecutionResultSerializer(serializers.Serializer):  # type: ignore[misc]
     rule_bindings = serializers.DictField(
         child=serializers.CharField(), required=False, default=dict
     )
+    commentary_template_columns = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list
+    )
+    new_exceptions_only = serializers.BooleanField(required=False, default=True)
