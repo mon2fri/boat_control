@@ -5,6 +5,13 @@ Date: 2026-11-08
 Scope: backend rule schema, validation, catalog persistence, import/export,
 canonical identity, and pure shared predicate/tree helpers.
 
+> **Post-integration correction (2026-11-08).** This record distinguishes the
+> original Worker A delivery from defects found by the reviewer during
+> integration and the reviewer-authored fixes. The original code committed on
+> this branch is unchanged by this documentation correction; no integration code
+> was cherry-picked. Integrated results below are attributed to the reviewer, not
+> to Worker A.
+
 ## Published interfaces (for Worker B)
 
 Worker A publishes these interfaces before runtime integration. B should use the
@@ -74,7 +81,8 @@ def normalize_rule_draft(rule_data: dict[str, Any]) -> dict[str, Any]: ...
 ```
 
 `normalize_rule_draft` is applied only after validation; it converts a new-form
-single outcome to the legacy `logic` form.
+single outcome **without** relation/tree fields to the legacy `logic` form. The
+integration fix rejects relation/tree fields on that form before normalization.
 
 ### Pure helpers — `apps.validation_logic`
 
@@ -185,9 +193,12 @@ column remains a legacy single-outcome form.
 - Legacy `logic` is retained verbatim for single-outcome rules. New writers use
   `logic` for one outcome and `logic_clauses` for multiple outcomes; a draft
   containing both forms is rejected as contradictory.
-- A single-clause new form is normalized to legacy `logic` after validation.
-  This keeps storage and catalog responses in the legacy shape and guarantees
-  the same canonical identity as the equivalent legacy rule.
+- A single-clause new form without grouping fields is normalized to legacy
+  `logic` after validation. This keeps storage and catalog responses in the
+  legacy shape and guarantees the same canonical identity as the equivalent
+  legacy rule. Relation/tree fields are not allowed on that new single form:
+  the integration fix rejects them before normalization so they can never be
+  silently discarded (see the post-integration section).
 - Multi-outcome validation requires `logic_relation` or a valid grouping tree.
   Trees override the flat relation only when valid. Every configured clause must
   appear exactly once; unknown, duplicate, omitted and empty-branch references
@@ -213,8 +224,9 @@ column remains a legacy single-outcome form.
   equivalent. Clause values retain the existing exact-string, sorted/deduplicated
   treatment. Grouping changes, relation changes and value changes produce new
   identifiers.
-- A one-clause new form canonicalizes through the legacy path and therefore has
-  the legacy identifier.
+- A valid one-clause new form without grouping fields canonicalizes through the
+  legacy path and therefore has the legacy identifier. Relation/tree fields on
+  that form are rejected by the integration validation fix rather than ignored.
 - Identity accepts authored mappings, stored payloads and `Rule`/dataclass
   objects (including parsed grouping nodes).
 
@@ -225,8 +237,8 @@ column remains a legacy single-outcome form.
 | `apps/rules/views.py` | Updated to shared outcome serializer. | None. |
 | `apps/configs/views.py` | Updated rule export to shared serializer; import normalizes single outcomes. | None. |
 | `apps/rules/management/commands/migrate_rules_to_db.py` | Updated to shared serializer. | None. |
-| `apps/runs/services.py` | Still reads `rule.logic` for legacy execution. | B must consume `rule.outcome_expression` for multi outcomes, null semantics and violation context. |
-| `apps/runs/services.py` column validation | Still checks only `rule.logic`. | B must validate every outcome clause column and column-comparison target. |
+| `apps/runs/services.py` | Still reads `rule.logic` in the original Worker A branch. Reviewer integration (`0992b78`) now consumes `rule.outcome_expression` and the pure helpers. | B/integration owns runtime; the reviewer verified the materialized-`Rule` path. |
+| `apps/runs/services.py` column validation | Still checks only `rule.logic` in the original branch. | Reviewer integration validates each outcome clause and preserves the complete detail context. |
 | `apps/reports/services.py`, `apps/runs/tracking_context.py` | Consume persisted run description strings, not `Rule.logic` directly. | B should ensure grouped descriptions include all clauses. |
 
 ## Requirement coverage (A-owned portions)
@@ -261,7 +273,79 @@ column remains a legacy single-outcome form.
   shapes. Legacy payload output and golden hashes are unchanged.
 - Regression evidence: golden identity tests and YAML/API round-trip tests pass.
 
+## Post-integration findings and fixes
+
+### 1. Original delivery and its validation
+
+Worker A delivered commits `c388ce9`, `057dbab` and `f24acfa`. They were
+independently validated in this worktree with the original focused/backend and
+contract suites recorded in the delivery record. That validation covered legacy
+golden identities, multi-outcome identity/order stability, YAML and catalog
+round trips, malformed/omitted references, transactional invalid import,
+duplicate catalog handling and pure helper truth tables. Those tests did not
+exercise a one-clause `logic_clauses` payload carrying grouping fields, and they
+used Worker A's own model-level expectations rather than an integrated B runtime.
+
+### 2. Defects discovered during integration
+
+**Medium — one-clause `logic_clauses` silently lost grouping fields.** Worker A's
+original `validate_rule` accepted `logic_clauses` with one entry together with
+`logic_relation` and/or `logic_grouping_tree`. The subsequent
+`normalize_rule_draft` converted that form to legacy `logic`, dropping
+`logic_clauses`, `logic_relation` and `logic_grouping_tree`. Truth semantics did
+not change for a valid single leaf, but an unsupported/contradictory
+representation was accepted and its grouping fields were silently stripped.
+
+**Integration-only runtime incompatibility.** A materializes
+`Rule.logic_grouping_tree` as immutable `GroupingBranch`/`GroupingLeaf` nodes and
+publishes `Rule.outcome_expression`. Worker B's original runtime normalization
+parsed only wire dictionaries, so a real catalog rule with a nested outcome tree
+was rejected during execution even though B's dictionary-shaped test double
+passed. This was a B runtime integration defect; A's model/interface was the
+correct published contract. The reviewer fixed it by consuming
+`rule.outcome_expression` and delegating predicates/tree operations to
+`apps.validation_logic`.
+
+### 3. Reviewer-authored fixes and regression evidence
+
+- Fix for the one-clause defect: reviewer integration changed
+  `backend/apps/rules/services.py` validation to reject a new single-outcome form
+  when relation/tree fields are present. Corrected behavior is the validation
+  error `Single-outcome logic_clauses must not include relation or grouping
+  fields.` Normalization is still allowed for a single clause **without** those
+  fields. Regression
+  `test_single_outcome_clause_cannot_silently_discard_grouping_fields` in
+  `tests/backend/test_grouped_validation_integration.py` asserts `valid is False`
+  and an error containing `Single-outcome`. This is reviewer-authored code/test,
+  not a Worker A change; it is in integration fix commit `fa17108`.
+- Fix for materialized outcome trees: reviewer integration commit `0992b78`
+  consumes `rule.outcome_expression`, accepts the immutable nodes, and delegates
+  to the A pure helpers. Its real-model regression executes the four-clause Y/N
+  truth table, including null/blank, and verifies one violation per failing row
+  with complete outcome detail. Focused reviewer result: 132 passed across
+  `test_grouped_validation_integration.py`, `test_grouped_validation.py` and
+  `test_validation_logic.py`; changed-file Ruff passed.
+- Contract integration: reviewer integration (`fa17108`) updated the versioned
+  contract schema/examples for the optional grouped outcome fields. Worker A did
+  not modify those reviewer-owned files.
+
+### 4. Remaining limitations and pending acceptance
+
+- This documentation correction changes no Worker A source, tests or validation
+  claim. The original three commits remain the reviewable Worker A code delivery;
+  this correction is a separate documentation commit.
+- Worker B runtime integration is now reviewer-fixed in integration, but final
+  acceptance still requires the user's full numbered visual/UI acceptance. The
+  reviewer's limited browser smoke and component tests do not substitute for it.
+- Full repository Ruff still has unchanged baseline findings in the rules
+  migration and a rule-catalog test; changed-file Ruff is clean in the reviewer's
+  records.
+- No push, deployment, merge to main, or modification of the integration worktree
+  was performed for this correction.
+
 ## Test/check evidence
 
-Commands and results are recorded in the delivery record
-`reviews/20261108_grouped_validation_worker_a_delivery.md`.
+The original Worker A commands/results and the reviewer's integrated
+commands/results are separated in the delivery record
+`reviews/20261108_grouped_validation_worker_a_delivery.md`. Integrated results are
+the reviewer's; Worker A did not run them during this documentation correction.

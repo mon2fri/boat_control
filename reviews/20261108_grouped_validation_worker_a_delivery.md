@@ -3,16 +3,21 @@
 Branch: `work/20261108-grouped-validation-worker-a`
 Worktree: `/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/worker-a`
 Date: 2026-11-08
-Status: implementation complete; handed off for reviewer cherry-pick. Not merged,
-not pushed, no live project data accessed.
+Status: Original Worker A implementation was delivered and validated on this
+branch. The reviewer later found one Worker A validation defect during
+integration; this record now accounts for the reviewer-authored fix and integrated
+evidence. Worker A source/tests are unchanged by this documentation correction.
+Not merged, not pushed, no live project data accessed.
 
 ## Ordered commits for reviewer cherry-pick
 
 1. `c388ce9` — `feat: add pure grouped validation helpers`
 2. `057dbab` — `feat: support grouped rule outcomes across rules backend`
-3. Documentation commit (this file and the implementation record) — final
-   handover hash is supplied in the task response because a commit cannot contain
-   its own hash.
+3. `f24acfa` — `docs: record grouped validation worker A implementation and delivery`
+4. Post-integration documentation correction commit (this file and the
+   implementation record) — exact hash is supplied in the task response because a
+   commit cannot contain its own hash. This correction does not cherry-pick or
+   duplicate any reviewer integration code.
 
 Base/setup commit: `e972e3f` (all workers started here; requirement commit
 `6b4bc94` is on main).
@@ -43,10 +48,13 @@ Commit `057dbab` (rule schema, validation, catalog, import/export, identity, tes
   assignment because the existing rule-config endpoints live in this module)
 - `tests/backend/test_rule_grouped_outcomes.py`
 
-Documentation commit:
+Original documentation commit `f24acfa`:
 
 - `docs/20261108_grouped_validation_worker_a_implementation.md`
 - `reviews/20261108_grouped_validation_worker_a_delivery.md`
+
+Post-integration documentation correction commit (this commit) modifies the same
+two records only; it adds no source or test changes.
 
 ## Published interfaces
 
@@ -80,11 +88,13 @@ See the implementation record for full signatures. Summary:
   out of this worker's ownership; A supplies the normalized executable model and
   helpers.
 
-## Tests and checks actually run
+## Original Worker A tests and checks actually run (before integration)
 
-All commands were run in the assigned worktree with isolated pytest databases
-(`tests/conftest.py` redirects exception tracking to a temp path; Django test
-database is temporary).
+All commands below were run by Worker A in this assigned worktree with isolated
+pytest databases (`tests/conftest.py` redirects exception tracking to a temp path;
+Django test database is temporary). They are original-delivery evidence only.
+They do **not** include the reviewer's integrated run; integrated results are
+attributed separately below.
 
 ```text
 uv run pytest tests/backend -q
@@ -140,22 +150,114 @@ Additional focused evidence inside the suites:
   consumers compile and legacy execution still works until B integrates
   `rule.outcome_expression`.
 - The shared contract JSON schema in `tests/contracts/v1/contract_schema.json`
-  still requires `logic` on every rule. That file is reviewer-owned; multi-outcome
-  responses intentionally use `logic_clauses` instead. Reviewer should update the
-  versioned contract schema when integrating A+B+C.
+  required `logic` on every rule at original Worker A delivery. That file is
+  reviewer-owned; the reviewer updated it during integration (`fa17108`) for the
+  optional grouped outcome fields.
 
-## Remaining issues / handover requests
+## Post-integration findings and reviewer fixes
 
-1. Worker B must replace `rule.logic` runtime reads in `apps/runs/services.py`
-   with `rule.outcome_expression`, validate every outcome clause column, combine
-   clause results with the tree/relation, and use `apps.validation_logic`
-   predicates for null/blank semantics. This is explicitly B-owned.
-2. Worker B should ensure violation descriptions/reports include every outcome
-   clause and observed value for one violation per record/rule.
-3. Reviewer owns the versioned contract schema/fixtures update for the optional
-   multi-outcome fields.
-4. `backend/apps/configs/views.py` was touched only for rule import/export, as
-   required by the A assignment. Its other config behavior is unchanged; if B also
-   edits this file, keep both changes during integration.
-5. No known Worker A defects remain. The full backend and contract suites pass in
-   this worktree.
+### 1. Original delivery and validation
+
+Worker A originally delivered `c388ce9`, `057dbab` and `f24acfa`. The original
+suites recorded above passed: 666 backend tests, 16 contract tests, 149 focused
+rule/catalog/identity/helper tests, changed-file Ruff, targeted mypy and
+`git diff --check`. This was valid evidence for the original branch, but it did
+not exercise an integrated B runtime and did not include a contradictory
+one-clause new-outcome payload. At original handover there were no known Worker A
+defects.
+
+### 2. Defects discovered during integration
+
+**Medium — one-clause grouping fields were silently stripped.** The original
+`validate_rule` accepted a `logic_clauses` list with one clause together with
+`logic_relation` and/or `logic_grouping_tree`. `normalize_rule_draft` then
+converted the single clause to legacy `logic` and removed all three new-form
+fields. The truth result was unchanged for a valid single leaf, but the
+representation was unsupported/contradictory and the configured grouping fields
+were silently discarded instead of rejected. Worker A's original tests only
+covered a new single form **without** relation/tree, so they missed this case.
+
+**Integration-only B runtime incompatibility (not a Worker A model defect).**
+Worker A materializes `Rule.logic_grouping_tree` as immutable
+`GroupingBranch`/`GroupingLeaf` nodes, exposed through `Rule.outcome_expression`.
+Worker B's original runtime normalizer assumed wire dictionaries, so its
+dictionary-shaped tests passed but a real catalog rule with a nested outcome tree
+failed during execution. The reviewer fixed B by consuming
+`rule.outcome_expression` and delegating predicates/tree operations to A's
+`apps.validation_logic` helpers.
+
+### 3. Reviewer-authored fixes and regression evidence
+
+- **One-clause defect:** reviewer integration changed
+  `backend/apps/rules/services.py` so validation rejects relation/tree fields on
+  the new single-outcome form. Corrected behavior reports
+  `Single-outcome logic_clauses must not include relation or grouping fields.`
+  A single clause without those fields still normalizes to legacy `logic`.
+  Regression
+  `test_single_outcome_clause_cannot_silently_discard_grouping_fields` in
+  `tests/backend/test_grouped_validation_integration.py` asserts `valid is False`
+  and the `Single-outcome` error. This is reviewer-authored code/test in
+  integration fix commit `fa17108`; Worker A did not author or cherry-pick it.
+- **Materialized outcome tree runtime:** reviewer integration fix `0992b78`
+  consumes `rule.outcome_expression` and supports the immutable tree nodes. Its
+  regression materializes the four-clause Y/N rule via `rule_from_payload` and
+  verifies the exact truth table, null/blank behavior, one violation per failing
+  row and complete outcome columns/values.
+- **Contract/config integration:** reviewer integration `fa17108` updated the
+  versioned contract schema/examples and resolved the A/B
+  `backend/apps/configs/views.py` conflict by retaining A's full-expression rule
+  serializer while preserving B's filter/config validation.
+
+### 4. Reviewer integrated verification (not run by Worker A)
+
+Worker A did not run these commands and does not claim their results. The
+reviewer recorded them in
+`reviews/20261108_grouped_validation_integration_review.md` and
+`docs/20261108_grouped_validation_integration_fixes.md`:
+
+```text
+GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-checks PYTHONPATH=backend \
+  uv run pytest --ds=boat_control.grouped_validation_settings -q \
+  tests/backend tests/contracts tests/integration
+774 passed in 5.67s
+
+uv run pytest -q tests/backend/test_grouped_validation_integration.py \
+  tests/backend/test_grouped_validation.py tests/backend/test_validation_logic.py
+132 passed
+
+uv run ruff check backend/apps/runs/grouped_logic.py \
+  tests/backend/test_grouped_validation_integration.py
+passed
+
+uv run mypy backend
+passed (94 source files)
+
+npm --prefix frontend test -- --run
+passed (65 files / 599 tests)
+
+npm --prefix frontend run build
+passed (existing bundle-size warning)
+
+git diff --check
+clean
+```
+
+Reviewer's independent sample evaluation selected 11 rows, passed 3 (`1,2,8`) and
+raised 8 violations (`3,4,5,6,9,10,14,15`). The reviewer also noted unchanged
+baseline full-repository Ruff findings in the rules migration and a rule-catalog
+test; changed-file Ruff was clean.
+
+### 5. Remaining limitations and pending user acceptance
+
+1. The one-clause defect is fixed only in the integration branch by the reviewer.
+   Worker A's original branch remains source-unchanged; this correction is
+   documentation-only. A reviewer cherry-picking Worker A receives the original
+   code plus this corrected record, not the integration fix commit unless the
+   reviewer separately includes it.
+2. Worker B's materialized-tree runtime integration is reviewer-fixed, not
+   present in the original Worker A branch.
+3. Full numbered visual/UI acceptance by the user remains pending. The reviewer's
+   limited Chrome/Playwright smoke and component tests are not final user
+   acceptance and are not claimed as such by Worker A.
+4. No push, deployment, merge to main, or integration-worktree modification was
+   performed for this correction.
