@@ -249,7 +249,13 @@ export function resolveConfigFilterRow(
     resolved: {
       id: "",
       column: colResult.resolved[0],
-      operator: row.operator as FilterRow["operator"],
+      // Saved configs may spell the operator either way: the wire form
+      // (`eq`/`neq`/`contains`/`ncontains`) or the domain form
+      // (`equals`/`not_equals`/...). Normalise the wire spelling like the
+      // condition loader does; an unrecognised value keeps the raw text so it
+      // is never silently turned into a different comparison.
+      operator: (CONFIG_TO_DOMAIN_OPERATOR[row.operator] ??
+        row.operator) as FilterRow["operator"],
       values,
     },
     warnings: colResult.warnings,
