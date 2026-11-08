@@ -2,16 +2,10 @@
 
 ## Disposition
 
-**NOT READY** — code, independent regression coverage, integrated test/build
-gates and a real-browser smoke are complete, and the isolated app is available.
-The worker implementation/delivery records are now outdated by reviewer fixes.
-Per the shared contract, their corrections are a delivery gate. Manual follow-up
-prompts are in `docs/20261108_grouped_validation_integration_fixes.md`; no worker
-worktree was modified and no documentation update is claimed on those branches.
-
-This is **not** a finding that the integrated UI is unusable. The code is ready
-for exploratory testing, but this review does not claim final readiness while
-the explicit documentation gate remains outstanding.
+**READY FOR USER UI VALIDATION.** The documentation gate is closed by four
+documentation-only worker follow-ups, and the previously integrated code passed
+the recorded backend/frontend/build checks and limited browser smoke. The full
+numbered user UI acceptance remains pending and is not claimed as complete.
 
 ## Baseline and branch state
 
@@ -51,6 +45,10 @@ proof of correctness.
 | D | `ed908c4b1e4558e249494102ab5b8ba038c17efa` | `a06fac4` | Accepted; compatibility clarification. |
 | Reviewer | — | `0992b78` | Fixed A-materialized tree runtime incompatibility. |
 | Reviewer | — | `fa17108` | Bounded frontend wiring, strict validation, missing-reference/family fixes, contract/schema, samples, isolated settings and generated bundle. |
+| A docs follow-up | `742427f4240c4e0665c4766fa02d46841dcc3ec6` | `19927f0bd8cef0b69e1b87b574a96bcd5216c375` | Docs-only; both Worker A records corrected. |
+| B docs follow-up | `571a689a79d8be59e034f7b5a3e613e23dd5a50c` | `99fe4196312ad0b12e222397f1e71d64f2d4c7c7` | Docs-only; both Worker B records corrected. |
+| C docs follow-up | `28f2ea7a72cd9ac9ff7403be7ac2828b0964db35` | `152f13dd19ca28902cbcbe2324f39ff4556ee7a3` | Docs-only; both Worker C records corrected. |
+| D docs follow-up | `12fcc409f84b25c2e45ba8e94181efbce60993b3` | `460bf58175e0940ad33a42f0f4e23c946867f9e5` | Docs-only; both Worker D records corrected. |
 
 Dependency order was A helpers → A rule schema/identity → B runtime (consumes A)
 → C transport/state → D editors. No dependency commit was cherry-picked twice.
@@ -59,6 +57,12 @@ B: the integration keeps A's shared `rule_definition_payload` full-expression
 serializer and retains B's filter/config validation and runtime changes. B's
 duplicate snapshot serializer was deliberately not kept. The resolution is
 covered by the grouped rule config/API tests.
+
+The four post-review worker commits were individually inspected in full before
+cherry-pick. Each changed only its implementation record and delivery record;
+`git diff --name-status` confirmed there were no source/tests changes. Every
+follow-up passed `git diff --check`. Original worker results remain distinguished
+from reviewer-authored fixes/results in each corrected pair of records.
 
 ## Review findings and reviewer fixes
 
@@ -116,14 +120,13 @@ incomplete save/run blocking.
 rejects relation/tree fields on the new single-outcome form, consistent with the
 shared contract. A real API compatibility regression was added.
 
-### Manual worker documentation corrections still required
+### Worker documentation gate — closed
 
-Worker implementation/delivery docs describe the original accepted commits but
-do not contain the post-integration findings/fixes above. Because worker trees
-must remain untouched and workers must be dispatched manually, the report does
-not claim those docs have been corrected. Required prompts for A–D and B are in
-`docs/20261108_grouped_validation_integration_fixes.md`. This is the outstanding
-documentation gate behind **NOT READY**.
+Both required records on each worker branch now document the assigned findings,
+causes, reviewer-authored fixes, correct ownership, regression evidence and the
+remaining user UI acceptance. The docs-only follow-ups were cherry-picked without
+modifying the worker worktrees. Closure evidence is in
+`docs/20261108_grouped_validation_integration_fixes.md`.
 
 ## Requirement coverage (integrated evidence, not worker claims)
 
@@ -148,8 +151,8 @@ The final integrated backend test/manage gates used isolated settings with
 `PYTHONPATH=backend`, and
 `--ds=boat_control.grouped_validation_settings`. Django test databases and
 exception tracking were temporary. The UI app uses the separate
-`/tmp/opencode/grouped-validation-ui` home. No original-checkout data was read or
-written by these commands. Earlier worker-focused tests were run before the
+`/tmp/opencode/grouped-validation-main-configs` home. No original-checkout data
+was read or written by these commands. Earlier worker-focused tests were run before the
 reviewer settings module was added; they used Django's temporary test DB and the
 autouse temporary tracking DB, with test-specific temporary config/report paths.
 All required full integrated gates were repeated under the explicit isolated
@@ -166,12 +169,25 @@ settings module.
 | `npm --prefix frontend ci` | Passed installation; npm audit reported 20 existing dependency advisories (11 moderate, 9 high). No audit fix was run. |
 | `npm --prefix frontend test -- --run` | Passed after final source/test edits: 65 files / 599 tests. |
 | `npm --prefix frontend run build` | Passed after final source/test edits; Vite reports a 731.11 kB JS chunk warning. Generated `frontend/dist` output is reviewer-owned and included. |
-| `git diff --check` | Clean after final code/docs edits; repeated after the review closure commit. |
+| `git diff --check` | Clean on all four worker follow-up ranges and the final integration tree. |
 
 Independent sample execution using `apply_filters` and the actual materialized
 rule returned selected IDs `1,2,3,4,5,6,8,9,10,14,15` (11 total), three passes
 (`1,2,8`), and violations `3,4,5,6,9,10,14,15` (8 total). Loader values for
 IDs 6/15 were respectively `None` and `""`.
+
+## Main-branch configs and isolated app
+
+At the user's direction, the 15 Git-tracked config files were copied from local
+`main` (`6b4bc94`) into the isolated UI home using
+`git archive main config | tar -x`. `origin/main` (`14d984b`) has an identical
+tracked `config/` tree; `git diff --name-status origin/main..main -- config` was
+empty. The isolated `migrate_rules_to_db` synchronized two rules (`R056`, `R057`)
+from the copied main rules YAML. A separate grouped-validation legacy
+column-comparison sample config was added alongside those files. The isolated
+target is `/tmp/opencode/grouped-validation-main-configs`; no main code was
+merged and no checkout-local `.config`, database, uploads, reports or tracking
+data was copied.
 
 ## Browser/UI evidence and processes
 
@@ -182,31 +198,28 @@ with no browser page errors. The smoke also verified incomplete new grouping
 shows a blocking message without crashing. This is browser evidence only for
 that interaction; the complete numbered user acceptance remains pending.
 
-The isolated backend and Vite server are intentionally left running for the
-user: backend `127.0.0.1:8000` (runserver process tree rooted at PID `78466`),
-frontend `127.0.0.1:5173` (Vite PID `78553`). Process list and shutdown details
-are in the UI guide. App data stays in `/tmp/opencode/grouped-validation-ui`.
+Both isolated app processes were stopped at the user's request. Verification
+showed no listener on ports 8000 or 5173 and no matching runserver/Vite process.
+Startup commands for the imported main configs are in the UI guide. App
+data/config remains isolated in `/tmp/opencode/grouped-validation-main-configs`.
 
 ## Remaining issues / final handoff
 
-1. Worker A/B/C/D implementation and delivery docs must receive the manual
-   corrections listed in `docs/20261108_grouped_validation_integration_fixes.md`.
-2. Full repository Ruff still has the unchanged baseline issues listed above;
+1. Full repository Ruff still has the unchanged baseline issues listed above;
    changed-file Ruff is clean.
-3. User must perform all numbered visual acceptance steps; component tests and
+2. User must perform all numbered visual acceptance steps; component tests and
    the limited browser smoke do not substitute for that acceptance.
-4. No push, deployment, merge to main, worker-worktree changes, or branch/worktree
+3. No push, deployment, merge of main code, worker-worktree changes, or branch/worktree
    deletion was performed.
 
 ## Final state
 
-- Disposition: **NOT READY** until worker documentation corrections are
-  dispatched/recorded. The integrated worktree and isolated UI app remain
-  available for manual verification.
+- Disposition: **READY FOR USER UI VALIDATION**. Full numbered visual acceptance
+  remains pending and is the user's next step.
 - Branch/worktree: `work/20261108-grouped-validation-integration` at
   `/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/integration`.
-- Implementation HEAD: `fa17108`; the final docs-only review closure commit and
-  resulting branch HEAD are identified in the final handoff message.
+- Implementation commit: `fa17108`; worker documentation follow-ups are listed
+  in the audit table above. Final branch HEAD is in the final handoff message.
 - Accepted worker deliveries: A, B, C, D in dependency order; original and
   resulting hashes are listed above.
 - Review: `reviews/20261108_grouped_validation_integration_review.md`.

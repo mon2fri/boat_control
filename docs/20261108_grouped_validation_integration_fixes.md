@@ -101,11 +101,37 @@ frontend-only active-mode/explicitness state, and fixed family expansion/missing
 reference behavior. These clarifications are recorded in
 `planning/20261108_grouped_validation_shared_contract.md`.
 
-## Manual worker documentation follow-up prompts
+## Worker documentation follow-ups — closed
 
-Worker worktrees remain untouched. The following corrections are required in
-the responsible implementation **and delivery** records before the worker
-documentation gate is complete:
+All four workers delivered one documentation-only follow-up commit. Complete
+range diffs were inspected against each previously accepted branch tip before
+cherry-picking. `git diff --name-status` showed only the worker's implementation
+record and delivery record in every range; no executable changes were included.
+Each follow-up passed `git diff --check` before and after cherry-pick.
+
+| Worker | Original follow-up commit | Resulting integration commit | Closure evidence |
+| --- | --- | --- | --- |
+| A | `742427f4240c4e0665c4766fa02d46841dcc3ec6` | `19927f0bd8cef0b69e1b87b574a96bcd5216c375` | Both records document the one-clause grouping-fields defect, reviewer validation fix, exact regression and separate attribution of reviewer-only runtime results. |
+| B | `571a689a79d8be59e034f7b5a3e613e23dd5a50c` | `99fe4196312ad0b12e222397f1e71d64f2d4c7c7` | Both records identify the actual immutable `Rule` tree/`outcome_expression` mismatch, why dictionary mocks missed it, reviewer fix `0992b78`, and real-model regression evidence. |
+| C | `28f2ea7a72cd9ac9ff7403be7ac2828b0964db35` | `152f13dd19ca28902cbcbe2324f39ff4556ee7a3` | Both records enumerate save/run/restore wiring, new-vs-legacy grouping, missing references, partial imports and family semantics; reviewer fixes and reviewer-run tests are distinct from original C evidence. |
+| D | `12fcc409f84b25c2e45ba8e94181efbce60993b3` | `460bf58175e0940ad33a42f0f4e23c946867f9e5` | Both records identify uncontrolled FilterBuilder/page wiring, render crash and safe invalid-save fix, and limit browser smoke claims to the filter-editor path. |
+
+The docs explicitly keep the complete numbered user UI acceptance pending and do
+not attribute reviewer code/tests to the workers. These four follow-ups close the
+documentation gate without changing the previously tested executable tree.
+
+At the user's direction, the reviewer also copied the 15 Git-tracked `config/`
+files from local `main` (`6b4bc94`) into the isolated UI home. `origin/main`
+(`14d984b`) has an identical tracked config tree. `migrate_rules_to_db` imported
+the two existing rules (`R056`, `R057`); a separate legacy column-comparison
+sample config was added alongside them. No main code was merged, and no
+checkout-local `.config` or live data was copied.
+
+## Original manual worker documentation prompts (now fulfilled)
+
+The prompts below were issued without modifying worker worktrees. Each is now
+addressed in both required records by the documentation-only follow-up commits
+above. Worker worktrees remain untouched:
 
 > **Worker A:** Please document and regression-test that a one-clause
 > `logic_clauses` payload with `logic_relation` or `logic_grouping_tree` is

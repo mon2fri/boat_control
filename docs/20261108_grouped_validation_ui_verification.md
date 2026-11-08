@@ -2,16 +2,17 @@
 
 ## Status
 
-**NOT READY for final user acceptance yet.** The integrated code is running and
-automated checks/browser smoke are recorded, but worker implementation/delivery
-documentation corrections listed in
-`docs/20261108_grouped_validation_integration_fixes.md` are still required. The
-current isolated app may be used for exploratory/manual verification while that
-documentation handoff is pending.
+**READY FOR USER UI VALIDATION.** The worker implementation/delivery records now
+document the integration findings and reviewer-authored fixes. The full numbered
+visual acceptance remains pending user execution; the limited browser smoke does
+not substitute for it.
 
 No live books or original-checkout data are used. All app storage is isolated at
-`/tmp/opencode/grouped-validation-ui` (database, config, uploads, preparation
-cache, run reports and exception tracking).
+`/tmp/opencode/grouped-validation-main-configs` (database, config, uploads,
+preparation cache, run reports and exception tracking). Config files were copied
+from tracked Git objects on local `main` (`6b4bc94`); `origin/main` (`14d984b`)
+has the same tracked `config/` tree. No main code was merged and no
+checkout-local config/data was copied.
 
 ## Samples and expected loader representation
 
@@ -25,7 +26,7 @@ In this environment, Polars CSV loading represents row 6's unquoted empty
 literal whitespace in `SA`. Verify locally with:
 
 ```bash
-GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-ui \
+GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-main-configs \
 PYTHONPATH=backend uv run python - <<'PY'
 import polars as pl
 frame = pl.read_csv("samples/grouped_validation/comparison.csv", infer_schema_length=0)
@@ -43,21 +44,29 @@ Run from the integration worktree:
 
 ```bash
 cd /home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/integration
-export GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-ui
+export GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-main-configs
 export PYTHONPATH="$PWD/backend"
-mkdir -p "$GROUPED_VALIDATION_HOME/config/rules"
+mkdir -p "$GROUPED_VALIDATION_HOME"
+git archive main config | tar -x -C "$GROUPED_VALIDATION_HOME"
 cp samples/grouped_validation/legacy_rules.yaml \
-  "$GROUPED_VALIDATION_HOME/config/rules/rules.yaml"
+  "$GROUPED_VALIDATION_HOME/config/rules/grouped_validation_legacy_sample.yaml"
 uv run python backend/manage.py migrate \
   --settings=boat_control.grouped_validation_settings --noinput
 uv run python backend/manage.py migrate_rules_to_db \
   --settings=boat_control.grouped_validation_settings
 ```
 
+This setup copies the 15 tracked `config/` files from `main` and adds the
+separate legacy column-comparison sample config. `migrate_rules_to_db` reported
+2 imported main-branch catalog rules (`R056`, `R057`). The copied rows/columns
+configs (`s34`, `s35`), filters, family, and rule configs are available alongside
+the grouped-validation sample. Do not rerun `git archive` over a home containing
+user edits; choose a fresh dedicated home for a clean reset.
+
 Start the backend in terminal 1:
 
 ```bash
-GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-ui \
+GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-main-configs \
 PYTHONPATH=backend uv run python backend/manage.py runserver \
   127.0.0.1:8000 --settings=boat_control.grouped_validation_settings
 ```
@@ -147,13 +156,14 @@ it for this isolated verification.
    a refreshed `/results/<run-id>` URL); the same filter tree and run metadata
    must return, and an invalid restored reference must block rerun.
 
-9. **Verify legacy compatibility and editor repair.** Open the seeded `R001`
-   legacy single-outcome column-against-column rule. Confirm the mode remains
-   editable and its canonical identifier remains unchanged. Create/edit one
-   simple legacy rule and compare its ID before/after unchanged content. Try
-   removing/reordering a grouped clause, switching custom/flat modes, and
-   switching into/out of column-comparison mode; no outcome may be silently
-   replaced by the first clause.
+9. **Verify legacy compatibility and editor repair.** Open main-branch rules
+   `R056` (Valid status) and `R057` (Low Score) and confirm their legacy
+   single-outcome shapes load. Load the separate
+   `grouped_validation_legacy_sample` rules config to inspect column-against-
+   column mode. Confirm it remains editable and its canonical identifier remains
+   unchanged across an unchanged save. Try removing/reordering a grouped clause,
+   switching custom/flat modes, and switching into/out of column-comparison mode;
+   no outcome may be silently replaced by the first clause.
 
 10. **Inspect compound exception/report/tracking detail.** A grouped failure
     should produce one violation per rule/key, not one per failed clause. Verify
@@ -171,15 +181,13 @@ it for this isolated verification.
 - The browser smoke exposed and verified the fix for an invalid-config render
   crash: incomplete filters now leave the page usable, show errors, and disable
   config saving.
-- The isolated backend and Vite server are deliberately left running for this
-  manual handoff. At last check: backend listener process tree rooted at PID
-  `78466` (`runserver 127.0.0.1:8000`, children `78469`/`78477`); frontend Vite
-  PID `78553` (`127.0.0.1:5173`). PIDs can change after restart. Stop each
-  foreground process with Ctrl+C, or inspect exact PIDs with:
+- Both isolated app processes were stopped at the user's request; ports 8000 and
+  5173 are not listening. To stop processes after a future start, press Ctrl+C in
+  each foreground server terminal, or inspect exact PIDs with:
 
   ```bash
   ps -eo pid,ppid,args | grep -E '[m]anage.py runserver 127.0.0.1:8000|[v]ite --host 127.0.0.1 --port 5173'
   ```
 
   Then send `TERM` only to those listed process PIDs. Do not stop unrelated
-  services. All app state is under `/tmp/opencode/grouped-validation-ui`.
+  services. All app state is under `/tmp/opencode/grouped-validation-main-configs`.
