@@ -2,13 +2,20 @@
 
 ## Status
 
-**IMPLEMENTATION COMPLETE IN WORKER C WORKTREE — READY FOR REVIEWER CHERRY-PICK**
+**ORIGINAL C DELIVERY COMPLETE — POST-INTEGRATION DOCUMENTATION NOW UPDATED**
+
+The first part of this record describes Worker C’s original delivery and its
+pre-integration validation. Integration later found page-level and config/rule
+resolution defects that C’s non-visual work could not catch on its own. The
+reviewer fixed those gaps; section “Post-integration documentation update” below
+distinguishes the original delivery, integration defects, reviewer fixes and
+reviewer-run regression evidence.
 
 Worker C implemented the non-visual frontend domain/wire mapping, shared grouping
 helpers, workflow state/actions, configuration persistence, saved-filter and
 saved-run restoration, and the pre-execution guard for grouped filters. Worker D
 still owns the visual editor/page wiring documented below. No backend, D-owned
-visual component, other worktree or main branch was modified.
+visual component, other worktree or main branch was modified by C.
 
 ## Branch / worktree / commits
 
@@ -152,22 +159,192 @@ All defects found while implementing are recorded in the implementation doc:
    clauses now mean no row restriction, and config serialization omits grouping
    when no filters remain.
 
-## Remaining issues / reviewer decisions
+## Remaining issues as originally delivered
 
-1. **Reconcile multi-outcome wire shape with A/B.** C follows the shared contract
-   literally: multi-outcome requests/responses use `logic_clauses` and omit
-   `logic`. If the implemented backend also emits `logic` (for example the first
-   clause) alongside `logic_clauses`, the contradictory check must be relaxed in
-   integration after real response inspection.
-2. **D wiring is required** for config load, run request construction, saved-run
-   deep links and the visual filter/outcome editors. C did not edit D-owned files.
-3. Browser/UI verification and backend grouped evaluation remain reviewer/A/B/D
-   work. C makes no claim about real backend end-to-end execution.
-4. `npm run lint` pre-existing failures remain outside this delivery.
+These were C’s pre-integration open items and are superseded by the
+post-integration record below:
 
-## Disposition
+1. Reconcile the multi-outcome wire shape with real A/B responses.
+2. D wiring was still required for config load, run request construction,
+   saved-run deep links and visual editors.
+3. Browser/UI verification and backend grouped evaluation were not performed by C.
+4. Pre-existing frontend lint failures were outside this delivery.
 
-Worker C's non-visual implementation, meaningful grouped mapping/state/config
-tests, implementation documentation and this delivery record are committed on the
-assigned branch. The branch is ready for the reviewer to cherry-pick
-`81fa44b` followed by the delivery-record commit, then integrate with A/B and D.
+---
+
+# Post-integration documentation update
+
+Read-only sources from the integration branch:
+
+- `docs/20261108_grouped_validation_integration_fixes.md`
+- `reviews/20261108_grouped_validation_integration_review.md`
+
+Reviewer integration commits: `0992b78` (backend grouped-outcome normalization)
+and `fa17108` (bounded frontend/UI/contract integration). Review-closure docs
+commit: `370eac3`. **C did not cherry-pick integration code or rerun integrated
+gates.** Everything in the “reviewer-run” subsection is attributed to the
+reviewer.
+
+## 1. Original delivery and validation (pre-integration)
+
+Original C commits and their accepted integration commits:
+
+| C commit | Purpose | Integration commit |
+| --- | --- | --- |
+| `81fa44b` | domain/API/state transport | `381454a` |
+| `d6b97a9` | delivery documentation | `295de62` |
+| `a6edaa7` | no-filter/mixed-form fix | `475d8b3` |
+| `f249301` | cherry-pick order docs | `c7930b7` |
+
+C’s original evidence was:
+
+- `tsc -b` clean;
+- 6 focused grouped-validation test files / 64 tests passed;
+- full frontend suite 59 files / 558 tests passed;
+- `git diff --check` clean.
+
+That evidence remains valid for the original non-visual scope. It did not cover
+page wiring, D’s editors, or the later integration-only fixes.
+
+## 2. Defects discovered during integration
+
+1. **Page-level config load/save did not propagate filter grouping.** Prepare and
+   Upload pages dispatched only `setFilters` on load and built save content from
+   filter rows alone. `FilterBuilder` was uncontrolled in `PreparePage`.
+2. **`ResultsPage.buildRunRequest` omitted grouping.** Relation, tree, repair
+   errors and explicit-grouping requirements never reached the run request.
+3. **Saved-run deep links did not use `restoreRunConfiguration`.** Individual
+   dispatches restored other configuration but not grouped filters or invalid
+   expression errors.
+4. **Newly authored multi-filter expressions could fall back to legacy AND.**
+   Missing relation/tree was interpreted as legacy AND for every caller, allowing
+   an unfinished new expression to run with unintended flat semantics.
+5. **The strict config serializer could throw during render.** Adding an
+   incomplete filter row caused React Router’s error boundary instead of an
+   actionable save error.
+6. **Unresolved flat filters were dropped.** A missing filter under a flat/legacy
+   relation disappeared from the resolved rows, potentially broadening scope. C’s
+   earlier placeholder logic only covered unresolved rows referenced by a tree.
+7. **Missing condition references could rebind to another clause.** A saved
+   missing `c0` could map to a later condition renumbered to runtime `c0`.
+8. **Partial rule imports were applied.** `RulesPage` proceeded with drafts even
+   when resolution produced blocking invalid-grouping/missing-column warnings.
+9. **Family expansion changed positive any-match semantics.** Expanded tree
+   leaves always used AND; positive predicates require OR, negative predicates
+   require AND. Flat expressions also needed generated grouping to preserve
+   precedence.
+10. **One-clause new-form grouping fields were accepted then discarded** by the
+    backend normalization path.
+
+## 3. Reviewer-authored fixes and regression evidence
+
+### 3a. Frontend-only grouping mode/explicitness state
+
+The reviewer added state/transport that is deliberately **not persisted on the
+wire**:
+
+- `FilterGroupingMode = GroupRelation | "custom"`.
+- `WorkflowState.filterGroupingMode` and `WorkflowState.filterGroupingRequired`.
+- `RunRequest.filterGroupingRequired`.
+- `setFilterConfiguration` accepts `mode` and `requireExplicit`.
+- `validateWorkflowFilters`, `mapFilterConfigurationToWire`,
+  `mapRunRequestToWire` and `resolveGroupedExpression` accept the explicit
+  multi-filter requirement.
+- `workflowConfigurationFromRun` infers mode/explicitness from restored
+  relation/tree/errors.
+- The active mode decides what is serialized. A retained custom tree stays dormant
+  while the user temporarily selects flat AND/OR and is restored when switching
+  back. Newly authored multiple filters block until a relation/tree is explicitly
+  chosen; restored legacy configs/runs still default to legacy AND.
+- `tryMapWorkflowToRowsColumnsConfig` returns `{content, error}` rather than
+  throwing during render; `ConfigManager.saveDisabled` and page error messages
+  block saving invalid expressions.
+
+### 3b. Page integration fixed by the reviewer
+
+- `PreparePage`/`UploadPage` now dispatch `setFilterConfiguration` with relation,
+  tree, mode, errors and explicit-grouping state, and include grouping in save
+  payloads.
+- `PreparePage` mounts `FilterBuilder` controlled through
+  `grouping`/`onGroupingChange`.
+- `ResultsPage.buildRunRequest` carries grouping fields, and deep-link restoration
+  uses `restoreRunConfiguration`.
+- `RulesPage` refuses partial rule-config imports when blocking
+  `invalid_grouping` warnings exist.
+
+### 3c. Missing-reference and family-semantics fixes
+
+- Unresolved filters now attach blocking restoration errors even for flat/legacy
+  expressions.
+- Missing condition/outcome references become explicit `__missing_cN__`
+  sentinels; lookup cannot fall through to a later rebounded index.
+- Missing rule columns/families produce blocking warnings and prevent partial
+  import.
+- Family expansion uses OR for positive predicates and AND for negative
+  predicates inside the original expression; flat grouped expressions are wrapped
+  in a generated tree when needed.
+- Unsupported legacy single-outcome family expansion is rejected instead of
+  silently choosing the first member.
+
+### 3d. Reviewer regression tests
+
+- `frontend/src/api/groupedMapping.test.ts`: new multi-filter request without
+  explicit grouping throws; legacy request still omits grouping fields.
+- `frontend/src/api/configContent.grouped.test.ts`: selected flat relation does
+  not activate a dormant custom tree; new multi-filter save without explicit
+  expression is blocked; unresolved flat/legacy filter rows block; family
+  condition expansion preserves positive OR/negative AND semantics; unresolved
+  condition references stay distinct; missing flat grouped outcomes are blocking.
+- `frontend/src/state/WorkflowContext.grouped.test.ts`: new multiple filters are
+  blocked until grouping is selected; flat mode retains a dormant custom tree.
+- `frontend/src/pages/ResultsPage.grouped.test.ts`: `buildRunRequest` sends the
+  active nested tree, errors and explicit-grouping requirement.
+- `frontend/src/pages/RulesPage.test.tsx`: invalid grouped rule config is not
+  partially imported.
+- `tests/backend/test_grouped_validation_integration.py`: real A-materialized
+  four-clause Y/N expression executes through B’s runtime; five violations,
+  both passing cases and complete outcome context.
+
+### 3e. Reviewer-run integrated verification (not run by C)
+
+The reviewer reported:
+
+- backend `check` passed; `makemigrations --check --dry-run` found no changes;
+- backend suite `tests/backend tests/contracts tests/integration`: **774 passed**
+  under isolated `GROUPED_VALIDATION_HOME` settings;
+- `mypy backend` passed for 94 source files;
+- changed-file Ruff passed; full Ruff retained only 5 unchanged baseline findings;
+- frontend suite: **65 files / 599 tests passed**;
+- frontend production build passed with the existing 731.11 kB chunk warning;
+- `git diff --check` clean under the generated-dist exception;
+- sample evaluator: 11 selected, 3 passes (`1,2,8`), 8 violations
+  (`3,4,5,6,9,10,14,15`), with null vs empty-string rows distinguished;
+- limited headless Chrome smoke covered adding two filters, selecting CUSTOM
+  GROUPS, creating a group, and observing validation errors without a page crash.
+
+The reviewer explicitly did **not** claim full numbered UI acceptance.
+
+## 4. Remaining limitations and pending user UI acceptance
+
+- The integration disposition was **NOT READY** only pending worker
+  documentation corrections. This record and the implementation record now
+  include the required integration findings; reviewer confirmation of the
+  documentation gate is still required.
+- Frontend grouping mode/explicitness is UI-only and intentionally absent from the
+  wire; restored state is inferred from the persisted relation/tree/errors.
+- Full user visual acceptance remains pending: nested filter truth table,
+  save/reload/restart, simple and nested outcomes, opposite-flags Y/N table,
+  null/blank negative operators, clause edit/remove/reorder, config/run
+  restoration, legacy and column-against-column compatibility, reports and
+  exception-tracking inspection.
+- Backend grouped evaluation, report/tracking content and browser acceptance
+  remain reviewer/user evidence, not Worker C test claims.
+- Pre-existing full-repository Ruff findings remain unchanged.
+
+## Disposition after documentation correction
+
+Worker C’s original source/test delivery is unchanged on this branch. These
+documentation corrections record the integration defects, the reviewer-authored
+fixes/evidence and the remaining user UI acceptance without cherry-picking
+integration code or claiming reviewer-run results as C’s own. The branch is ready
+for the reviewer to confirm the documentation gate.
