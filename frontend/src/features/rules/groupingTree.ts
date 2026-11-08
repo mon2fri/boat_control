@@ -53,6 +53,15 @@ export function formatGroupTree(node: GroupNode, conditionLabel: (id: string) =>
   return node.children.map((c) => formatGroupTree(c, conditionLabel)).join(` ${node.kind.toUpperCase()} `);
 }
 
+export interface GroupTreeHierarchyOptions {
+  /** Label for the root line. Defaults to `overall`. */
+  rootLabel?: string;
+  /** Label factory for numbered child groups. Defaults to `group ${n}`. */
+  groupLabel?: (number: number) => string;
+  /** Operator text. Defaults to upper-case `AND` / `OR`. */
+  operatorLabels?: { and?: string; or?: string };
+}
+
 /**
  * Pretty-print a tree as a hierarchical breakdown, one line per branch node.
  *
@@ -65,14 +74,23 @@ export function formatGroupTree(node: GroupNode, conditionLabel: (id: string) =>
  * ```
  *
  * Group numbers are assigned bottom-up (deepest groups get the lowest
- * numbers). The root is always labelled "overall".
+ * numbers). The root is always labelled `overall` by default. Callers that
+ * render filters, conditions or outcomes can supply section-specific leaf
+ * labels and root/group wording without changing the structural numbering.
  */
 export function formatGroupTreeHierarchy(
   node: GroupNode,
   conditionLabel: (id: string) => string,
+  options: GroupTreeHierarchyOptions = {},
 ): string {
   if (node.kind === "leaf") return conditionLabel(node.conditionId);
 
+  const rootLabel = options.rootLabel ?? "overall";
+  const groupLabel = options.groupLabel ?? ((number: number) => `group ${number}`);
+  const operatorLabels = {
+    and: options.operatorLabels?.and ?? "AND",
+    or: options.operatorLabels?.or ?? "OR",
+  };
   const names = new Map<GroupNode, string>();
   let counter = 0;
 
@@ -80,17 +98,17 @@ export function formatGroupTreeHierarchy(
   function assignNames(n: GroupNode, isRoot: boolean): void {
     if (n.kind === "leaf") return;
     for (const child of n.children) assignNames(child, false);
-    if (!isRoot) names.set(n, `group ${++counter}`);
+    if (!isRoot) names.set(n, groupLabel(++counter));
   }
   assignNames(node, true);
 
   function formatBranch(n: GroupNode): string {
     if (n.kind === "leaf") return conditionLabel(n.conditionId);
-    const label = n === node ? "overall" : names.get(n)!;
+    const label = n === node ? rootLabel : names.get(n)!;
     const parts = n.children.map((c) =>
       c.kind === "leaf" ? conditionLabel(c.conditionId) : names.get(c)!,
     );
-    return `${label}: ${parts.join(` ${n.kind.toUpperCase()} `)}`;
+    return `${label}: ${parts.join(` ${operatorLabels[n.kind]} `)}`;
   }
 
   // Pre-order: root first, then children.
