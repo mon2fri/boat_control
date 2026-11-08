@@ -29,6 +29,7 @@ const nestedTree: GroupNode = {
 describe("summarizeAppliedFilters", () => {
   it("reports no filters without inventing an expression", () => {
     expect(summarizeAppliedFilters({})).toEqual({
+      expression: null,
       hierarchy: [],
       clauses: [],
       invalid: false,
@@ -40,6 +41,7 @@ describe("summarizeAppliedFilters", () => {
     expect(
       summarizeAppliedFilters({ filtersApplied: [filters[0]!] }),
     ).toEqual({
+      expression: 'Filter 1: system contains "oomber"',
       hierarchy: ["overall: FILTER 1"],
       clauses: ['FILTER 1: system contains "oomber"'],
       invalid: false,
@@ -79,6 +81,7 @@ describe("summarizeAppliedFilters", () => {
       'FILTER 3: status equals "inactive"',
     ]);
     expect(summary.invalid).toBe(false);
+    expect(summary.expression).toBe('(Filter 1: system contains "oomber" AND (Filter 2: status equals "active" OR Filter 3: status equals "inactive"))');
   });
 
   it("never flattens a tree that references a missing filter", () => {
@@ -94,6 +97,7 @@ describe("summarizeAppliedFilters", () => {
     });
 
     expect(summary.invalid).toBe(true);
+    expect(summary.expression).toBeNull();
     expect(summary.hierarchy).toEqual([]);
     expect(summary.clauses).toHaveLength(2);
     expect(summary.errors.join(" ")).toContain("unknown or removed");
@@ -106,6 +110,7 @@ describe("summarizeAppliedFilters", () => {
     });
 
     expect(summary.invalid).toBe(true);
+    expect(summary.expression).toBeNull();
     expect(summary.hierarchy).toEqual([]);
     expect(summary.errors.join(" ")).toContain("fewer than two children");
   });
@@ -118,6 +123,7 @@ describe("summarizeAppliedFilters", () => {
     });
 
     expect(summary.invalid).toBe(true);
+    expect(summary.expression).toBeNull();
     expect(summary.hierarchy).toEqual([]);
     expect(summary.clauses).toHaveLength(3);
     expect(summary.errors).toEqual([
@@ -153,6 +159,7 @@ describe("summarizeAppliedFilters", () => {
     });
 
     expect(summary).toEqual({
+      expression: '(Filter 1: system contains "oomber" AND (Filter 2: status equals "active" OR Filter 3: status equals "inactive"))',
       hierarchy: [
         "overall: FILTER 1 AND group 1",
         "group 1: FILTER 2 OR FILTER 3",

@@ -12,6 +12,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from apps.reports.rule_headers import excel_rule_headers, rule_sort_key
+from apps.runs.grouped_logic import validate_filter_grouping
+from apps.runs.report_metadata import grouping_lines
 
 _FILTER_OP_LABELS: dict[str, str] = {
     "equals": "equals",
@@ -133,7 +135,9 @@ def _format_filter_row(f: dict[str, Any]) -> str:
     if not vals and f.get("filter_value"):
         vals = [f["filter_value"]]
     connector = (
-        " and " if f.get("operator") in ("neq", "ncontains") else " or "
+        " and "
+        if f.get("operator") in ("neq", "ncontains", "not_equals", "not_contains")
+        else " or "
     )
     quoted = connector.join(f"'{v}'" for v in vals)
     return f"{f.get('column', '?')} {op} {quoted}"
@@ -156,23 +160,47 @@ def _filter_tree_text(node: Any, labels: dict[int, str]) -> str:
     return f"({joined})"
 
 
+def _report_filter_tree(result: dict[str, Any]) -> dict[str, Any] | None:
+    filters = result.get("filters_applied") or []
+    relation = result.get("filter_relation")
+    tree = result.get("filter_grouping_tree")
+    errors = validate_filter_grouping(filters, relation, tree)
+    if errors:
+        raise ValueError("Filter grouping unavailable: " + "; ".join(errors))
+    if tree is not None:
+        return dict(tree)
+    if not filters:
+        return None
+    leaves = [{"kind": "leaf", "conditionId": f"c{i}"} for i in range(len(filters))]
+    if len(leaves) == 1:
+        return dict(leaves[0])
+    return {"kind": relation or "and", "children": leaves}
+
+
 def _format_filter_expression(result: dict[str, Any]) -> str:
     filters = result.get("filters_applied") or []
     if not filters:
         return "No filtering applied"
-    rows = [_format_filter_row(f) for f in filters]
-    labels = {index: f"F{index + 1}" for index in range(len(rows))}
-    tree = result.get("filter_grouping_tree")
-    if isinstance(tree, dict):
-        expression = _filter_tree_text(tree, labels)
-        return "; ".join(
-            f"{labels[index]}: {row}" for index, row in enumerate(rows)
-        ) + f" | Grouping: {expression}"
-    relation = result.get("filter_relation")
-    if relation in ("and", "or"):
-        return f" {relation.upper()} ".join(rows)
-    # Legacy runs combine filters with AND.
-    return " AND ".join(rows)
+    labels = {i: f"Filter {i + 1}: {_format_filter_row(row)}" for i, row in enumerate(filters)}
+    try:
+        return _filter_tree_text(_report_filter_tree(result), labels)
+    except ValueError as error:
+        return str(error)
+
+
+def _filter_report_headers(result: dict[str, Any]) -> tuple[str, str]:
+    filters = result.get("filters_applied") or []
+    clauses = "\n".join(
+        f"Filter {i + 1}: {_format_filter_row(row)}" for i, row in enumerate(filters)
+    )
+    try:
+        tree = _report_filter_tree(result)
+        groups = grouping_lines(tree, "Filter")
+        if tree and tree.get("kind") == "leaf":
+            groups = "Overall: Filter 1"
+        return clauses or "No filtering applied", groups or "No filter groupings"
+    except ValueError as error:
+        return clauses or "No filtering applied", str(error)
 
 
 def _format_created_at(iso_str: str | None) -> str:
@@ -595,7 +623,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
     sections.append(
         "<p class='section-logic'>"
         f"Comparison across {len(targets)} target columns."
-        f"<br>Filtering: {_escape_html(filter_text)}"
+        f"<br>Filters: {_escape_html(filter_text)}"
         "</p>"
     )
     sections.append("<div class='summary-grid'>")
@@ -936,7 +964,10 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     overall.append(["New Books", comparison.get("new_book_count", 0)])
     overall.append([])
     overall.append(["Filtering information"])
-    overall.append([_excel_value(_format_filter_expression(result))])
+    filter_clauses, filter_groups = _filter_report_headers(result)
+    for label, text in [("Filters:", filter_clauses), ("Filter Groupings:", filter_groups)]:
+        overall.append([label, _excel_value(text)])
+        overall.row_dimensions[overall.max_row].height = max(30, 15 * (text.count("\n") + 1))
 
     aggregation_start_row = overall.max_row + 1
     aggregation_bottom_row = aggregation_start_row
@@ -1321,6 +1352,8 @@ def _style_excel_sheet(sheet: Any) -> None:
                     "Column",
                     "In Baseline",
                     "In Comparison",
+                    "Filters:",
+                    "Filter Groupings:",
                     "Conditions:",
                     "Condition Groupings:",
                     "Expectations:",

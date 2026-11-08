@@ -64,6 +64,9 @@ describe("OverallSummaryCards", () => {
     expect(groupingText()).toBe(
       ["overall: FILTER 1 AND group 1", "group 1: FILTER 2 OR FILTER 3"].join("\n"),
     );
+    expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent(
+      'Filters: (Filter 1: system contains "oomber" AND (Filter 2: status equals "active" OR Filter 3: status equals "inactive"))',
+    );
     expect(screen.getByTestId("applied-filters-statement")).toHaveTextContent(
       'FILTER 1: system contains "oomber"; FILTER 2: status equals "active"; FILTER 3: status equals "inactive"',
     );
@@ -120,6 +123,9 @@ describe("OverallSummaryCards", () => {
 
     expect(groupingText()).toBe(
       ["overall: FILTER 1 AND group 1", "group 1: FILTER 2 OR FILTER 3"].join("\n"),
+    );
+    expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent(
+      'Filters: (Filter 1: system contains "oomber" AND (Filter 2: status equals "active" OR Filter 3: status equals "inactive"))',
     );
     expect(screen.getByTestId("applied-filters-statement")).toHaveTextContent(
       'FILTER 1: system contains "oomber"',

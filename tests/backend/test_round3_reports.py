@@ -86,3 +86,59 @@ def test_html_sections_and_excel_sheets_use_numeric_rule_index_order() -> None:
     ]
     assert "New Exceptions Only help" in html
     assert "role='tooltip'" in html
+
+
+def test_overall_filter_cells_and_html_keep_numbered_clauses_and_full_expression() -> None:
+    document, _ = _grouped_document()
+    document["filters_applied"] = [
+        {"column": "system", "operator": "contains", "filter_values": ["oomber"]},
+        {"column": "status", "operator": "eq", "filter_values": ["active"]},
+        {"column": "status", "operator": "eq", "filter_values": ["inactive"]},
+    ]
+    document["filter_grouping_tree"] = {
+        "kind": "and",
+        "children": [
+            {"kind": "leaf", "conditionId": "c0"},
+            {
+                "kind": "or",
+                "children": [
+                    {"kind": "leaf", "conditionId": "c1"},
+                    {"kind": "leaf", "conditionId": "c2"},
+                ],
+            },
+        ],
+    }
+    workbook = load_workbook(BytesIO(export_excel(document, "Filters")))
+    sheet = workbook["Overall"]
+    cells = {row[0].value: row[1] for row in sheet.iter_rows() if len(row) > 1}
+    assert cells["Filters:"].value.splitlines() == [
+        "Filter 1: system contains 'oomber'",
+        "Filter 2: status equals 'active'",
+        "Filter 3: status equals 'inactive'",
+    ]
+    assert cells["Filter Groupings:"].value.splitlines() == [
+        "Overall: Group 2",
+        "Group 1: Filter 2 OR Filter 3",
+        "Group 2: Filter 1 AND Group 1",
+    ]
+    assert cells["Filters:"].alignment.wrap_text is True
+    import html
+
+    assert (
+        "Filters: (Filter 1: system contains 'oomber' AND "
+        "(Filter 2: status equals 'active' OR Filter 3: status equals 'inactive'))"
+        in html.unescape(export_html(document, "Filters"))
+    )
+
+
+def test_filter_grouping_export_never_flattens_invalid_references() -> None:
+    from apps.reports.services import _filter_report_headers, _format_filter_expression
+
+    document = {
+        "filters_applied": [{"column": "status", "operator": "eq", "filter_values": ["active"]}],
+        "filter_grouping_tree": {"kind": "leaf", "conditionId": "c9"},
+    }
+    clauses, groups = _filter_report_headers(document)
+    assert clauses == "Filter 1: status equals 'active'"
+    assert "unavailable" in groups
+    assert "unavailable" in _format_filter_expression(document)

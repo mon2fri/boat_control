@@ -1,3 +1,4 @@
+import { FloatingListbox } from "./FloatingListbox";
 import { useId, useMemo, useRef, useState } from "react";
 
 export interface SelectOption {
@@ -42,6 +43,7 @@ export function SearchableSelect({
   const baseId = useId();
   const listId = `${baseId}-list`;
   const hintId = hint ? `${baseId}-hint` : undefined;
+  const inputRef = useRef<HTMLInputElement>(null);
   const blurTimer = useRef<number | undefined>(undefined);
 
   const filtered = useMemo(() => {
@@ -104,6 +106,7 @@ export function SearchableSelect({
         aria-haspopup="listbox"
       >
         <input
+          ref={inputRef}
           id={`${baseId}-input`}
           type="text"
           role="searchbox"
@@ -120,7 +123,7 @@ export function SearchableSelect({
             setOpen(true);
             setActiveIndex(0);
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={() => { window.clearTimeout(blurTimer.current); setOpen(true); }}
           onBlur={() => {
             // Delay so an option click registers before the list closes.
             blurTimer.current = window.setTimeout(() => setOpen(false), 120);
@@ -128,7 +131,8 @@ export function SearchableSelect({
           onKeyDown={handleKeyDown}
         />
         {open && (
-          <ul id={listId} role="listbox" aria-label={label} className="combobox-list">
+          <FloatingListbox id={listId} role="listbox" aria-label={label}
+            anchorRef={inputRef} onDismiss={() => setOpen(false)}>
             {filtered.length === 0 && (
               <li role="option" aria-disabled="true" aria-selected="false" className="combobox-empty">
                 No matches
@@ -161,7 +165,7 @@ export function SearchableSelect({
                 )}
               </li>
             ))}
-          </ul>
+          </FloatingListbox>
         )}
       </div>
     </div>

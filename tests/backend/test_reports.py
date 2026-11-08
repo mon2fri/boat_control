@@ -261,8 +261,8 @@ class TestExportExcel:
         assert any(cell.value == "Exception Rule Summary" for row in overall for cell in row)
         assert any(cell.value == "Aggregation: region" for row in overall for cell in row)
         assert any(cell.value == "Aggregation: owner" for row in overall for cell in row)
-        assert overall["A12"].value == "Aggregation: region"
-        assert overall["D12"].value == "Aggregation: owner"
+        assert overall["A13"].value == "Aggregation: region"
+        assert overall["D13"].value == "Aggregation: owner"
         assert not any(
             cell.value == "Aggregation: should_not_export" for row in overall for cell in row
         )

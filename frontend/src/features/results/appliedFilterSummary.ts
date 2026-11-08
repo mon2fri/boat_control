@@ -12,6 +12,8 @@ export interface AppliedFilterSummaryInput {
 }
 
 export interface AppliedFilterSummary {
+  /** Full parenthesized predicate; never synthesized for invalid grouping. */
+  expression: string | null;
   /** Complete root/child expression lines; empty when no valid grouping exists. */
   hierarchy: string[];
   /** Every applied filter in order, never dropped when grouping is invalid. */
@@ -48,6 +50,7 @@ export function summarizeAppliedFilters(
 
   if (rows.length === 0) {
     return {
+      expression: null,
       hierarchy: [],
       clauses,
       invalid: suppliedErrors.length > 0,
@@ -67,17 +70,25 @@ export function summarizeAppliedFilters(
 
   const errors = uniqueMessages([...suppliedErrors, ...resolved.errors]);
   if (errors.length > 0 || !resolved.valid) {
-    return { hierarchy: [], clauses, invalid: true, errors };
+    return { expression: null, hierarchy: [], clauses, invalid: true, errors };
   }
 
   const tree =
     resolved.tree ?? buildFlatGroupTree(rows, resolved.relation ?? "and");
   if (!tree) {
-    return { hierarchy: [], clauses, invalid: false, errors: [] };
+    return { expression: null, hierarchy: [], clauses, invalid: false, errors: [] };
   }
+
+  const fullLabels = new Map(rows.map((row, index) => [row.id, `Filter ${index + 1}: ${formatFilterRow(row)}`]));
+  function render(node: GroupNode): string {
+    if (node.kind === "leaf") return fullLabels.get(node.conditionId) ?? `<missing Filter ${node.conditionId}>`;
+    return `(${node.children.map(render).join(` ${node.kind.toUpperCase()} `)})`;
+  }
+  const expression = render(tree);
 
   if (tree.kind === "leaf") {
     return {
+      expression,
       hierarchy: [`overall: ${labelFor(tree.conditionId)}`],
       clauses,
       invalid: false,
@@ -86,6 +97,7 @@ export function summarizeAppliedFilters(
   }
 
   return {
+    expression,
     hierarchy: formatGroupTreeHierarchy(tree, labelFor, {
       rootLabel: "overall",
       groupLabel: (number) => `group ${number}`,

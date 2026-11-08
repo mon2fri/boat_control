@@ -66,6 +66,11 @@ export function OverallSummaryCards({
       <div className="applied-filter-summary" aria-label="Applied filter grouping">
         {hasFilters ? (
           <>
+            {filterSummary.expression && (
+              <p className="section-logic" data-testid="applied-filters-expression">
+                Filters: {filterSummary.expression}
+              </p>
+            )}
             {!filterSummary.invalid && (
               <p className="field-hint" data-testid="applied-filters-grouping">
                 <span className="visually-hidden">Applied filter grouping: </span>

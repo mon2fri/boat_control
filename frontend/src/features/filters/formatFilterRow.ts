@@ -9,6 +9,7 @@ const OPERATOR_LABELS: Record<string, string> = {
 
 export function formatFilterRow(row: FilterRow): string {
   const op = OPERATOR_LABELS[row.operator] ?? row.operator;
-  const vals = row.values.map((v) => `"${v}"`).join(" or ");
+  const connector = row.operator === "not_equals" || row.operator === "not_contains" ? " and " : " or ";
+  const vals = row.values.map((v) => `"${v}"`).join(connector);
   return `${row.column} ${op} ${vals}`;
 }

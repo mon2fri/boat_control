@@ -878,8 +878,11 @@ def test_reports_show_grouped_filter_expression() -> None:
         ),
     }
     html = export_html(result, "Grouped filters")
-    assert "Grouping:" in html
-    assert "(F1 AND F2) OR F3" in html
+    assert "Filters:" in html
+    assert (
+        "((Filter 1: book equals &#x27;MO&#x27; AND "
+        "Filter 2: system equals &#x27;Traded Risk&#x27;) OR Filter 3: book equals &#x27;FO&#x27;)"
+    ) in html
     assert "book equals &#x27;MO&#x27;" in html
 
     from io import BytesIO
@@ -887,7 +890,8 @@ def test_reports_show_grouped_filter_expression() -> None:
     workbook = load_workbook(BytesIO(export_excel(result, "Grouped filters")))
     values = [cell.value for row in workbook["Overall"] for cell in row]
     assert any(
-        value and "Grouping:" in str(value) and "(F1 AND F2) OR F3" in str(value)
+        value and "Group 1: Filter 1 AND Filter 2" in str(value)
+        and "Group 2: Group 1 OR Filter 3" in str(value)
         for value in values
     )
 
