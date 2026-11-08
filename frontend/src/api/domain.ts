@@ -6,6 +6,8 @@
 
 export type FilterOperator = "equals" | "not_equals" | "contains" | "not_contains";
 export type LogicOperator = FilterOperator | "greater_than" | "less_than";
+/** Flat joiner for a clause list when no custom tree is configured. */
+export type GroupRelation = "and" | "or";
 
 export const FILTER_OPERATORS: { value: FilterOperator; label: string }[] = [
   { value: "equals", label: "equals to" },
@@ -55,6 +57,15 @@ export interface SavedFilter {
   id: string;
   name: string;
   rows: FilterRow[];
+  /**
+   * Flat relation between rows when no custom tree is configured. Absent means
+   * legacy AND. `groupTree` (when present and valid) is authoritative.
+   */
+  relation?: GroupRelation | null;
+  /** Grouping tree whose leaves reference `rows[].id` at runtime. */
+  groupTree?: GroupNode | null;
+  /** Non-empty when a restored expression is incomplete/invalid. */
+  groupingErrors?: string[];
 }
 
 export interface Condition {
@@ -108,7 +119,24 @@ export interface Rule {
    * editor and the backend evaluator.
    */
   groupTree: GroupNode | null;
+  /**
+   * Legacy single-outcome clause. Always present for compatibility. For a rule
+   * with multiple grouped outcomes this is the first clause and
+   * `logicClauses` carries the complete list.
+   */
   logic: LogicClause;
+  /**
+   * Multiple value-against-column outcomes. Only populated for multi-outcome
+   * rules; a single outcome is persisted in the legacy `logic` form so its
+   * canonical identity is unchanged.
+   */
+  logicClauses?: LogicClause[];
+  /** Flat joiner between `logicClauses` when no custom tree is configured. */
+  logicRelation?: GroupRelation | null;
+  /** Grouping tree whose leaves reference `logicClauses[].id` at runtime. */
+  logicGroupTree?: GroupNode | null;
+  /** Restored expression errors; running this rule must be blocked until repaired. */
+  logicGroupingErrors?: string[];
   /** Comparison-file columns included in this rule's exception details. */
   extraColumns?: string[];
   /** Hide the standard comparison columns in this rule's exception details. */
@@ -132,6 +160,15 @@ export interface RunRequest {
   asOfDate?: string;
   comparisonColumns: string[];
   filters: FilterRow[];
+  /**
+   * Flat joiner for `filters`. Absent/null means legacy AND (or a valid
+   * `filterGroupTree` when one is supplied).
+   */
+  filterRelation?: GroupRelation | null;
+  /** Runtime-ID grouping tree for `filters`; mapped to `cN` at the wire boundary. */
+  filterGroupTree?: GroupNode | null;
+  /** Non-empty when the restored filter expression must be repaired before running. */
+  filterGroupingErrors?: string[];
   targetColumns: string[];
   /**
    * Columns used to identify a record across the two files. At least one is
@@ -227,6 +264,12 @@ export interface RunResult {
   groupStatistics?: GroupStatisticsBundle;
   /** Persisted filtering rows applied to this run. */
   filtersApplied?: FilterRow[];
+  /** Persisted flat filter joiner for this run. Absent means legacy AND. */
+  filtersRelation?: GroupRelation | null;
+  /** Persisted filter grouping tree remapped to runtime row IDs. */
+  filtersGroupTree?: GroupNode | null;
+  /** Non-empty when the persisted filter expression could not be restored. */
+  filtersGroupingErrors?: string[];
   /** Whether nested aggregation was enabled for this run. */
   nestedAggregationEnabled?: boolean;
   /** User-defined comparison sections persisted with this run. */
@@ -347,16 +390,6 @@ export interface AppSettings {
   runHistoryPath: string;
   /** Absolute Linux or Windows path to the separate exception-tracking SQLite file. */
   exceptionTrackingPath: string;
-}
-
-/**
- * A saved filter preset the user can recall on the Prepare page. The server
- * owns persistence; the client only edits, lists, and deletes by id.
- */
-export interface SavedFilter {
-  id: string;
-  name: string;
-  rows: FilterRow[];
 }
 
 /**

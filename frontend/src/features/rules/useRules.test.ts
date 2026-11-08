@@ -5,8 +5,12 @@
  * so users can read the rule at a glance.
  */
 import { describe, expect, it } from "vitest";
-import { describeLogic } from "./useRules";
-import type { Rule } from "../../api/domain";
+import {
+  describeLogic,
+  ruleLogicClauses,
+  validateRuleLogicConfiguration,
+} from "./useRules";
+import type { LogicClause, Rule } from "../../api/domain";
 
 function rule(overrides: Partial<Rule> = {}): Rule {
   return {
@@ -68,5 +72,96 @@ describe("describeLogic", () => {
     } }))).toBe(
       "status must equal column [expected] in Comparison",
     );
+  });
+
+  it("renders multiple outcomes joined by their flat relation", () => {
+    const clauses: LogicClause[] = [
+      { id: "l0", format: "value", column: "sa", operator: "equals", target: "Y" },
+      { id: "l1", format: "value", column: "cva", operator: "equals", target: "Y" },
+    ];
+    expect(describeLogic(rule({ logic: clauses[0]!, logicClauses: clauses, logicRelation: "or" })))
+      .toBe('sa must equal "Y" OR cva must equal "Y"');
+  });
+
+  it("renders the full nested outcome expression", () => {
+    const clauses: LogicClause[] = [
+      { id: "l0", format: "value", column: "sa", operator: "equals", target: "Y" },
+      { id: "l1", format: "value", column: "cva", operator: "equals", target: "N" },
+      { id: "l2", format: "value", column: "status", operator: "equals", target: "Active" },
+    ];
+    const text = describeLogic(rule({
+      logic: clauses[0]!,
+      logicClauses: clauses,
+      logicRelation: null,
+      logicGroupTree: {
+        kind: "and",
+        children: [
+          {
+            kind: "or",
+            children: [
+              { kind: "leaf", conditionId: "l0" },
+              { kind: "leaf", conditionId: "l1" },
+            ],
+          },
+          { kind: "leaf", conditionId: "l2" },
+        ],
+      },
+    }));
+    expect(text).toContain("overall: group 1 AND outcome 3");
+    expect(text).toContain('group 1: outcome 1 (sa must equal "Y") OR outcome 2 (cva must equal "N")');
+  });
+});
+
+describe("ruleLogicClauses / validation", () => {
+  it("falls back to the legacy clause", () => {
+    expect(ruleLogicClauses(rule())).toEqual([rule().logic]);
+  });
+
+  it("accepts a nested grouped expression", () => {
+    const clauses: LogicClause[] = [
+      { id: "l0", format: "value", column: "sa", operator: "equals", target: "Y" },
+      { id: "l1", format: "value", column: "cva", operator: "equals", target: "N" },
+      { id: "l2", format: "value", column: "status", operator: "equals", target: "Active" },
+    ];
+    expect(validateRuleLogicConfiguration({
+      logic: clauses[0]!,
+      logicClauses: clauses,
+      logicRelation: "and",
+      logicGroupTree: {
+        kind: "and",
+        children: [
+          {
+            kind: "or",
+            children: [
+              { kind: "leaf", conditionId: "l0" },
+              { kind: "leaf", conditionId: "l1" },
+            ],
+          },
+          { kind: "leaf", conditionId: "l2" },
+        ],
+      },
+    })).toEqual({ valid: true, errors: [] });
+  });
+
+  it("rejects missing references and column-against-column multi outcomes", () => {
+    const clauses: LogicClause[] = [
+      { id: "l0", format: "value", column: "sa", operator: "equals", target: "Y" },
+      { id: "l1", format: "column", column: "cva", operator: "equals", target: "sa" },
+    ];
+    const result = validateRuleLogicConfiguration({
+      logic: clauses[0]!,
+      logicClauses: clauses,
+      logicRelation: "or",
+      logicGroupTree: {
+        kind: "or",
+        children: [
+          { kind: "leaf", conditionId: "l0" },
+          { kind: "leaf", conditionId: "removed" },
+        ],
+      },
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.join(" ")).toMatch(/unknown or removed/i);
+    expect(result.errors.join(" ")).toMatch(/value-against-column/i);
   });
 });

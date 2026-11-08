@@ -2,12 +2,15 @@ import { createContext, useCallback, useContext, useMemo, useReducer, type React
 import type {
   ComparisonSection,
   FilterRow,
+  GroupNode,
+  GroupRelation,
   HeaderReport,
   PrepareResult,
   RunResult,
   ExtraColumnDisplay,
 } from "../api/domain";
 import { defaultAsOfDate, isValidIsoDate } from "../lib/asOfDate";
+import { resolveGroupedExpression } from "../lib/grouping";
 
 export interface PreparedDataCache {
   sessionId: string;
@@ -28,6 +31,12 @@ export interface WorkflowState {
   /** Shared columns selected for comparison. Initialized to all common columns on upload. */
   comparisonColumns: string[];
   filters: FilterRow[];
+  /** Flat joiner for filters; null means legacy AND unless a tree is valid. */
+  filterRelation: GroupRelation | null;
+  /** Runtime grouping tree for filters; leaves reference `filters[].id`. */
+  filterGroupTree: GroupNode | null;
+  /** Non-empty when the current filter expression needs repair before running. */
+  filterGroupingErrors: string[];
   targetColumns: string[];
   /** Record-identity columns. Empty array means "not yet chosen"; the backend refuses to run without one. */
   keyColumns: string[];
@@ -65,6 +74,9 @@ const initialState: WorkflowState = {
   asOfDate: defaultAsOfDate(),
   comparisonColumns: [],
   filters: [],
+  filterRelation: null,
+  filterGroupTree: null,
+  filterGroupingErrors: [],
   targetColumns: [],
   keyColumns: [],
   aggregationColumns: [],
@@ -99,6 +111,16 @@ type Action =
   | { type: "setExtraColumnDisplay"; display: ExtraColumnDisplay }
   | { type: "setPreparedData"; cache: PreparedDataCache }
   | { type: "setFilters"; filters: FilterRow[] }
+  | {
+      type: "setFilterConfiguration";
+      filters: FilterRow[];
+      relation?: GroupRelation | null;
+      groupTree?: GroupNode | null;
+      errors?: string[];
+    }
+  | { type: "setFilterRelation"; relation: GroupRelation | null }
+  | { type: "setFilterGroupTree"; groupTree: GroupNode | null }
+  | { type: "restoreRunConfiguration"; result: RunResult; availableColumns?: string[] }
   | { type: "setTargetColumns"; columns: string[] }
   | { type: "setKeyColumns"; columns: string[] }
   | { type: "setSelectedRules"; ruleIndexes: string[] }
@@ -110,7 +132,129 @@ type Action =
   | { type: "sessionExpired" }
   | { type: "reset" };
 
-function reducer(state: WorkflowState, action: Action): WorkflowState {
+export interface FilterStateValidation {
+  valid: boolean;
+  errors: string[];
+  relation: GroupRelation | null;
+  groupTree: GroupNode | null;
+}
+
+/**
+ * Validate the current row-filter configuration without mutating it. Incomplete
+ * rows, grouping references to removed/duplicate clauses and missing schema
+ * columns are reported so a run cannot silently broaden or skip a check.
+ */
+export function validateWorkflowFilters(
+  filters: FilterRow[],
+  relation: GroupRelation | null,
+  groupTree: GroupNode | null,
+  availableColumns?: string[],
+): FilterStateValidation {
+  const grouped = resolveGroupedExpression(filters, relation, groupTree, {
+    label: "Row filter grouping",
+    allowLegacyAnd: true,
+  });
+  const errors = [...grouped.errors];
+  const columnSet = availableColumns ? new Set(availableColumns) : null;
+  filters.forEach((row, index) => {
+    if (row.column.trim().length === 0) {
+      errors.push(`Filter ${index + 1} has no column.`);
+    } else if (columnSet && !columnSet.has(row.column)) {
+      errors.push(`Filter ${index + 1} column "${row.column}" is not available.`);
+    }
+    if (row.values.length === 0) {
+      errors.push(`Filter ${index + 1} has no value.`);
+    }
+  });
+  return {
+    valid: errors.length === 0,
+    errors: [...new Set(errors)],
+    relation,
+    groupTree,
+  };
+}
+
+/**
+ * Derive the grouped-filter portion of workflow state from a saved run.
+ * Persisted tree references are already remapped by the API mapper; any
+ * restoration errors stay attached so execution can block until repaired.
+ */
+export function workflowConfigurationFromRun(
+  result: RunResult,
+  availableColumns?: string[],
+): {
+  filters: FilterRow[];
+  filterRelation: GroupRelation | null;
+  filterGroupTree: GroupNode | null;
+  filterGroupingErrors: string[];
+  nestedAggregationEnabled: boolean;
+  aggregationColumns: string[];
+  aggregationColumnLabels: Record<string, string>;
+  keyColumns: string[];
+  exceptionColumns: string[];
+  commentaryColumns: string[];
+  newExceptionsOnly: boolean;
+  extraColumnDisplay: ExtraColumnDisplay;
+} {
+  const filters = (result.filtersApplied ?? []).map((row, index) =>
+    row.id ? row : { ...row, id: `fl-${index}` },
+  );
+  const filterRelation = result.filtersRelation ?? null;
+  const filterGroupTree = result.filtersGroupTree ?? null;
+  const validation = validateWorkflowFilters(
+    filters,
+    filterRelation,
+    filterGroupTree,
+    availableColumns,
+  );
+  return {
+    filters,
+    filterRelation,
+    filterGroupTree,
+    filterGroupingErrors: result.filtersGroupingErrors?.length
+      ? [...result.filtersGroupingErrors]
+      : validation.errors,
+    nestedAggregationEnabled: result.nestedAggregationEnabled ?? false,
+    aggregationColumns: result.aggregationColumns ?? [],
+    aggregationColumnLabels: result.aggregationColumnLabels ?? {},
+    keyColumns: result.keyColumns ?? [],
+    exceptionColumns: result.exceptionColumns ?? [],
+    commentaryColumns: result.commentaryColumns ?? [],
+    newExceptionsOnly: result.newExceptionsOnly ?? true,
+    extraColumnDisplay: result.extraColumnDisplay ?? {
+      overallResultPage: false,
+      overallHtmlReport: false,
+      overallExcelReport: false,
+      newBooksResultPage: false,
+      newBooksHtmlReport: false,
+      newBooksExcelReport: false,
+      exceptionTables: true,
+    },
+  };
+}
+
+function withFilterValidation(
+  state: WorkflowState,
+  filters: FilterRow[],
+  relation: GroupRelation | null,
+  groupTree: GroupNode | null,
+  availableColumns?: string[],
+): Pick<WorkflowState, "filters" | "filterRelation" | "filterGroupTree" | "filterGroupingErrors"> {
+  const validation = validateWorkflowFilters(
+    filters,
+    relation,
+    groupTree,
+    availableColumns ?? state.comparisonColumns,
+  );
+  return {
+    filters,
+    filterRelation: relation,
+    filterGroupTree: groupTree,
+    filterGroupingErrors: validation.errors,
+  };
+}
+
+export function workflowReducer(state: WorkflowState, action: Action): WorkflowState {
   switch (action.type) {
     case "setHeader":
       return {
@@ -128,8 +272,18 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
     case "setComparisonColumns": {
       const cols = action.columns;
       const colSet = new Set(cols);
+      const filters = state.filters.map((f) =>
+        colSet.has(f.column) ? f : { ...f, column: "" },
+      );
       return {
         ...state,
+        ...withFilterValidation(
+          state,
+          filters,
+          state.filterRelation,
+          state.filterGroupTree,
+          cols,
+        ),
         comparisonColumns: cols,
         preparedData: null,
         page2Complete: false,
@@ -148,16 +302,23 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
           .filter((s) => s.columns.length > 0),
         exceptionColumns: state.exceptionColumns.filter((c) => colSet.has(c)),
         commentaryColumns: state.commentaryColumns.filter((c) => colSet.has(c)),
-        filters: state.filters.map((f) =>
-          colSet.has(f.column) ? f : { ...f, column: "" },
-        ),
       };
     }
     case "removeComparisonColumn": {
       const col = action.column;
       const next = state.comparisonColumns.filter((c) => c !== col);
+      const filters = state.filters.map((f) =>
+        f.column === col ? { ...f, column: "" } : f,
+      );
       return {
         ...state,
+        ...withFilterValidation(
+          state,
+          filters,
+          state.filterRelation,
+          state.filterGroupTree,
+          next,
+        ),
         comparisonColumns: next,
         preparedData: null,
         page2Complete: false,
@@ -176,13 +337,66 @@ function reducer(state: WorkflowState, action: Action): WorkflowState {
           .filter((s) => s.columns.length > 0),
         exceptionColumns: state.exceptionColumns.filter((c) => c !== col),
         commentaryColumns: state.commentaryColumns.filter((c) => c !== col),
-        filters: state.filters.map((f) =>
-          f.column === col ? { ...f, column: "" } : f,
-        ),
       };
     }
     case "setFilters":
-      return { ...state, filters: action.filters, confirmFullSet: false };
+      return {
+        ...state,
+        ...withFilterValidation(
+          state,
+          action.filters,
+          state.filterRelation,
+          state.filterGroupTree,
+        ),
+        confirmFullSet: false,
+      };
+    case "setFilterConfiguration": {
+      const next = withFilterValidation(
+        state,
+        action.filters,
+        action.relation !== undefined ? action.relation : state.filterRelation,
+        action.groupTree !== undefined ? action.groupTree : state.filterGroupTree,
+      );
+      return {
+        ...state,
+        ...next,
+        filterGroupingErrors: action.errors
+          ? [...new Set([...action.errors, ...next.filterGroupingErrors])]
+          : next.filterGroupingErrors,
+        confirmFullSet: false,
+      };
+    }
+    case "setFilterRelation":
+      return {
+        ...state,
+        ...withFilterValidation(
+          state,
+          state.filters,
+          action.relation,
+          state.filterGroupTree,
+        ),
+        confirmFullSet: false,
+      };
+    case "setFilterGroupTree":
+      return {
+        ...state,
+        ...withFilterValidation(
+          state,
+          state.filters,
+          state.filterRelation,
+          action.groupTree,
+        ),
+        confirmFullSet: false,
+      };
+    case "restoreRunConfiguration": {
+      const restored = workflowConfigurationFromRun(action.result, action.availableColumns);
+      return {
+        ...state,
+        ...restored,
+        result: action.result,
+        confirmFullSet: false,
+      };
+    }
     case "setTargetColumns":
       return { ...state, targetColumns: action.columns };
     case "setKeyColumns":
@@ -257,7 +471,7 @@ interface WorkflowContextValue {
 const WorkflowContext = createContext<WorkflowContextValue | null>(null);
 
 export function WorkflowProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(workflowReducer, initialState);
   const reset = useCallback(() => dispatch({ type: "reset" }), []);
   const clearResult = useCallback(() => dispatch({ type: "clearResult" }), []);
   const expireSession = useCallback(() => dispatch({ type: "sessionExpired" }), []);

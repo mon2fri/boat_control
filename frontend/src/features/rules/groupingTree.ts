@@ -5,21 +5,46 @@
  * module as a pure component so Vite's React fast-refresh works without
  * warnings (mixing non-component exports with a component export confuses
  * fast-refresh and breaks HMR for the editor).
+ *
+ * The generic validation/remapping primitives live in `lib/grouping.ts` so
+ * filter, condition and outcome editors can share exactly the same rules. This
+ * module keeps the condition-oriented names that existing callers use.
  */
-import type { Condition, GroupNode } from "../../api/domain";
+import type { GroupNode } from "../../api/domain";
+import {
+  buildFlatGroupTree,
+  collectGroupingIds,
+  GroupingValidationError,
+  MAX_GROUPING_DEPTH,
+  MAX_GROUPING_LEAVES,
+  remapGroupingTree,
+  resolveGroupedExpression,
+  validateGroupingTree,
+} from "../../lib/grouping";
+
+export {
+  buildFlatGroupTree,
+  GroupingValidationError,
+  MAX_GROUPING_DEPTH,
+  MAX_GROUPING_LEAVES,
+  remapGroupingTree,
+  resolveGroupedExpression,
+  validateGroupingTree,
+};
+export type {
+  GroupedExpressionOptions,
+  GroupingClauseLike,
+  GroupingValidation,
+  ResolvedGroupedExpression,
+} from "../../lib/grouping";
 
 /**
- * Default grouping when the user has not edited the tree yet: all conditions
+ * Default grouping when the user has not edited the tree yet: all clauses
  * joined with AND. Rendered as a single AND node so the editor starts in a
  * valid state.
  */
-export function defaultGroupTree(conditions: Condition[]): GroupNode | null {
-  if (conditions.length === 0) return null;
-  if (conditions.length === 1) return { kind: "leaf", conditionId: conditions[0]!.id };
-  return {
-    kind: "and",
-    children: conditions.map((c) => ({ kind: "leaf" as const, conditionId: c.id })),
-  };
+export function defaultGroupTree(clauses: { id: string }[]): GroupNode | null {
+  return buildFlatGroupTree(clauses, "and");
 }
 
 /** Pretty-print a tree into a precedence-respecting string for previews. */
@@ -86,15 +111,9 @@ export function findConditionId(node: GroupNode, conditionId: string): boolean {
   return node.children.some((c) => findConditionId(c, conditionId));
 }
 
-/** Collect every condition id referenced by the tree. */
+/** Collect every clause id referenced by the tree. */
 export function collectConditionIds(node: GroupNode): Set<string> {
-  const used = new Set<string>();
-  const walk = (n: GroupNode) => {
-    if (n.kind === "leaf") used.add(n.conditionId);
-    else n.children.forEach(walk);
-  };
-  walk(node);
-  return used;
+  return collectGroupingIds(node);
 }
 
 /** Pick the first condition id in `available` that is not already in `node`. */
