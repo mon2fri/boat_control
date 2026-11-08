@@ -532,3 +532,114 @@ Full numbered visual acceptance was explicitly **not** completed by the reviewer
   remain reviewer/user responsibilities. C does not claim those integrated
   results as its own test runs.
 - The pre-existing repository-wide Ruff findings remain unchanged.
+
+---
+
+# S35 + legacy R056/R057 run-response investigation
+
+## Reproduction and actual failure boundary
+
+Integration worktree inspected read-only; no integration file, database, config,
+upload or result JSON was modified. The running app was at
+`http://127.0.0.1:45303/`.
+
+Evidence used:
+
+- S35: `config/rows_and_columns/s35.yaml` from the integration worktree
+  (nested aggregation, two comparison sections, no filters, empty
+  `targetColumns`).
+- Legacy rules: `config/rules/ui-before-flag-tests-active-backup.yaml`
+  (`R056 Valid status`, `R057 Low Score`).
+- Saved runs created by the failing UI attempts:
+  - `e4ad6f7e9feb` and `24ec2b1936a8`: both R056 and R057 bound, nested
+    aggregation, two sections.
+  - `c41490b1adc4`: R056 only after R057 was temporarily removed.
+- `baseline.csv` / `candidate.csv` inputs referenced by those runs.
+
+The backend did execute and persist the run. `GET /api/runs/e4ad6f7e9feb/` and
+`GET /api/runs/c41490b1adc4/` both returned **HTTP 200** with the same payload.
+The failure occurs after a successful `POST /api/runs/execute/` response: the
+frontend rejects the completed run document with `Response failed validation`.
+This is not a backend execution failure.
+
+Exact failing field paths:
+
+```text
+result.filter_relation          -> null
+result.filter_grouping_tree     -> null
+```
+
+Both `wireRunDocumentSchema` and the legacy union branch failed those two paths:
+`filter_relation` required `"and" | "or"` when present, and
+`filter_grouping_tree` required an object when present. There were no other
+schema issues for the R056/R057 payload after those paths were accepted. Nested
+aggregation, both comparison sections, target columns, nullable comparison
+values, legacy rule summaries and both legacy single-outcome violations mapped
+successfully.
+
+The backend contract permits/has this shape: `ExecutionResultSerializer` and the
+run history normalization use `allow_null` / `None` for these fields, and B’s
+implementation record says historical runs default them to `None`. C’s schema
+treated explicit JSON null as invalid. This is a frontend contract mismatch, not
+a malformed backend response.
+
+## Isolated regression fixture
+
+Added `frontend/src/api/__fixtures__/s35LegacyRunResponse.fixture.ts`, a snapshot
+of the actual saved-run response for S35 + R056/R057 (`e4ad6f7e9feb`). The test
+uses the real response shape rather than a hand-built dictionary.
+
+Regression tests in `frontend/src/api/s35LegacyRunResponse.test.ts` cover:
+
+- explicit-null `filter_relation` / `filter_grouping_tree` acceptance;
+- empty `filters_applied` with nested aggregation enabled;
+- two comparison sections with their persisted IDs/names/columns;
+- aggregation columns `status`, `region`;
+- legacy R056/R057 bindings, names, identifiers and violation counts;
+- group statistics for both rules;
+- saved-run retrieval through `loadRun()`;
+- continued rejection of malformed relation strings and empty tree branches.
+
+## Fix
+
+- `wireRunRequestSchema` and `wireRunResultSchema` now accept explicit null for
+  `filter_relation` and `filter_grouping_tree`.
+- `mapWireFilterConfiguration` accepts nullable relation/tree inputs; null means
+  legacy AND / no custom tree. It is not converted to an empty/free-form run.
+- No unknown payload is broadly accepted: malformed relation strings, malformed
+  trees and all other schema constraints remain enforced.
+
+## C validation
+
+```text
+npx tsc -b tsconfig.app.json --pretty false
+# success
+
+npx vitest run src/api/s35LegacyRunResponse.test.ts
+# 1 file passed, 4 tests passed
+
+npx vitest run --testTimeout=20000 --hookTimeout=20000 --maxWorkers=2
+# 60 files passed, 562 tests passed
+```
+
+## Dependency / reviewer coordination
+
+- This fix is based on C’s original branch (`f249301` / docs `28f2ea7`) and does
+  not include reviewer integration code.
+- Reviewer should apply it after integration frontend fix `fa17108`; the docs
+  correction should apply after the previously integrated C documentation commit
+  `152f13d`. No dependency was cherry-picked into C.
+- Backend `0992b78` is required for real runtime execution of A-materialized
+  multi-outcome trees, but is not required for this legacy R056/R057 response
+  schema fix.
+
+## Remaining issue adjacent to this investigation
+
+The integration run `fdef26c436ab` using the new grouped rule `R079` has a
+separate response-shape problem: compound-outcome violations set
+`violating_value` to an object (`{"sa_flag": "Yes", "cva_flag": "Yes"}`), while
+the agreed scalar `violating_value` field only admits string/number/boolean/null.
+That is outside the S35 + R056/R057 failure. It needs a targeted Worker B
+follow-up/contract decision (for example keep `violating_value` scalar and expose
+the map through `outcome_values`, or formally add a separate object field and
+frontend rendering support). It was not silently accepted here.

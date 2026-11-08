@@ -341,10 +341,85 @@ The reviewer explicitly did **not** claim full numbered UI acceptance.
   remain reviewer/user evidence, not Worker C test claims.
 - Pre-existing full-repository Ruff findings remain unchanged.
 
-## Disposition after documentation correction
+# S35 + legacy R056/R057 run-response follow-up
 
-Worker C’s original source/test delivery is unchanged on this branch. These
-documentation corrections record the integration defects, the reviewer-authored
-fixes/evidence and the remaining user UI acceptance without cherry-picking
-integration code or claiming reviewer-run results as C’s own. The branch is ready
-for the reviewer to confirm the documentation gate.
+## Reproduction and boundary
+
+The integration worktree was inspected read-only and its S35 configuration,
+legacy R056/R057 rules, saved-run documents, database and uploads were preserved.
+The reproduction copied/used those artifacts without modifying the integration
+worktree.
+
+The backend completed and persisted the attempted runs. Saved runs
+`e4ad6f7e9feb` and `24ec2b1936a8` contain both legacy rules, nested aggregation
+and S35’s two comparison sections; `c41490b1adc4` contains R056 only after a
+temporary rule removal. `GET /api/runs/e4ad6f7e9feb/` and
+`GET /api/runs/c41490b1adc4/` returned **HTTP 200** with the same payload that
+the UI rejected. The failure is therefore the frontend validation after a
+successful `POST /api/runs/execute/`, not a backend execution failure.
+
+Exact paths:
+
+```text
+result.filter_relation       = null
+result.filter_grouping_tree  = null
+```
+
+The run-result serializer and historical-run normalization explicitly emit null
+when no grouping exists. C’s schema required `"and" | "or"` / an object whenever
+the field was present, so both the current and legacy response schemas rejected
+the completed run with `Response failed validation`. No other R056/R057 field
+failed; nested aggregation, comparison sections, target columns, nullable
+comparison values and legacy single-outcome responses mapped correctly.
+
+## Fix and regression evidence
+
+Fix commit `3660f80`:
+
+- accepts explicit null for run-request/result `filter_relation` and
+  `filter_grouping_tree`;
+- maps null as legacy AND / no custom tree without dropping data;
+- still rejects malformed relation strings and malformed trees;
+- adds an actual saved-run snapshot fixture for S35 + R056/R057 and tests for
+  schema acceptance, nested aggregation, comparison sections, aggregation
+  columns, both legacy rules, group statistics and saved-run `loadRun()` retrieval.
+
+C validation on the worker branch:
+
+```text
+npx tsc -b tsconfig.app.json --pretty false
+# success
+
+npx vitest run src/api/s35LegacyRunResponse.test.ts
+# 1 file passed, 4 tests passed
+
+npx vitest run --testTimeout=20000 --hookTimeout=20000 --maxWorkers=2
+# 60 files passed, 562 tests passed
+```
+
+## Dependencies for reviewer integration
+
+- Apply fix `3660f80` after integration frontend fix `fa17108`.
+- Apply the accompanying documentation correction after the previously integrated
+  Worker C docs commit `152f13d`.
+- `0992b78` is needed for real multi-outcome runtime execution but not for this
+  legacy R056/R057 run-response schema fix.
+- C did not cherry-pick any integration commit.
+
+## Remaining issue requiring Worker B follow-up
+
+The separate R079 grouped-outcome run (`fdef26c436ab`) returns a compound
+`violating_value` object, e.g. `{"sa_flag": "Yes", "cva_flag": "Yes"}`. The
+scalar `violating_value` contract does not permit that object. This is outside
+the S35 + R056/R057 failure and was not broadly accepted. B and the reviewer need
+to settle the payload: keep `violating_value` scalar and use
+`outcome_columns`/`outcome_values` for the map, or add an explicit object field
+with frontend rendering support.
+
+## Disposition after S35 follow-up
+
+Worker C’s original delivery remains documented above, with the reviewer’s
+integration fixes attributed to the reviewer. The S35/R056/R057 null-grouping
+contract mismatch is fixed and covered on the worker branch. Full user UI
+acceptance, including the S35 run flow and the separate R079 payload decision,
+remains pending.
