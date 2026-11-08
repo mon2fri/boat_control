@@ -69,6 +69,9 @@ export function FilterRowEditor({
 
   return (
     <div className="filter-row" role="group" aria-label={`Filter ${index + 1}`}>
+      <span className="condition-number" aria-hidden="true">
+        Filter {index + 1}
+      </span>
       <SearchableSelect
         label="Column"
         options={columnOptions}
@@ -96,13 +99,14 @@ export function FilterRowEditor({
         selectedFirst
         selected={row.values}
         onChange={(values) => onChange({ ...row, values })}
-        placeholder={row.column ? "Search values…" : "Pick a column first"}
+        placeholder={row.column ? "Search or type values…" : "Pick a column first"}
         disabled={!row.column || loadingValues}
+        freeText
         hintTooltip={!loadingValues}
         hint={
           loadingValues
             ? "Loading values…"
-            : "Starred (*) values exist in only one file and cannot be chosen. Null/blank cells never satisfy equals/contains; they satisfy not equal/not contains."
+            : "Type a value and press Enter to use free text (for example a contains fragment). Starred (*) values exist in only one file and cannot be chosen. Null/blank cells never satisfy equals/contains; they satisfy not equal/not contains."
         }
       />
       {(onMoveUp || onMoveDown) && (

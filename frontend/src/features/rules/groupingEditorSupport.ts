@@ -14,6 +14,12 @@ import type { GroupNode } from "../../api/domain";
 const MAX_GROUP_DEPTH = 8;
 const MAX_GROUP_NODES = 200;
 
+/** Explanatory copy shared by the filter, condition and outcome group editors. */
+export const PER_GROUPING_HELP_TEXT =
+  "Create groups of 2 or more items. Groups can contain other groups. " +
+  "All clauses must be in a group. The tree keeps every nested group visible; " +
+  "edit a group to remove one of its immediate children.";
+
 export interface GroupingStructure {
   leafIds: string[];
   duplicateIds: string[];

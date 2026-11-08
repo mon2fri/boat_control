@@ -2,16 +2,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { FilterRow, GroupNode } from "../../api/domain";
 import { nextId } from "../../lib/id";
 import { CollapsibleCard } from "../../components/CollapsibleCard";
+import { SectionHint } from "../../components/SectionHint";
 import { FilterRowEditor } from "./FilterRowEditor";
 import { GroupingTreeEditor } from "../rules/GroupingTreeEditor";
+import { PER_GROUPING_HELP_TEXT } from "../rules/groupingEditorSupport";
 import {
+  clearFilterGrouping,
   defaultFilterGrouping,
   EMPTY_FILTER_GROUPING,
   filterRowLabel,
   filterRowsAsConditions,
-  formatFilterGroupingExpression,
+  formatFilterGroupingHierarchy,
   repairFilterGroupingTree,
-  resetFilterGroupingTree,
   validateFilterGrouping,
   type FilterGrouping,
   type FilterGroupingMode,
@@ -56,7 +58,10 @@ export function FilterBuilder({
   const activeGrouping = controlled
     ? {
         ...(grouping ?? EMPTY_FILTER_GROUPING),
-        mode: grouping?.mode ?? controlledMode,
+        // A controlled `null` (or a null mode) is an explicit "remove all
+        // groups" choice; only an omitted grouping falls back to the locally
+        // remembered mode.
+        mode: grouping === null ? null : grouping ? grouping.mode : controlledMode,
       }
     : localGrouping;
 
@@ -82,7 +87,7 @@ export function FilterBuilder({
 
   const conditions = useMemo(() => filterRowsAsConditions(rows), [rows]);
   const validation = validateFilterGrouping(rows, activeGrouping);
-  const preview = formatFilterGroupingExpression(rows, activeGrouping);
+  const preview = formatFilterGroupingHierarchy(rows, activeGrouping);
 
   function updateGrouping(next: FilterGrouping): void {
     setLocalGrouping(next);
@@ -132,16 +137,17 @@ export function FilterBuilder({
       summary={rows.length === 0
         ? "No filters configured. Expand to change."
         : `${rows.length} filter${rows.length === 1 ? "" : "s"} configured. Expand to change.`}
+      hint={(
+        <SectionHint label="Row filters help">
+          Each row applies one condition. Multiple values within a row are combined with OR for
+          <code> equals</code>/<code>contains</code> (matches if any value matches) and with AND for
+          <code> not equals</code>/<code>not contains</code> (matches if the value is not equal to /
+          does not contain any of the selected values). Null or blank cells never satisfy
+          <code> equals</code> or <code>contains</code>; they satisfy <code>not equal to</code> and
+          <code>not contains</code>. Leave the list empty to run against the full set.
+        </SectionHint>
+      )}
     >
-      <p className="section-hint">
-        Each row applies one condition. Multiple values within a row are combined with OR for
-        <code> equals</code>/<code>contains</code> (matches if any value matches) and with AND for
-        <code> not equals</code>/<code>not contains</code> (matches if the value is not equal to /
-        does not contain any of the selected values). Null or blank cells never satisfy
-        <code> equals</code> or <code>contains</code>; they satisfy <code>not equal to</code> and
-        <code>not contains</code>. Leave the list empty to run against the full set.
-      </p>
-
       {rows.length === 0 ? (
         <p role="status">No filters added — the run will cover all rows.</p>
       ) : (
@@ -189,7 +195,10 @@ export function FilterBuilder({
 
           {activeGrouping.mode === "custom" && (
             <div className="field">
-              <span className="field-label">Filter groups</span>
+              <div className="group-tree-title-row">
+                <span className="field-label">Filter groups</span>
+                <SectionHint label="Filter groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
+              </div>
               <GroupingTreeEditor
                 conditions={conditions}
                 value={activeGrouping.tree}
@@ -197,26 +206,16 @@ export function FilterBuilder({
                   updateGrouping({ ...activeGrouping, tree })
                 }
                 groupingMode="per_grouping"
+                showHelp={false}
                 conditionLabel={(condition) => conditionLabel(condition.id)}
               />
               <div className="dialog-actions">
                 <button
                   type="button"
-                  className="btn"
-                  onClick={() =>
-                    updateGrouping(resetFilterGroupingTree(rows, activeGrouping, "and"))
-                  }
+                  className="btn btn--danger"
+                  onClick={() => updateGrouping(clearFilterGrouping())}
                 >
-                  Use all filters in an AND group
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() =>
-                    updateGrouping(resetFilterGroupingTree(rows, activeGrouping, "or"))
-                  }
-                >
-                  Use all filters in an OR group
+                  Remove all groups
                 </button>
                 {hasRepairTargets && (
                   <button

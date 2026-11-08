@@ -461,6 +461,13 @@ body {
 .collapsible-card__header {
   width: 100%;
   display: flex;
+  align-items: center;
+  gap: var(--space);
+}
+
+.collapsible-card__toggle-region {
+  flex: 1;
+  display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space);
@@ -472,8 +479,12 @@ body {
   cursor: pointer;
 }
 
-.collapsible-card__header:hover .section-heading,
-.collapsible-card__header:focus-visible .section-heading {
+.collapsible-card__hint {
+  flex: 0 0 auto;
+}
+
+.collapsible-card__toggle-region:hover .section-heading,
+.collapsible-card__toggle-region:focus-visible .section-heading {
   color: var(--color-accent);
 }
 
@@ -2859,5 +2870,10 @@ dl.card dd {
 .value-hint { position: relative; display: inline-flex; align-items: center; justify-content: center; margin-left: 0.4rem; width: 1rem; height: 1rem; border: 1px solid currentColor; border-radius: 50%; cursor: help; }
 .value-hint [role="tooltip"] { display: none; position: absolute; top: 100%; left: 0; z-index: 100; width: min(24rem, 75vw); padding: 0.6rem; background: var(--color-surface, white); color: var(--color-text); border: 1px solid currentColor; font-size: 0.8rem; font-weight: normal; text-transform: none; }
 .value-hint:hover [role="tooltip"], .value-hint:focus [role="tooltip"] { display: block; }
+.section-hint-icon { flex: 0 0 auto; align-self: center; font-size: 0.75rem; font-weight: 700; }
+.group-tree-title-row { display: flex; align-items: center; gap: 0.25rem; }
+.disabled-action-hint { position: relative; display: inline-flex; }
+.disabled-action-hint [role="tooltip"] { display: none; position: absolute; top: 100%; right: 0; z-index: 100; width: min(22rem, 70vw); padding: 0.6rem; background: var(--color-surface, white); color: var(--color-text); border: 1px solid currentColor; font-size: 0.8rem; font-weight: normal; text-transform: none; }
+.disabled-action-hint:hover [role="tooltip"], .disabled-action-hint:focus [role="tooltip"], .disabled-action-hint:focus-within [role="tooltip"] { display: block; }
 .combobox-list { max-height: calc(40rem + 8px); overflow-y: auto; }
 .combobox-option { height: 2rem; box-sizing: border-box; white-space: nowrap; }

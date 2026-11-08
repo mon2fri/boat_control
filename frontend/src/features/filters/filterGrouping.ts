@@ -16,6 +16,7 @@ import {
   validateCustomGrouping,
   type GroupingValidation,
 } from "../rules/groupingEditorSupport";
+import { formatGroupTreeHierarchy } from "../rules/groupingTree";
 
 export type { FilterGroupingMode } from "../../api/domain";
 
@@ -26,6 +27,11 @@ export interface FilterGrouping {
 }
 
 export const EMPTY_FILTER_GROUPING: FilterGrouping = { mode: null, tree: null };
+
+/** Clear only the grouping choice; rows and their values are retained. */
+export function clearFilterGrouping(): FilterGrouping {
+  return { ...EMPTY_FILTER_GROUPING };
+}
 
 /** Legacy configurations with multiple filters retain their historical AND. */
 export function defaultFilterGrouping(rows: FilterRow[]): FilterGrouping {
@@ -74,6 +80,44 @@ export function formatFilterGroupingExpression(
   return rows
     .map((row) => `(${labelFor(row.id)})`)
     .join(" [choose AND, OR, or CUSTOM GROUPS] ");
+}
+
+/**
+ * Hierarchical filter hint matching the Outcome Groups presentation:
+ *
+ * ```
+ * overall: group 1 OR group 2
+ * group 1: filter 1 AND filter 2
+ * group 2: filter 3 AND filter 4
+ * ```
+ *
+ * Leaves are labelled `filter N` so the FILTER X labels on the rows are the
+ * stable reference. The root line is always shown, including a persisted
+ * overall OR/AND.
+ */
+export function formatFilterGroupingHierarchy(
+  rows: FilterRow[],
+  grouping: FilterGrouping,
+): string {
+  if (rows.length === 0) return "No filters — all rows are included.";
+  const labelFor = (id: string): string => {
+    const index = rows.findIndex((row) => row.id === id);
+    return index >= 0 ? `filter ${index + 1}` : `<missing filter ${id}>`;
+  };
+
+  if (rows.length === 1) return `overall: ${labelFor(rows[0]!.id)}`;
+  if (grouping.mode === "custom") {
+    return grouping.tree
+      ? formatGroupTreeHierarchy(grouping.tree, labelFor)
+      : "<add groups to define the filter expression>";
+  }
+  if (grouping.mode === "and" || grouping.mode === "or") {
+    const tree = buildFlatGroupingTree(rows.map((row) => row.id), grouping.mode);
+    return tree
+      ? formatGroupTreeHierarchy(tree, labelFor)
+      : "No filters — all rows are included.";
+  }
+  return rows.map((row) => labelFor(row.id)).join(" [choose AND, OR, or CUSTOM GROUPS] ");
 }
 
 export interface FilterGroupingValidation extends GroupingValidation {

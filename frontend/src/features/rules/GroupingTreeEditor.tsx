@@ -18,6 +18,7 @@ import {
   defaultGroupTree,
   findConditionId,
 } from "./groupingTree";
+import { PER_GROUPING_HELP_TEXT } from "./groupingEditorSupport";
 
 interface Props {
   conditions: Condition[];
@@ -31,6 +32,12 @@ interface Props {
    * both places. Defaults to the original condition wording.
    */
   conditionLabel?: ((condition: Condition) => string) | undefined;
+  /**
+   * Render the explanatory paragraph inside the editor. Parents that place a
+   * SectionHint next to the section title pass false so the copy is not
+   * duplicated.
+   */
+  showHelp?: boolean;
 }
 
 export function GroupingTreeEditor({
@@ -39,6 +46,7 @@ export function GroupingTreeEditor({
   onChange,
   groupingMode = "and_or",
   conditionLabel,
+  showHelp = true,
 }: Props) {
   const helpId = useId();
   if (conditions.length === 0) {
@@ -52,6 +60,7 @@ export function GroupingTreeEditor({
         value={value}
         onChange={onChange}
         helpId={helpId}
+        showHelp={showHelp}
         conditionLabel={conditionLabel}
       />
     );
@@ -63,11 +72,13 @@ export function GroupingTreeEditor({
     .map((c) => c.id);
 
   return (
-    <div className="group-tree" aria-describedby={helpId}>
-      <p id={helpId} className="field-hint">
-        Build the grouping structurally — precedence is set by the tree shape, not
-        by parentheses in a string.
-      </p>
+    <div className="group-tree" aria-describedby={showHelp ? helpId : undefined}>
+      {showHelp && (
+        <p id={helpId} className="field-hint">
+          Build the grouping structurally — precedence is set by the tree shape, not
+          by parentheses in a string.
+        </p>
+      )}
       <TreeNodeEditor
         node={root}
         conditions={conditions}
@@ -103,21 +114,25 @@ function PerGroupingEditor({
   value,
   onChange,
   helpId,
+  showHelp,
   conditionLabel,
 }: {
   conditions: Condition[];
   value: GroupNode | null;
   onChange: (next: GroupNode | null) => void;
   helpId: string;
+  showHelp: boolean;
   conditionLabel?: ((condition: Condition) => string) | undefined;
 }) {
-  // More than one independent group needs a transport-only OR wrapper. Keep
-  // that wrapper state locally so an explicit OR group made only of groups is
-  // not mistaken for the wrapper and flattened out of the preview.
-  const [forestMode, setForestMode] = useState(
-    () => value?.kind === "or" && value.children.length > 1 && value.children.every((child) => child.kind !== "leaf"),
-  );
-  const rootGroups = useMemo(() => groupForest(value, forestMode), [value, forestMode]);
+  // The persisted value is authoritative. Rendering the whole tree (instead
+  // of unwrapping a root OR into a "forest") is what makes a loaded rule such
+  // as R079 show its overall Group 3 OR above Group 1 and Group 2. A tree
+  // created in this editor is emitted the same way, so the root is never
+  // silently hidden.
+  const rootGroups = useMemo<GroupNode[]>(() => {
+    if (!value || value.kind === "leaf") return [];
+    return [value];
+  }, [value]);
 
   /**
    * Stable, post-order numeric IDs for every group in the tree.
@@ -199,9 +214,8 @@ function PerGroupingEditor({
 
   const canCreateGroup = selectedMembers.length >= 2;
 
-  /** Emit root value, unwrapping the OR wrapper when only 1 group remains. */
+  /** Emit the root value, unwrapping a one-member wrapper. */
   function emitRoot(children: GroupNode[]): void {
-    setForestMode(children.length > 1);
     if (children.length === 0) {
       onChange(null);
     } else if (children.length === 1) {
@@ -271,12 +285,12 @@ function PerGroupingEditor({
   }
 
   return (
-    <div className="group-tree" aria-describedby={helpId}>
-      <p id={helpId} className="field-hint">
-        Create groups of 2 or more items. Groups can contain other groups.
-        All conditions must be in a group. The tree keeps every nested group
-        visible; edit a group to remove one of its immediate children.
-      </p>
+    <div className="group-tree" aria-describedby={showHelp ? helpId : undefined}>
+      {showHelp && (
+        <p id={helpId} className="field-hint">
+          {PER_GROUPING_HELP_TEXT}
+        </p>
+      )}
 
       {rootGroups.length > 0 && (
         <ol className="group-tree-children group-tree-children--root">
@@ -427,6 +441,7 @@ function GroupTreeItem({
   onRemoveRoot,
   parentEditing = false,
   onRemoveFromParent,
+  parentTitle,
 }: {
   group: GroupNode;
   path: number[];
@@ -439,10 +454,16 @@ function GroupTreeItem({
   onRemoveRoot?: () => void;
   parentEditing?: boolean;
   onRemoveFromParent?: () => void;
+  /** Displayed title of the immediate parent group, when this group is nested. */
+  parentTitle?: string;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const nestedHintId = useId();
   if (group.kind === "leaf") return null;
   const editing = samePath(editingPath, path);
+  const nestedTooltip = parentTitle
+    ? `This group is part of ${parentTitle.toLowerCase()}, please remove ${parentTitle.toLowerCase()} first to remove this group.`
+    : null;
 
   return (
     <li className="group-tree-node group-tree-node--group" data-testid={`tree-${groupTitle(group)}`}>
@@ -488,6 +509,29 @@ function GroupTreeItem({
               Remove group
             </button>
           )}
+          {nestedTooltip && (
+            <span
+              className="disabled-action-hint"
+              tabIndex={0}
+              title={nestedTooltip}
+              aria-label={nestedTooltip}
+              aria-describedby={nestedHintId}
+              data-testid={`nested-remove-hint-${groupTitle(group)}`}
+            >
+              <button
+                type="button"
+                className="btn btn--danger group-tree-remove"
+                disabled
+                aria-label={`Remove ${groupTitle(group)}`}
+                aria-describedby={nestedHintId}
+              >
+                Remove group
+              </button>
+              <span role="tooltip" id={nestedHintId}>
+                {nestedTooltip}
+              </span>
+            </span>
+          )}
           {parentEditing && onRemoveFromParent && (
             <button
               type="button"
@@ -532,20 +576,13 @@ function GroupTreeItem({
                 onRemoveMember={onRemoveMember}
                 parentEditing={editing}
                 onRemoveFromParent={() => onRemoveMember(path, index)}
+                parentTitle={groupTitle(group)}
               />
             )
           ))}
         </ol>}
     </li>
   );
-}
-
-function groupForest(value: GroupNode | null, forestMode: boolean): GroupNode[] {
-  if (!value) return [];
-  if (forestMode && value.kind === "or") {
-    return value.children;
-  }
-  return [value];
 }
 
 function samePath(left: number[] | null, right: number[]): boolean {

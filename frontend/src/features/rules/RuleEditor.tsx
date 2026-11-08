@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { Condition, GroupNode, LogicClause, LogicOperator, Rule, RuleDraft } from "../../api/domain";
 import { ColumnField } from "../../components/ColumnField";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { SectionHint } from "../../components/SectionHint";
 import { SearchableMultiSelect, type MultiSelectOption } from "../../components/SearchableMultiSelect";
 import { useFamilies } from "../settings/useSettings";
 import { valueFamilyOptions, withColumnFamilies } from "../families/familyOptions";
@@ -9,7 +10,9 @@ import { nextId } from "../../lib/id";
 import { LOGIC_OPERATORS } from "./constants";
 import { GroupingTreeEditor } from "./GroupingTreeEditor";
 import { formatGroupTreeHierarchy } from "./groupingTree";
+import { PER_GROUPING_HELP_TEXT } from "./groupingEditorSupport";
 import {
+  clearLogicOutcomeGrouping,
   columnModeHasRetainedOutcomes,
   formatLogicOutcomeExpression,
   getRuleLogicClauses,
@@ -20,7 +23,6 @@ import {
   outcomeAsCondition,
   outcomeLabel,
   repairLogicOutcomeTree,
-  resetLogicOutcomeTree,
   validateLogicOutcomes,
   type GroupedRuleDraft,
   type LogicOutcomeGrouping,
@@ -415,22 +417,39 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
 
         {canGroup && draft.conditionJoin === "per_grouping" && (
           <div className="field">
-            <label>
-              Grouping
-            </label>
+            <div className="group-tree-title-row">
+              <span className="field-label">Condition groups</span>
+              <SectionHint label="Condition groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
+            </div>
             <GroupingTreeEditor
               conditions={draft.conditions}
               value={draft.groupTree}
               onChange={(groupTree) => patch({ groupTree })}
               groupingMode="per_grouping"
+              showHelp={false}
+              conditionLabel={(condition) => {
+                const index = draft.conditions.findIndex(
+                  (item) => item.id === condition.id,
+                );
+                return index >= 0 ? `condition ${index + 1}` : condition.id;
+              }}
             />
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="btn btn--danger"
+                onClick={() => patch({ groupTree: null, conditionJoin: null })}
+              >
+                Remove all groups
+              </button>
+            </div>
             <p className="field-hint" data-testid="grouping-preview">
               <span className="visually-hidden">Grouping: </span>
               <code style={{ whiteSpace: "pre-wrap" }}>
                 {draft.groupTree
                   ? formatGroupTreeHierarchy(draft.groupTree, (id) => {
                       const c = draft.conditions.find((cc) => cc.id === id);
-                      return c ? `cond ${draft.conditions.indexOf(c) + 1}` : id;
+                      return c ? `condition ${draft.conditions.indexOf(c) + 1}` : id;
                     })
                   : "Add groups to define custom combining logic"}
               </code>
@@ -691,12 +710,16 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
 
                 {draft.logicRelation === "custom" && (
                   <div className="field">
-                    <span className="field-label">Outcome groups</span>
+                    <div className="group-tree-title-row">
+                      <span className="field-label">Outcome groups</span>
+                      <SectionHint label="Outcome groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
+                    </div>
                     <GroupingTreeEditor
                       conditions={draft.logicClauses.map(outcomeAsCondition)}
                       value={draft.logicGroupingTree}
                       onChange={(tree) => patch({ logicGroupingTree: tree })}
                       groupingMode="per_grouping"
+                      showHelp={false}
                       conditionLabel={(condition) => {
                         const index = draft.logicClauses.findIndex(
                           (clause) => clause.id === condition.id,
@@ -709,33 +732,16 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                     <div className="dialog-actions">
                       <button
                         type="button"
-                        className="btn"
-                        onClick={() =>
+                        className="btn btn--danger"
+                        onClick={() => {
+                          const cleared = clearLogicOutcomeGrouping();
                           patch({
-                            logicGroupingTree: resetLogicOutcomeTree(
-                              draft.logicClauses,
-                              logicGrouping,
-                              "and",
-                            ).tree,
-                          })
-                        }
+                            logicRelation: cleared.mode,
+                            logicGroupingTree: cleared.tree,
+                          });
+                        }}
                       >
-                        Use all outcomes in an AND group
-                      </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() =>
-                          patch({
-                            logicGroupingTree: resetLogicOutcomeTree(
-                              draft.logicClauses,
-                              logicGrouping,
-                              "or",
-                            ).tree,
-                          })
-                        }
-                      >
-                        Use all outcomes in an OR group
+                        Remove all groups
                       </button>
                       {draft.logicGroupingTree
                         && (outcomeValidation.unknownIds.length > 0
@@ -760,13 +766,6 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={() => setConfirmSingleOutcome(true)}
-                >
-                  Use single outcome
-                </button>
               </>
             )}
           </>

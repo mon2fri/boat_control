@@ -233,6 +233,14 @@ export function resetLogicOutcomeTree(
   };
 }
 
+/**
+ * Clear only the outcome grouping choice. Clauses and their values are kept so
+ * the user can explicitly choose flat AND/OR or rebuild custom groups.
+ */
+export function clearLogicOutcomeGrouping(): LogicOutcomeGrouping {
+  return { mode: null, tree: null };
+}
+
 /** True when column-against-column mode is selected with extra retained outcomes. */
 export function columnModeHasRetainedOutcomes(
   format: LogicClause["format"],
