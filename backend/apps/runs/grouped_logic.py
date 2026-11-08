@@ -35,6 +35,24 @@ from apps.families.resolver import (
     is_family_reference,
 )
 from apps.rules.services import GroupingBranch, GroupingLeaf
+from apps.validation_logic.predicates import (
+    matches_value as _matches_value,
+)
+from apps.validation_logic.predicates import (
+    matches_values as _matches_values,
+)
+from apps.validation_logic.trees import (
+    TreeValidationError,
+)
+from apps.validation_logic.trees import (
+    evaluate_grouping_tree as _evaluate_grouping_tree,
+)
+from apps.validation_logic.trees import (
+    parse_grouping_tree as _parse_pure_grouping_tree,
+)
+from apps.validation_logic.trees import (
+    validate_grouping_tree as _validate_pure_grouping_tree,
+)
 
 GroupingNode = GroupingLeaf | GroupingBranch
 GroupingKind = Literal["and", "or"]
@@ -110,30 +128,26 @@ class OutcomeEvaluation:
 
 
 def parse_grouping_tree(raw: Any) -> GroupingNode | None:
-    """Parse a persisted grouping tree, returning ``None`` when malformed."""
+    """Parse wire trees or retain A's already parsed immutable tree nodes."""
 
     if raw is None:
         return None
-    if not isinstance(raw, dict):
-        return None
-    kind = raw.get("kind")
-    if kind == "leaf":
-        condition_id = raw.get("conditionId")
-        if not isinstance(condition_id, str) or not condition_id:
-            return None
-        return GroupingLeaf(condition_id=condition_id)
-    if kind in ("and", "or"):
-        children_raw = raw.get("children")
-        if not isinstance(children_raw, list) or len(children_raw) < 2:
-            return None
-        children: list[GroupingNode] = []
-        for child in children_raw:
-            parsed = parse_grouping_tree(child)
-            if parsed is None:
+    try:
+        if isinstance(raw, (GroupingLeaf, GroupingBranch)):
+            return raw
+        parsed = _parse_pure_grouping_tree(raw)
+        if parsed is not None:
+            structural_errors = _validate_pure_grouping_tree(parsed)
+            if any(
+                "at least 2 children" in error
+                or "maximum depth" in error
+                or "maximum size" in error
+                for error in structural_errors
+            ):
                 return None
-            children.append(parsed)
-        return GroupingBranch(kind=kind, children=tuple(children))
-    return None
+        return parsed
+    except TreeValidationError:
+        return None
 
 
 def serialize_grouping_tree(node: GroupingNode | None) -> Any:
@@ -145,32 +159,6 @@ def serialize_grouping_tree(node: GroupingNode | None) -> Any:
         "kind": node.kind,
         "children": [serialize_grouping_tree(child) for child in node.children],
     }
-
-
-def _walk_tree(
-    node: GroupingNode,
-    *,
-    depth: int = 1,
-    seen_nodes: list[int] | None = None,
-) -> list[str]:
-    errors: list[str] = []
-    if seen_nodes is None:
-        seen_nodes = []
-    seen_nodes.append(1)
-    if len(seen_nodes) > MAX_TREE_NODES:
-        return [f"Grouping tree exceeds the maximum of {MAX_TREE_NODES} nodes."]
-    if depth > MAX_TREE_DEPTH:
-        return [f"Grouping tree exceeds the maximum depth of {MAX_TREE_DEPTH}."]
-    if isinstance(node, GroupingBranch):
-        if len(node.children) < 2:
-            errors.append(
-                f"Grouping node '{node.kind}' must have at least 2 children."
-            )
-        for child in node.children:
-            errors.extend(
-                _walk_tree(child, depth=depth + 1, seen_nodes=seen_nodes)
-            )
-    return errors
 
 
 def _leaf_index(condition_id: str) -> int | None:
@@ -198,38 +186,19 @@ def validate_grouping_tree(
 
     if node is None:
         return []
-    errors = _walk_tree(node)
-    seen: list[str] = []
-
-    def _visit(current: GroupingNode) -> None:
-        if isinstance(current, GroupingLeaf):
-            condition_id = current.condition_id
-            index = _leaf_index(condition_id)
-            if index is None or not condition_id.startswith(prefix):
-                errors.append(
-                    f"Invalid {label.lower()} ID format: {condition_id!r}."
-                )
-                return
-            if index >= clause_count:
-                errors.append(
-                    f"{label} ID '{condition_id}' references a missing "
-                    f"{label.lower()} (valid: {prefix}0..{prefix}{clause_count - 1})."
-                )
-            if condition_id in seen:
-                errors.append(
-                    f"{label} ID '{condition_id}' is referenced more than once."
-                )
-            seen.append(condition_id)
-            return
-        for child in current.children:
-            _visit(child)
-
-    _visit(node)
-    expected = {f"{prefix}{index}" for index in range(clause_count)}
-    missing = sorted(expected - set(seen))
-    if missing:
-        errors.append(f"Grouping tree omits {label.lower()} IDs: {', '.join(missing)}.")
-    return errors
+    errors = _validate_pure_grouping_tree(
+        node,
+        item_count=clause_count,
+        expected_ids=[f"{prefix}{index}" for index in range(clause_count)],
+        identifier_prefix=prefix,
+        label=f"{label} grouping tree",
+    )
+    return [
+        error.replace("references non-existent condition", "references a missing filter")
+        .replace("Duplicate condition ID", "Condition ID")
+        .replace("in Filter grouping tree", "is referenced more than once")
+        for error in errors
+    ]
 
 
 def validate_relation(relation: Any, *, label: str = "relation") -> list[str]:
@@ -245,17 +214,7 @@ def evaluate_grouping_tree(
 ) -> bool:
     if node is None:
         return False
-    if isinstance(node, GroupingLeaf):
-        index = _leaf_index(node.condition_id)
-        if index is None or index >= len(clause_results):
-            return False
-        return bool(clause_results[index])
-    child_results = [
-        evaluate_grouping_tree(child, clause_results) for child in node.children
-    ]
-    if node.kind == "and":
-        return all(child_results)
-    return any(child_results)
+    return _evaluate_grouping_tree(node, clause_results)
 
 
 def _describe_tree_node(
@@ -314,56 +273,9 @@ def require_filter_grouping(
 # ---------------------------------------------------------------------------
 
 
-def _is_blank(value: Any) -> bool:
-    return value is None or value == ""
-
-
-def _numeric_match(raw_value: Any, operator: str, expected: str) -> bool:
-    if _is_blank(raw_value):
-        return False
-    try:
-        left = float(str(raw_value))
-        right = float(expected)
-    except (TypeError, ValueError):
-        return False
-    if operator == "gt":
-        return left > right
-    if operator == "lt":
-        return left < right
-    if operator == "gte":
-        return left >= right
-    if operator == "lte":
-        return left <= right
-    return False
-
-
 def match_value(raw_value: Any, operator: str, values: Sequence[str]) -> bool:
     """Evaluate one value-against-column predicate on one cell value."""
-
-    if operator in STRING_OPERATORS:
-        if operator in NEGATIVE_OPERATORS:
-            if _is_blank(raw_value):
-                return True
-            text = str(raw_value)
-            if operator == "neq":
-                return all(text != value for value in values)
-            return all(value not in text for value in values)
-        if _is_blank(raw_value):
-            return False
-        text = str(raw_value)
-        if operator == "eq":
-            return any(text == value for value in values)
-        if operator == "contains":
-            return any(value in text for value in values)
-        return False
-
-    if operator in NUMERIC_OPERATORS:
-        if not values:
-            return False
-        matches = [_numeric_match(raw_value, operator, value) for value in values]
-        return any(matches)
-
-    return False
+    return _matches_values(raw_value, operator, values)
 
 
 def match_column(raw_left: Any, raw_right: Any, operator: str) -> bool:
@@ -375,41 +287,7 @@ def match_column(raw_left: Any, raw_right: Any, operator: str) -> bool:
     operator but never the positive one.
     """
 
-    if operator in STRING_OPERATORS:
-        left_blank = _is_blank(raw_left)
-        right_blank = _is_blank(raw_right)
-        if operator == "eq":
-            return (
-                not left_blank
-                and not right_blank
-                and str(raw_left) == str(raw_right)
-            )
-        if operator == "neq":
-            return not (
-                not left_blank
-                and not right_blank
-                and str(raw_left) == str(raw_right)
-            )
-        if operator == "contains":
-            return (
-                not left_blank
-                and not right_blank
-                and str(raw_right) in str(raw_left)
-            )
-        if operator == "ncontains":
-            return not (
-                not left_blank
-                and not right_blank
-                and str(raw_right) in str(raw_left)
-            )
-        return False
-
-    if operator in NUMERIC_OPERATORS:
-        if _is_blank(raw_right):
-            return False
-        return _numeric_match(raw_left, operator, str(raw_right))
-
-    return False
+    return _matches_value(raw_left, operator, raw_right)
 
 
 def family_members(column: str, eligible_columns: set[str]) -> list[str]:
@@ -565,9 +443,19 @@ def normalize_rule_outcomes(rule: Any) -> NormalizedOutcomes:
     contradictory legacy value raises instead of silently selecting one form.
     """
 
-    raw_clauses = getattr(rule, "logic_clauses", None)
-    raw_relation = getattr(rule, "logic_relation", None)
-    raw_tree = getattr(rule, "logic_grouping_tree", None)
+    expression = getattr(rule, "outcome_expression", None)
+    if expression is not None:
+        raw_clauses = (
+            expression.clauses
+            if expression.representation == "clauses"
+            else None
+        )
+        raw_relation = expression.relation
+        raw_tree = expression.grouping_tree
+    else:
+        raw_clauses = getattr(rule, "logic_clauses", None)
+        raw_relation = getattr(rule, "logic_relation", None)
+        raw_tree = getattr(rule, "logic_grouping_tree", None)
     legacy = getattr(rule, "logic", None)
 
     if not raw_clauses:
