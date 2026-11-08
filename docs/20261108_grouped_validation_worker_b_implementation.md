@@ -226,7 +226,7 @@ uv run pytest -q tests/backend/test_grouped_validation.py tests/backend/test_con
 94 passed
 
 uv run pytest -q tests/backend tests/contracts
-690 passed, 1 failed (pre-existing baseline failure)
+692 passed, 1 failed (pre-existing baseline failure)
 ```
 
 The single failure is
