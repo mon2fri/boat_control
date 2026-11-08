@@ -108,3 +108,22 @@ and Excel. Excel now uses metadata rows 1–6, table header row 8 and details ro
   all four clauses, saving is blocked, and explicitly recreating the parent
   works without page errors. Screenshot `/tmp/r079-parent-removed.png`;
   log `/tmp/r079-parent-browser-final.log`. No user catalog/config was changed.
+
+## Follow-up — enabled rules on the Run now page
+
+User request: before execution, show the enabled rule count and every enabled
+rule's local index/name. `EnabledRunRules` uses the exact ordered rule indices
+in the pending run request, resolving names from the shared catalog cache. The
+catalog's initial response includes all enabled rules (pinned outside its normal
+page), so the list is not limited to the ten visible rule-editor rows. Unselected
+rules are omitted; zero rules explains that comparison runs without validation.
+Loading/name-fetch failures retain the indices and show honest name placeholders.
+The summary does not alter rule selection or execution order.
+
+Validation: 4 tests passed (component cases plus the upload/prepare/Run now
+journey); TypeScript/production build and diff whitespace check passed. Chrome
+used isolated storage and the 11-rule preset: count 11, all R079–R089 indices and
+names visible, including the off-page rule, no page errors. Screenshot:
+`/tmp/enabled-run-rules.png`; log `/tmp/enabled-run-rules-browser.log`.
+No user catalog/config/data changes. Backend restart is unnecessary for this
+frontend-only change; hard-refresh the running standard app at port 45303.

@@ -44,3 +44,11 @@ leaf/group filters, condition regrouping and R079 payload round-trip pass:
 47 focused tests. Production build/TypeScript and diff whitespace check pass.
 Chrome confirmed the actual parent-removal/rejoin flow with no page errors.
 User configs/data were untouched; rebuilt assets are available after hard refresh.
+
+## Pre-run enabled-rule summary follow-up
+
+The Run now confirmation now displays count and the full selected rule
+index/name list, matching the run request rather than the catalog's current
+visible page. Empty/loading/error cases are covered. Component + journey checks:
+4 passed; TypeScript/build and diff check passed. Chrome verified all 11 enabled
+rules, including the off-page rule, using isolated storage with no page errors.

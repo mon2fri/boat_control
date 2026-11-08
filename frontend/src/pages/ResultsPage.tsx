@@ -14,6 +14,7 @@ import { PaginatedDetailSection } from "../features/results/PaginatedDetailSecti
 import { GroupStatisticsPanel } from "../features/results/GroupStatisticsPanel";
 import { NestedAggregationPanel } from "../features/results/NestedAggregationPanel";
 import { ExceptionRuleSummary } from "../features/results/ExceptionRuleSummary";
+import { EnabledRunRules } from "../features/results/EnabledRunRules";
 import { NewExceptionsOnlyToggle } from "../features/results/NewExceptionsOnlyToggle";
 import { NewBooksCard } from "../features/results/NewBooksCard";
 import { ComparisonColumnList } from "../features/results/ComparisonColumnList";
@@ -165,8 +166,8 @@ export function ResultsPage() {
                 ? "All common columns"
                 : `${state.targetColumns.length} target column(s)`}
             </li>
-            <li>{state.selectedRuleIndexes.length} rule(s) selected</li>
           </ul>
+          <EnabledRunRules ruleIndexes={state.selectedRuleIndexes} />
           <NewExceptionsOnlyToggle
             checked={state.newExceptionsOnly}
             onChange={(checked) => dispatch({ type: "setNewExceptionsOnly", enabled: checked })}
