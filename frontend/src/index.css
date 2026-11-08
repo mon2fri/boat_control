@@ -1477,9 +1477,32 @@ table.data td {
 
 .filter-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto auto;
   gap: var(--space);
   align-items: end;
+  margin-bottom: var(--space);
+}
+
+.filter-row__order,
+.rule-outcome-actions {
+  display: flex;
+  gap: 4px;
+  align-items: end;
+}
+
+.filter-row__order .btn,
+.rule-outcome-actions .btn {
+  padding-inline: 8px;
+}
+
+.rule-outcome-row {
+  grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+}
+
+.logic-outcomes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space);
   margin-bottom: var(--space);
 }
 

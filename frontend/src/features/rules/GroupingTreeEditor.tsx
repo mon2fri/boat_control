@@ -25,9 +25,21 @@ interface Props {
   onChange: (next: GroupNode | null) => void;
   /** When "per_grouping", groups are enforced to have exactly 2 members. */
   groupingMode?: "and_or" | "per_grouping";
+  /**
+   * Optional human-readable label for a clause. Filter and outcome editors
+   * pass their own wording so the same tree interaction reads naturally in
+   * both places. Defaults to the original condition wording.
+   */
+  conditionLabel?: ((condition: Condition) => string) | undefined;
 }
 
-export function GroupingTreeEditor({ conditions, value, onChange, groupingMode = "and_or" }: Props) {
+export function GroupingTreeEditor({
+  conditions,
+  value,
+  onChange,
+  groupingMode = "and_or",
+  conditionLabel,
+}: Props) {
   const helpId = useId();
   if (conditions.length === 0) {
     return <p className="field-hint">Add conditions to enable grouping.</p>;
@@ -40,6 +52,7 @@ export function GroupingTreeEditor({ conditions, value, onChange, groupingMode =
         value={value}
         onChange={onChange}
         helpId={helpId}
+        conditionLabel={conditionLabel}
       />
     );
   }
@@ -63,6 +76,7 @@ export function GroupingTreeEditor({ conditions, value, onChange, groupingMode =
         onRemove={null}
         availableConditionIds={new Set(conditions.map((c) => c.id))}
         groupingMode="and_or"
+        conditionLabel={conditionLabel}
       />
       {ungrouped.length > 0 && (
         <p className="field-hint" role="status">
@@ -89,11 +103,13 @@ function PerGroupingEditor({
   value,
   onChange,
   helpId,
+  conditionLabel,
 }: {
   conditions: Condition[];
   value: GroupNode | null;
   onChange: (next: GroupNode | null) => void;
   helpId: string;
+  conditionLabel?: ((condition: Condition) => string) | undefined;
 }) {
   // More than one independent group needs a transport-only OR wrapper. Keep
   // that wrapper state locally so an explicit OR group made only of groups is
@@ -171,7 +187,7 @@ function PerGroupingEditor({
       }
     }
     return items;
-  }, [ungrouped, rootGroups, conditions, idOf]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ungrouped, rootGroups, conditions, idOf, conditionLabel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // New-group builder state
   const [newGroupKind, setNewGroupKind] = useState<"and" | "or">("and");
@@ -248,8 +264,10 @@ function PerGroupingEditor({
 
   function condLabel(id: string): string {
     const c = conditions.find((cc) => cc.id === id);
-    const values = c ? (c.values ?? (c.value ? [c.value] : [])) : [];
-    return c ? `${c.column || "<column>"} ${c.operator} ${values.join(" OR ") || "<value>"}` : `<missing:${id}>`;
+    if (!c) return `<missing:${id}>`;
+    if (conditionLabel) return conditionLabel(c);
+    const values = c.values ?? (c.value ? [c.value] : []);
+    return `${c.column || "<column>"} ${c.operator} ${values.join(" OR ") || "<value>"}`;
   }
 
   return (
@@ -578,16 +596,22 @@ interface NodeEditorProps {
   onRemove: (() => void) | null;
   availableConditionIds: Set<string>;
   groupingMode: "and_or" | "per_grouping";
+  conditionLabel?: ((condition: Condition) => string) | undefined;
 }
 
-function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, availableConditionIds, groupingMode }: NodeEditorProps) {
+function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, availableConditionIds, groupingMode, conditionLabel }: NodeEditorProps) {
   const label = useId();
   if (node.kind === "leaf") {
     const cond = conditions.find((c) => c.id === node.conditionId);
+    const renderedLabel = cond
+      ? (conditionLabel
+          ? conditionLabel(cond)
+          : `${cond.column || "<column>"} ${cond.operator} ${(cond.values ?? (cond.value ? [cond.value] : [])).join(" OR ") || "<value>"}`)
+      : `<missing:${node.conditionId}>`;
     return (
       <div className="group-tree-leaf" role="treeitem" aria-level={depth + 1}>
         <span>
-          Condition: <strong>{cond ? `${cond.column || "<column>"} ${cond.operator} ${(cond.values ?? (cond.value ? [cond.value] : [])).join(" OR ") || "<value>"}` : `<missing:${node.conditionId}>`}</strong>
+          Condition: <strong>{renderedLabel}</strong>
         </span>
         {onRemove && (
           <button type="button" className="btn btn--danger" onClick={onRemove} aria-label="Remove this condition slot">
@@ -667,6 +691,7 @@ function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, available
               onRemove={() => removeChild(i)}
               availableConditionIds={availableConditionIds}
               groupingMode={groupingMode}
+              conditionLabel={conditionLabel}
             />
           </li>
         ))}

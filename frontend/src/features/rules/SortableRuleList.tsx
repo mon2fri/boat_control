@@ -1,6 +1,12 @@
 import { useCallback, useRef, useState, useMemo } from "react";
 import type { Rule } from "../../api/domain";
 import { describeLogic } from "./useRules";
+import {
+  formatLogicOutcomeExpression,
+  getRuleLogicClauses,
+  getRuleLogicGrouping,
+  type RuleWithLogicGrouping,
+} from "./logicOutcomes";
 
 interface Props {
   rules: Rule[];
@@ -25,10 +31,19 @@ const PAGE_SIZE = 10;
 
 function referencedColumns(rule: Rule): string[] {
   const columns = new Set(rule.conditions.map((condition) => condition.column));
+  for (const clause of getRuleLogicClauses(rule)) columns.add(clause.column);
   columns.add(rule.logic.column);
   if (rule.logic.format === "column") columns.add(rule.logic.target);
   for (const column of rule.extraColumns ?? []) columns.add(column);
   return [...columns].filter(Boolean);
+}
+
+function ruleLogicSummary(rule: Rule): string {
+  const declared = (rule as RuleWithLogicGrouping).logicClauses;
+  if (declared && declared.length > 1) {
+    return formatLogicOutcomeExpression(declared, getRuleLogicGrouping(rule));
+  }
+  return describeLogic(rule);
 }
 
 export function SortableRuleList({
@@ -188,7 +203,7 @@ export function SortableRuleList({
                 </label>
               </div>
               <div className="rule-actions">
-                <code className="rule-logic">{describeLogic(rule)}</code>
+                <code className="rule-logic">{ruleLogicSummary(rule)}</code>
                 <button type="button" className="btn" onClick={() => onEdit(rule)}>Edit</button>
                 <button type="button" className="btn btn--danger" onClick={() => onDelete(rule)}>Delete</button>
               </div>
