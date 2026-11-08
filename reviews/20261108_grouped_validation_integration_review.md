@@ -20,8 +20,9 @@ the explicit documentation gate remains outstanding.
 - Integration branch: `work/20261108-grouped-validation-integration`.
 - Integration worktree:
   `/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/integration`.
-- Initial HEAD: `e972e3f`; initial worktree clean. Current HEAD is recorded in
-  the final section after the bounded integration fixes are committed.
+- Initial HEAD: `e972e3f`; initial worktree clean. Bounded integration fix commit:
+  `fa17108`. A final report-only documentation commit closes this review; the
+  exact final branch HEAD is in the final handoff message.
 - Original checkout remains on `work/20261108-grouped-validation`; its
   untracked `screenshots/` directory was noted but not inspected or changed.
 - Worker worktrees A, B, C, D were each clean (`git status --short --branch`).
@@ -41,7 +42,6 @@ proof of correctness.
 | A | `f24acfaf07fddf9af03852e2cbd544bfc3ad71fe` | `fba2283` | Accepted; implementation/delivery docs. |
 | B | `e0573d8b8e58aa202b22038621d9bc0c169f9175` | `418c44b` | Accepted with documented config-view conflict resolution. |
 | B | `3dccf93fa5f109a7422ae83afd26e78060a059f2` | `5912229` | Accepted; implementation/delivery docs. |
-| Reviewer | — | `0992b78` | Fixed A-materialized tree runtime incompatibility. |
 | C | `81fa44b33f3214348f02253572673565d42af9e8` | `381454a` | Accepted; domain/API/state transport. |
 | C | `d6b97a94f4d23c6e7689d7b65498cd2d985f3695` | `295de62` | Accepted; delivery documentation. |
 | C | `a6edaa7cf0a56c1feb03dcfdc2416e82c61802f6` | `475d8b3` | Accepted; no-filter/mixed-form fix. |
@@ -49,7 +49,8 @@ proof of correctness.
 | D | `656ed1527ca3e89df759f388d007b4d359c9d4f2` | `3e812bc` | Accepted; visual filter/outcome editors. |
 | D | `9704c2c2eb55f82f74355ee82155ca97bf578eda` | `33c10d7` | Accepted; implementation/delivery docs. |
 | D | `ed908c4b1e4558e249494102ab5b8ba038c17efa` | `a06fac4` | Accepted; compatibility clarification. |
-| Reviewer | — | Pending | Bounded cross-layer/UI/config/contract/sample fixes are in progress in this worktree only. |
+| Reviewer | — | `0992b78` | Fixed A-materialized tree runtime incompatibility. |
+| Reviewer | — | `fa17108` | Bounded frontend wiring, strict validation, missing-reference/family fixes, contract/schema, samples, isolated settings and generated bundle. |
 
 Dependency order was A helpers → A rule schema/identity → B runtime (consumes A)
 → C transport/state → D editors. No dependency commit was cherry-picked twice.
@@ -161,11 +162,11 @@ settings module.
 | `GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-checks PYTHONPATH=backend uv run pytest --ds=boat_control.grouped_validation_settings -q tests/backend tests/contracts tests/integration` | Passed: 774 tests. |
 | `uv run mypy backend` | Passed: no issues in 94 source files. |
 | `uv run ruff check backend tests` | **Failed on 5 pre-existing issues** in unchanged `backend/apps/rules/migrations/0002_rule_supersession.py` and `tests/backend/test_rule_catalog_api.py`; none is in a changed file. Worker A/B independently reported the same baseline lint issues. |
-| Scoped `uv run ruff check` on changed backend sources, validation helpers, settings and new/changed tests | Passed after import/line-length fixes. |
+| `uv run ruff check backend/apps/rules/services.py backend/apps/runs/grouped_logic.py backend/apps/configs/views.py backend/apps/families/resolver.py backend/apps/saved_filters/services.py backend/apps/reports/services.py backend/apps/validation_logic backend/boat_control/grouped_validation_settings.py tests/backend/test_grouped_validation_integration.py tests/contracts/test_backend_contract.py` | Passed. |
 | `npm --prefix frontend ci` | Passed installation; npm audit reported 20 existing dependency advisories (11 moderate, 9 high). No audit fix was run. |
 | `npm --prefix frontend test -- --run` | Passed after final source/test edits: 65 files / 599 tests. |
 | `npm --prefix frontend run build` | Passed after final source/test edits; Vite reports a 731.11 kB JS chunk warning. Generated `frontend/dist` output is reviewer-owned and included. |
-| `git diff --check` | Clean after final code/docs edits (will be repeated after commit). |
+| `git diff --check` | Clean after final code/docs edits; repeated after the review closure commit. |
 
 Independent sample execution using `apply_filters` and the actual materialized
 rule returned selected IDs `1,2,3,4,5,6,8,9,10,14,15` (11 total), three passes
@@ -204,7 +205,8 @@ are in the UI guide. App data stays in `/tmp/opencode/grouped-validation-ui`.
   available for manual verification.
 - Branch/worktree: `work/20261108-grouped-validation-integration` at
   `/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/integration`.
-- Integrated HEAD: to be filled with the final reviewer fix/documentation commit.
+- Implementation HEAD: `fa17108`; the final docs-only review closure commit and
+  resulting branch HEAD are identified in the final handoff message.
 - Accepted worker deliveries: A, B, C, D in dependency order; original and
   resulting hashes are listed above.
 - Review: `reviews/20261108_grouped_validation_integration_review.md`.

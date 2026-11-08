@@ -168,6 +168,6 @@ trailing spaces; `.gitattributes` scopes `git diff --check`'s EOL-whitespace
 exception to `frontend/dist/**` only. Source/tests retain the normal whitespace
 check.
 
-The bounded cross-layer/UI/contract/sample fix commit and resulting frontend
-bundle hash are recorded in the integration review after commit. Worker docs
-remain uncorrected pending manual dispatch; see the prompts above.
+The bounded cross-layer/UI/contract/sample fix commit is `fa17108`
+(`fix: complete grouped validation UI integration`). Worker docs remain
+uncorrected pending manual dispatch; see the prompts above.
