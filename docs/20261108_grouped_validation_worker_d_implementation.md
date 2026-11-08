@@ -17,6 +17,11 @@ fixed those gaps in `fa17108` (with the related backend integration fix in
 `0992b78`). Integrated test and browser results quoted below are
 **reviewer-run**, not additional Worker D validation.
 
+A later user-reported R079 grouped-outcome save failure was reproduced against
+the integration code read-only and fixed in this branch under
+“R079 grouped-outcome save failure (follow-up fix)” below. That fix is a D-owned
+editor hydration/serialization correction; it requires no new Worker C code.
+
 ## Scope and ownership
 
 Worker D owns the visual Row Filters grouping interface, the Rule Logic editor for
@@ -179,6 +184,109 @@ added two filter rows, selected CUSTOM GROUPS, created an AND group, and observe
 blocking validation for an incomplete expression without a page error. That
 smoke covers upload and custom filter-group editing only; it is **not** complete
 user UI acceptance.
+
+## R079 grouped-outcome save failure (follow-up fix)
+
+Date: 2026-11-08. Branch: `work/20261108-grouped-validation-worker-d`.
+
+### Reported symptom
+
+Opening the existing `R079` rule (“UI Flags - opposite Yes No”) and saving it failed
+with:
+
+> rule outcome grouping must choose AND, OR, or a custom grouping expression when
+> multiple clauses are configured.
+
+Expected expression:
+
+```text
+(sa_flag = Yes AND cva_flag = No)
+OR
+(sa_flag = No AND cva_flag = Yes)
+```
+
+### Read-only evidence and traced cause
+
+- `R079` exists in the integration configuration/database with four
+  `logic_clauses`, `logic_relation: or`, and a `logic_grouping_tree` of two AND groups
+  referencing persisted leaves `c0`/`c1` and `c2`/`c3`.
+- C's `mapWireRule` remaps those leaves to runtime clause IDs `l0`–`l3` and exposes
+  the tree on the canonical domain field **`logicGroupTree`**. D's editor only read
+  the earlier D-only name **`logicGroupingTree`**.
+- Therefore hydration returned `{ mode: "or", tree: null }` instead of
+  `{ mode: "custom", tree: … }`: the editor lost the two AND groups, and the preview
+  became a flat four-clause OR.
+- Saving unchanged then sent only `logic_relation: "or"` (tree silently dropped), which
+  changes semantics even though it does not throw.
+- If custom grouping was selected/edited, D's save draft contained only the
+  `logicGroupingTree` alias and no canonical `logicGroupTree`/relation. C's
+  `mapRuleToWireDraft` then saw four clauses with neither explicit relation nor tree
+  and threw the reported message **before any HTTP request**. This was therefore an
+  editor-state/adapter defect at the D→C boundary, not a backend validation response
+  and not a server error.
+
+Reproduction against the integration code was run read-only through a temporary
+esbuild/node script; no integration file was changed. It printed:
+
+```text
+hydrated editor grouping: {"mode":"or","tree":null}
+canonical rule.logicGroupTree present: true
+editor alias rule.logicGroupingTree present: false
+UNCHANGED wire payload relation/tree: {"logic_relation":"or"}
+CUSTOM editor draft save error: rule outcome grouping must choose AND, OR, or a custom grouping expression when multiple clauses are configured.
+```
+
+### Fix
+
+- `getRuleLogicGrouping` now reads the canonical `logicGroupTree` first and accepts
+  the earlier `logicGroupingTree` alias only as a compatibility fallback. A persisted
+  custom tree therefore hydrates as **CUSTOM** with its runtime leaves intact.
+- `toDraft` writes the canonical `logicGroupTree` consumed by C's API mapper, keeps the
+  legacy alias for transitional component compatibility, and includes the tree's root
+  `and`/`or` relation alongside it. An unchanged custom rule therefore preserves both
+  the relation and complete executable tree.
+- No validation was bypassed, no fallback to AND was added, and no tree is flattened or
+  dropped. Flat AND/OR and legacy single-outcome behaviour are unchanged.
+
+### Regression coverage and actual results
+
+- `RuleEditor.outcomes.test.tsx`: loads the canonical R079-shaped rule, asserts the
+  two-AND-groups-OR preview, and saves unchanged with four clauses,
+  `logicRelation: "or"`, and the complete `logicGroupTree`.
+- A second test edits Outcome 1's operator and verifies all four clauses, their column
+  order, the OR relation and both AND groups are still saved.
+- `logicOutcomes.test.ts`: verifies canonical `logicGroupTree` hydration and the
+  transitional alias fallback.
+- Targeted run:
+  `npx vitest run src/features/rules/RuleEditor.outcomes.test.tsx src/features/rules/logicOutcomes.test.ts src/features/rules/GroupingTreeEditor.test.tsx src/features/rules/RuleEditor.test.tsx`
+  — **4 files / 37 tests passed**; `npx tsc -b --pretty false` passed.
+- Full frontend suite after the fix:
+  `npx vitest run --maxWorkers=2 --testTimeout=15000` — **60 files / 535 tests
+  passed**; `npm run build` passed (generated `dist` changes not committed).
+- Read-only integration-mapping simulation with the fixed editor draft produced a wire
+  request containing `logic_relation: "or"`, four `logic_clauses`, and the complete
+  `logic_grouping_tree` with leaves remapped to `c0`–`c3`.
+- Read-only backend check of that payload via integration `validate_rule` returned
+  `valid=True, errors=[]`. This is a targeted compatibility check, not a claim that
+  Worker D ran the integrated suite.
+
+### Dependencies and cherry-pick order for this follow-up
+
+- Fix commit: `975cb59` (`fix(frontend): hydrate and save canonical grouped outcome trees`).
+- Tests commit: `3cc4387` (`test(frontend): cover R079 grouped-outcome load and save`).
+- This docs commit is reported in the handover.
+- Required integration dependency: C's canonical `logicGroupTree` domain/mapping work
+  already accepted as integration `381454a` plus reviewer wiring in `fa17108`. No new
+  C change is required; the earlier alias remains accepted for compatibility.
+- Reviewer should cherry-pick fix first, then tests, then this docs commit. Integration
+  component tests that still assert the old alias should continue to pass because the
+  editor still emits it; assertions should preferably be updated to the canonical field.
+
+### Remaining limitation
+
+The failure and correction were verified with component tests plus read-only
+integration mapper/backend checks. Full browser click-through and user UI acceptance of
+R079 remain pending.
 
 ## Defects found and fixed during original implementation
 

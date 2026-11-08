@@ -20,6 +20,13 @@ the browser smoke and does not claim them as its own results.
 No other worker branch was merged by D, no agents were spawned, and no
 main/integration branch was modified.
 
+A later user-reported **R079 grouped-outcome save failure** was reproduced against the
+integration code read-only and fixed on this branch. The cause was a D editor field-name
+mismatch: hydration read `logicGroupingTree` while Worker C exposes the canonical
+`logicGroupTree`, so the two AND groups were lost; saving custom grouping then emitted
+only the alias and C's mapper raised the reported grouping error before any HTTP request.
+The follow-up fix/tests/docs are the later commits listed below.
+
 ## Ordered commits for reviewer cherry-pick
 
 1. `656ed15` — feat(frontend): add grouped row filters and multi-outcome rule logic
@@ -31,9 +38,14 @@ main/integration branch was modified.
 4. documentation-correction commit (hash reported in the final handover) — records the
    reviewer integration findings, reviewer fixes, integrated results and remaining
    user-UI acceptance gap.
+5. `975cb59` — fix(frontend): hydrate and save canonical grouped outcome trees
+   (R079 follow-up).
+6. `3cc4387` — test(frontend): cover R079 grouped-outcome load and save.
+7. R079 documentation commit (hash reported in the final handover).
 
-Commits 1–3 are the original delivery. Commit 4 is documentation-only and responds to
-the reviewer's manual follow-up prompt; it introduces no executable changes.
+Commits 1–3 are the original delivery. Commit 4 is the earlier documentation-only
+integration correction. Commits 5–6 are the R079 code/test fix and commit 7 updates both
+worker records with the defect, cause, fix and results.
 
 ## Changed files
 
@@ -66,6 +78,56 @@ No generated `frontend/dist` output, dependency folder, cache, database, or loca
 data is committed. The post-integration documentation-correction commit touches only
 `docs/20261108_grouped_validation_worker_d_implementation.md` and this delivery record;
 it introduces no executable changes.
+
+Follow-up R079 files (commits 5–6):
+
+- Modified `frontend/src/features/rules/RuleEditor.tsx`
+- Modified `frontend/src/features/rules/logicOutcomes.ts`
+- Modified `frontend/src/features/rules/RuleEditor.outcomes.test.tsx`
+- Modified `frontend/src/features/rules/logicOutcomes.test.ts`
+
+## R079 grouped-outcome save failure — defect, cause, fix and evidence
+
+- **Symptom:** Existing R079 (“UI Flags - opposite Yes No”) failed to save with
+  “rule outcome grouping must choose AND, OR, or a custom grouping expression when
+  multiple clauses are configured.”
+- **Expected:** `(sa_flag = Yes AND cva_flag = No) OR (sa_flag = No AND cva_flag = Yes)`.
+- **Read-only trace:** R079 has four clauses, `logic_relation: or`, and a two-AND-group
+  `logic_grouping_tree`. C's `mapWireRule` exposes the tree as canonical
+  `logicGroupTree` with runtime leaves `l0`–`l3`; D's `getRuleLogicGrouping` only read
+  the old `logicGroupingTree` alias. Hydration therefore became
+  `{mode:"or", tree:null}` — the editor lost both groups. Unchanged save dropped the
+  tree and sent flat OR. When custom grouping was used/edited, D emitted only the alias
+  and no canonical relation/tree, so C's `mapRuleToWireDraft` raised the reported error
+  before sending any HTTP request.
+- **Classification:** editor-state/adapter defect at the D→C boundary (`logicGroupTree`
+  vs `logicGroupingTree`), not a backend validation or server error.
+- **Fix:** read canonical `logicGroupTree` first with alias fallback; write canonical
+  `logicGroupTree` (plus transitional alias) and the tree's root relation; preserve four
+  clauses and both AND groups. Validation was not bypassed and no flattening/defaulting
+  to AND was added.
+- **Regression evidence (Worker D):**
+  - Loading the canonical R079-shaped rule renders the two-AND-groups-OR preview and
+    saves unchanged with four clauses, `logicRelation: "or"` and the full tree.
+  - Editing Outcome 1 and saving still persists all four clauses and both AND groups.
+  - Alias fallback is covered in `logicOutcomes.test.ts`.
+  - Actual targeted result:
+    `npx vitest run src/features/rules/RuleEditor.outcomes.test.tsx src/features/rules/logicOutcomes.test.ts src/features/rules/GroupingTreeEditor.test.tsx src/features/rules/RuleEditor.test.tsx`
+    — **37 passed**; `npx tsc -b --pretty false` passed.
+  - Full frontend suite after the fix:
+    `npx vitest run --maxWorkers=2 --testTimeout=15000` — **60 files / 535 tests
+    passed**; `npm run build` passed (generated `dist` changes not committed).
+  - Read-only integration mapping simulation with the fixed draft produced
+    `logic_relation: "or"`, four `logic_clauses`, and the full `logic_grouping_tree`
+    (`c0`–`c3`).
+  - Read-only integration `validate_rule` on that payload returned
+    `valid=True, errors=[]`.
+- **Dependencies/reviewer action:** Requires the already-integrated canonical
+  `logicGroupTree` work (`381454a` + reviewer `fa17108`); no new C code is required.
+  Cherry-pick `975cb59` (fix), then `3cc4387` (tests), then this docs commit. The editor
+  still emits the old alias, so integration tests asserting the alias should not break;
+  prefer updating them to canonical `logicGroupTree`.
+- **Remaining:** Full browser/user UI acceptance of R079 is still pending.
 
 ## Dependencies and integration lineage
 
@@ -213,7 +275,8 @@ in the focused tests above.
    covers upload and custom filter-group editing (including the invalid-expression
    blocked state). It does not cover the full numbered save/reload/run/restore,
    compound-outcome report/export, tracking, legacy and column-against-column acceptance
-   sequence.
+   sequence. The R079 fix has component and read-only integration mapper/backend
+   evidence, but no browser click-through yet.
 3. **Integrated gate results belong to the reviewer.** D did not run the 774-test
    backend suite, 599-test frontend suite, production build, or browser smoke.
 4. **Unchanged baseline tooling findings remain:** full `ruff check backend tests`
