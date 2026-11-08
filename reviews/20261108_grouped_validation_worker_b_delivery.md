@@ -10,10 +10,17 @@ Base/setup: `e972e3f` (requirement `6b4bc94`)
 1. `e0573d8` — `feat: implement grouped filters and rule outcome runtime`
    - source, regression tests and
      `docs/20261108_grouped_validation_worker_b_implementation.md`.
-2. This delivery-record commit (documentation only; hash at branch HEAD after the
-   final documentation update).
+2. `3dccf93` — `docs: record grouped validation Worker B delivery`
+   - original delivery record.
+3. This documentation-correction commit (documentation only; exact branch HEAD
+   hash is reported in the handover message).
 
-No worker merge commits, no cherry-picks from A/C/D, no main merge and no push.
+The reviewer recorded B's original commits as accepted in integration as
+`e0573d8` → `418c44b` and `3dccf93` → `5912229`. B did not cherry-pick integration
+code into this branch for the documentation correction.
+
+No worker merge commits, no cherry-picks from A/C/D into this correction, no main
+merge and no push.
 
 ## Changed files
 
@@ -48,23 +55,27 @@ committed.
 
 ## Dependencies on Worker A
 
-No A commits were received or cherry-picked. B implements the shared-contract
-reader against these expected A fields:
+No A commit was cherry-picked into this branch. B's original runtime assumed the
+normalized convenience fields directly:
 
-- `rule.logic_clauses` — non-empty ordered clause list (objects or dicts);
+- `rule.logic_clauses` — non-empty ordered clause list;
 - `rule.logic_relation` — optional `and`/`or`;
-- `rule.logic_grouping_tree` — optional wire tree.
+- `rule.logic_grouping_tree` — optional **wire dictionary** tree.
 
-Legacy `rule.logic` remains the fallback until A lands. A contradictory legacy
-`logic` plus `logic_clauses` raises instead of silently selecting one form.
-`normalize_rule_outcomes`, `validate_grouping_tree` and the predicate helpers in
-`apps/runs/grouped_logic.py` are B's runtime implementations; when A publishes
-the pure helpers under `apps/validation_logic/**`, the reviewer should reconcile
-these imports/implementations to A's canonical helpers rather than keep two
-semantic copies.
+That original assumption did not match A's real immutable model. A materializes
+the tree as `GroupingBranch` / `GroupingLeaf` inside the explicit
+`Rule.outcome_expression` (`LogicExpression`) accessor. The integration fix in
+reviewer commit `0992b78` made normalization consume `outcome_expression`, accept
+the immutable nodes, and delegate predicate/tree operations to A's
+`apps.validation_logic` helpers. B's legacy `Rule.logic` fallback remains.
 
 Canonical identity is A-owned. B never rewrites or recalculates historical rule
 identifiers; run/tracking code consumes A's `rule_identifier` unchanged.
+
+## Original B self-verification (pre-integration)
+
+The results in the next section are B's own pre-integration runs, not integrated
+results.
 
 ## Acceptance criteria covered
 
@@ -92,9 +103,10 @@ identifiers; run/tracking code consumes A's `rule_identifier` unchanged.
   AND; zero-member families are rejected. Family rule conditions/outcomes use
   positive-any / negative-all.
 
-## Actual verification commands and results
+### Original B commands and results
 
-Run from this worktree with isolated pytest temp settings/databases.
+Run from this worktree with isolated pytest temp settings/databases, before the
+integration fixes.
 
 ```text
 uv run pytest -q tests/backend/test_grouped_validation.py
@@ -146,14 +158,96 @@ Repository-wide `ruff check backend tests` still reports pre-existing unrelated
 lint issues in `backend/apps/rules/migrations/0002_rule_supersession.py` and
 `tests/backend/test_rule_catalog_api.py`; B-scoped ruff is clean.
 
+## Integration findings and reviewer-authored fixes
+
+These are post-delivery facts from the integration branch. None of the
+integrated commands below were run by B; they are attributed to the reviewer.
+
+### Defect — B rejected A's real immutable outcome tree
+
+**Finding:** Worker B could not execute a real materialized catalog rule with a
+nested grouped outcome; execution failed with
+`Invalid logic_grouping_tree structure`.
+
+**Cause:** B's `normalize_rule_outcomes` read `rule.logic_clauses`,
+`rule.logic_relation` and `rule.logic_grouping_tree` as convenience attributes and
+sent the tree to a dictionary-only parser. A's real `rule_from_payload` returns
+`Rule.logic_grouping_tree` as an immutable `GroupingBranch` / `GroupingLeaf` and
+publishes the normalized form through `Rule.outcome_expression`. B did not consume
+that explicit accessor.
+
+**Why dictionary-only mocks missed it:** B's tests constructed
+`SimpleNamespace` rule doubles with plain wire dictionaries for
+`logic_clauses`/`logic_grouping_tree`. They exercised evaluator truth tables but
+never ran A's payload → materialized `Rule` transition. The type changed at that
+boundary, so dictionary-only mocks could pass while real runtime rejected the
+tree. They therefore do not establish runtime compatibility with A's model.
+
+**Reviewer fix:** commit `0992b78` (`fix: integrate grouped outcomes with
+normalized rules`, reviewer-authored) makes normalization consume
+`Rule.outcome_expression`, accept immutable tree nodes, and delegate
+predicate/tree parse/validate/evaluate work to `apps.validation_logic` helpers.
+Detailed invalid-reference errors are retained.
+
+**Reviewer-authored regression:**
+`tests/backend/test_grouped_validation_integration.py` materializes the real rule
+via `rule_from_payload`, asserts the tree is not a dict, executes the exact
+`(SA=Y AND CVA=N) OR (SA=N AND CVA=Y)` table with null and blank, and verifies
+five violations plus complete `outcome_columns`/`outcome_values`. Reviewer-run
+result: `132 passed` for that file plus B's grouped tests and A's validation-logic
+tests. B did not duplicate or reimplement this fix or test.
+
+### Other reviewer integration fixes
+
+- **Fix 2 (`fa17108`, C/D scope):** frontend filter grouping was not connected to
+  page save/load, run request construction or saved-run restoration. The reviewer
+  wired the controlled editor, strict new-vs-legacy expression handling, safe
+  invalid-save state, and added mapper/reducer/page tests plus a limited
+  Chrome/Playwright filter-editor smoke.
+- **Fix 3 (`fa17108`, cross-layer):** unresolved flat filters/clauses could be
+  dropped or rebound, partial rule-config imports proceeded after warnings, and
+  family tree leaves always expanded with AND. The reviewer added blocking
+  restoration errors, missing-reference sentinels, import refusal, and
+  positive-OR / negative-AND family expansion inside the containing expression.
+  B's backend family helper already followed positive-any / negative-all; the
+  integrated fix closes the page/config path.
+- **Fix 4 (A scope):** A accepted relation/tree fields beside a single new
+  `logic_clauses` entry and then discarded them. The reviewer added rejection and
+  cross-layer coverage. This is not B code.
+- **Config export conflict:** the cherry-pick conflicted in
+  `backend/apps/configs/views.py`. Integration kept A's shared
+  `rule_definition_payload` full-expression serializer plus B's filter/config
+  validation and runtime changes; B's duplicate snapshot serializer was not
+  retained. This is the accepted integrated form.
+
+### Integrated verification attributed to the reviewer
+
+The reviewer reported, under isolated settings:
+
+```text
+GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-checks PYTHONPATH=backend \
+  uv run pytest --ds=boat_control.grouped_validation_settings -q \
+  tests/backend tests/contracts tests/integration
+774 passed in 5.67s
+```
+
+The reviewer also reported integrated Django `check`, migrations check,
+`mypy backend`, changed-file Ruff, frontend tests (65 files / 599 tests), frontend
+build, and `git diff --check` as passing. Repository-wide Ruff retained only the
+known unchanged baseline findings. These results are reviewer-run and are not
+claims made by B.
+
 ## Remaining issues / handover notes
 
-- A's schema/helpers are still pending. Reviewer must re-run the integrated
-  outcome tests against A's actual `logic_clauses`/relation/tree dataclasses.
+- The reviewer's `0992b78` fix is integrated code, not cherry-picked into this
+  branch; B's original predicate/tree copies are superseded by A's helpers in the
+  integrated branch.
+- Full user UI acceptance is still pending. The limited browser smoke covered only
+  the filter-editor interaction, not complete visual acceptance.
 - Whitespace-only values stay literal per the shared conservative default; user
   confirmation is still required.
-- C must send `filter_relation`/`filter_grouping_tree`, `filter_values`, and the
-  grouped outcome fields, and consume the new run/violation fields.
-- The pre-existing rule-migration test and A-owned repository mypy error remain
-  outside B's file ownership.
-- B did not integrate, merge main, push, spawn agents, or touch another worktree.
+- The original pre-existing rule-migration test failure and A-owned repository
+  mypy error remained outside B's file ownership. The reviewer reported the
+  integrated gates passing after assembly.
+- B did not modify the integration worktree, integrate, merge main, push, spawn
+  agents, or touch another worktree.
