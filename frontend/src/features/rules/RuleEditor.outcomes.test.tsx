@@ -150,10 +150,16 @@ describe("RuleEditor grouped outcomes", () => {
     fireEvent.click(screen.getByLabelText(/Expectation 2:/));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
-    // Build the second AND group from Expectation 3 + Expectation 4. Two root groups
-    // are now joined by the visible overall Group 3 OR root.
+    // Separate groups do not assume OR; saving stays blocked until the parent exists.
     fireEvent.click(screen.getByLabelText(/Expectation 3:/));
     fireEvent.click(screen.getByLabelText(/Expectation 4:/));
+    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+    expect(screen.queryByText("Group 3")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("pick-group:0"));
+    fireEvent.click(screen.getByTestId("pick-group:1"));
+    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     expect(screen.getByText("Group 3")).toBeInTheDocument();

@@ -1,3 +1,4 @@
+import { compareRuleIndices } from "../lib/ruleOrder";
 /**
  * Pure mappings between backend wire formats (`wire.ts`) and the camelCase
  * domain types (`domain.ts`). Keeping these isolated means the rest of the
@@ -732,7 +733,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
   };
 
   // Per-rule results.
-  const ruleResults: RuleResult[] = Object.entries(violationsByRule).map(
+  const ruleResults: RuleResult[] = Object.entries(violationsByRule).sort(([a], [b]) => compareRuleIndices(a, b)).map(
     ([ruleId, violations]) => {
       const perRuleRowCount =
         validation.violating_rows_by_rule?.[ruleId] ?? countDistinctRowsForViolations(violations);

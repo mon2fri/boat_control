@@ -11,6 +11,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
+from apps.reports.rule_headers import excel_rule_headers, rule_sort_key
+
 _FILTER_OP_LABELS: dict[str, str] = {
     "equals": "equals",
     "not_equals": "not equal to",
@@ -240,7 +242,7 @@ def _render_group_section(title: str, stats: list[dict[str, Any]]) -> str:
 def _render_exception_rule_summary(validation: dict[str, Any]) -> str:
     violations_by_rule = validation.get("violations_by_rule") or {}
     summaries = validation.get("rule_summaries") or {}
-    rule_ids = list(dict.fromkeys([*violations_by_rule, *summaries]))
+    rule_ids = sorted(set(violations_by_rule) | set(summaries), key=rule_sort_key)
     if not rule_ids:
         return (
             "<section class='card'><h2>Exception Rule Summary</h2>"
@@ -539,6 +541,14 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         ".group-stats-row--1 { grid-template-columns:1fr; } }"
     )
     sections.append("@media (max-width:520px) { .group-stats-row { grid-template-columns:1fr; } }")
+    sections.append(
+        ".scope-title-row { display:flex; align-items:center; gap:0.4rem; } "
+        ".report-help { position:relative; border:1px solid; border-radius:50%; "
+        "cursor:help; padding:0 0.3rem; } "
+        ".report-help [role=tooltip] { display:none; position:absolute; z-index:5; "
+        "background:white; color:#222; width:22rem; padding:0.6rem; border:1px solid; } "
+        ".report-help:hover [role=tooltip], .report-help:focus [role=tooltip] { display:block; }"
+    )
     sections.append("</style>")
     sections.append("</head><body><main>")
 
@@ -549,6 +559,25 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         sections.append(f"<span class='run-time'>Ran on {_escape_html(formatted_time)}</span>")
     sections.append("</div>")
 
+    toc_ids = sorted(
+        set((result.get("validation") or {}).get("violations_by_rule") or {})
+        | set((result.get("validation") or {}).get("rule_summaries") or {}),
+        key=rule_sort_key,
+    )
+    sections.append("<nav aria-label='Result contents'><a href='#overall'>Overall result</a>")
+    for rule_id in toc_ids:
+        sections.append(f" <a href='#rule-{_escape_html(rule_id)}'>{_escape_html(rule_id)}</a>")
+    sections.append("</nav>")
+    checked = " checked" if result.get("new_exceptions_only", True) else ""
+    sections.append(
+        "<section class='card' aria-label='Exception display scope'>"
+        "<div class='scope-title-row'><h2><label>"
+        f"<input type='checkbox' disabled{checked}> New Exceptions Only</label></h2>"
+        "<span class='report-help' tabindex='0' role='img' aria-label='New Exceptions Only help'>!"
+        "<span role='tooltip'>Includes new and recurring uncommented exceptions; commented "
+        "exceptions are hidden when checked. All exceptions remain stored and commentary "
+        "templates include every exception.</span></span></div></section>"
+    )
     sections.append("<section class='card' id='overall'>")
     sections.append("<h2>Overall result</h2>")
     rows_a = comparison.get("total_rows_a", 0)
@@ -715,7 +744,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
 
     violations_by_rule = validation.get("violations_by_rule") or {}
     rule_summaries = validation.get("rule_summaries") or {}
-    rule_ids = list(dict.fromkeys([*violations_by_rule, *rule_summaries]))
+    rule_ids = sorted(set(violations_by_rule) | set(rule_summaries), key=rule_sort_key)
     for rule_id in rule_ids:
         violations = violations_by_rule.get(rule_id) or []
         summary = rule_summaries.get(rule_id) or {}
@@ -947,7 +976,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     overall.cell(next_row, 3, "Rule identifier")
     summaries = validation.get("rule_summaries") or {}
     violations_by_rule = validation.get("violations_by_rule") or {}
-    rule_ids = list(dict.fromkeys([*violations_by_rule, *summaries]))
+    rule_ids = sorted(set(violations_by_rule) | set(summaries), key=rule_sort_key)
     row_counts = validation.get("violating_rows_by_rule") or {}
     for rule_id in rule_ids:
         next_row += 1
@@ -1138,17 +1167,20 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         rule_name = summary.get("name") or sample.get("rule_name") or rule_id
         sheet = workbook.create_sheet(_safe_sheet_name(rule_id, workbook.sheetnames))
         sheet["A1"] = _excel_value(f"{rule_id} - {rule_name}")
-        sheet["A2"] = "Condition:"
-        sheet["B2"] = _excel_value(summary.get("condition", ""))
-        sheet["A3"] = "Grouping:"
-        sheet["B3"] = _excel_value(summary.get("condition_grouping", ""))
-        expectation = summary.get("logic") or sample.get("rule_logic") or ""
-        sheet["A4"] = "Expectation:"
-        sheet["B4"] = _excel_value(_humanize_rule_logic(expectation))
-        sheet["A5"] = "Rule identifier:"
-        sheet["B5"] = _excel_value(
-            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        condition_text, condition_groups, expectation_text, expectation_groups = excel_rule_headers(
+            summary, str(sample.get("rule_logic") or "")
         )
+        for row_number, (label, value) in enumerate([
+            ("Conditions:", condition_text),
+            ("Condition Groupings:", condition_groups),
+            ("Expectations:", _humanize_rule_logic(expectation_text)),
+            ("Expectation Groupings:", expectation_groups),
+            ("Rule Identifier:",
+             summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"),
+        ], start=2):
+            sheet.cell(row_number, 1, label)
+            sheet.cell(row_number, 2, _excel_value(value))
+            sheet.row_dimensions[row_number].height = max(30, 15 * (str(value).count("\n") + 1))
 
         extra_columns = list(
             dict.fromkeys(
@@ -1158,13 +1190,13 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
             )
         )
         hide_comparison = bool(summary.get("hide_comparison", False))
-        if len(violations) + 7 > _EXCEL_MAX_ROWS:
+        if len(violations) + 8 > _EXCEL_MAX_ROWS:
             raise ValueError(f"Rule {rule_id} exceeds Excel's 1,048,576-row worksheet limit.")
         headers = [*(key_columns or ["Row"]), *extra_columns]
         if not hide_comparison:
             headers.extend(["Column", "In Baseline", "In Comparison"])
-        _append_row(sheet, 7, headers)
-        row_number = 8
+        _append_row(sheet, 8, headers)
+        row_number = 9
         for violation in violations:
             values = _excel_identity(
                 key_columns,
@@ -1289,9 +1321,11 @@ def _style_excel_sheet(sheet: Any) -> None:
                     "Column",
                     "In Baseline",
                     "In Comparison",
-                    "Condition:",
-                    "Grouping:",
-                    "Expectation:",
+                    "Conditions:",
+                    "Condition Groupings:",
+                    "Expectations:",
+                    "Expectation Groupings:",
+                    "Rule Identifier:",
                 }
                 or cell.value in {"Filtering information", "Exception Rule Summary"}
                 or "aggregation:" in cell.value

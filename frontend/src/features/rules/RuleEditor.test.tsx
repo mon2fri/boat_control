@@ -143,7 +143,7 @@ describe("RuleEditor", () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByText(/Choose AND, OR, or PER GROUPING/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Combining above conditions with"), { target: { value: "and" } });
+    fireEvent.change(screen.getByLabelText("Combining Conditions with"), { target: { value: "and" } });
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ conditionJoin: "and" }));
   });
@@ -197,6 +197,11 @@ describe("RuleEditor", () => {
       hideComparison: false,
     } as Rule;
     const { onSave } = setup({ rule, columns: ["a", "b", "c"] });
+    const conditionNode = screen.getByTestId("tree-Group 1");
+    expect(conditionNode.querySelector(".group-clause-label .condition-number")).toHaveTextContent("Condition 1");
+    expect(conditionNode).toHaveTextContent('a must equal "1"');
+    expect(conditionNode).toHaveTextContent('b must equal "2"');
+
 
     expect(screen.getByTestId("grouping-preview").textContent).toContain(
       "overall: group 1 OR condition 3",
@@ -206,7 +211,7 @@ describe("RuleEditor", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Remove all groups" }));
-    expect(screen.getByLabelText("Combining above conditions with")).toHaveValue("");
+    expect(screen.getByLabelText("Combining Conditions with")).toHaveValue("");
     expect(screen.queryByTestId("grouping-preview")).not.toBeInTheDocument();
     expect(screen.getAllByRole("group", { name: /Condition \d/ })).toHaveLength(3);
 
@@ -214,7 +219,7 @@ describe("RuleEditor", () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByText(/Choose AND, OR, or PER GROUPING/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Combining above conditions with"), {
+    fireEvent.change(screen.getByLabelText("Combining Conditions with"), {
       target: { value: "and" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));

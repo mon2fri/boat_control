@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { SectionHint } from "../../components/SectionHint";
 import { CollapsibleCard } from "../../components/CollapsibleCard";
 import { withColumnFamilies } from "../families/familyOptions";
 import type { Family } from "../../api/domain";
@@ -33,10 +34,9 @@ export function TargetSelector({ columns, selected, onChange, families = [] }: P
       summary={selected.length === 0
         ? "All comparison columns will be tracked. Expand to change."
         : `${selected.length} column${selected.length === 1 ? "" : "s"} selected. Expand to change.`}
+    showSummary={false}
+      hint={<SectionHint label="Track Changing Columns help">Choose the columns to compare and validate. If none are chosen, all selected comparison columns are used.</SectionHint>}
     >
-      <p className="section-hint">
-        Choose the columns to compare and validate. If none are chosen, all selected comparison columns are used.
-      </p>
 
       <SearchableMultiSelect
         label="Add columns to compare values"
@@ -44,6 +44,7 @@ export function TargetSelector({ columns, selected, onChange, families = [] }: P
         selected={selected}
         onChange={onChange}
         placeholder="Search comparison columns…"
+        hintTooltip
         hint="Pick columns for comparison. Leave empty to use all."
       />
 

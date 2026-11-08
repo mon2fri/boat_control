@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { SectionHint } from "../../components/SectionHint";
 import { CollapsibleCard } from "../../components/CollapsibleCard";
 import { withColumnFamilies } from "../families/familyOptions";
 import type { Family } from "../../api/domain";
@@ -42,12 +43,11 @@ export function CommentaryColumnPicker({ columns, selected, onChange, families =
       summary={selected.length === 0
         ? "No commentary-template columns configured. Expand to change."
         : `${selected.length} commentary-template column${selected.length === 1 ? "" : "s"} configured. Expand to change.`}
-    >
-      <p className="section-hint">
-        Ordered additional columns appended to the commentary template and shown in the
+    showSummary={false}
+      hint={<SectionHint label="Extra Columns for Commentary Template help">Ordered additional columns appended to the commentary template and shown in the
         Exception Tracking tab. This selection is independent of the Extra Columns setting
-        and attribute comparison sections.
-      </p>
+        and attribute comparison sections.</SectionHint>}
+    >
 
       <SearchableMultiSelect
         label="Add columns for commentary template"
@@ -55,6 +55,7 @@ export function CommentaryColumnPicker({ columns, selected, onChange, families =
         selected={selected}
         onChange={onChange}
         placeholder="Search columns…"
+        hintTooltip
         hint="Only columns selected here become additional commentary/tracking columns."
       />
 

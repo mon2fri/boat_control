@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { SectionHint } from "../../components/SectionHint";
 import { CollapsibleCard } from "../../components/CollapsibleCard";
 import { withColumnFamilies } from "../families/familyOptions";
 import type { Family } from "../../api/domain";
@@ -43,10 +44,9 @@ export function ExceptionColumnPicker({ columns, selected, onChange, families = 
       summary={selected.length === 0
         ? "No extra columns configured. Expand to change."
         : `${selected.length} extra column${selected.length === 1 ? "" : "s"} configured. Expand to change.`}
+    showSummary={false}
+      hint={<SectionHint label="Extra Columns help">Select extra columns. They always remain available in the Exception Table; choose the additional destinations below.</SectionHint>}
     >
-      <p className="section-hint">
-        Select extra columns. They always remain available in the Exception Table; choose the additional destinations below.
-      </p>
 
       <SearchableMultiSelect
         label="Add extra columns"
@@ -54,6 +54,7 @@ export function ExceptionColumnPicker({ columns, selected, onChange, families = 
         selected={selected}
         onChange={onChange}
         placeholder="Search columns…"
+        hintTooltip
         hint="Pick columns from the comparison file."
       />
 

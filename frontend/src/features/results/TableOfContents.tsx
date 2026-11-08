@@ -1,3 +1,4 @@
+import { compareRuleIndices } from "../../lib/ruleOrder";
 import { useMemo } from "react";
 import type { RunResult } from "../../api/domain";
 import { sectionId } from "./anchors";
@@ -16,7 +17,7 @@ function TocLinks({ result, activeId }: { result: RunResult; activeId: string | 
           Attribute changes
         </a>
       </li>
-      {result.ruleResults.map((rule) => {
+      {[...result.ruleResults].sort((a, b) => compareRuleIndices(a.ruleIndex, b.ruleIndex)).map((rule) => {
         const id = sectionId(rule.ruleIndex);
         const active = activeId === id;
         return (
@@ -51,7 +52,7 @@ export function TableOfContents({
     () => [
       "overall",
       "changes",
-      ...result.ruleResults.map((rule) => sectionId(rule.ruleIndex)),
+      ...[...result.ruleResults].sort((a, b) => compareRuleIndices(a.ruleIndex, b.ruleIndex)).map((rule) => sectionId(rule.ruleIndex)),
     ],
     [result.ruleResults],
   );

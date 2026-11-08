@@ -2892,3 +2892,18 @@ dl.card dd {
 .collapsible-card__title-group { flex: 1 1 auto; flex-wrap: wrap; }
 .collapsible-card__title-group .collapsible-card__toggle-region { flex: 0 1 auto; min-width: 0; }
 .collapsible-card__title-group .collapsible-card__summary { flex-basis: 100%; margin-top: 0; }
+
+/* Round 3: distinguish configuration, group builder and member levels. */
+.scope-title-row { display: flex; align-items: center; gap: 0.35rem; }
+.scope-title-row .results-card-title { margin: 0; }
+.filter-grouping > .field > label, label[for="cond-join"], label[for="logic-join"] { font-size: 0.9rem; color: var(--color-text); text-transform: none; letter-spacing: 0; font-weight: 700; }
+.group-tree-title-row .field-label { font-size: 1.05rem; font-weight: 700; color: var(--color-text); }
+.group-builder { margin-top: 1rem; padding: 1rem; border: 1px solid #b8ccd9; background: var(--color-surface-raised); }
+.group-builder legend { font-size: 0.95rem; font-weight: 700; color: #175ea8; text-transform: none; letter-spacing: 0; padding: 0 0.35rem; }
+.group-builder label, .group-clause-label { text-transform: none; letter-spacing: normal; font-weight: 400; }
+.group-builder label[for="new-group-kind"], .group-builder #select-members-label { font-size: 0.9rem; font-weight: 600; color: var(--color-text); }
+.group-tree-picklist-heading { font-size: 0.8rem; font-weight: 700; color: var(--color-text-soft); border-bottom: 1px solid var(--color-border); padding: 0.4rem; }
+.condition-number.group-number { color: #17633d; background: #e7f5ed; border-left-color: #278353; }
+
+.scope-title-row.results-card-title { justify-content: flex-start; }
+.scope-title-row > label { font: inherit; color: inherit; text-transform: none; letter-spacing: inherit; margin: 0; }

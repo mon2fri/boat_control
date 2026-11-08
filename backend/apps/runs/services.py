@@ -17,6 +17,7 @@ from apps.rules.services import (
 from apps.runs.grouped_logic import (
     GroupingValidationError,
     NormalizedOutcomes,
+    describe_outcome_clause,
     describe_outcomes,
     evaluate_grouping_tree,
     evaluate_outcomes,
@@ -29,6 +30,7 @@ from apps.runs.grouped_logic import (
     serialize_grouping_tree,
     validate_filter_grouping,
 )
+from apps.runs.report_metadata import grouping_lines
 from apps.runs.template_columns import validate_concrete_columns
 
 
@@ -413,7 +415,35 @@ def validate_rows(
             raise ValueError(
                 f"Rule '{rule.rule_id}' has an invalid outcome expression: {exc}"
             ) from exc
+        condition_tree = serialize_grouping_tree(rule.grouping_tree)
+        if condition_tree is None and len(rule.conditions) > 1:
+            leaves = [{"kind": "leaf", "conditionId": f"c{i}"} for i in range(len(rule.conditions))]
+            if rule.grouping and len(rule.grouping) == len(leaves):
+                groups: dict[str, list[dict[str, Any]]] = {}
+                for group_id, leaf in zip(rule.grouping, leaves, strict=True):
+                    groups.setdefault(group_id, []).append(leaf)
+                condition_tree = {"kind": "and", "children": [
+                    {"kind": "or", "children": members} if len(members) > 1 else members[0]
+                    for members in groups.values()
+                ]}
+            else:
+                condition_tree = {"kind": rule.condition_relation or "and", "children": leaves}
+        expectation_tree = serialize_grouping_tree(outcomes.tree)
+        if expectation_tree is None and len(outcomes.clauses) > 1:
+            expectation_tree = {"kind": outcomes.relation or "and", "children": [
+                {"kind": "leaf", "conditionId": f"c{i}"} for i in range(len(outcomes.clauses))
+            ]}
         summary = {
+            "condition_clauses": [
+                f"Condition {i}: {_describe_condition(c)}"
+                for i, c in enumerate(rule.conditions, 1)
+            ],
+            "expectation_clauses": [
+                f"Expectation {i}: {describe_outcome_clause(c)}"
+                for i, c in enumerate(outcomes.clauses, 1)
+            ],
+            "condition_groupings": grouping_lines(condition_tree, "Condition"),
+            "expectation_groupings": grouping_lines(expectation_tree, "Expectation"),
             "name": rule.name,
             "description": rule.description,
             "logic": describe_outcomes(outcomes),

@@ -23,6 +23,13 @@ export function exportRenderedHtml(
   const clone = root.cloneNode(true) as HTMLElement;
   clone.querySelectorAll("[data-export-exclude]").forEach((element) => element.remove());
   normalizeReportHeader(clone, reportName);
+  // A standalone snapshot describes its exported scope, not a live server toggle.
+  const scope = root.querySelector<HTMLInputElement>("#new-exceptions-only");
+  const scopeClone = clone.querySelector<HTMLInputElement>("#new-exceptions-only");
+  if (scope && scopeClone) {
+    scopeClone.toggleAttribute("checked", scope.checked);
+    scopeClone.setAttribute("disabled", "");
+  }
 
   const css = `${collectDocumentCss()}\n${EXPORT_ONLY_CSS}`;
   const serializedResult = new XMLSerializer().serializeToString(clone);

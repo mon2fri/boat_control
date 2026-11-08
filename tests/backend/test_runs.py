@@ -186,6 +186,10 @@ class TestValidateRows:
         assert violation.violating_value == "inactive"
         assert violation.comparison_value == "pending"
         assert result.rule_summaries["R001"] == {
+            "condition_clauses": [],
+            "condition_groupings": "",
+            "expectation_clauses": ["Expectation 1: status equals 'active'"],
+            "expectation_groupings": "",
             "name": "Active Check",
             "description": "",
             "logic": "status equals 'active'",

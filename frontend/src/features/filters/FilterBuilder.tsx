@@ -49,6 +49,7 @@ export function FilterBuilder({
   onGroupingChange,
 }: Props) {
   const controlled = grouping !== undefined;
+  const [groupingReset, setGroupingReset] = useState(0);
   const [localGrouping, setLocalGrouping] = useState<FilterGrouping>(() =>
     defaultFilterGrouping(rows),
   );
@@ -80,6 +81,7 @@ export function FilterBuilder({
     if (replacedAll || next.length === 0) {
       const nextGrouping = defaultFilterGrouping(rows);
       setLocalGrouping(nextGrouping);
+      setGroupingReset((version) => version + 1);
       setControlledMode(nextGrouping.mode);
     }
     previousRowIds.current = rowIdsKey;
@@ -137,8 +139,8 @@ export function FilterBuilder({
       summary={rows.length === 0
         ? "No filters configured. Expand to change."
         : `${rows.length} filter${rows.length === 1 ? "" : "s"} configured. Expand to change.`}
-      headerActions={(
-        <button type="button" className="btn" onClick={() => onChange([...rows, newFilterRow()])}>
+      headerActions={(expand) => (
+        <button type="button" className="btn" onClick={() => { expand(); onChange([...rows, newFilterRow()]); }}>
           + Add filter
         </button>
       )}
@@ -175,12 +177,9 @@ export function FilterBuilder({
       )}
 
       {rows.length > 1 && (
-        <section className="filter-grouping" aria-labelledby="filter-grouping-title">
-          <h4 id="filter-grouping-title" className="section-heading" style={{ fontSize: "0.95rem" }}>
-            Combine filters
-          </h4>
+        <section className="filter-grouping" aria-label="Filter grouping configuration">
           <div className="field">
-            <label htmlFor="filter-relation">Filter grouping</label>
+            <label htmlFor="filter-relation">Combining Filters with</label>
             <select
               id="filter-relation"
               value={activeGrouping.mode ?? ""}
@@ -201,6 +200,7 @@ export function FilterBuilder({
                 <SectionHint label="Filter groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
               </div>
               <GroupingTreeEditor
+                key={groupingReset}
                 conditions={conditions}
                 value={activeGrouping.tree}
                 onChange={(tree: GroupNode | null) =>
@@ -214,7 +214,7 @@ export function FilterBuilder({
                 <button
                   type="button"
                   className="btn btn--danger"
-                  onClick={() => updateGrouping(clearFilterGrouping())}
+                  onClick={() => { setGroupingReset((version) => version + 1); updateGrouping(clearFilterGrouping()); }}
                 >
                   Remove all groups
                 </button>

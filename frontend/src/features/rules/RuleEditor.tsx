@@ -133,6 +133,8 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
   const [draft, setDraft] = useState<DraftState>(() => initialDraft(rule));
   const [pristine] = useState<DraftState>(() => initialDraft(rule));
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [conditionGroupingReset, setConditionGroupingReset] = useState(0);
+  const [expectationGroupingReset, setExpectationGroupingReset] = useState(0);
   const [confirmSingleOutcome, setConfirmSingleOutcome] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
@@ -394,7 +396,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
 
         {needsJoin && (
           <div className="field">
-            <label htmlFor="cond-join">Combining above conditions with</label>
+            <label htmlFor="cond-join">Combining Conditions with</label>
             <select
               id="cond-join"
               value={draft.conditionJoin ?? ""}
@@ -422,6 +424,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
               <SectionHint label="Condition groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
             </div>
             <GroupingTreeEditor
+              key={conditionGroupingReset}
               conditions={draft.conditions}
               value={draft.groupTree}
               onChange={(groupTree) => patch({ groupTree })}
@@ -431,14 +434,16 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                 const index = draft.conditions.findIndex(
                   (item) => item.id === condition.id,
                 );
-                return index >= 0 ? `condition ${index + 1}` : condition.id;
+                const phrase = OPERATOR_PHRASE[condition.operator] ?? condition.operator;
+                const values = conditionValues(condition).map((value) => `"${value}"`).join(" OR ");
+                return index >= 0 ? `Condition ${index + 1}: ${condition.column || "<column>"} ${phrase} ${values || "<value>"}` : condition.id;
               }}
             />
             <div className="dialog-actions">
               <button
                 type="button"
                 className="btn btn--danger"
-                onClick={() => patch({ groupTree: null, conditionJoin: null })}
+                onClick={() => { setConditionGroupingReset((version) => version + 1); patch({ groupTree: null, conditionJoin: null }); }}
               >
                 Remove all groups
               </button>
@@ -715,6 +720,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                       <SectionHint label="Expectation groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
                     </div>
                     <GroupingTreeEditor
+                      key={expectationGroupingReset}
                       conditions={draft.logicClauses.map(outcomeAsCondition)}
                       value={draft.logicGroupingTree}
                       onChange={(tree) => patch({ logicGroupingTree: tree })}
@@ -734,6 +740,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                         type="button"
                         className="btn btn--danger"
                         onClick={() => {
+                          setExpectationGroupingReset((version) => version + 1);
                           const cleared = clearLogicOutcomeGrouping();
                           patch({
                             logicRelation: cleared.mode,

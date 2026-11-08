@@ -55,9 +55,9 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
       ],
     };
     render(<ControlledEditor initial={tree} />);
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
-    expect(screen.getByText("Group 3")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 2")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 3")[0]!).toBeInTheDocument();
 
     // The root is rendered, not flattened into a two-group forest: both
     // child groups sit under the overall Group 3 OR node.
@@ -65,6 +65,7 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(1);
     const rootNode = rootList.querySelector(":scope > .group-tree-node--group") as HTMLElement;
     expect(rootNode).toHaveAttribute("data-testid", "tree-Group 3");
+    expect(within(rootNode).getByRole("button", { name: "Collapse Group 3" }).querySelector(".group-number")).toHaveTextContent("Group 3");
     expect(within(rootNode).getByText("OR")).toBeInTheDocument();
     expect(within(rootNode).getByTestId("tree-Group 1")).toBeInTheDocument();
     expect(within(rootNode).getByTestId("tree-Group 2")).toBeInTheDocument();
@@ -80,7 +81,7 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     // After step 1, only Group 1 should exist at root.
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
     expect(screen.queryByText("Group 2")).not.toBeInTheDocument();
 
     // Step 2: create Group 2 with c2 + c3
@@ -88,15 +89,20 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     fireEvent.click(screen.getByLabelText("Condition 4: col_c3 equals v3"));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
-    // Both groups now sit under an explicit overall Group 3 OR root so the
-    // user can see how they combine instead of inferring a hidden wrapper.
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
-    expect(screen.getByText("Group 3")).toBeInTheDocument();
+    // No implicit parent: both groups remain drafts until explicitly joined.
+    expect(screen.getAllByText("Group 1")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Group 2")[0]).toBeInTheDocument();
+    expect(screen.queryByText("Group 3")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("These groups are not joined");
     const rootList = screen.getAllByRole("list")[0]!;
+    expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(2);
+    fireEvent.click(screen.getByTestId("pick-group:0"));
+    fireEvent.click(screen.getByTestId("pick-group:1"));
+    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
+    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+    expect(screen.getByText("Group 3")).toBeInTheDocument();
+    expect(screen.queryByText(/These groups are not joined/)).not.toBeInTheDocument();
     expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(1);
-    const rootNode = rootList.querySelector(":scope > .group-tree-node--group") as HTMLElement;
-    expect(within(rootNode).getByText("OR")).toBeInTheDocument();
   });
 
   it("splits the create-new-group checklist into Conditions and Existing groups sections", () => {
@@ -123,7 +129,7 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     expect(
       within(groupSection).getByText(/Selecting a group nests it inside the new group/i),
     ).toBeInTheDocument();
-    expect(within(groupSection).getByText(/Group 1 \(AND, 2 members\)/)).toBeInTheDocument();
+    expect(within(groupSection).getByRole("checkbox", { name: "Group 1 (AND, 2 members)" })).toBeInTheDocument();
   });
 
   it("nests an existing group into a new group only when the user explicitly ticks the group checkbox", () => {
@@ -165,7 +171,7 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     // After step 1, only Group 1 exists at root.
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
     expect(screen.queryByText("Group 2")).not.toBeInTheDocument();
 
     // Step 2: nest Group 1 with c3 to produce a new outer Group 2.
@@ -175,8 +181,8 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
 
     // The picker labelled "Group 1" now refers to the ORIGINAL group (c0+c1),
     // so the picklist entry uses that name. The new outer wrapper is "Group 2".
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 2")[0]!).toBeInTheDocument();
 
     // Step 3: pick Group 2 (the outer) + c4 to create Group 3, sealing the chain.
     // The picklist is still rooted at the only top-level fieldset, which the
@@ -186,9 +192,9 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     // All three group identities coexist in the DOM.
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
-    expect(screen.getByText("Group 3")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 2")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 3")[0]!).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Group 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Group 2" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Group 3" })).toBeInTheDocument();
@@ -222,7 +228,7 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     expect(within(group).getByRole("button", { name: /Remove Condition 3: col_c2 equals v2 from Group 1/ })).toBeInTheDocument();
 
     fireEvent.click(within(group).getByRole("button", { name: /Remove Condition 1: col_c0 equals v0 from Group 1/ }));
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Group 1" }));
     fireEvent.click(screen.getByRole("button", { name: /Remove Condition 2: col_c1 equals v1 from Group 1/ }));

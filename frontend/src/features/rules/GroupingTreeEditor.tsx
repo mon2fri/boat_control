@@ -124,15 +124,14 @@ function PerGroupingEditor({
   showHelp: boolean;
   conditionLabel?: ((condition: Condition) => string) | undefined;
 }) {
-  // The persisted value is authoritative. Rendering the whole tree (instead
-  // of unwrapping a root OR into a "forest") is what makes a loaded rule such
-  // as R079 show its overall Group 3 OR above Group 1 and Group 2. A tree
-  // created in this editor is emitted the same way, so the root is never
-  // silently hidden.
+  // Unjoined groups are editor-only drafts, never an implicit executable OR.
+  // External saved trees retain their explicit root, including loaded R079.
+  const [draftForest, setDraftForest] = useState<{ source: GroupNode | null; roots: GroupNode[] } | null>(null);
   const rootGroups = useMemo<GroupNode[]>(() => {
-    if (!value || value.kind === "leaf") return [];
-    return [value];
-  }, [value]);
+    if (draftForest && draftForest.source === value) return draftForest.roots;
+    return value && value.kind !== "leaf" ? [value] : [];
+  }, [value, draftForest]);
+  const memberKind = conditionLabel?.(conditions[0]!)?.match(/^(Filter|Expectation|Condition) /i)?.[1] ?? "Condition";
 
   /**
    * Stable, post-order numeric IDs for every group in the tree.
@@ -214,15 +213,11 @@ function PerGroupingEditor({
 
   const canCreateGroup = selectedMembers.length >= 2;
 
-  /** Emit the root value, unwrapping a one-member wrapper. */
+  /** Only one explicit root can be persisted. Multiple roots block save/run. */
   function emitRoot(children: GroupNode[]): void {
-    if (children.length === 0) {
-      onChange(null);
-    } else if (children.length === 1) {
-      onChange(children[0]!);
-    } else {
-      onChange({ kind: "or", children });
-    }
+    const next = children.length === 1 ? children[0]! : null;
+    setDraftForest({ source: next, roots: children });
+    onChange(next);
   }
 
   function createGroup(): void {
@@ -292,6 +287,9 @@ function PerGroupingEditor({
         </p>
       )}
 
+      {rootGroups.length > 1 && <p className="alert alert--error" role="alert">
+        These groups are not joined. Select the existing groups and explicitly create an AND or OR parent before saving.
+      </p>}
       {rootGroups.length > 0 && (
         <ol className="group-tree-children group-tree-children--root">
           {rootGroups.map((child, i) => (
@@ -314,7 +312,7 @@ function PerGroupingEditor({
       )}
 
       {availableItems.length >= 2 && (
-        <fieldset style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "var(--space)", marginTop: "var(--space)" }}>
+        <fieldset className="group-builder">
           <legend>Create new group</legend>
           <div className="field">
             <label htmlFor="new-group-kind">Group type</label>
@@ -343,7 +341,7 @@ function PerGroupingEditor({
               */}
               {ungrouped.length > 0 && (
                 <div className="group-tree-picklist-section" data-testid="picklist-conditions">
-                  <p className="group-tree-picklist-heading">Conditions</p>
+                  <p className="group-tree-picklist-heading">{memberKind}s</p>
                   {ungrouped.map((c) => {
                     const key = `cond:${c.id}`;
                     return (
@@ -381,8 +379,9 @@ function PerGroupingEditor({
                           checked={selectedMembers.includes(key)}
                           onChange={() => toggleMember(key)}
                           data-testid={`pick-${key}`}
+                          aria-label={groupFullLabel(group)}
                         />
-                        <span style={{ fontSize: "0.9rem" }}>{groupFullLabel(group)}</span>
+                        <span style={{ fontSize: "0.9rem" }}><span className="condition-number group-number">{groupTitle(group)}</span>{" "}{group.kind.toUpperCase()} · {group.kind === "leaf" ? 0 : group.children.length} members</span>
                       </label>
                     );
                   })}
@@ -477,9 +476,8 @@ function GroupTreeItem({
             onClick={() => setCollapsed((current) => !current)}
           >
             <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
-            {groupTitle(group)}
+            <span className="condition-number group-number">{groupTitle(group)}</span>
           </button>
-          <span className="group-tree-type group-tree-type--group">Group</span>
           {editing ? (
             <select
               aria-label={`${groupTitle(group)} operator`}

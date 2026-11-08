@@ -71,6 +71,13 @@ function openFilters() {
 }
 
 describe("FilterBuilder grouping", () => {
+  it("expands the collapsed card when adding a filter from its header", () => {
+    renderWithClient(<ControlledBuilder initialRows={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }));
+    expect(screen.getByRole("group", { name: "Filter 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Row filters" })).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("keeps add-filter in the title header and uses matching numbered group badges", () => {
     renderWithClient(<ControlledBuilder initialRows={rows.slice(0, 2)}
       initialGrouping={{ mode: "custom", tree: { kind: "and", children: [
@@ -97,7 +104,7 @@ describe("FilterBuilder grouping", () => {
     expect(screen.getByRole("group", { name: "Filter 1" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Filter 2" })).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Filter grouping"), { target: { value: "or" } });
+    fireEvent.change(screen.getByLabelText("Combining Filters with"), { target: { value: "or" } });
     expect(screen.getByTestId("filter-grouping-preview").textContent).toContain(
       "overall: filter 1 OR filter 2",
     );
@@ -157,7 +164,7 @@ describe("FilterBuilder grouping", () => {
       screen.getByText(/Choose AND, OR, or CUSTOM GROUPS to combine multiple row filters/i),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Filter grouping"), { target: { value: "and" } });
+    fireEvent.change(screen.getByLabelText("Combining Filters with"), { target: { value: "and" } });
     expect(
       screen.queryByText(/Choose AND, OR, or CUSTOM GROUPS to combine multiple row filters/i),
     ).not.toBeInTheDocument();
@@ -220,8 +227,8 @@ describe("FilterBuilder grouping", () => {
     openFilters();
     const initialPreview = screen.getByTestId("filter-grouping-preview").textContent;
 
-    fireEvent.change(screen.getByLabelText("Filter grouping"), { target: { value: "and" } });
-    fireEvent.change(screen.getByLabelText("Filter grouping"), { target: { value: "custom" } });
+    fireEvent.change(screen.getByLabelText("Combining Filters with"), { target: { value: "and" } });
+    fireEvent.change(screen.getByLabelText("Combining Filters with"), { target: { value: "custom" } });
 
     expect(screen.getByTestId("filter-grouping-preview").textContent).toBe(initialPreview);
     expect(screen.getByText("Group 1")).toBeInTheDocument();
@@ -242,7 +249,7 @@ describe("FilterBuilder grouping", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Remove all groups" }));
 
-    expect(screen.getByLabelText("Filter grouping")).toHaveValue("");
+    expect(screen.getByLabelText("Combining Filters with")).toHaveValue("");
     expect(screen.getByTestId("filter-grouping-preview").textContent).toContain(
       "choose AND, OR, or CUSTOM GROUPS",
     );
@@ -256,7 +263,7 @@ describe("FilterBuilder grouping", () => {
       screen.getAllByRole("searchbox", { name: "Value" })[0],
     ).toHaveAttribute("placeholder", expect.stringContaining("1 selected"));
 
-    fireEvent.change(screen.getByLabelText("Filter grouping"), { target: { value: "and" } });
+    fireEvent.change(screen.getByLabelText("Combining Filters with"), { target: { value: "and" } });
     expect(
       screen.queryByText(/Choose AND, OR, or CUSTOM GROUPS to combine multiple row filters/i),
     ).not.toBeInTheDocument();

@@ -195,7 +195,7 @@ def test_excel_formats_compound_values_and_preserves_null_blank_context() -> Non
     workbook = load_workbook(BytesIO(export_excel(document, "Grouped export")))
 
     rule_sheet = workbook["R079"]
-    assert [rule_sheet.cell(7, column).value for column in range(1, 7)] == [
+    assert [rule_sheet.cell(8, column).value for column in range(1, 7)] == [
         "id",
         "sa_flag",
         "cva_flag",
@@ -203,7 +203,7 @@ def test_excel_formats_compound_values_and_preserves_null_blank_context() -> Non
         "In Baseline",
         "In Comparison",
     ]
-    assert [rule_sheet.cell(8, column).value for column in range(1, 7)] == [
+    assert [rule_sheet.cell(9, column).value for column in range(1, 7)] == [
         "1",
         "Yes",
         "Yes",
@@ -212,7 +212,7 @@ def test_excel_formats_compound_values_and_preserves_null_blank_context() -> Non
         "sa_flag=Yes, cva_flag=Yes",
     ]
     exported_values = [
-        rule_sheet.cell(row, 6).value for row in range(8, rule_sheet.max_row + 1)
+        rule_sheet.cell(row, 6).value for row in range(9, rule_sheet.max_row + 1)
     ]
     assert exported_values == [
         "sa_flag=Yes, cva_flag=Yes",
@@ -232,12 +232,12 @@ def test_excel_formats_compound_values_and_preserves_null_blank_context() -> Non
 
 def test_excel_scalar_export_and_formula_protection_are_unchanged() -> None:
     workbook = load_workbook(BytesIO(export_excel(_scalar_document("10"), "Scalar")))
-    assert workbook["R001"]["D8"].value == "10"
+    assert workbook["R001"]["D9"].value == "10"
 
     protected = load_workbook(
         BytesIO(export_excel(_scalar_document("=SUM(A1:A2)"), "Scalar"))
     )
-    assert protected["R001"]["D8"].value == "'=SUM(A1:A2)"
+    assert protected["R001"]["D9"].value == "'=SUM(A1:A2)"
 
     compound_protected = _scalar_document(
         {"=observed": "@SUM(A1:A2)", "safe": "Yes"}
@@ -245,7 +245,7 @@ def test_excel_scalar_export_and_formula_protection_are_unchanged() -> None:
     protected_workbook = load_workbook(
         BytesIO(export_excel(compound_protected, "Compound formula"))
     )
-    cell = protected_workbook["R001"]["D8"]
+    cell = protected_workbook["R001"]["D9"]
     assert cell.value == "'=observed=@SUM(A1:A2), safe=Yes"
     assert cell.data_type == "s"
 
@@ -286,7 +286,7 @@ class TestExportEndpointWithCompoundValues(TestCase):
         workbook = load_workbook(BytesIO(response.content))
         rule_sheet = workbook["R079"]
         assert [
-            rule_sheet.cell(row, 6).value for row in range(8, rule_sheet.max_row + 1)
+            rule_sheet.cell(row, 6).value for row in range(9, rule_sheet.max_row + 1)
         ] == [
             "sa_flag=Yes, cva_flag=Yes",
             "sa_flag=Yes, cva_flag=(null)",

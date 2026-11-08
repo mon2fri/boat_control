@@ -25,3 +25,19 @@ group 2: outcome 3 AND outcome 4"
 
 ## Bugs
 1. Round 1 Bug 3 still exist.
+
+# Round 3
+## Enhancements
+1. In the result page, also the exported HTML report, make the tickbox of "New Exceptions Only" in the same style of "Overall result", and collaspe the hint text into an exclamation icon next to the title, which will show the hint text on hover, so that the UI looks cleaner.
+2. For per rule tab in the exported Excel report, in the header section we have rule name, conditions, grouping, expectation, and rule identifier. Keep the rule name, then conditions: which should be a single cell but with multiple lines, each line is a condition(Condition 1: xxxx \n Condition 2: xxxx), then Condition Groupings(Group 1: Condition 1 AND Condition 2 \n Group 2: Condition 3 OR Condition 4), then Expectations(Expectation 1: xxxx \n Expectation 2: xxxx), then Expectation Groupings(Group 1: Expectation 1 AND Expectation 2 \n Group 2: Expectation 3 OR Expectation 4), then Rule Identifier.
+3. In the result page/exported HTML report, make sure the per rule section are correctly order by rule index (Rxxx), as well as content table.
+4. When clicking the "Add filter" within the "Row filter" card, the card should expand itself.
+5. For "Track Changing Columns", "Extra Columns", "Attribute Comparing Sections", and "Extra Columns for Commentary Template", move their hint text into exclamation icon next to their right, with the same behavior as other exclamation icon.
+6. update wording: "Filter grouping" --> "Combining Filters with"; "Combining above conditions with" --> "Combining Conditions with"
+7. Check screenshots "Screenshot From 2026-11-08 23-08-28", "Screenshot From 2026-11-08 23-09-17", and "Screenshot From 2026-11-08 23-12-24". The text layer of "Filter Grouping", "Filter groups", "CREATE NEW GROUP", "GROUP TYPE", "Select Members", and "Conditions" are unclear, different layer should be distinguished by style/font sizes/colors. Remove the "Combine filters"
+8. In Rule condition part, CONDITION X under "Conditions" are not showing the actual content as Expectation X or FILTER X does, should match label style and show the content of condition itself.
+9. For Group X across "Row Filters", Conditions, and Expectation, apply a label style similar to Filter|Condition|Expectation, but in Green, When user picker from Existing Groups, they should see matching style labels of groups.
+
+
+## Bugs
+1. When configuring R079 on Expectations, after adding E1 & E2 --> G1, and E3 & E4 --> G2, it assumes G1 and G2 founds Group3, the behavior is incorrect, not grouping should be assumed.

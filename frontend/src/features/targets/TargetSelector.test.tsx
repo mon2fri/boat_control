@@ -49,6 +49,7 @@ describe("TargetSelector", () => {
   it("empty selection means all comparison columns are used", () => {
     renderWithClient(<Harness />);
     expect(screen.queryByRole("list", { name: "Selected comparing columns" })).not.toBeInTheDocument();
-    expect(screen.getByText(/All comparison columns will be tracked/)).toBeInTheDocument();
+    expect(screen.getByRole("tooltip")).toHaveTextContent("If none are chosen, all selected comparison columns are used");
+    expect(screen.getByRole("img", { name: "Track Changing Columns help" })).toBeInTheDocument();
   });
 });

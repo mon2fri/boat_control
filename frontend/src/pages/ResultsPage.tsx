@@ -1,3 +1,4 @@
+import { compareRuleIndices } from "../lib/ruleOrder";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
@@ -281,6 +282,7 @@ function ResultView({
   onViewHistory,
   onRename,
 }: ResultViewProps) {
+  const orderedRules = [...result.ruleResults].sort((a, b) => compareRuleIndices(a.ruleIndex, b.ruleIndex));
   const overallExtraLabels = Object.fromEntries(exceptionColumns.map((column) => [column, `${column}(Latest Value)`]));
   return (
     <div className="result-content results-layer-content" data-export-source="result">
@@ -455,9 +457,9 @@ function ResultView({
           </section>
         )}
 
-      <ExceptionRuleSummary rules={result.ruleResults} />
+      <ExceptionRuleSummary rules={orderedRules} />
 
-      {result.ruleResults.map((rule) => {
+      {orderedRules.map((rule) => {
         const ruleGroupStats = result.groupStatistics?.validationRules?.[rule.ruleIndex];
         return (
           <RuleResultSection
@@ -471,7 +473,7 @@ function ResultView({
       })}
 
       <ExceptionTable
-        ruleResults={result.ruleResults}
+        ruleResults={orderedRules}
         keyColumnNames={keyColumns}
         aggregationColumnLabels={aggregationColumnLabels}
         exceptionColumns={extraColumnDisplay.exceptionTables ? exceptionColumns : []}

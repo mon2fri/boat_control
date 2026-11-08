@@ -16,6 +16,17 @@ async function buildExport(root: HTMLElement, reportName: string): Promise<strin
 }
 
 describe("exportRenderedHtml — Table of Contents FAB", () => {
+  it("preserves the current scope checkbox state and hover help in a standalone report", async () => {
+    const root = document.createElement("section");
+    root.innerHTML = '<div class="scope-title-row"><label class="results-card-title"><input id="new-exceptions-only" type="checkbox">New Exceptions Only</label><span class="section-hint-icon" tabindex="0"><span role="tooltip">Scope help</span></span></div>';
+    root.querySelector<HTMLInputElement>("input")!.checked = true;
+    const html = await buildExport(root, "Scope");
+    const exported = new DOMParser().parseFromString(html, "text/html");
+    expect(exported.querySelector<HTMLInputElement>("#new-exceptions-only")!.checked).toBe(true);
+    expect(exported.querySelector<HTMLInputElement>("#new-exceptions-only")!.disabled).toBe(true);
+    expect(exported.querySelector('[role="tooltip"]')!.textContent).toBe("Scope help");
+  });
+
   it("embeds standalone detail-table column filtering interactions", async () => {
     const root = document.createElement("section");
     root.innerHTML = `

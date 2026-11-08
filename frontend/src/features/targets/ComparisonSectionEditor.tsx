@@ -1,6 +1,7 @@
 import { useMemo, useState, useCallback } from "react";
 import type { ComparisonSection, Family } from "../../api/domain";
 import { SearchableMultiSelect } from "../../components/SearchableMultiSelect";
+import { SectionHint } from "../../components/SectionHint";
 import { CollapsibleCard } from "../../components/CollapsibleCard";
 import { withColumnFamilies } from "../families/familyOptions";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
@@ -153,8 +154,9 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
         id="comparison-sections"
         title="Attribute Comparing Sections"
         summary="No sections configured. Expand to change."
-      >
-        <p className="section-hint">No custom sections defined. All target columns are compared together.</p>
+      showSummary={false}
+      hint={<SectionHint label="Attribute Comparing Sections help">No custom sections defined. All target columns are compared together.</SectionHint>}
+    >
         <button type="button" className="btn" onClick={handleAdd} style={{ marginTop: "var(--space)" }}>
           Add section
         </button>
@@ -167,8 +169,9 @@ export function ComparisonSectionEditor({ sections, onChange, availableColumns, 
       id="comparison-sections"
       title="Attribute Comparing Sections"
       summary={`${sections.length} section${sections.length === 1 ? "" : "s"} configured. Expand to change.`}
+    showSummary={false}
+      hint={<SectionHint label="Attribute Comparing Sections help">Define named sections that compare specific column subsets.</SectionHint>}
     >
-      <p className="section-hint">Define named sections that compare specific column subsets.</p>
 
       <ul className="comparison-section-list" style={{ listStyle: "none", padding: 0 }}>
         {sections.map((section, index) => {

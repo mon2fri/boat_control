@@ -6,11 +6,12 @@ interface Props {
   summary: string;
   /** Optional accessible help affordance rendered next to the title. */
   hint?: ReactNode;
-  headerActions?: ReactNode;
+  headerActions?: ReactNode | ((expand: () => void) => ReactNode);
+  showSummary?: boolean;
   children: ReactNode;
 }
 
-export function CollapsibleCard({ id, title, summary, hint, headerActions, children }: Props) {
+export function CollapsibleCard({ id, title, summary, hint, headerActions, showSummary = true, children }: Props) {
   const [collapsed, setCollapsed] = useState(true);
 
   return (
@@ -27,10 +28,10 @@ export function CollapsibleCard({ id, title, summary, hint, headerActions, child
             <span id={`${id}-title`} className="section-heading">{title}</span>
           </button>
           {hint && <span className="collapsible-card__hint">{hint}</span>}
-          {collapsed && <span className="collapsible-card__summary">{summary}</span>}
+          {collapsed && showSummary && <span className="collapsible-card__summary">{summary}</span>}
         </div>
         <div className="collapsible-card__actions">
-          {headerActions}
+          {typeof headerActions === "function" ? headerActions(() => setCollapsed(false)) : headerActions}
           <button type="button" className="collapsible-card__toggle-region"
             aria-label={`${collapsed ? "Expand" : "Collapse"} section`}
             aria-expanded={!collapsed} aria-controls={`${id}-content`}
