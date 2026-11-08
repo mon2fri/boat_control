@@ -1,0 +1,268 @@
+items:
+- rule_identifier: CBR1_1FB1N7BHJ3WTCD3BB1KW
+  name: UI Flags - opposite Yes No
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions: []
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic_clauses:
+  - format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  - format: value_vs_column
+    column_name: cva_flag
+    operator: eq
+    target_value: 'No'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  - format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'No'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  - format: value_vs_column
+    column_name: cva_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  logic_relation: or
+  logic_grouping_tree:
+    kind: or
+    children:
+    - kind: and
+      children:
+      - kind: leaf
+        conditionId: c0
+      - kind: leaf
+        conditionId: c1
+    - kind: and
+      children:
+      - kind: leaf
+        conditionId: c2
+      - kind: leaf
+        conditionId: c3
+- rule_identifier: CBR1_1W78WWR2NM21XFDTH473
+  name: UI Flags - either Yes
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions: []
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic_clauses:
+  - format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  - format: value_vs_column
+    column_name: cva_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  logic_relation: or
+- rule_identifier: CBR1_081VEWTF61DX63X1W1X9
+  name: UI Flags - both No
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions: []
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic_clauses:
+  - format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'No'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  - format: value_vs_column
+    column_name: cva_flag
+    operator: eq
+    target_value: 'No'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  logic_relation: and
+- rule_identifier: CBR1_1CYQN8HX90XF39460BRF
+  name: UI Null - cva eq Yes
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions: []
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: cva_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+- rule_identifier: CBR1_00HYDPXB3H0H7KX7SXR9
+  name: UI Null - cva neq Yes
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions: []
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: cva_flag
+    operator: neq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+- rule_identifier: CBR1_031AVXRKP4X8QR7N48WH
+  name: UI Null - cva contains Yes
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions: []
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: cva_flag
+    operator: contains
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+- rule_identifier: CBR1_01BXEXCKGPZBHG6W9AA0
+  name: UI Null - cva ncontains Yes
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions: []
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: cva_flag
+    operator: ncontains
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+- rule_identifier: CBR1_09YZQ3ZVETGCXPQ42A61
+  name: UI Condition - cva eq Yes then sa Yes
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions:
+  - column_name: cva_flag
+    operator: eq
+    filter_value: 'Yes'
+    filter_values:
+    - 'Yes'
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+- rule_identifier: CBR1_19QCVHJV0JPZBKH3N02K
+  name: UI Condition - cva neq Yes then sa Yes
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions:
+  - column_name: cva_flag
+    operator: neq
+    filter_value: 'Yes'
+    filter_values:
+    - 'Yes'
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+- rule_identifier: CBR1_0DD65Q7TPS9098VQW62H
+  name: UI Condition - cva contains Yes then sa Yes
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions:
+  - column_name: cva_flag
+    operator: contains
+    filter_value: 'Yes'
+    filter_values:
+    - 'Yes'
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+- rule_identifier: CBR1_1QB322GR911W418M4ZPX
+  name: UI Condition - cva ncontains Yes then sa Yes
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions:
+  - column_name: cva_flag
+    operator: ncontains
+    filter_value: 'Yes'
+    filter_values:
+    - 'Yes'
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+_version: 1

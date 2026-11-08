@@ -1,0 +1,69 @@
+comparisonColumns:
+- kind: column_family
+  name: Test
+- id
+- region
+- score
+- sa_flag
+- cva_flag
+- system
+keyColumns:
+- kind: column
+  name: id
+aggregationColumns:
+- kind: column
+  name: system
+aggregationColumnLabels: {}
+filters:
+- column: system
+  operator: contains
+  filter_values:
+  - oomber
+- column:
+    kind: column_family
+    name: Test
+  operator: eq
+  filter_values:
+  - active
+filterGroupingTree:
+  kind: and
+  children:
+  - kind: leaf
+    conditionId: c0
+  - kind: leaf
+    conditionId: c1
+targetColumns:
+- sa_flag
+- cva_flag
+- system
+extraColumns:
+- kind: column
+  name: name
+- kind: column
+  name: status
+- kind: column
+  name: region
+- kind: column
+  name: sa_flag
+- kind: column
+  name: cva_flag
+- kind: column
+  name: system
+commentaryTemplateColumns:
+- kind: column
+  name: sa_flag
+- kind: column
+  name: cva_flag
+- kind: column
+  name: system
+extraColumnDisplay:
+  overallResultPage: true
+  overallHtmlReport: true
+  overallExcelReport: true
+  newBooksResultPage: true
+  newBooksHtmlReport: true
+  newBooksExcelReport: true
+  exceptionTables: true
+nestedAggregationEnabled: false
+comparisonSections: []
+_version: 2

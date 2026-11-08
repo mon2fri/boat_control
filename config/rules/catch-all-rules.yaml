@@ -1,0 +1,16 @@
+items:
+- rule_identifier: CBR1_1F5M13ZKV8YXB7N48F5N
+  name: Catch-All Rule by ID
+  description: ''
+  conditions: []
+  extra_columns: []
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: id
+    operator: lt
+    target_value: '0'
+    target_values:
+    - '0'
+    comparison_mode: comparison_vs_baseline
+_version: 1
