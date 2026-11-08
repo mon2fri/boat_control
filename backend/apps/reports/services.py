@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import html
 import io
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
 
@@ -23,16 +24,56 @@ _EXCEL_MAX_ROWS = 1_048_576
 _EXCEL_MAX_COLUMNS = 16_384
 
 
+def _observed_item_text(value: Any) -> str:
+    """Render one observed CSV value inside a compound group.
+
+    The grouped-outcome contract stores a flat map of column name to observed
+    value. Excel accepts scalars only, so compound maps are rendered as text.
+    Keep the frontend's display convention for missing values so exported and
+    on-screen reports agree: ``(null)`` for JSON null and ``(blank)`` for the
+    empty string.
+    """
+    if value is None:
+        return "(null)"
+    if value == "":
+        return "(blank)"
+    return str(value)
+
+
+def _format_compound_cell(value: Mapping[Any, Any] | list[Any] | tuple[Any, ...]) -> str:
+    if isinstance(value, Mapping):
+        return ", ".join(
+            f"{key}={_observed_item_text(item)}" for key, item in value.items()
+        )
+    return ", ".join(_observed_item_text(item) for item in value)
+
+
+def _report_cell_value(value: Any) -> Any:
+    """Normalize any report cell value before openpyxl or HTML renders it.
+
+    Grouped rule violations carry an object-valued ``violating_value`` map.
+    Passing that map to openpyxl raises ``Cannot convert {...} to Excel``.
+    Scalars keep their existing concrete type (including ``None`` and ``""``)
+    so legacy scalar exports are unchanged; compound values become readable
+    text that retains every observed column/value.
+    """
+    if isinstance(value, Mapping):
+        return _format_compound_cell(value)
+    if isinstance(value, (list, tuple)):
+        return _format_compound_cell(value)
+    return value
+
+
 def _escape_html(value: Any) -> str:
     if value is None:
         return ""
-    return html.escape(str(value))
+    return html.escape(str(_report_cell_value(value)))
 
 
 def _sanitize_csv_value(value: Any) -> str:
     if value is None:
         return ""
-    str_val = str(value)
+    str_val = str(_report_cell_value(value))
     if str_val and str_val[0] in ("=", "+", "-", "@", "\t", "\r"):
         str_val = f"'{str_val}"
     return str_val
@@ -1215,6 +1256,7 @@ def _excel_identity(key_columns: list[str], values: dict[str, Any], row_index: A
 
 
 def _excel_value(value: Any) -> Any:
+    value = _report_cell_value(value)
     if isinstance(value, str):
         return _sanitize_csv_value(value)
     return value
