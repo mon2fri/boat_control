@@ -218,6 +218,9 @@ export function mapFilterConfigurationToWire(
   if (!resolved.valid) {
     throw new GroupingValidationError(resolved.errors);
   }
+  if (filters.length === 0) {
+    return { rows: [], relation: null, groupTree: null };
+  }
 
   const hasExplicitGrouping = Boolean(groupTree || relation);
   const incomplete = filters.filter((row) => !isCompleteFilterRow(row));

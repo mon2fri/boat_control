@@ -278,6 +278,19 @@ not admit `undefined` under the project’s TypeScript settings.
 
 **Fix:** Declared the optional field as `Array<...> | undefined`; `tsc -b` passes.
 
+### 7. A stale relation blocked a no-filter run
+
+**Cause:** Removing every filter left `filterRelation` set, and validation treated
+“relation without clauses” as invalid even though no filters must impose no row
+restriction.
+
+**Fix:** Zero clauses resolve to a valid unrestricted expression regardless of a
+stale relation, and configuration serialization omits grouping fields when there
+are no filters.
+
+**Evidence:** `lib/grouping.test.ts` — “ignores a stale relation when no clauses
+remain”.
+
 ## Verification commands and results
 
 ```bash
@@ -291,10 +304,10 @@ npx vitest run src/lib/grouping.test.ts \
   src/state/WorkflowContext.grouped.test.ts \
   src/features/results/useRunExecution.test.ts \
   src/features/rules/useRules.test.ts
-# 6 files passed, 63 tests passed
+# 6 files passed, 64 tests passed
 
 npx vitest run --testTimeout=20000 --hookTimeout=20000 --maxWorkers=2
-# 59 files passed, 557 tests passed
+# 59 files passed, 558 tests passed
 ```
 
 `npm run lint` remains red on pre-existing repository-wide rules

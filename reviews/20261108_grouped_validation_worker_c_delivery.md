@@ -115,10 +115,10 @@ npx vitest run \
   src/state/WorkflowContext.grouped.test.ts \
   src/features/results/useRunExecution.test.ts \
   src/features/rules/useRules.test.ts
-# 6 test files passed, 63 tests passed
+# 6 test files passed, 64 tests passed
 
 npx vitest run --testTimeout=20000 --hookTimeout=20000 --maxWorkers=2
-# 59 test files passed, 557 tests passed
+# 59 test files passed, 558 tests passed
 
 git diff --check
 # no output (clean)
@@ -145,6 +145,9 @@ All defects found while implementing are recorded in the implementation doc:
    emitting grouping fields when the persisted run contains them.
 6. TypeScript `exactOptionalPropertyTypes` rejected the refinement callback shape.
    Fixed the optional property declaration; `tsc -b` passes.
+7. A stale flat relation blocked a run after every filter was removed. Zero
+   clauses now mean no row restriction, and config serialization omits grouping
+   when no filters remain.
 
 ## Remaining issues / reviewer decisions
 

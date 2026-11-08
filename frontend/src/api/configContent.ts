@@ -506,10 +506,10 @@ export function mapWorkflowToRowsColumnsConfig(
       operator: f.operator,
       filter_values: f.values,
     })),
-    ...(state.filterRelation
+    ...(state.filterRelation && state.filters.length > 0
       ? { filterRelation: state.filterRelation }
       : {}),
-    ...(state.filterGroupTree
+    ...(state.filterGroupTree && state.filters.length > 0
       ? { filterGroupingTree: toPersistedGroupingTree(state.filterGroupTree, state.filters) }
       : {}),
     targetColumns: columnsToRefs(state.targetColumns, families),
@@ -956,7 +956,7 @@ export function resolveRulesConfig(
         : Array.isArray(rule.conditions)
           ? rule.conditions
           : [];
-      if (rule.logic?.column_name !== undefined && Array.isArray(rule.logic_clauses)) {
+      if (rule.logic !== undefined && Array.isArray(rule.logic_clauses)) {
         warnings.push({
           type: "invalid_grouping",
           message: `Rule "${String(rule.name ?? "")}" contains both legacy logic and logic_clauses; refusing to choose one silently.`,

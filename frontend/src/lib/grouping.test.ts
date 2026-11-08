@@ -101,6 +101,15 @@ describe("resolveGroupedExpression", () => {
     expect(result.valid).toBe(true);
     expect(result.relation).toBe("and");
   });
+
+  it("ignores a stale relation when no clauses remain (no row restriction)", () => {
+    const result = resolveGroupedExpression([], "or", null, {
+      label: "filter grouping",
+      allowLegacyAnd: true,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.relation).toBeNull();
+  });
 });
 
 describe("grouping reference remapping", () => {

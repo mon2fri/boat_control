@@ -319,16 +319,8 @@ export function resolveGroupedExpression(
   }
 
   if (clauseIds.length === 0) {
-    if (explicitRelation) {
-      return {
-        valid: false,
-        errors: [`${label} has a relation but no configured clauses.`],
-        tree: null,
-        relation: explicitRelation,
-        legacy: false,
-        validation: null,
-      };
-    }
+    // No clauses impose no row restriction; a stale relation must not block
+    // an otherwise unrestricted run.
     return {
       valid: true,
       errors: [],
