@@ -19,6 +19,10 @@ class ExecuteComparisonRequestSerializer(serializers.Serializer):  # type: ignor
         child=serializers.CharField(), required=False, allow_null=True
     )
     filters = FilterSerializer(many=True, required=False, default=list)
+    filter_relation = serializers.ChoiceField(
+        choices=["and", "or"], required=False, allow_null=True
+    )
+    filter_grouping_tree = serializers.JSONField(required=False, allow_null=True)
     rule_ids = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
     as_of_date = serializers.DateField(required=False, allow_null=True)
     commentary_template_columns = serializers.ListField(
@@ -85,6 +89,15 @@ class ValidationViolationSerializer(serializers.Serializer):  # type: ignore[mis
     )
     exception_id = serializers.CharField(required=False, allow_null=True)
     exception_status = serializers.CharField(required=False, allow_null=True)
+    outcome_columns = serializers.ListField(
+        child=serializers.CharField(), required=False, default=list
+    )
+    outcome_values = serializers.DictField(
+        child=serializers.JSONField(), required=False, default=dict
+    )
+    outcome_results = serializers.DictField(
+        child=serializers.BooleanField(), required=False, default=dict
+    )
 
 
 class ValidationResultSerializer(serializers.Serializer):  # type: ignore[misc]
@@ -102,6 +115,10 @@ class ExecutionResultSerializer(serializers.Serializer):  # type: ignore[misc]
     common_columns = serializers.ListField(child=serializers.CharField())
     target_columns = serializers.ListField(child=serializers.CharField())
     filters_applied = FilterSerializer(many=True)
+    filter_relation = serializers.ChoiceField(
+        choices=["and", "or"], required=False, allow_null=True
+    )
+    filter_grouping_tree = serializers.JSONField(required=False, allow_null=True)
     aggregation_columns = serializers.ListField(child=serializers.CharField(), default=list)
     aggregation_column_labels = serializers.DictField(
         child=serializers.CharField(), required=False, default=dict

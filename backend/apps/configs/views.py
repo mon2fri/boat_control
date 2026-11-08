@@ -294,13 +294,14 @@ def _import_rule_content(
         assert decisions is not None
         resolved: list[dict[str, Any]] = []
         by_identifier = {item["rule_identifier"]: item for item in conflicts}
+        decisions_map = decisions or {}
         for draft in validated:
             identifier = calculate_rule_identifier(draft)
             conflict = by_identifier.get(identifier)
             if conflict is None:
                 resolved.append(draft)
                 continue
-            decision = decisions.get(identifier)
+            decision = decisions_map.get(identifier)
             if decision == "remove":
                 continue
             if decision == "reinstate" or decision == "maintain_original":
@@ -329,16 +330,74 @@ def _import_rule_content(
     }
 
 
+def _validate_filter_config_content(content: Any) -> Any:
+    from apps.runs.grouped_logic import validate_filter_grouping
+
+    if not isinstance(content, dict):
+        return content
+    rows = content.get("rows", [])
+    if not isinstance(rows, list):
+        raise ValueError("Filter configuration rows must be a list.")
+    relation = content.get("filter_relation", content.get("filterRelation"))
+    tree = content.get("filter_grouping_tree", content.get("filterGroupingTree"))
+    errors = validate_filter_grouping(rows, relation, tree)
+    if errors:
+        raise ValueError(
+            "Invalid filter grouping configuration: " + "; ".join(errors)
+        )
+    return content
+
+
 class FiltersConfigListView(BaseConfigListView):
     @property
     def directory(self) -> Path:
         return get_filter_config_dir()
+
+    def post(self, request: Request) -> Response:
+        serializer = ConfigCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            content = _validate_filter_config_content(
+                serializer.validated_data["content"]
+            )
+            config = create_config(
+                self.directory,
+                serializer.validated_data["name"],
+                content,
+            )
+        except (ConfigNameError, ValueError) as exc:
+            return Response({"error": str(exc)}, status=400)
+        return Response(
+            {"name": config.name, "version": config.version},
+            status=201,
+        )
 
 
 class FiltersConfigDetailView(BaseConfigDetailView):
     @property
     def directory(self) -> Path:
         return get_filter_config_dir()
+
+    def put(self, request: Request, name: str) -> Response:
+        serializer = ConfigUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            content = _validate_filter_config_content(
+                serializer.validated_data["content"]
+            )
+            config = update_config(
+                self.directory,
+                name,
+                content,
+                serializer.validated_data["version"],
+            )
+        except ConfigNotFoundError as exc:
+            return Response({"error": str(exc)}, status=404)
+        except ConfigConflictError as exc:
+            return Response({"error": str(exc)}, status=409)
+        except (ConfigNameError, ValueError) as exc:
+            return Response({"error": str(exc)}, status=400)
+        return Response(_config_to_response(config))
 
 
 class RowsAndColumnsConfigListView(BaseConfigListView):

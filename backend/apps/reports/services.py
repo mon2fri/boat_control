@@ -89,8 +89,47 @@ def _format_filter_row(f: dict[str, Any]) -> str:
     vals = f.get("filter_values") or []
     if not vals and f.get("filter_value"):
         vals = [f["filter_value"]]
-    quoted = " or ".join(f"'{v}'" for v in vals)
+    connector = (
+        " and " if f.get("operator") in ("neq", "ncontains") else " or "
+    )
+    quoted = connector.join(f"'{v}'" for v in vals)
     return f"{f.get('column', '?')} {op} {quoted}"
+
+
+def _filter_tree_text(node: Any, labels: dict[int, str]) -> str:
+    if not isinstance(node, dict):
+        return ""
+    if node.get("kind") == "leaf":
+        condition_id = str(node.get("conditionId", ""))
+        try:
+            index = int(condition_id[1:])
+        except (TypeError, ValueError):
+            return condition_id
+        return labels.get(index, condition_id)
+    children = node.get("children") or []
+    joined = f" {str(node.get('kind', 'and')).upper()} ".join(
+        _filter_tree_text(child, labels) for child in children
+    )
+    return f"({joined})"
+
+
+def _format_filter_expression(result: dict[str, Any]) -> str:
+    filters = result.get("filters_applied") or []
+    if not filters:
+        return "No filtering applied"
+    rows = [_format_filter_row(f) for f in filters]
+    labels = {index: f"F{index + 1}" for index in range(len(rows))}
+    tree = result.get("filter_grouping_tree")
+    if isinstance(tree, dict):
+        expression = _filter_tree_text(tree, labels)
+        return "; ".join(
+            f"{labels[index]}: {row}" for index, row in enumerate(rows)
+        ) + f" | Grouping: {expression}"
+    relation = result.get("filter_relation")
+    if relation in ("and", "or"):
+        return f" {relation.upper()} ".join(rows)
+    # Legacy runs combine filters with AND.
+    return " AND ".join(rows)
 
 
 def _format_created_at(iso_str: str | None) -> str:
@@ -482,10 +521,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         "distinct_violating_attributes", validation.get("total_violations", 0)
     )
     targets = result.get("target_columns") or []
-    filters = result.get("filters_applied") or []
-    filter_text = (
-        "; ".join(_format_filter_row(f) for f in filters) if filters else "No filtering applied"
-    )
+    filter_text = _format_filter_expression(result)
     sections.append(
         "<p class='section-logic'>"
         f"Comparison across {len(targets)} target columns."
@@ -830,12 +866,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     overall.append(["New Books", comparison.get("new_book_count", 0)])
     overall.append([])
     overall.append(["Filtering information"])
-    filters = result.get("filters_applied") or []
-    if filters:
-        for filter_row in filters:
-            overall.append([_excel_value(_format_filter_row(filter_row))])
-    else:
-        overall.append(["No filtering applied"])
+    overall.append([_excel_value(_format_filter_expression(result))])
 
     aggregation_start_row = overall.max_row + 1
     aggregation_bottom_row = aggregation_start_row

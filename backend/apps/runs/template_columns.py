@@ -172,4 +172,24 @@ def normalize_rows_and_columns_content(content: Any) -> dict[str, Any]:
     normalized[CONFIG_FIELD] = normalize_config_selection(
         normalized.get(CONFIG_FIELD)
     )
+
+    from apps.runs.grouped_logic import validate_filter_grouping
+
+    filters = normalized.get("filters")
+    if filters is not None and not isinstance(filters, list):
+        raise TemplateColumnError(
+            "Row Filters in Config for rows and columns must be a list."
+        )
+    relation = normalized.get(
+        "filter_relation", normalized.get("filterRelation")
+    )
+    grouping_tree = normalized.get(
+        "filter_grouping_tree", normalized.get("filterGroupingTree")
+    )
+    errors = validate_filter_grouping(filters or [], relation, grouping_tree)
+    if errors:
+        raise TemplateColumnError(
+            "Invalid Row Filter grouping in Config for rows and columns: "
+            + "; ".join(errors)
+        )
     return normalized

@@ -176,6 +176,8 @@ def save_run(
                 "target_columns": result.target_columns,
                 "key_columns": result.key_columns,
                 "filters_applied": result.filters_applied,
+                "filter_relation": result.filter_relation,
+                "filter_grouping_tree": result.filter_grouping_tree,
                 "aggregation_columns": result.aggregation_columns,
                 "aggregation_column_labels": result.aggregation_column_labels,
                 "nested_aggregation_enabled": result.nested_aggregation_enabled,
@@ -290,6 +292,10 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                         result["group_statistics"] = None
                     if "filters_applied" not in result:
                         result["filters_applied"] = []
+                    if "filter_relation" not in result:
+                        result["filter_relation"] = None
+                    if "filter_grouping_tree" not in result:
+                        result["filter_grouping_tree"] = None
                     if "nested_aggregation_enabled" not in result:
                         result["nested_aggregation_enabled"] = False
                     if "comparison_sections" not in result:
@@ -314,6 +320,9 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                                 violation.setdefault("detail_values", {})
                                 violation.setdefault("exception_id", None)
                                 violation.setdefault("exception_status", None)
+                                violation.setdefault("outcome_columns", [])
+                                violation.setdefault("outcome_values", {})
+                                violation.setdefault("outcome_results", {})
                     comparison = result.get("comparison", {})
                     if "new_book_count" not in comparison:
                         comparison["new_book_count"] = 0

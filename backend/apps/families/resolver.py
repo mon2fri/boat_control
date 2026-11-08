@@ -1,8 +1,139 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, cast
 
 from apps.families.services import get_family
+
+
+def _filter_operator_combine_kind(operator: str) -> str:
+    """Combine expanded family-member filters like the evaluator does.
+
+    Positive row filters keep a row when any member matches; negative filters
+    keep it only when every member satisfies the negative test.
+    """
+
+    return "and" if operator in {"neq", "ncontains"} else "or"
+
+
+def _remap_filter_tree(
+    node: Any,
+    expansions: dict[int, tuple[list[int], str]],
+) -> Any:
+    if not isinstance(node, dict):
+        return node
+    if node.get("kind") == "leaf":
+        condition_id = str(node.get("conditionId", ""))
+        try:
+            old_index = int(condition_id[1:])
+        except (TypeError, ValueError):
+            return node
+        new_indexes, combine_kind = expansions.get(
+            old_index, ([old_index], "or")
+        )
+        if len(new_indexes) == 1:
+            return {"kind": "leaf", "conditionId": f"c{new_indexes[0]}"}
+        return {
+            "kind": combine_kind,
+            "children": [
+                {"kind": "leaf", "conditionId": f"c{index}"}
+                for index in new_indexes
+            ],
+        }
+    return {
+        "kind": node.get("kind", "and"),
+        "children": [
+            _remap_filter_tree(child, expansions)
+            for child in node.get("children", [])
+        ],
+    }
+
+
+def _synthesize_filter_tree(
+    expansions: dict[int, tuple[list[int], str]],
+    relation: str | None,
+) -> dict[str, Any] | None:
+    if not expansions:
+        return None
+    children: list[dict[str, Any]] = []
+    for old_index in sorted(expansions):
+        new_indexes, combine_kind = expansions[old_index]
+        if len(new_indexes) == 1:
+            children.append(
+                {"kind": "leaf", "conditionId": f"c{new_indexes[0]}"}
+            )
+        else:
+            children.append(
+                {
+                    "kind": combine_kind,
+                    "children": [
+                        {"kind": "leaf", "conditionId": f"c{index}"}
+                        for index in new_indexes
+                    ],
+                }
+            )
+    if len(children) == 1:
+        return children[0]
+    return {"kind": relation or "and", "children": children}
+
+
+def expand_filter_grouping(
+    filters: list[dict[str, Any]],
+    filter_relation: str | None,
+    filter_grouping_tree: Any,
+    eligible_columns: set[str],
+) -> tuple[list[dict[str, Any]], str | None, Any]:
+    """Expand ``family:`` filter references and remap the grouping tree.
+
+    Member filters receive new sequential clause IDs.  A single family leaf is
+    replaced by an ``or`` branch for positive operators or an ``and`` branch
+    for negative operators.  Direct filters and trees without family
+    references pass through unchanged.  A family with no available member is
+    rejected rather than silently dropped.
+    """
+
+    if not any(
+        isinstance(row.get("column"), str)
+        and str(row["column"]).startswith("family:")
+        for row in filters
+    ):
+        return filters, filter_relation, filter_grouping_tree
+
+    expanded: list[dict[str, Any]] = []
+    expansions: dict[int, tuple[list[int], str]] = {}
+    for old_index, row in enumerate(filters):
+        column = str(row.get("column", ""))
+        if not column.startswith("family:"):
+            new_index = len(expanded)
+            expanded.append(deepcopy(row))
+            expansions[old_index] = ([new_index], "or")
+            continue
+        family_name = column[len("family:"):]
+        members = available_members(family_name, eligible_columns)
+        if not members:
+            raise ValueError(
+                f"Filter column family '{family_name}' has no available members "
+                "in the selected comparison columns."
+            )
+        new_indexes: list[int] = []
+        for member in members:
+            new_index = len(expanded)
+            member_row = deepcopy(row)
+            member_row["column"] = member
+            expanded.append(member_row)
+            new_indexes.append(new_index)
+        expansions[old_index] = (
+            new_indexes,
+            _filter_operator_combine_kind(str(row.get("operator", "eq"))),
+        )
+
+    if isinstance(filter_grouping_tree, dict):
+        remapped_tree = _remap_filter_tree(
+            filter_grouping_tree, expansions
+        )
+    else:
+        remapped_tree = _synthesize_filter_tree(expansions, filter_relation)
+    return expanded, filter_relation, remapped_tree
 
 
 def available_members(
