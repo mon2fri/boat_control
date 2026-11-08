@@ -335,8 +335,9 @@ export const wireRunRequestSchema = z.object({
     extra_columns: z.array(z.string()).optional(),
   })).optional(),
   filters: z.array(wireFilterRowSchema).optional(),
-  filter_relation: wireGroupRelationSchema.optional(),
-  filter_grouping_tree: wireGroupNodeSchema.optional(),
+  // The backend serializers accept/emit explicit null for "no grouping".
+  filter_relation: wireGroupRelationSchema.nullable().optional(),
+  filter_grouping_tree: wireGroupNodeSchema.nullable().optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
   exception_columns: z.array(z.string()).optional(),
   commentary_template_columns: z.array(z.string()).optional(),
@@ -465,8 +466,11 @@ export const wireRunResultSchema = z.object({
   target_columns: z.array(z.string()).nullable(),
   key_columns: z.array(z.string()).optional(),
   filters_applied: z.array(wireFilterRowSchema),
-  filter_relation: wireGroupRelationSchema.optional(),
-  filter_grouping_tree: wireGroupNodeSchema.optional(),
+  // ExecutionResultSerializer and historical-run normalization emit explicit
+  // null here when the run had no grouping. Both execute and saved-run GET use
+  // this schema, so null is a valid "legacy AND / no tree" value, not absence.
+  filter_relation: wireGroupRelationSchema.nullable().optional(),
+  filter_grouping_tree: wireGroupNodeSchema.nullable().optional(),
   aggregation_columns: z.array(z.string()).optional(),
   aggregation_column_labels: z.record(z.string(), z.string()).optional(),
   group_statistics: wireGroupStatisticsBundleSchema.nullable().optional(),

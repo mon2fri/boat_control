@@ -252,8 +252,8 @@ export function mapFilterConfigurationToWire(
  */
 export function mapWireFilterConfiguration(
   wireRows: WireFilterRow[],
-  relation?: GroupRelation,
-  groupTree?: WireGroupNode,
+  relation?: GroupRelation | null,
+  groupTree?: WireGroupNode | null,
   options: { idPrefix?: string; label?: string } = {},
 ): FilterConfigurationMapping {
   const idPrefix = options.idPrefix ?? "fl";
