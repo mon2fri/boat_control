@@ -229,3 +229,95 @@ data/config remains isolated in `/tmp/opencode/grouped-validation-main-configs`.
 - Review: `reviews/20261108_grouped_validation_integration_review.md`.
 - UI guide: `docs/20261108_grouped_validation_ui_verification.md`.
 - Samples: `samples/grouped_validation/`.
+
+## Follow-up review — user-reported R079/S35 defects
+
+This follow-up was completed on the same integration branch after the earlier
+review close. Worker ranges were compared from their previously accepted tips;
+the C and D follow-ups below are new deliveries, not the already-integrated
+original commits or dependencies. No B follow-up commit exists. Incoming paths
+did not overlap the user's modified/untracked config files or setup document.
+The worker worktrees remained untouched.
+
+| Worker/original commit | Accepted integration commit | Contents |
+| --- | --- | --- |
+| C `3660f8044540ebf7c0ea7c05938786d0dcb0208d` | `d2b9f46` | Nullable filter-grouping fields for run request/result schemas and mapping; actual S35 saved-response fixture/regression. |
+| C `8d31dcb7450f272bdb6d3938cf908dc2ec6f6925` | `f66f0ad` | Required C implementation and delivery record update. |
+| D `975cb59998bd4815845d42c5fb2c47983bcc8977` | `1ca1dcf` | Hydrate and serialize the canonical custom outcome tree (`logicGroupTree`) in the editor. |
+| D `3cc43879a0facd02111927c10f02ec4568e76ee7` | `077f2c7` | R079 editor regression for unchanged save and edited outcome preservation. |
+| D `a6937ce35edef6c2502241bf3d5e1cd0257e7a55` | `98d559c` | Required D implementation and delivery record update. |
+| B | — | No follow-up delivery found on the Worker B branch. The compound `violating_value` issue below remains open. |
+
+### R079 custom grouped-outcome save — fixed
+
+The defect was in the editor hydration/serialization boundary: the existing
+catalog used `logic_grouping_tree`, the editor's canonical property is
+`logicGroupTree`, and the earlier editor path did not carry that canonical tree
+through custom-mode draft creation. The editor now retains the canonical tree
+and its four clauses, while keeping the earlier alias for compatibility. Focused
+component and transport tests cover the four-clause `OR(AND(c0,c1),AND(c2,c3))`
+expression, API request schema, catalog mapping, and reload.
+
+Isolated reproduction used a copied R079 config and a fresh database. Catalog
+GET, unchanged PUT, then catalog GET returned `200/200/200`; the saved catalog
+retained all four clauses, relation `or`, both `and` groups, and the same
+`rule_identifier` (`CBR1_1FB1N7BHJ3WTCD3BB1KW`). The production-bundle Chrome
+smoke repeated editor load, preview, unchanged save, API payload inspection,
+catalog GET, and editor reload successfully. It also separately edited an
+outcome via the API and confirmed all four clauses and both groups survived.
+
+### S35 + R056/R057 response validation — fixed
+
+Backend execution was not the failing boundary: isolated S35 execution and
+saved-run retrieval both returned `200`. The serializer emits JSON `null` for
+`filter_relation` and `filter_grouping_tree` when no filter grouping is set,
+while the frontend's run-result schema had accepted only omission or a
+non-null relation/tree. Worker C made those two run request/result fields
+nullable and maps null to legacy AND/no tree; malformed non-null relations and
+trees remain rejected. No contract was weakened beyond allowing the backend's
+explicit no-grouping null representation.
+
+An isolated copy of the current S35 config and CSVs ran R056/R057 successfully;
+execute and saved-run GET both returned `200`, with nested aggregation enabled,
+two comparison sections, and the explicit null grouping pair. The actual saved
+response passed the frontend wire schema, result mapper and saved-run workflow
+restoration smoke. Headless Chrome against the rebuilt production bundle ran
+S35 with R056/R057, rendered the results without “Response failed validation,”
+then restored both rules from a `/results/<run-id>` deep link.
+
+### Separate remaining R079 execution-response blocker
+
+Running a violating grouped R079 rule is a distinct issue from saving it. The
+backend execution succeeds (`200`) but serializes compound `violating_value` as
+an object, e.g. `{"sa_flag":"Yes","cva_flag":"Yes"}`. The frontend schema
+still declares `violating_value` as a scalar at `frontend/src/api/wire.ts` and
+rejects that actual response at
+`result.validation.violations_by_rule.R079[28].violating_value`. Worker B has no
+response-contract follow-up. Therefore R079 save/load is fixed, but rendering a
+violating R079 run remains blocked pending a documented backend/frontend
+response-contract fix; this did not affect the S35/R056/R057 verification.
+
+### Follow-up validation and local state
+
+- Targeted frontend regressions: **42 passed** across six focused files, with
+  the two actual-response smoke tests enabled using the isolated response JSON.
+- Full frontend suite: **606 passed, 2 skipped**. A parallel initial run before
+  rebuilding `dist` failed only because `frontend/dist/index.html` was absent;
+  after the production build, the full suite passed.
+- Targeted backend regressions: **137 passed**.
+- TypeScript app build/typecheck and production build passed. Generated bundle:
+  `index-B3FO4Ouy.js` (731.31 kB; existing Vite chunk-size warning).
+- Production browser verification loaded `index-B3FO4Ouy.js` and
+  `index-Cp-9jp4Y.css`, observed no page errors, checked R079 save/catalog
+  round-trip, ran S35 with R056/R057, and restored its saved run.
+- `git diff --check` passed after the follow-up test/build changes.
+- The isolated browser server on `:45305` was stopped after verification. At the
+  user's request, the server on `:45304` (PIDs 195758/195761) was also stopped;
+  neither port has a server now. The built bundle remains in `frontend/dist`.
+- User config/data preservation was verified by SHA-256 before/after work. The
+  exact files and hashes are recorded in the UI verification guide. Fix commits
+  exclude all of those config/data files.
+
+Current integration HEAD before the final reviewer-owned verification/docs
+commit: `98d559cd89285cc2443bf019abca445f7788a9c8`. Accepted follow-up hashes and
+the final HEAD are reported in the handoff.

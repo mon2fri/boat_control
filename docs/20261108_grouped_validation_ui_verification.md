@@ -197,3 +197,98 @@ commands above for this UI validation.
 
   Then send `TERM` only to those listed process PIDs. Do not stop unrelated
   services. All app state is under `/tmp/opencode/grouped-validation-main-configs`.
+
+## User-reported R079/S35 follow-up verification
+
+The follow-up fixes are integrated at `d2b9f46` (Worker C S35 response-schema
+fix), `1ca1dcf` (Worker D R079 editor fix), with regressions at `077f2c7` and
+the implementation/delivery documentation at `f66f0ad` and `98d559c`. The final
+review record has the original worker hashes, causes and full validation ledger.
+
+### Isolated reproduction and results
+
+No active catalog, uploads or saved-run history were used. The current user S35
+configuration, R079 rule catalog, and two upload CSVs were copied into fresh
+homes under `/tmp/opencode/`. Backend execution and frontend response validation
+were checked separately:
+
+- R079 catalog GET → unchanged PUT → GET returned `200/200/200`; the identifier
+  remained `CBR1_1FB1N7BHJ3WTCD3BB1KW`, with four outcome clauses, relation OR,
+  and both AND groups. The frontend catalog mapper/editor and outbound payload
+  were verified against this saved response.
+- S35 executed with R056/R057 and returned `200`; saved-run GET also returned
+  `200`. It included `filter_relation: null` and
+  `filter_grouping_tree: null`, nested aggregation and two comparison sections.
+  The actual saved response passed the frontend schema, mapping and workflow
+  restoration checks. The bug was the frontend rejecting the backend's explicit
+  null grouping fields after a successful run; the schema now accepts only this
+  nullable no-grouping case and retains strict validation for malformed
+  non-null values.
+- Chrome/Playwright used the rebuilt production bundle at the isolated server
+  `http://127.0.0.1:45305/`. It verified R079 preview/save/payload/catalog
+  reload, ran S35 with R056/R057, rendered results without
+  “Response failed validation,” and restored both rules from
+  `/results/16d1fa15d923`. Assets returned HTTP 200 were
+  `index-B3FO4Ouy.js` and `index-Cp-9jp4Y.css`; there were no browser page
+  errors. The isolated `:45305` server was stopped after the check.
+
+**Remaining limitation:** A violating grouped R079 backend run returns an
+object-valued `violating_value` such as `{"sa_flag":"Yes","cva_flag":"Yes"}`.
+The frontend still declares this field scalar and rejects that separate
+response. Worker B supplied no follow-up fix. R079 save/load and S35/R056/R057
+are verified; rendering violations from a grouped R079 run is not. Do not use a
+violating R079 run for UI acceptance until that response contract is addressed.
+
+### Production-bundle app retest
+
+The user's request stopped the server previously listening at
+`127.0.0.1:45304` (PIDs 195758 and 195761). The isolated browser server on
+`:45305` was also stopped. **There is currently no app URL serving the bundle.**
+The rebuilt tracked `frontend/dist` is present. To restart the same isolated
+backend home/database and use the production bundle served by Django, run from
+the integration worktree root:
+
+```bash
+cd /home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/integration
+GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-ui-retest \
+PYTHONPATH=backend uv run python backend/manage.py runserver \
+  127.0.0.1:45304 --settings=boat_control.grouped_validation_settings --noreload
+```
+
+Then open **http://127.0.0.1:45304/** and hard-refresh (`Ctrl+Shift+R`) to load
+the rebuilt `index-B3FO4Ouy.js`. This home contains isolated copies of the
+current S35/R079-related configs, R056/R057 and copied CSVs; it is not the
+original checkout or its active history. For the S35 retest, load S35, select
+R056 and R057, run, then open the saved run from History or refresh its
+`/results/<run-id>` URL. For R079, first verify the four-outcome custom grouping
+preview and unchanged save/reload. Do not execute a violating R079 rule until
+the object-valued response limitation is fixed.
+
+### User config and CSV preservation evidence
+
+SHA-256 checksums matched before and after isolated reproduction/build/browser
+verification. The modified S35 and rules files, new UI flag configs/backups,
+setup doc, and source CSV uploads remain local and are excluded from fix commits.
+
+| Preserved file | SHA-256 |
+| --- | --- |
+| `config/rows_and_columns/s35.yaml` | `c70de7270f727d7d2ca55b927afe8a1686b43630accc9b9d22115b7502c4935f` |
+| `config/rules/rules.yaml` | `a4bff77aae65117f21f437315e35efd01777a9c5f0b2012d167a6a1ffabab72c` |
+| `config/filters/1c12cde0dd5c.yaml` | `ef0db7d01ab9de2968e0fe7000da59e90ee698d9229f29c598b7309632398f11` |
+| `config/rows_and_columns/ui-flags-active-systems.yaml` | `60c4fdc1178009193914b65734b7192835fbf6f65eb650f4de3894ce1aa150b9` |
+| `config/rows_and_columns/ui-flags-all-rows.yaml` | `5c8093723d0d73e2b91169db872538816e7dff3c80ec2c611e02a89f91830fc5` |
+| `config/rows_and_columns/ui-flags-filter-contains.yaml` | `848b29afbf46968cdd457c85a81ad63f17a400162bfbf3de3ee3a90ab3ee062c` |
+| `config/rows_and_columns/ui-flags-filter-eq.yaml` | `26392f452c1853e9d971d3e9e7b6f0ad393e378aac3111029ff6d18859ba384a` |
+| `config/rows_and_columns/ui-flags-filter-ncontains.yaml` | `e43a3a513cc3279a84e7622bd22019575da01c71f19656591e9b1c83d3518f0a` |
+| `config/rows_and_columns/ui-flags-filter-neq.yaml` | `a083b79fe25f48b2f9fa556a1312019a993b8c305f3340d362a1ba59526ae089` |
+| `config/rules/ui-before-flag-tests-active-backup.yaml` | `15f3389aeb9c96bee8b58540bb4a2c40ea66a9c197c3de4ef03c222c30e5eb9b` |
+| `config/rules/ui-before-flag-tests.yaml` | `bad2fdd1eb14be83e09a17c401a17c781ed7c9a6dfb4e388abb4a3a49f095ff5` |
+| `config/rules/ui-flags-all-checks.yaml` | `5447cbf50db5c3c5e1f9c4849612e7a2340539bafeafdcecd1a9486b0db73106` |
+| `config/rules/ui-flags-opposite-only.yaml` | `fb8fec3d7941c24817f4e5c27b2503fa6466fb0ff27838ebd45762a64f005c91` |
+| `docs/20261108_root_csv_flag_ui_setup.md` | `b9654b5785aeaab875c16256e71cd76f0bf288544f2fb026d93e33a7e450da66` |
+| `data/uploads/617510eef42899eba16b3a0beff4a1a9af44c3d4175b3011d0b3981d949624c9.csv` | `617510eef42899eba16b3a0beff4a1a9af44c3d4175b3011d0b3981d949624c9` |
+| `data/uploads/e7deb25dbfca4261a09e139e96aa61881d6d6174e8ff80f58ac1c8bbd7100aaa.csv` | `e7deb25dbfca4261a09e139e96aa61881d6d6174e8ff80f58ac1c8bbd7100aaa` |
+
+Final follow-up gates: targeted frontend actual-response/editor/mapping tests **42
+passed**, full frontend **606 passed / 2 skipped**, targeted backend **137
+passed**, TypeScript and production build passed, and `git diff --check` passed.

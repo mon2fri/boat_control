@@ -3,6 +3,8 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RuleEditor } from "./RuleEditor";
 import type { GroupNode, LogicClause, Rule, RuleDraft } from "../../api/domain";
+import { mapRuleToWireDraft } from "../../api/mapping";
+import { ruleDraftRequestSchema } from "../../api/wire";
 
 const COLUMNS = ["SA Contributory", "SA-CVA Hedge Book"];
 
@@ -249,6 +251,24 @@ describe("RuleEditor grouped outcomes", () => {
     expect(draft.logicClauses).toEqual(FOUR_OUTCOMES);
     expect(draft.logicRelation).toBe("or");
     expect(draft.logicGroupTree).toEqual(TWO_GROUPS);
+
+    const payload = mapRuleToWireDraft(draft);
+    expect(ruleDraftRequestSchema.parse(payload)).toEqual(payload);
+    expect(payload.logic_relation).toBe("or");
+    expect(payload.logic_clauses).toHaveLength(4);
+    expect(payload.logic_grouping_tree).toEqual({
+      kind: "or",
+      children: [
+        { kind: "and", children: [
+          { kind: "leaf", conditionId: "c0" },
+          { kind: "leaf", conditionId: "c1" },
+        ] },
+        { kind: "and", children: [
+          { kind: "leaf", conditionId: "c2" },
+          { kind: "leaf", conditionId: "c3" },
+        ] },
+      ],
+    });
   });
 
   it("edits one R079 outcome and still saves all four clauses with both AND groups", () => {

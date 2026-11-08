@@ -387,6 +387,70 @@ describe("rule outcome grouping transport", () => {
     expect(() => ruleDraftRequestSchema.parse(draft)).not.toThrow();
   });
 
+  it("round-trips R079's canonical custom tree through the catalog API shape", () => {
+    const groupedRule = mapWireRule(wireRuleSchema.parse({
+      rule_id: "R079",
+      rule_identifier: "CBR1_00000000000000000000",
+      enabled: true,
+      enabled_position: 1,
+      name: "UI Flags - opposite Yes No",
+      description: "",
+      conditions: [],
+      logic_clauses: [
+        { format: "value_vs_column", column_name: "sa_flag", operator: "eq", target_value: "Yes" },
+        { format: "value_vs_column", column_name: "cva_flag", operator: "eq", target_value: "No" },
+        { format: "value_vs_column", column_name: "sa_flag", operator: "eq", target_value: "No" },
+        { format: "value_vs_column", column_name: "cva_flag", operator: "eq", target_value: "Yes" },
+      ],
+      logic_relation: "or",
+      logic_grouping_tree: {
+        kind: "or",
+        children: [
+          { kind: "and", children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ] },
+          { kind: "and", children: [
+            { kind: "leaf", conditionId: "c2" },
+            { kind: "leaf", conditionId: "c3" },
+          ] },
+        ],
+      },
+      extra_columns: ["sa_flag", "cva_flag"],
+      hide_comparison: false,
+    }));
+
+    const savedPayload = mapRuleToWireDraft(groupedRule);
+    expect(ruleDraftRequestSchema.parse(savedPayload)).toEqual(savedPayload);
+    expect(savedPayload.logic_relation).toBe("or");
+    expect(savedPayload.logic_clauses).toHaveLength(4);
+    expect(savedPayload.logic_grouping_tree).toEqual({
+      kind: "or",
+      children: [
+        { kind: "and", children: [
+          { kind: "leaf", conditionId: "c0" },
+          { kind: "leaf", conditionId: "c1" },
+        ] },
+        { kind: "and", children: [
+          { kind: "leaf", conditionId: "c2" },
+          { kind: "leaf", conditionId: "c3" },
+        ] },
+      ],
+    });
+
+    const reloaded = mapWireRule(wireRuleSchema.parse({
+      ...savedPayload,
+      rule_id: "R079",
+      rule_identifier: groupedRule.identifier,
+      enabled: true,
+      enabled_position: 1,
+      description: "",
+    }));
+    expect(reloaded.logicGroupTree).toEqual(groupedRule.logicGroupTree);
+    expect(reloaded.logicRelation).toBe("or");
+    expect(reloaded.logicClauses).toHaveLength(4);
+  });
+
   it("remaps references after outcomes are reordered", () => {
     const rule = mapWireRule(multiOutcomeRule());
     const clauses = rule.logicClauses!;

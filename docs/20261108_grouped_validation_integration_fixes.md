@@ -200,5 +200,78 @@ exception to `frontend/dist/**` only. Source/tests retain the normal whitespace
 check.
 
 The bounded cross-layer/UI/contract/sample fix commit is `fa17108`
-(`fix: complete grouped validation UI integration`). Worker docs remain
-uncorrected pending manual dispatch; see the prompts above.
+(`fix: complete grouped validation UI integration`). The original Worker A–D
+documentation gate was later closed by the four docs-only commits listed above.
+
+## User-reported follow-up fixes — R079 and S35
+
+### R079 custom outcome save (Worker D)
+
+- **Cause:** The existing custom tree was not consistently passed from catalog
+  hydration through editor draft creation. The editor's canonical state field
+  is `logicGroupTree`; the serialization path had retained the legacy alias
+  `logicGroupingTree` but failed to carry the canonical tree for custom grouped
+  outcomes.
+- **Fix:** Worker D commit `975cb59998bd4815845d42c5fb2c47983bcc8977`, integrated
+  as `1ca1dcf`, hydrates/saves the canonical tree and retains the compatibility
+  alias. Regression commit `3cc43879a0facd02111927c10f02ec4568e76ee7` became
+  `077f2c7`; implementation/delivery documentation commit
+  `a6937ce35edef6c2502241bf3d5e1cd0257e7a55` became `98d559c`.
+- **Coverage:** The editor regression loads R079, renders the expected preview,
+  saves unchanged, checks the mapped wire payload and schema, and preserves all
+  four outcomes with OR over two AND groups. API-mapping coverage checks the
+  catalog → wire draft → catalog mapping round trip. An opt-in isolated actual
+  catalog smoke checks the same response from an isolated API save/reload.
+- **Actual isolated verification:** R079 GET → unchanged PUT → GET returned
+  `200/200/200`. The identifier `CBR1_1FB1N7BHJ3WTCD3BB1KW`, all four clauses,
+  relation `or`, and both AND groups remained intact. Chrome verification against
+  the rebuilt bundle observed the matching PUT payload and catalog response and
+  re-opened the rule in the editor without flattening its preview.
+
+### S35 with legacy R056/R057 response validation (Worker C)
+
+- **Cause:** This was a frontend response-parsing failure after successful
+  backend execution/saving, not an execution failure. The backend run serializer
+  returns explicit JSON null for `filter_relation` and
+  `filter_grouping_tree` when no filter grouping is configured. The frontend run
+  response schema previously accepted only omitted or non-null values.
+- **Fix:** Worker C commit `3660f8044540ebf7c0ea7c05938786d0dcb0208d`, integrated
+  as `d2b9f46`, accepts nullable relation/tree on run requests and responses and
+  maps null to legacy AND/no tree. Invalid non-null values still go through the
+  existing strict relation/tree schemas. The regression fixture is the actual
+  S35 + R056/R057 saved-run response, including comparison sections, nested
+  aggregation and retrieval. Required implementation/delivery documentation
+  commit `8d31dcb7450f272bdb6d3938cf908dc2ec6f6925` became `f66f0ad`.
+- **Actual isolated verification:** With copied current S35 config and CSVs,
+  upload, execute and saved-run GET succeeded (`200` each). The response had
+  both explicit null grouping fields, nested aggregation, two sections and
+  R056/R057. An opt-in frontend smoke parsed the actual saved response, mapped
+  it, and restored filters, keys, aggregation and sections. Chrome on the
+  rebuilt bundle rendered both rules and restored the saved run from its deep
+  link, with no “Response failed validation.”
+
+### Separate unresolved grouped R079 violating-value response
+
+Worker B supplied no follow-up commit. An isolated backend run with violating
+R079 outcomes succeeds but returns an object-valued `violating_value`, e.g.
+`{"sa_flag":"Yes","cva_flag":"Yes"}`. The frontend wire schema still
+requires `wireScalarSchema` for that field and rejects the actual response at
+`result.validation.violations_by_rule.R079[28].violating_value`. This is not a
+save/load defect and does not affect S35/R056/R057; it remains a blocker to
+rendering a violating R079 run until the response contract is fixed and
+documented. Do not broaden the scalar schema without agreeing on and testing
+the compound-value contract.
+
+### Follow-up gate results
+
+- Targeted frontend set including actual R079 catalog and S35 saved-response
+  smokes: **42 passed** (6 files); `tsc -b` passed.
+- Full frontend suite after rebuilding `dist`: **606 passed, 2 skipped**.
+- Targeted backend grouped/config/contracts set: **137 passed**.
+- Production build passed; generated assets are
+  `frontend/dist/assets/index-B3FO4Ouy.js` and
+  `frontend/dist/assets/index-Cp-9jp4Y.css`. Chrome loaded both; Vite's existing
+  chunk-size warning remains.
+- `git diff --check` passed. User config/data changes were not staged or
+  committed; preservation hashes and server state are in
+  `docs/20261108_grouped_validation_ui_verification.md`.
