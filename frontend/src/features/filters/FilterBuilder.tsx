@@ -137,6 +137,11 @@ export function FilterBuilder({
       summary={rows.length === 0
         ? "No filters configured. Expand to change."
         : `${rows.length} filter${rows.length === 1 ? "" : "s"} configured. Expand to change.`}
+      headerActions={(
+        <button type="button" className="btn" onClick={() => onChange([...rows, newFilterRow()])}>
+          + Add filter
+        </button>
+      )}
       hint={(
         <SectionHint label="Row filters help">
           Each row applies one condition. Multiple values within a row are combined with OR for
@@ -151,7 +156,7 @@ export function FilterBuilder({
       {rows.length === 0 ? (
         <p role="status">No filters added — the run will cover all rows.</p>
       ) : (
-        rows.map((row, index) => (
+        <div className="filter-rows">{rows.map((row, index) => (
           <FilterRowEditor
             key={row.id}
             row={row}
@@ -166,12 +171,8 @@ export function FilterBuilder({
             canMoveUp={index > 0}
             canMoveDown={index < rows.length - 1}
           />
-        ))
+        ))}</div>
       )}
-
-      <button type="button" className="btn" onClick={() => onChange([...rows, newFilterRow()])}>
-        + Add filter
-      </button>
 
       {rows.length > 1 && (
         <section className="filter-grouping" aria-labelledby="filter-grouping-title">

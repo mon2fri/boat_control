@@ -43,7 +43,7 @@ function addValue(group: HTMLElement, value: string): void {
 }
 
 function fillOutcome(index: number, column: string, value: string): void {
-  const group = screen.getByRole("group", { name: `Outcome ${index}` });
+  const group = screen.getByRole("group", { name: `Expectation ${index}` });
   pickColumn(group, column);
   addValue(group, value);
 }
@@ -51,7 +51,7 @@ function fillOutcome(index: number, column: string, value: string): void {
 function fillTwoOutcomes(): void {
   fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flag pairs" } });
   fillOutcome(1, "SA Contributory", "Y");
-  fireEvent.click(screen.getByRole("button", { name: "+ Add outcome" }));
+  fireEvent.click(screen.getByRole("button", { name: "+ Add expectation" }));
   fillOutcome(2, "SA-CVA Hedge Book", "N");
 }
 
@@ -91,15 +91,15 @@ describe("RuleEditor grouped outcomes", () => {
     const { onSave } = setup();
     fillTwoOutcomes();
 
-    expect(screen.getByTestId("rule-logic-preview").textContent).toContain("Outcome 1");
+    expect(screen.getByTestId("rule-logic-preview").textContent).toContain("Expectation 1");
 
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).not.toHaveBeenCalled();
     expect(
-      screen.getByText(/Choose AND, OR, or CUSTOM GROUPS to combine multiple expected outcomes/i),
+      screen.getByText(/Choose AND, OR, or CUSTOM GROUPS to combine multiple expectations/i),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Combining expected outcomes with"), {
+    fireEvent.change(screen.getByLabelText("Combining expectations with"), {
       target: { value: "and" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
@@ -119,7 +119,7 @@ describe("RuleEditor grouped outcomes", () => {
   it("saves a simple OR expression", () => {
     const { onSave } = setup();
     fillTwoOutcomes();
-    fireEvent.change(screen.getByLabelText("Combining expected outcomes with"), {
+    fireEvent.change(screen.getByLabelText("Combining expectations with"), {
       target: { value: "or" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
@@ -134,26 +134,26 @@ describe("RuleEditor grouped outcomes", () => {
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flag pair groups" } });
     fillOutcome(1, "SA Contributory", "Y");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add outcome" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add expectation" }));
     fillOutcome(2, "SA-CVA Hedge Book", "N");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add outcome" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add expectation" }));
     fillOutcome(3, "SA Contributory", "N");
-    fireEvent.click(screen.getByRole("button", { name: "+ Add outcome" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add expectation" }));
     fillOutcome(4, "SA-CVA Hedge Book", "Y");
 
-    fireEvent.change(screen.getByLabelText("Combining expected outcomes with"), {
+    fireEvent.change(screen.getByLabelText("Combining expectations with"), {
       target: { value: "custom" },
     });
 
-    // Build the first AND group from Outcome 1 + Outcome 2.
-    fireEvent.click(screen.getByLabelText(/Outcome 1:/));
-    fireEvent.click(screen.getByLabelText(/Outcome 2:/));
+    // Build the first AND group from Expectation 1 + Expectation 2.
+    fireEvent.click(screen.getByLabelText(/Expectation 1:/));
+    fireEvent.click(screen.getByLabelText(/Expectation 2:/));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
-    // Build the second AND group from Outcome 3 + Outcome 4. Two root groups
+    // Build the second AND group from Expectation 3 + Expectation 4. Two root groups
     // are now joined by the visible overall Group 3 OR root.
-    fireEvent.click(screen.getByLabelText(/Outcome 3:/));
-    fireEvent.click(screen.getByLabelText(/Outcome 4:/));
+    fireEvent.click(screen.getByLabelText(/Expectation 3:/));
+    fireEvent.click(screen.getByLabelText(/Expectation 4:/));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     expect(screen.getByText("Group 3")).toBeInTheDocument();
@@ -163,7 +163,7 @@ describe("RuleEditor grouped outcomes", () => {
 
     const preview = screen.getByTestId("rule-logic-preview").textContent ?? "";
     expect(preview).toContain(
-      '(Outcome 1: SA Contributory must equal "Y" AND Outcome 2: SA-CVA Hedge Book must equal "N") OR (Outcome 3: SA Contributory must equal "N" AND Outcome 4: SA-CVA Hedge Book must equal "Y")',
+      '(Expectation 1: SA Contributory must equal "Y" AND Expectation 2: SA-CVA Hedge Book must equal "N") OR (Expectation 3: SA Contributory must equal "N" AND Expectation 4: SA-CVA Hedge Book must equal "Y")',
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
@@ -198,19 +198,19 @@ describe("RuleEditor grouped outcomes", () => {
   it("blocks column mode with retained outcomes and restores them when switching back", () => {
     const { onSave } = setup();
     fillTwoOutcomes();
-    fireEvent.change(screen.getByLabelText("Combining expected outcomes with"), {
+    fireEvent.change(screen.getByLabelText("Combining expectations with"), {
       target: { value: "and" },
     });
     const previewBefore = screen.getByTestId("rule-logic-preview").textContent;
 
     fireEvent.click(screen.getByRole("radio", { name: /Column against column/ }));
     expect(
-      within(screen.getByRole("status")).getByText(/Column against column supports one outcome/i),
+      within(screen.getByRole("status")).getByText(/Column against column supports one expectation/i),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).not.toHaveBeenCalled();
     expect(
-      screen.getAllByText(/Column against column supports one outcome/i).length,
+      screen.getAllByText(/Column against column supports one expectation/i).length,
     ).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("radio", { name: /Value against column/ }));
@@ -241,11 +241,11 @@ describe("RuleEditor grouped outcomes", () => {
       "overall: group 1 OR group 2",
     );
     expect(screen.getByTestId("logic-grouping-preview").textContent).toContain(
-      "group 1: outcome 1 AND outcome 2",
+      "group 1: expectation 1 AND expectation 2",
     );
     expect(screen.getByText("Group 3")).toBeInTheDocument();
     expect(screen.getByTestId("rule-logic-preview").textContent).toContain(
-      '(Outcome 1: SA Contributory must equal "Y" AND Outcome 2: SA-CVA Hedge Book must equal "N") OR (Outcome 3: SA Contributory must equal "N" AND Outcome 4: SA-CVA Hedge Book must equal "Y")',
+      '(Expectation 1: SA Contributory must equal "Y" AND Expectation 2: SA-CVA Hedge Book must equal "N") OR (Expectation 3: SA Contributory must equal "N" AND Expectation 4: SA-CVA Hedge Book must equal "Y")',
     );
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -277,7 +277,7 @@ describe("RuleEditor grouped outcomes", () => {
     });
   });
 
-  it("removes all outcome groups, keeps the clauses and blocks save until explicit grouping", () => {
+  it("removes all expectation groups, keeps the clauses and blocks save until explicit grouping", () => {
     const rule = {
       index: "R079",
       identifier: "CBR1_00000000000000000000",
@@ -294,21 +294,21 @@ describe("RuleEditor grouped outcomes", () => {
     } as Rule;
     const { onSave } = setup({ rule });
 
-    expect(screen.queryByRole("button", { name: /Use single outcome/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Use single expectation/i })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Remove all groups" }));
 
-    expect(screen.getByLabelText("Combining expected outcomes with")).toHaveValue("");
+    expect(screen.getByLabelText("Combining expectations with")).toHaveValue("");
     expect(screen.queryByTestId("logic-grouping-preview")).not.toBeInTheDocument();
-    expect(screen.getByTestId("rule-logic-preview").textContent).toContain("Outcome 4");
-    expect(screen.getAllByRole("group", { name: /Outcome \d/ })).toHaveLength(4);
+    expect(screen.getByTestId("rule-logic-preview").textContent).toContain("Expectation 4");
+    expect(screen.getAllByRole("group", { name: /Expectation \d/ })).toHaveLength(4);
 
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).not.toHaveBeenCalled();
     expect(
-      screen.getByText(/Choose AND, OR, or CUSTOM GROUPS to combine multiple expected outcomes/i),
+      screen.getByText(/Choose AND, OR, or CUSTOM GROUPS to combine multiple expectations/i),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Combining expected outcomes with"), {
+    fireEvent.change(screen.getByLabelText("Combining expectations with"), {
       target: { value: "or" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
@@ -329,7 +329,7 @@ describe("RuleEditor grouped outcomes", () => {
     expect(payload.logic_grouping_tree).toBeUndefined();
   });
 
-  it("edits one R079 outcome and still saves all four clauses with both AND groups", () => {
+  it("edits one R079 expectation and still saves all four clauses with both AND groups", () => {
     const rule = {
       index: "R079",
       identifier: "CBR1_00000000000000000000",
@@ -346,7 +346,7 @@ describe("RuleEditor grouped outcomes", () => {
     } as Rule;
     const { onSave } = setup({ rule });
 
-    const firstOutcome = screen.getByRole("group", { name: "Outcome 1" });
+    const firstOutcome = screen.getByRole("group", { name: "Expectation 1" });
     fireEvent.change(within(firstOutcome).getByLabelText("Operator"), {
       target: { value: "not_equals" },
     });
@@ -374,7 +374,7 @@ describe("RuleEditor grouped outcomes", () => {
     expect(draft.logicGroupTree).toEqual(TWO_GROUPS);
   });
 
-  it("flags a removed outcome reference and repairs the grouping before saving", () => {
+  it("flags a removed expectation reference and repairs the grouping before saving", () => {
     const rule = {
       index: "R011",
       identifier: "CBR1_00000000000000000000",
@@ -391,12 +391,12 @@ describe("RuleEditor grouped outcomes", () => {
     } as Rule;
     const { onSave } = setup({ rule });
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove outcome 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove expectation 2" }));
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).not.toHaveBeenCalled();
-    expect(screen.getByText(/removed or unknown outcome/i)).toBeInTheDocument();
+    expect(screen.getByText(/removed or unknown expectation/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Remove stale outcome references" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove stale expectation references" }));
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).toHaveBeenCalledTimes(1);
     const draft = onSave.mock.calls[0]![0] as RuleDraft & {

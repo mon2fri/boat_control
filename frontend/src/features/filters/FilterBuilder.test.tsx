@@ -71,6 +71,23 @@ function openFilters() {
 }
 
 describe("FilterBuilder grouping", () => {
+  it("keeps add-filter in the title header and uses matching numbered group badges", () => {
+    renderWithClient(<ControlledBuilder initialRows={rows.slice(0, 2)}
+      initialGrouping={{ mode: "custom", tree: { kind: "and", children: [
+        { kind: "leaf", conditionId: "f1" }, { kind: "leaf", conditionId: "f2" },
+      ] } }} />);
+    const title = screen.getByRole("button", { name: "Row filters" });
+    const header = title.closest(".collapsible-card__header")!;
+    expect(within(header as HTMLElement).getByRole("button", { name: "+ Add filter" })).toBeInTheDocument();
+    expect(title.parentElement?.querySelector(".collapsible-card__hint")).toBeInTheDocument();
+    openFilters();
+    const firstRow = screen.getByRole("group", { name: "Filter 1" });
+    expect(firstRow.parentElement).toHaveClass("filter-rows");
+    expect(firstRow.querySelector(".condition-number")).toHaveTextContent("Filter 1");
+    expect(document.querySelector(".group-clause-label .condition-number")).toHaveTextContent("Filter 1");
+    expect(document.querySelector(".group-tree-type--condition")).not.toBeInTheDocument();
+  });
+
   it("shows hierarchical AND/OR hints and switches relation without losing rows", () => {
     renderWithClient(<ControlledBuilder initialRows={rows.slice(0, 2)} />);
     openFilters();

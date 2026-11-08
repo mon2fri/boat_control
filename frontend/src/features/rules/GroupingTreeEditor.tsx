@@ -281,7 +281,7 @@ function PerGroupingEditor({
     if (!c) return `<missing:${id}>`;
     if (conditionLabel) return conditionLabel(c);
     const values = c.values ?? (c.value ? [c.value] : []);
-    return `${c.column || "<column>"} ${c.operator} ${values.join(" OR ") || "<value>"}`;
+    return `Condition ${conditions.indexOf(c) + 1}: ${c.column || "<column>"} ${c.operator} ${values.join(" OR ") || "<value>"}`;
   }
 
   return (
@@ -353,8 +353,9 @@ function PerGroupingEditor({
                           checked={selectedMembers.includes(key)}
                           onChange={() => toggleMember(key)}
                           data-testid={`pick-${key}`}
+                          aria-label={condLabel(c.id)}
                         />
-                        <span style={{ fontSize: "0.9rem" }}>{condLabel(c.id)}</span>
+                        <span style={{ fontSize: "0.9rem" }}><ClauseLabel label={condLabel(c.id)} /></span>
                       </label>
                     );
                   })}
@@ -549,8 +550,7 @@ function GroupTreeItem({
             child.kind === "leaf" ? (
               <li key={`leaf-${child.conditionId}`} className="group-tree-node group-tree-node--condition">
                 <div className="group-tree-member-row">
-                  <span className="group-tree-type group-tree-type--condition">Condition</span>
-                  <span className="group-tree-label group-tree-label--condition">{condLabel(child.conditionId)}</span>
+                  <span className="group-tree-label group-tree-label--condition"><ClauseLabel label={condLabel(child.conditionId)} /></span>
                   {editing && (
                   <button
                     type="button"
@@ -643,12 +643,12 @@ function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, available
     const renderedLabel = cond
       ? (conditionLabel
           ? conditionLabel(cond)
-          : `${cond.column || "<column>"} ${cond.operator} ${(cond.values ?? (cond.value ? [cond.value] : [])).join(" OR ") || "<value>"}`)
+          : `Condition ${conditions.indexOf(cond) + 1}: ${cond.column || "<column>"} ${cond.operator} ${(cond.values ?? (cond.value ? [cond.value] : [])).join(" OR ") || "<value>"}`)
       : `<missing:${node.conditionId}>`;
     return (
       <div className="group-tree-leaf" role="treeitem" aria-level={depth + 1}>
         <span>
-          Condition: <strong>{renderedLabel}</strong>
+          <ClauseLabel label={renderedLabel} />
         </span>
         {onRemove && (
           <button type="button" className="btn btn--danger" onClick={onRemove} aria-label="Remove this condition slot">
@@ -752,4 +752,14 @@ function pickUnusedConditionId(available: Set<string>, node: GroupNode): string 
   const used = collectConditionIds(node);
   for (const id of available) if (!used.has(id)) return id;
   return "__empty__";
+}
+
+/** Match the numbered row badge while keeping the predicate readable. */
+function ClauseLabel({ label }: { label: string }) {
+  const match = /^(Filter|Condition|Expectation) (\d+):\s*(.*)$/i.exec(label);
+  if (!match) return <>{label}</>;
+  return <span className="group-clause-label">
+    <span className="condition-number">{match[1]} {match[2]}</span>
+    <span>{match[3]}</span>
+  </span>;
 }

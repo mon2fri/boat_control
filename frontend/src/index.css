@@ -1488,7 +1488,7 @@ table.data td {
 
 .filter-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(10rem, 1.2fr) minmax(9rem, 1fr) minmax(12rem, 1fr) auto auto;
   gap: var(--space);
   align-items: end;
   margin-bottom: var(--space);
@@ -1782,8 +1782,8 @@ table.data td {
   background: var(--color-surface-raised);
 }
 .group-tree-type--condition {
-  color: var(--color-accent);
-  background: var(--rag-red-tint);
+  color: #175ea8;
+  background: #eaf3ff;
 }
 .group-tree-label--group {
   color: var(--color-text);
@@ -2877,3 +2877,18 @@ dl.card dd {
 .disabled-action-hint:hover [role="tooltip"], .disabled-action-hint:focus [role="tooltip"], .disabled-action-hint:focus-within [role="tooltip"] { display: block; }
 .combobox-list { max-height: calc(40rem + 8px); overflow-y: auto; }
 .combobox-option { height: 2rem; box-sizing: border-box; white-space: nowrap; }
+
+/* Round 2: keep clause rows intact and align title actions/help. */
+.collapsible-card__header { justify-content: space-between; }
+.collapsible-card__title-group { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+.collapsible-card__title-group .collapsible-card__toggle-region { flex: 0 0 auto; }
+.collapsible-card__actions { display: flex; align-items: center; gap: var(--space); flex: 0 0 auto; }
+.collapsible-card__hint .value-hint { margin-left: 0; }
+.filter-rows { overflow-x: auto; padding-bottom: 0.25rem; }
+.filter-rows > .filter-row { min-width: 850px; }
+.group-clause-label { display: inline-flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.condition-number { color: #175ea8; background: #eaf3ff; border-left-color: #2874c3; }
+.group-clause-label .condition-number { display: inline-block; flex: 0 0 auto; margin: 0; }
+.collapsible-card__title-group { flex: 1 1 auto; flex-wrap: wrap; }
+.collapsible-card__title-group .collapsible-card__toggle-region { flex: 0 1 auto; min-width: 0; }
+.collapsible-card__title-group .collapsible-card__summary { flex-basis: 100%; margin-top: 0; }

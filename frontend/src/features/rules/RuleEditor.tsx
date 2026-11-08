@@ -51,9 +51,9 @@ interface DraftState {
    */
   conditionGrouping: string;
   groupTree: GroupNode | null;
-  /** Legacy/primary logic clause. Kept as the single-outcome representation. */
+  /** Legacy/primary logic clause. Kept as the single-expectation representation. */
   logic: LogicClause;
-  /** Value-against-column outcomes. The first clause mirrors `logic` in value mode. */
+  /** Value-against-column expectations. The first clause mirrors `logic` in value mode. */
   logicClauses: LogicClause[];
   logicRelation: LogicOutcomeGrouping["mode"];
   logicGroupingTree: GroupNode | null;
@@ -180,7 +180,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
     patch({
       logicClauses: clauses,
       logic: { ...clauses[0]!, format: "value" },
-      // A newly authored multi-outcome expression requires an explicit choice.
+      // A newly authored multi-expectation expression requires an explicit choice.
       logicRelation: draft.logicRelation,
     });
   }
@@ -229,7 +229,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
       });
       return;
     }
-    // Restore the retained value outcome list rather than discarding it.
+    // Restore the retained value expectation list rather than discarding it.
     const primary = draft.logicClauses[0] ?? draft.logic;
     patch({ logic: { ...primary, format: "value" } });
   }
@@ -287,7 +287,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
         </p>
         <p>
           <strong>Logic</strong> clause is the actual required state. When one rule has
-          multiple expected outcomes, the outcome grouping decides whether the record
+          multiple expectations, the expectation grouping decides whether the record
           satisfies the required state.
         </p>
         <p>
@@ -484,8 +484,8 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
         {retainedColumnOutcomes && (
           <div className="alert alert--warn" role="status">
             <p style={{ marginTop: 0 }}>
-              Column against column supports one outcome. {draft.logicClauses.length - 1} extra
-              value outcome{draft.logicClauses.length - 1 === 1 ? " is" : "s are"} retained and
+              Column against column supports one expectation. {draft.logicClauses.length - 1} extra
+              value expectation{draft.logicClauses.length - 1 === 1 ? " is" : "s are"} retained and
               will return if you switch back to Value against column.
             </p>
             <button
@@ -493,7 +493,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
               className="btn"
               onClick={() => setConfirmSingleOutcome(true)}
             >
-              Discard extra outcomes
+              Discard extra expectations
             </button>
           </div>
         )}
@@ -571,7 +571,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
           </div>
         ) : (
           <>
-            <div className="logic-outcomes" role="group" aria-label="Expected outcomes">
+            <div className="logic-outcomes" role="group" aria-label="Expectations">
               {draft.logicClauses.map((clause, index) => {
                 const multi = draft.logicClauses.length > 1;
                 const valueOptions: MultiSelectOption[] = [
@@ -587,16 +587,16 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                     key={clause.id}
                     className="filter-row rule-outcome-row"
                     role="group"
-                    aria-label={`Outcome ${index + 1}`}
+                    aria-label={`Expectation ${index + 1}`}
                   >
                     {multi && (
                       <span className="condition-number" aria-hidden="true">
-                        Outcome {index + 1}
+                        Expectation {index + 1}
                       </span>
                     )}
                     <ColumnField
                       label={multi
-                        ? `COLUMN in COMPARISON (outcome ${index + 1})`
+                        ? `COLUMN in COMPARISON (expectation ${index + 1})`
                         : "COLUMN in COMPARISON"}
                       columns={columns}
                       value={clause.column}
@@ -656,7 +656,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                           className="btn"
                           disabled={index === 0}
                           onClick={() => moveLogicOutcome(index, -1)}
-                          aria-label={`Move outcome ${index + 1} up`}
+                          aria-label={`Move expectation ${index + 1} up`}
                         >
                           ↑
                         </button>
@@ -665,7 +665,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                           className="btn"
                           disabled={index === draft.logicClauses.length - 1}
                           onClick={() => moveLogicOutcome(index, 1)}
-                          aria-label={`Move outcome ${index + 1} down`}
+                          aria-label={`Move expectation ${index + 1} down`}
                         >
                           ↓
                         </button>
@@ -673,7 +673,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                           type="button"
                           className="btn btn--danger"
                           onClick={() => removeLogicOutcome(clause.id)}
-                          aria-label={`Remove outcome ${index + 1}`}
+                          aria-label={`Remove expectation ${index + 1}`}
                         >
                           Remove
                         </button>
@@ -685,13 +685,13 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
             </div>
 
             <button type="button" className="btn" onClick={addLogicOutcome}>
-              + Add outcome
+              + Add expectation
             </button>
 
             {draft.logicClauses.length > 1 && (
               <>
                 <div className="field">
-                  <label htmlFor="logic-join">Combining expected outcomes with</label>
+                  <label htmlFor="logic-join">Combining expectations with</label>
                   <select
                     id="logic-join"
                     value={draft.logicRelation ?? ""}
@@ -711,8 +711,8 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                 {draft.logicRelation === "custom" && (
                   <div className="field">
                     <div className="group-tree-title-row">
-                      <span className="field-label">Outcome groups</span>
-                      <SectionHint label="Outcome groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
+                      <span className="field-label">Expectation groups</span>
+                      <SectionHint label="Expectation groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
                     </div>
                     <GroupingTreeEditor
                       conditions={draft.logicClauses.map(outcomeAsCondition)}
@@ -726,7 +726,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                         );
                         return index >= 0
                           ? outcomeLabel(draft.logicClauses[index]!, index)
-                          : `<missing outcome ${condition.id}>`;
+                          : `<missing expectation ${condition.id}>`;
                       }}
                     />
                     <div className="dialog-actions">
@@ -759,7 +759,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                             })
                           }
                         >
-                          Remove stale outcome references
+                          Remove stale expectation references
                         </button>
                       )}
                     </div>
@@ -779,11 +779,11 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
           && draft.logicRelation === "custom"
           && draft.logicGroupingTree && (
             <p className="field-hint" data-testid="logic-grouping-preview">
-              <span className="visually-hidden">Outcome grouping: </span>
+              <span className="visually-hidden">Expectation grouping: </span>
               <code style={{ whiteSpace: "pre-wrap" }}>
                 {formatGroupTreeHierarchy(draft.logicGroupingTree, (id) => {
                   const index = draft.logicClauses.findIndex((clause) => clause.id === id);
-                  return index >= 0 ? `outcome ${index + 1}` : id;
+                  return index >= 0 ? `expectation ${index + 1}` : id;
                 })}
               </code>
             </p>
@@ -791,15 +791,15 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
       </fieldset>
 
       <ConfirmDialog
-        title="Discard extra outcomes?"
+        title="Discard extra expectations?"
         open={confirmSingleOutcome}
-        confirmLabel="Discard extra outcomes"
+        confirmLabel="Discard extra expectations"
         confirmTone="danger"
         onCancel={() => setConfirmSingleOutcome(false)}
         onConfirm={useSingleOutcome}
       >
         <p>
-          Only the first expected outcome will remain. This removes the other outcomes and their
+          Only the first expectation will remain. This removes the other expectations and their
           grouping from this rule.
         </p>
       </ConfirmDialog>
@@ -930,7 +930,7 @@ function validateDraft(draft: DraftState, needsJoin: boolean, isEditing: boolean
   if (draft.logic.format === "column") {
     if (clauses.length > 1) {
       errors.push(
-        "Column against column supports one outcome. Remove the extra outcomes or switch back to Value against column.",
+        "Column against column supports one expectation. Remove the extra expectations or switch back to Value against column.",
       );
     }
     if (!draft.logic.column.trim()) errors.push("Logic needs a column.");

@@ -42,14 +42,14 @@ const twoGroups: GroupNode = {
   ],
 };
 
-describe("logic outcome grouping", () => {
+describe("logic expectation grouping", () => {
   it("formats the required two AND groups joined by OR unambiguously", () => {
     expect(formatLogicOutcomeExpression(outcomes, { mode: "custom", tree: twoGroups })).toBe(
-      '(Outcome 1: SA Contributory must equal "Y" AND Outcome 2: SA-CVA Hedge Book must equal "N") OR (Outcome 3: SA Contributory must equal "N" AND Outcome 4: SA-CVA Hedge Book must equal "Y")',
+      '(Expectation 1: SA Contributory must equal "Y" AND Expectation 2: SA-CVA Hedge Book must equal "N") OR (Expectation 3: SA Contributory must equal "N" AND Expectation 4: SA-CVA Hedge Book must equal "Y")',
     );
   });
 
-  it("formats simple OR and AND outcome expressions", () => {
+  it("formats simple OR and AND expectation expressions", () => {
     expect(
       formatLogicOutcomeExpression(outcomes.slice(0, 2), { mode: "or", tree: null }),
     ).toContain(" OR ");
@@ -67,14 +67,14 @@ describe("logic outcome grouping", () => {
     expect(custom.valid).toBe(true);
   });
 
-  it("reports removed outcome references so saving cannot silently broaden the rule", () => {
+  it("reports removed expectation references so saving cannot silently broaden the rule", () => {
     const result = validateLogicOutcomes(outcomes.slice(0, 2), {
       mode: "custom",
       tree: twoGroups,
     });
     expect(result.valid).toBe(false);
     expect(result.unknownIds).toEqual(["l2", "l3"]);
-    expect(result.errors.join(" ")).toMatch(/removed or unknown outcome/);
+    expect(result.errors.join(" ")).toMatch(/removed or unknown expectation/);
   });
 
   it("reads the legacy single logic clause without inventing a grouping", () => {
@@ -92,7 +92,7 @@ describe("logic outcome grouping", () => {
     expect(getRuleLogicGrouping(rule)).toEqual({ mode: null, tree: null });
   });
 
-  it("reads persisted multi-outcome grouping and retains it in column mode checks", () => {
+  it("reads persisted multi-expectation grouping and retains it in column mode checks", () => {
     const rule: RuleWithLogicGrouping = {
       index: "R002",
       name: "Grouped",
@@ -136,7 +136,7 @@ describe("logic outcome grouping", () => {
     ).toMatch(/Choose AND, OR, or CUSTOM GROUPS/i);
   });
 
-  it("adapts an outcome to the shared tree-editor condition shape", () => {
+  it("adapts an expectation to the shared tree-editor condition shape", () => {
     expect(outcomeAsCondition(outcomes[0]!)).toMatchObject({
       id: "l0",
       column: "SA Contributory",

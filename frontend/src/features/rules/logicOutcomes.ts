@@ -1,5 +1,5 @@
 /**
- * Worker D adapter for grouped value-against-column rule outcomes.
+ * Worker D adapter for grouped value-against-column rule expectations.
  *
  * Worker C owns the persisted `logic_clauses` / `logic_relation` /
  * `logic_grouping_tree` fields, their serialization, and legacy single-clause
@@ -71,7 +71,7 @@ export function normalizeLogicClauseValues(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter((value) => value.length > 0))];
 }
 
-/** Read the outcome clauses from either the new or legacy representation. */
+/** Read the expectation clauses from either the new or legacy representation. */
 export function getRuleLogicClauses(rule?: Rule): LogicClause[] {
   const extended = rule as RuleWithLogicGrouping | undefined;
   const declared = extended?.logicClauses?.filter(
@@ -117,7 +117,7 @@ export function outcomeLabel(clause: LogicClause, index: number): string {
   const rendered = values.length > 0
     ? values.map((value) => `"${value}"`).join(" OR ")
     : "<value>";
-  return `Outcome ${index + 1}: ${column} ${phrase} ${rendered}`;
+  return `Expectation ${index + 1}: ${column} ${phrase} ${rendered}`;
 }
 
 export function formatLogicOutcomeExpression(
@@ -128,13 +128,13 @@ export function formatLogicOutcomeExpression(
   const labels = new Map(
     clauses.map((clause, index) => [clause.id, outcomeLabel(clause, index)]),
   );
-  const labelFor = (id: string) => labels.get(id) ?? `<missing outcome ${id}>`;
+  const labelFor = (id: string) => labels.get(id) ?? `<missing expectation ${id}>`;
 
   if (clauses.length === 1) return labelFor(clauses[0]!.id);
   if (grouping.mode === "custom") {
     return grouping.tree
       ? formatGroupingExpression(grouping.tree, labelFor)
-      : "<add groups to define the outcome expression>";
+      : "<add groups to define the expectation expression>";
   }
   if (grouping.mode === "and" || grouping.mode === "or") {
     return clauses
@@ -161,12 +161,12 @@ export function validateLogicOutcomes(
   clauses.forEach((clause, index) => {
     const values = logicClauseValues(clause).filter((value) => value.trim().length > 0);
     if (!clause.column.trim() || values.length === 0) {
-      clauseErrors.push(`Outcome ${index + 1} needs a column and a value.`);
+      clauseErrors.push(`Expectation ${index + 1} needs a column and a value.`);
     } else if (
       isNumericLogicOperator(clause.operator)
       && !Number.isFinite(Number(values[0]))
     ) {
-      clauseErrors.push(`Outcome ${index + 1} needs a valid number.`);
+      clauseErrors.push(`Expectation ${index + 1} needs a valid number.`);
     }
   });
 
@@ -186,7 +186,7 @@ export function validateLogicOutcomes(
   if (!grouping.mode) {
     groupingResult = {
       valid: false,
-      errors: ["Choose AND, OR, or CUSTOM GROUPS to combine multiple expected outcomes."],
+      errors: ["Choose AND, OR, or CUSTOM GROUPS to combine multiple expectations."],
       missingIds: [],
       unknownIds: [],
       duplicateIds: [],
@@ -196,7 +196,7 @@ export function validateLogicOutcomes(
     groupingResult = validateCustomGrouping(
       grouping.tree,
       clauses.map((clause) => clause.id),
-      "outcome",
+      "expectation",
     );
   } else {
     groupingResult = {
@@ -234,14 +234,14 @@ export function resetLogicOutcomeTree(
 }
 
 /**
- * Clear only the outcome grouping choice. Clauses and their values are kept so
+ * Clear only the expectation grouping choice. Clauses and their values are kept so
  * the user can explicitly choose flat AND/OR or rebuild custom groups.
  */
 export function clearLogicOutcomeGrouping(): LogicOutcomeGrouping {
   return { mode: null, tree: null };
 }
 
-/** True when column-against-column mode is selected with extra retained outcomes. */
+/** True when column-against-column mode is selected with extra retained expectations. */
 export function columnModeHasRetainedOutcomes(
   format: LogicClause["format"],
   clauses: LogicClause[],

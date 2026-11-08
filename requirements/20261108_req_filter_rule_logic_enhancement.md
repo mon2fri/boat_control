@@ -14,3 +14,14 @@ group 2: outcome 3 AND outcome 4"
 4. Hide the hint text under "Row Filters", "Filter Groups", "Outcome Group" sections into exclaimation icons next to titles, which will show the hint text on hover, so that the UI looks clean.
 5. Remove the "Use Single Outcome" button
 6. as screenshot "Screenshot From 2026-11-08 21-20-43.png" shows, when group 1 and group 2 are forming the group 3, it is good that "Remove group" only shows for group 3, but it is better to show still the disabled "Remove group" for group 1 and group 2. When user hovers over the disabled "Remove group" button, show a tooltip: "This group is part of group 3, please remove group 3 first to remove this group."
+
+# Round 2
+## Enhancements
+1. Update wording "Outcome X" into "Expectation X" within rule configuration section.
+2. Update color for current RED "CONDITION" into Blue, with Corresponding background color.
+3. "For Filter X: blar blar blar" under Filter Groups, make the "Filter X" part match the style in the above filter part, which is on the left of the column dropdown within "Row filter" section, so that it is easier for user to identify the filter. Apply this style matching for Condition X and Outcome X as well.
+4. Optimize the layout of the "Row Filter" section, the layout in screenshot 1 is bad, the layout in screenshot 2 is expected. Make sure the label, column dropdown, operator dropdown, value input, ordering buttons, remove button are always in the same row and aligned properly. Make sure the "Add Filter" button is aligned with the "Row Filter" title.
+5. The exclamation icon should be immediately next to the title, not on the right side of the page.
+
+## Bugs
+1. Round 1 Bug 3 still exist.
