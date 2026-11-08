@@ -49,7 +49,15 @@ class RuleSerializer(serializers.Serializer):  # type: ignore[misc]
     )
     grouping = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
     grouping_tree = serializers.JSONField(required=False, allow_null=True)
-    logic = LogicClauseSerializer()
+    # Readers accept the legacy single form or the grouped outcome form; the
+    # cross-form conflict check lives in services.validate_rule so both API and
+    # import paths share exactly one policy.
+    logic = LogicClauseSerializer(required=False)
+    logic_clauses = LogicClauseSerializer(many=True, required=False)
+    logic_relation = serializers.ChoiceField(
+        choices=["and", "or"], required=False, allow_null=True
+    )
+    logic_grouping_tree = serializers.JSONField(required=False, allow_null=True)
     extra_columns = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )
@@ -71,7 +79,12 @@ class RuleResponseSerializer(serializers.Serializer):  # type: ignore[misc]
     )
     grouping = serializers.ListField(child=serializers.CharField(), required=False, allow_null=True)
     grouping_tree = serializers.JSONField(required=False, allow_null=True)
-    logic = LogicClauseSerializer()
+    logic = LogicClauseSerializer(required=False)
+    logic_clauses = LogicClauseSerializer(many=True, required=False)
+    logic_relation = serializers.ChoiceField(
+        choices=["and", "or"], required=False, allow_null=True
+    )
+    logic_grouping_tree = serializers.JSONField(required=False, allow_null=True)
     extra_columns = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )

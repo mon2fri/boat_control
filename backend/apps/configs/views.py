@@ -37,7 +37,11 @@ from apps.rules.repository import (
     reinstate_catalog_rule,
 )
 from apps.rules.serializers import RuleSerializer
-from apps.rules.services import _serialize_grouping_tree, validate_rule
+from apps.rules.services import (
+    normalize_rule_draft,
+    rule_definition_payload,
+    validate_rule,
+)
 from apps.runs.template_columns import (
     TemplateColumnError,
     normalize_rows_and_columns_content,
@@ -231,41 +235,16 @@ def _enabled_rule_payload() -> list[dict[str, Any]]:
 
 
 def _rule_snapshot_payload(snapshot: Any) -> dict[str, Any]:
-    rule = snapshot.rule
-    payload: dict[str, Any] = {
+    # The shared serializer includes the executable grouping tree and the
+    # complete outcome expression (legacy ``logic`` or grouped clauses) so an
+    # export/import round trip cannot silently drop grouping.
+    return {
         "rule_identifier": snapshot.rule_identifier,
-        "name": rule.name,
-        "description": rule.description,
-        "conditions": [
-            {
-                "column_name": condition.column_name,
-                "operator": condition.operator,
-                "filter_value": condition.filter_value,
-                "filter_values": list(condition.filter_values),
-            }
-            for condition in rule.conditions
-        ],
-        "logic": {
-            "format": rule.logic.format,
-            "column_name": rule.logic.column_name,
-            "operator": rule.logic.operator,
-            "target_value": rule.logic.target_value,
-            "target_values": list(rule.logic.target_values),
-            "comparison_mode": rule.logic.comparison_mode,
-        },
-        "extra_columns": list(rule.extra_columns),
-        "hide_comparison": rule.hide_comparison,
+        **rule_definition_payload(
+            snapshot.rule,
+            include_empty_target_values=True,
+        ),
     }
-    if rule.condition_relation is not None:
-        payload["condition_relation"] = rule.condition_relation
-    if rule.grouping is not None:
-        payload["grouping"] = rule.grouping
-    if rule.grouping_tree is not None:
-        # The tree is the executable grouping expression.  Omitting it on
-        # export turns a rule such as ``c0 AND (c1 OR c2)`` into a flat AND
-        # when the config is loaded again.
-        payload["grouping_tree"] = _serialize_grouping_tree(rule.grouping_tree)
-    return payload
 
 
 def _import_rule_content(
@@ -307,10 +286,12 @@ def _import_rule_content(
             name = str(draft.get("name") or raw_draft.get("name") or "Unnamed rule")
             message = "; ".join(validation.errors)
             raise ValueError(f"{name}({rule_id}, {identifier}: {message})")
+    validated = [normalize_rule_draft(draft) for draft in validated]
     conflicts = configuration_conflicts(validated)
     if conflicts and not isinstance(decisions, dict):
         raise RuleConfigConflict(conflicts)
     if conflicts:
+        assert decisions is not None
         resolved: list[dict[str, Any]] = []
         by_identifier = {item["rule_identifier"]: item for item in conflicts}
         for draft in validated:
