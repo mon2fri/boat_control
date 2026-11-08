@@ -26,7 +26,7 @@ from apps.configs.services import (
     list_configs,
     update_config,
 )
-from apps.rules.identifiers import calculate_rule_identifier
+from apps.rules.identifiers import RuleIdentityError, calculate_rule_identifier
 from apps.rules.models import StoredValidationRule
 from apps.rules.repository import (
     CatalogError,
@@ -280,11 +280,19 @@ def _import_rule_content(
     for raw_draft, draft in zip(drafts, validated, strict=True):
         validation = validate_rule(draft)
         if not validation.valid:
-            identifier = calculate_rule_identifier(draft)
-            stored = StoredValidationRule.objects.filter(identity_id=identifier).first()
-            rule_id = stored.rule_id if stored is not None else raw_draft.get("rule_id", "new")
             name = str(draft.get("name") or raw_draft.get("name") or "Unnamed rule")
             message = "; ".join(validation.errors)
+            # A draft that fails grouping validation may also be unhashable as a
+            # canonical identity. Keep the actionable validation error instead of
+            # letting identity calculation mask it during error reporting.
+            try:
+                identifier = calculate_rule_identifier(draft)
+            except RuleIdentityError:
+                identifier = "uncomputable identity"
+                stored = None
+            else:
+                stored = StoredValidationRule.objects.filter(identity_id=identifier).first()
+            rule_id = stored.rule_id if stored is not None else raw_draft.get("rule_id", "new")
             raise ValueError(f"{name}({rule_id}, {identifier}: {message})")
     validated = [normalize_rule_draft(draft) for draft in validated]
     conflicts = configuration_conflicts(validated)
