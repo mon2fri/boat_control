@@ -4,6 +4,19 @@ Date: 2026-11-08
 Branch: `work/20261108-grouped-validation-worker-d`
 Worktree: `/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/worker-d`
 
+## Documentation status after integration
+
+This record now separates the original Worker D delivery from the later
+reviewer-authored integration work. The original D commits were accepted into
+`work/20261108-grouped-validation-integration` (`3e812bc`, `33c10d7`,
+`a06fac4`), but that acceptance was not the end of UI integration. The reviewer
+found that the pages still mounted the filter editor uncontrolled, that
+grouping did not survive workflow save/load/run, and that strict config
+serialization could crash during render for an incomplete filter. The reviewer
+fixed those gaps in `fa17108` (with the related backend integration fix in
+`0992b78`). Integrated test and browser results quoted below are
+**reviewer-run**, not additional Worker D validation.
+
 ## Scope and ownership
 
 Worker D owns the visual Row Filters grouping interface, the Rule Logic editor for
@@ -44,8 +57,14 @@ Worker C's domain types during integration.
   grouping remains valid and a flat expression updates its order.
 - Switching custom → AND/OR → custom retains the custom tree in editor state.
 - `FilterBuilder` accepts optional controlled `grouping` / `onGroupingChange` props.
-  With them, Worker C can supply persisted grouping. Without them, the editor owns the
+  With them, the parent can supply persisted grouping. Without them, the editor owns the
   grouping locally so the visual interaction works while transport is pending.
+- **Original delivery gap:** `PreparePage` mounted `FilterBuilder` uncontrolled, so the
+  locally owned relation/tree was not connected to workflow state and did not survive
+  config save/load or run submission. The visual editor worked in component tests, but
+  the page-level path did not persist grouping. This was not caught by D's isolated
+  component tests. The reviewer fixed it in `fa17108` by wiring controlled grouping,
+  config load/save, run request construction, and saved-run restoration.
 - A wholesale row replacement (for example a config load) resets uncontrolled local
   grouping to the legacy-compatible default; a partial edit keeps the tree so removals
   surface the repair requirement.
@@ -114,7 +133,54 @@ do match. Whitespace-only text remains literal (no new trimming/case normalisati
    restoration, family expansion remapping, and validation before run. D did not edit
    those C-owned modules.
 
-## Defects found and fixed during implementation
+## Post-integration findings and reviewer-authored fixes (not original D delivery)
+
+These items were discovered only after A/B/C/D were combined. They are recorded
+here so the original D delivery is not mistaken for complete page integration.
+
+1. **High — filter grouping was not connected to workflow save/load/run.**
+   `FilterBuilder` was mounted uncontrolled in `PreparePage`, so its local
+   relation/tree never entered workflow state. Page config save/load, run request
+   construction, and saved-run deep-link restoration therefore omitted grouping.
+   The reviewer fixed this in `fa17108` by wiring the controlled editor through
+   `PreparePage`, `UploadPage`, `ResultsPage`, `WorkflowContext`, and the
+   config/run mapping. UI-only `filterGroupingMode` / `filterGroupingRequired`
+   state keeps a dormant custom tree available across a temporary flat-mode
+   switch while only the selected expression is serialized. Legacy configs/runs
+   without grouping still default to AND; newly authored multi-filter expressions
+   require an explicit relation/tree.
+2. **High — render-time crash on an incomplete filter.**
+   The newly strict config serializer threw while React was rendering when a user
+   clicked `+ Add filter` and the new row was still incomplete. React Router
+   replaced the page with its error boundary. The reviewer changed config
+   serialization to return an invalid/error state instead of throwing, added an
+   invalid-save state, and disabled saving while the expression is invalid. This
+   replaces the crash with an actionable blocked state.
+3. **High — missing references and family-expansion semantics (integration-wide).**
+   The integration review also found that unresolved flat filters could be dropped
+   (broadening an AND scope), rule condition references could be rebound after
+   renumbering, partial invalid rule imports could proceed, and positive family
+   expansion could use AND instead of OR. The reviewer fixed these in `fa17108`
+   with blocking restoration errors, explicit missing sentinels, refusal of
+   partial imports, and positive-OR / negative-AND expansion. These are not D
+   editor changes, but they affect the filter/outcome configuration workflow D
+   renders.
+4. **Backend integration defect recorded for completeness.** The reviewer also
+   fixed A-materialized nested outcome trees not being executable by B's runtime
+   (`0992b78`), with a real four-clause Y/N regression. D did not author or run
+   this fix.
+
+Reviewer regression evidence for the frontend integration is recorded in
+`reviews/20261108_grouped_validation_integration_review.md`: page/config/run
+mapper, reducer, saved-run restoration and `ResultsPage.buildRunRequest` tests,
+plus the full integrated frontend suite/build. The reviewer's real Chrome/
+Playwright smoke uploaded the sample CSVs, selected key `ID`, entered Prepare,
+added two filter rows, selected CUSTOM GROUPS, created an AND group, and observed
+blocking validation for an incomplete expression without a page error. That
+smoke covers upload and custom filter-group editing only; it is **not** complete
+user UI acceptance.
+
+## Defects found and fixed during original implementation
 
 1. **Logic operator changes cleared existing values.** Replacing the single logic row
    with outcome editors initially cleared selected values when the operator changed,
@@ -151,7 +217,10 @@ do match. Whitespace-only text remains literal (no new trimming/case normalisati
     interaction, column-mode blocking and restore, restore persisted nested outcomes
     and save unchanged, removed-outcome repair, null/blank help text.
 
-## Commands and actual results
+## Original Worker D validation (before integration)
+
+These results were run only in the D worktree against the original D commits. They are
+not the integrated acceptance results.
 
 Run from `frontend/` unless noted:
 
@@ -163,11 +232,45 @@ Run from `frontend/` unless noted:
 - `npx eslint <changed files>` — passed for all Worker D-touched files. Repository-wide `npm run lint` still reports pre-existing errors in files outside this assignment.
 - `git diff --check` — see delivery record.
 
-## Blocked / not claimed
+## Original blocked / not claimed
 
-- Real API/state persistence, run request wiring, config save/load/import/export,
-  saved-run restoration, backend evaluation, and canonical identity are Worker C/A/B
-  scope. No integrated end-to-end check was run because Worker C's commits were not
-  present in this worktree at delivery time.
-- No browser-level UI verification was performed in this worktree; component tests are
-  not a substitute for reviewer browser acceptance.
+- At original delivery time, real API/state persistence, run request wiring, config
+  save/load/import/export, saved-run restoration, backend evaluation, and canonical
+  identity were Worker C/A/B scope. No integrated end-to-end check was run in the D
+  worktree because those commits were not present there.
+- No browser-level UI verification was performed in the D worktree; component tests
+  were not treated as browser acceptance.
+
+## Reviewer-run integrated verification (attributed to reviewer, not Worker D)
+
+The integration branch reviewer reports the following after applying reviewer fixes
+`0992b78` and `fa17108`:
+
+- Isolated backend suite:
+  `GROUPED_VALIDATION_HOME=/tmp/opencode/grouped-validation-checks PYTHONPATH=backend uv run pytest --ds=boat_control.grouped_validation_settings -q tests/backend tests/contracts tests/integration`
+  — **774 passed**.
+- Django `check` passed; `makemigrations --check --dry-run` reported no changes;
+  `mypy backend` passed for 94 source files; changed-file Ruff passed.
+- Full frontend suite — **65 files / 599 tests passed**; frontend production build
+  passed with the existing >500 kB bundle warning.
+- `git diff --check` passed after final code/docs edits.
+- Full repository `ruff check backend tests` still reports only unchanged baseline
+  findings in the rules migration and rule-catalog test.
+
+These are reviewer-authored results. Worker D did not run the integrated suite, did
+not execute the browser smoke, and does not claim them as its own verification.
+
+## Remaining limitations and pending user UI acceptance
+
+- The original uncontrolled-filter page gap is fixed only by the reviewer's integration
+  changes, not by the original D commits alone.
+- Real-browser smoke coverage is limited to upload plus adding/grouping filters and
+  observing blocking validation. Complete numbered visual acceptance (save/reload,
+  run, saved-run restore, compound outcome reporting, exports, tracking, legacy and
+  column-against-column checks) remains pending user execution.
+- Multi-outcome column-against-column, deferred business metadata/approval workflow,
+  and historical rule re-identification remain out of scope.
+- The reviewer's UI guide is
+  `docs/20261108_grouped_validation_ui_verification.md` on the integration branch. The
+  integration review records the isolated app at backend `127.0.0.1:8000` and frontend
+  `127.0.0.1:5173`; Worker D did not verify or modify those processes.
