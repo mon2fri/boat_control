@@ -983,7 +983,15 @@ function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
   if (draft.logic.format === "value" && clauses.length > 1) {
     grouped.logicClauses = clauses;
     if (draft.logicRelation === "custom") {
+      grouped.logicGroupTree = draft.logicGroupingTree;
+      // Retain the earlier D-only alias so pre-integration component tests and
+      // callers keep working; transport reads the canonical logicGroupTree.
       grouped.logicGroupingTree = draft.logicGroupingTree;
+      if (draft.logicGroupingTree?.kind === "and" || draft.logicGroupingTree?.kind === "or") {
+        // Preserve the root relation alongside the executable tree so an
+        // unchanged custom rule keeps both fields it was loaded with.
+        grouped.logicRelation = draft.logicGroupingTree.kind;
+      }
     } else if (draft.logicRelation === "and" || draft.logicRelation === "or") {
       grouped.logicRelation = draft.logicRelation;
     }

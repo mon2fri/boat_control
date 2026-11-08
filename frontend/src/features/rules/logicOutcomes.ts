@@ -35,12 +35,18 @@ export interface LogicOutcomeGrouping {
 export type RuleWithLogicGrouping = Rule & {
   logicClauses?: LogicClause[];
   logicRelation?: "and" | "or" | null;
+  /** Canonical Worker C domain field. */
+  logicGroupTree?: GroupNode | null;
+  /** Legacy D-only field retained for compatibility with earlier branches. */
   logicGroupingTree?: GroupNode | null;
 };
 
 export type GroupedRuleDraft = RuleDraft & {
   logicClauses?: LogicClause[];
   logicRelation?: "and" | "or" | null;
+  /** Canonical Worker C domain field consumed by the API mapper. */
+  logicGroupTree?: GroupNode | null;
+  /** Legacy D-only alias; never required by transport. */
   logicGroupingTree?: GroupNode | null;
 };
 
@@ -79,8 +85,13 @@ export function getRuleLogicClauses(rule?: Rule): LogicClause[] {
 export function getRuleLogicGrouping(rule?: Rule): LogicOutcomeGrouping {
   const extended = rule as RuleWithLogicGrouping | undefined;
   const clauses = getRuleLogicClauses(rule);
-  if (extended?.logicGroupingTree) {
-    return { mode: "custom", tree: extended.logicGroupingTree };
+  // Worker C exposes the canonical domain field as `logicGroupTree`; earlier D
+  // work used `logicGroupingTree`. Accept both so existing custom expressions
+  // hydrate as custom instead of falling back to a flat relation and dropping
+  // the saved groups.
+  const tree = extended?.logicGroupTree ?? extended?.logicGroupingTree ?? null;
+  if (tree) {
+    return { mode: "custom", tree };
   }
   if (clauses.length > 1) {
     return { mode: extended?.logicRelation ?? "and", tree: null };
