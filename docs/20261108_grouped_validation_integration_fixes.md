@@ -109,6 +109,11 @@ cherry-picking. `git diff --name-status` showed only the worker's implementation
 record and delivery record in every range; no executable changes were included.
 Each follow-up passed `git diff --check` before and after cherry-pick.
 
+At this documentation close, all four resulting commits below were already in the
+integration branch history (HEAD `c7258bf`). A redundant explicit cherry-pick
+attempt returned empty for each commit; each was skipped, so no duplicate commit
+was created and no worker branch/worktree was changed.
+
 | Worker | Original follow-up commit | Resulting integration commit | Closure evidence |
 | --- | --- | --- | --- |
 | A | `742427f4240c4e0665c4766fa02d46841dcc3ec6` | `19927f0bd8cef0b69e1b87b574a96bcd5216c375` | Both records document the one-clause grouping-fields defect, reviewer validation fix, exact regression and separate attribution of reviewer-only runtime results. |

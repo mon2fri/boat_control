@@ -81,7 +81,12 @@ Open **http://127.0.0.1:5173/**. The Vite development server proxies `/api`
 to **http://127.0.0.1:8000**. Use the same `GROUPED_VALIDATION_HOME` on every
 backend restart to restore the same isolated catalog and saved run history.
 The regular `scripts/dev.sh` uses the standard checkout settings, so do not use
-it for this isolated verification.
+it for this isolated verification. `trigger.py` is also a prebuilt-release
+launcher: it hardcodes `boat_control.settings` and reads the project-root `.config`.
+Running it from the integration root would not use
+`/tmp/opencode/grouped-validation-main-configs`; running it from the original
+checkout serves that checkout's bundle/config instead. Use the two isolated
+commands above for this UI validation.
 
 ## Numbered acceptance steps
 
@@ -181,9 +186,10 @@ it for this isolated verification.
 - The browser smoke exposed and verified the fix for an invalid-config render
   crash: incomplete filters now leave the page usable, show errors, and disable
   config saving.
-- Both isolated app processes were stopped at the user's request; ports 8000 and
-  5173 are not listening. To stop processes after a future start, press Ctrl+C in
-  each foreground server terminal, or inspect exact PIDs with:
+- The isolated backend/Vite servers and the subsequently started `trigger.py`
+  server were stopped at the user's request. Ports 8000, 5173 and 45303 are not
+  listening. To stop processes after a future start, press Ctrl+C in each
+  foreground server terminal, or inspect exact PIDs with:
 
   ```bash
   ps -eo pid,ppid,args | grep -E '[m]anage.py runserver 127.0.0.1:8000|[v]ite --host 127.0.0.1 --port 5173'

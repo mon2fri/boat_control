@@ -59,10 +59,12 @@ duplicate snapshot serializer was deliberately not kept. The resolution is
 covered by the grouped rule config/API tests.
 
 The four post-review worker commits were individually inspected in full before
-cherry-pick. Each changed only its implementation record and delivery record;
+integration. Each changed only its implementation record and delivery record;
 `git diff --name-status` confirmed there were no source/tests changes. Every
-follow-up passed `git diff --check`. Original worker results remain distinguished
-from reviewer-authored fixes/results in each corrected pair of records.
+follow-up passed `git diff --check`. They were already represented in the
+integration history at `c7258bf`; explicit cherry-picks returned empty and were
+skipped to avoid duplicates. Original worker results remain distinguished from
+reviewer-authored fixes/results in each corrected pair of records.
 
 ## Review findings and reviewer fixes
 
@@ -198,8 +200,9 @@ with no browser page errors. The smoke also verified incomplete new grouping
 shows a blocking message without crashing. This is browser evidence only for
 that interaction; the complete numbered user acceptance remains pending.
 
-Both isolated app processes were stopped at the user's request. Verification
-showed no listener on ports 8000 or 5173 and no matching runserver/Vite process.
+Both isolated app processes were stopped at the user's request. A later
+`trigger.py` run on port 45303 was also stopped. Verification showed no listener
+on ports 8000, 5173 or 45303 and no matching runserver/Vite/trigger process.
 Startup commands for the imported main configs are in the UI guide. App
 data/config remains isolated in `/tmp/opencode/grouped-validation-main-configs`.
 
@@ -218,8 +221,9 @@ data/config remains isolated in `/tmp/opencode/grouped-validation-main-configs`.
   remains pending and is the user's next step.
 - Branch/worktree: `work/20261108-grouped-validation-integration` at
   `/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/integration`.
-- Implementation commit: `fa17108`; worker documentation follow-ups are listed
-  in the audit table above. Final branch HEAD is in the final handoff message.
+- Tested implementation commit: `fa17108`; documentation-follow-up branch HEAD
+  before this review close: `460bf58175e0940ad33a42f0f4e23c946867f9e5`. The
+  report-close commit is the final branch HEAD and is given in the final handoff.
 - Accepted worker deliveries: A, B, C, D in dependency order; original and
   resulting hashes are listed above.
 - Review: `reviews/20261108_grouped_validation_integration_review.md`.
