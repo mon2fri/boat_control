@@ -103,12 +103,29 @@ describe("logic outcome grouping", () => {
       logic: outcomes[0]!,
       logicClauses: outcomes,
       logicRelation: null,
-      logicGroupingTree: twoGroups,
+      logicGroupTree: twoGroups,
     };
     expect(getRuleLogicClauses(rule)).toEqual(outcomes);
     expect(getRuleLogicGrouping(rule)).toEqual({ mode: "custom", tree: twoGroups });
     expect(columnModeHasRetainedOutcomes("column", outcomes)).toBe(true);
     expect(columnModeHasRetainedOutcomes("value", outcomes)).toBe(false);
+  });
+
+  it("accepts the legacy D-only logicGroupingTree alias during transition", () => {
+    const rule: RuleWithLogicGrouping = {
+      index: "R003",
+      name: "Transitional",
+      description: "",
+      conditions: [],
+      conditionJoin: null,
+      conditionGrouping: null,
+      groupTree: null,
+      logic: outcomes[0]!,
+      logicClauses: outcomes,
+      logicRelation: "or",
+      logicGroupingTree: twoGroups,
+    };
+    expect(getRuleLogicGrouping(rule)).toEqual({ mode: "custom", tree: twoGroups });
   });
 
   it("adapts an outcome to the shared tree-editor condition shape", () => {

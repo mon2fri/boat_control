@@ -169,11 +169,11 @@ describe("RuleEditor grouped outcomes", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     const draft = onSave.mock.calls[0]![0] as RuleDraft & {
       logicClauses?: LogicClause[];
-      logicGroupingTree?: GroupNode;
+      logicGroupTree?: GroupNode;
     };
     expect(draft.logicClauses).toHaveLength(4);
     const ids = draft.logicClauses!.map((item) => item.id);
-    expect(draft.logicGroupingTree).toEqual({
+    expect(draft.logicGroupTree).toEqual({
       kind: "or",
       children: [
         {
@@ -219,11 +219,11 @@ describe("RuleEditor grouped outcomes", () => {
     expect(onSave.mock.calls[0]![0]).toMatchObject({ logicRelation: "and" });
   });
 
-  it("restores a persisted nested outcome expression and saves it unchanged", () => {
+  it("loads the existing R079 custom-group rule and saves it unchanged", () => {
     const rule = {
-      index: "R010",
+      index: "R079",
       identifier: "CBR1_00000000000000000000",
-      name: "Restored groups",
+      name: "UI Flags - opposite Yes No",
       description: "",
       conditions: [],
       conditionJoin: null,
@@ -231,8 +231,8 @@ describe("RuleEditor grouped outcomes", () => {
       groupTree: null,
       logic: FOUR_OUTCOMES[0]!,
       logicClauses: FOUR_OUTCOMES,
-      logicRelation: null,
-      logicGroupingTree: TWO_GROUPS,
+      logicRelation: "or",
+      logicGroupTree: TWO_GROUPS,
     } as Rule;
     const { onSave } = setup({ rule });
 
@@ -243,10 +243,57 @@ describe("RuleEditor grouped outcomes", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     const draft = onSave.mock.calls[0]![0] as RuleDraft & {
       logicClauses?: LogicClause[];
-      logicGroupingTree?: GroupNode;
+      logicRelation?: string;
+      logicGroupTree?: GroupNode;
     };
     expect(draft.logicClauses).toEqual(FOUR_OUTCOMES);
-    expect(draft.logicGroupingTree).toEqual(TWO_GROUPS);
+    expect(draft.logicRelation).toBe("or");
+    expect(draft.logicGroupTree).toEqual(TWO_GROUPS);
+  });
+
+  it("edits one R079 outcome and still saves all four clauses with both AND groups", () => {
+    const rule = {
+      index: "R079",
+      identifier: "CBR1_00000000000000000000",
+      name: "UI Flags - opposite Yes No",
+      description: "",
+      conditions: [],
+      conditionJoin: null,
+      conditionGrouping: null,
+      groupTree: null,
+      logic: FOUR_OUTCOMES[0]!,
+      logicClauses: FOUR_OUTCOMES,
+      logicRelation: "or",
+      logicGroupTree: TWO_GROUPS,
+    } as Rule;
+    const { onSave } = setup({ rule });
+
+    const firstOutcome = screen.getByRole("group", { name: "Outcome 1" });
+    fireEvent.change(within(firstOutcome).getByLabelText("Operator"), {
+      target: { value: "not_equals" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const draft = onSave.mock.calls[0]![0] as RuleDraft & {
+      logicClauses?: LogicClause[];
+      logicRelation?: string;
+      logicGroupTree?: GroupNode;
+    };
+    expect(draft.logicClauses).toHaveLength(4);
+    expect(draft.logicClauses?.[0]).toMatchObject({
+      column: "SA Contributory",
+      operator: "not_equals",
+      values: ["Y"],
+    });
+    expect(draft.logicClauses?.map((clause) => clause.column)).toEqual([
+      "SA Contributory",
+      "SA-CVA Hedge Book",
+      "SA Contributory",
+      "SA-CVA Hedge Book",
+    ]);
+    expect(draft.logicRelation).toBe("or");
+    expect(draft.logicGroupTree).toEqual(TWO_GROUPS);
   });
 
   it("flags a removed outcome reference and repairs the grouping before saving", () => {
@@ -262,7 +309,7 @@ describe("RuleEditor grouped outcomes", () => {
       logic: FOUR_OUTCOMES[0]!,
       logicClauses: FOUR_OUTCOMES,
       logicRelation: null,
-      logicGroupingTree: TWO_GROUPS,
+      logicGroupTree: TWO_GROUPS,
     } as Rule;
     const { onSave } = setup({ rule });
 
@@ -276,10 +323,10 @@ describe("RuleEditor grouped outcomes", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     const draft = onSave.mock.calls[0]![0] as RuleDraft & {
       logicClauses?: LogicClause[];
-      logicGroupingTree?: GroupNode;
+      logicGroupTree?: GroupNode;
     };
     expect(draft.logicClauses).toHaveLength(3);
-    expect(draft.logicGroupingTree).toEqual({
+    expect(draft.logicGroupTree).toEqual({
       kind: "or",
       children: [
         { kind: "leaf", conditionId: "l0" },
