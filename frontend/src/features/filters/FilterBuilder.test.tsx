@@ -71,6 +71,22 @@ function openFilters() {
 }
 
 describe("FilterBuilder grouping", () => {
+  it("preserves a nested filter group and releases direct filters when its parent is removed", () => {
+    const tree: GroupNode = { kind: "and", children: [
+      { kind: "leaf", conditionId: "f1" },
+      { kind: "or", children: [{ kind: "leaf", conditionId: "f2" }, { kind: "leaf", conditionId: "f3" }] },
+    ] };
+    renderWithClient(<ControlledBuilder initialRows={rows} initialGrouping={{ mode: "custom", tree }} />);
+    openFilters();
+    fireEvent.click(screen.getByRole("button", { name: "Remove Group 2" }));
+    expect(screen.queryByTestId("tree-Group 2")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent('SYSTEM equals "Traded Risk"');
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent('Book type equals "FO"');
+    expect(screen.getByRole("checkbox", { name: 'Filter 1: Book type equals "MO"' })).toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: /^Filter \d$/ })).toHaveLength(3);
+    expect(screen.getByRole("alert")).toHaveTextContent(/not included|missing|group/i);
+  });
+
   it("expands the collapsed card when adding a filter from its header", () => {
     renderWithClient(<ControlledBuilder initialRows={[]} />);
     fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }));

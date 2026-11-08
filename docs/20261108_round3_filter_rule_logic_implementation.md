@@ -86,3 +86,25 @@ until both groups are selected and explicitly joined. Inspect actual condition
 predicates in grouping, source/group badge correspondence and help icons. Run a
 nonempty population, inspect numeric rule/contents ordering, then download HTML
 and Excel. Excel now uses metadata rows 1–6, table header row 8 and details row 9.
+
+## Follow-up — removing a parent preserves its child groups (all editors)
+
+- **Defect/cause:** `PerGroupingEditor.removeGroup` filtered out the entire
+  selected subtree, deleting nested groups along with their parent relationship.
+- **Fix:** the shared editor promotes the removed parent's immediate child
+  groups to independent draft roots, preserving their own nested structures,
+  predicates and operators. Direct leaf members return to the available clause
+  picker. Other root groups are left intact. No rule ID is special-cased.
+- **Scope:** shared by Row Filters, Rule Conditions and Rule Expectations for
+  every rule. Remove all groups remains an intentional complete grouping reset.
+- **Validation:** independent child groups require explicit rejoining; a lone
+  promoted group with loose clauses is also incomplete and cannot save/run.
+- **Regression:** both AND and OR parents with arbitrary condition IDs; removing
+  another root leaves its sibling intact; filter parent with group + direct leaf;
+  condition preservation/rejoining; actual R079 shape retaining all four
+  expectations and round-tripping the rebuilt parent payload. 47 focused tests
+  pass across the four editor test files. TypeScript/production build passes.
+- **Chrome:** isolated port 45305 verified Remove Group 3 leaves Groups 1/2 and
+  all four clauses, saving is blocked, and explicitly recreating the parent
+  works without page errors. Screenshot `/tmp/r079-parent-removed.png`;
+  log `/tmp/r079-parent-browser-final.log`. No user catalog/config was changed.

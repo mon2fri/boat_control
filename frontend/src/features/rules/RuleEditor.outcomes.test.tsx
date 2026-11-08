@@ -226,6 +226,36 @@ describe("RuleEditor grouped outcomes", () => {
     expect(onSave.mock.calls[0]![0]).toMatchObject({ logicRelation: "and" });
   });
 
+  it("removes R079's parent group while preserving both child groups for explicit regrouping", () => {
+    const rule = {
+      index: "R079", name: "Opposite flags", conditions: [], conditionJoin: null,
+      conditionGrouping: null, groupTree: null, logic: FOUR_OUTCOMES[0]!,
+      logicClauses: FOUR_OUTCOMES, logicRelation: "or", logicGroupTree: TWO_GROUPS,
+    } as Rule;
+    const { onSave } = setup({ rule });
+    fireEvent.click(screen.getByRole("button", { name: "Remove Group 3" }));
+    expect(screen.queryByTestId("tree-Group 3")).not.toBeInTheDocument();
+    const first = screen.getByTestId("tree-Group 1");
+    const second = screen.getByTestId("tree-Group 2");
+    expect(first).toHaveTextContent('SA Contributory must equal "Y"');
+    expect(first).toHaveTextContent('SA-CVA Hedge Book must equal "N"');
+    expect(second).toHaveTextContent('SA Contributory must equal "N"');
+    expect(second).toHaveTextContent('SA-CVA Hedge Book must equal "Y"');
+    expect(screen.getByRole("checkbox", { name: "Group 1 (AND, 2 members)" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Group 2 (AND, 2 members)" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText(/These groups are not joined/)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("pick-group:0"));
+    fireEvent.click(screen.getByTestId("pick-group:1"));
+    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
+    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0]![0].logicClauses).toEqual(FOUR_OUTCOMES);
+    expect(onSave.mock.calls[0]![0].logicGroupTree).toEqual(TWO_GROUPS);
+  });
+
   it("loads the existing R079 custom-group rule and saves it unchanged", () => {
     const rule = {
       index: "R079",

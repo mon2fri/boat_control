@@ -34,3 +34,13 @@ Standard app is available at http://127.0.0.1:45303/ after a backend-only restar
 without startup synchronization. Hard-refresh to load the rebuilt bundle.
 Temporary browser server 45305 was stopped. Full manual user acceptance is pending.
 No pushes, main merges, worker modifications or user config/data changes were made.
+
+## Parent-removal follow-up
+
+Fixed shared subtree deletion: removing a parent now preserves its child groups
+as independent drafts in every rule's expectations/conditions and Row Filters.
+No R079-specific branching. Generic AND/OR tests, sibling preservation, mixed
+leaf/group filters, condition regrouping and R079 payload round-trip pass:
+47 focused tests. Production build/TypeScript and diff whitespace check pass.
+Chrome confirmed the actual parent-removal/rejoin flow with no page errors.
+User configs/data were untouched; rebuilt assets are available after hard refresh.

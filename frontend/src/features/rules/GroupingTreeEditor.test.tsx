@@ -34,6 +34,27 @@ function ControlledEditor({ initial = null }: { initial?: GroupNode | null }) {
 }
 
 describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
+  it.each(["and", "or"] as const)("removes any %s parent without deleting its child groups", (kind) => {
+    const tree: GroupNode = { kind, children: [
+      { kind: "or", children: [{ kind: "leaf", conditionId: "c0" }, { kind: "leaf", conditionId: "c1" }] },
+      { kind: "and", children: [{ kind: "leaf", conditionId: "c2" }, { kind: "leaf", conditionId: "c3" }] },
+    ] };
+    render(<ControlledEditor initial={tree} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Group 3" }));
+    expect(screen.queryByTestId("tree-Group 3")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent("OR");
+    expect(screen.getByTestId("tree-Group 2")).toHaveTextContent("AND");
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent("col_c0 equals v0");
+    expect(screen.getByTestId("tree-Group 2")).toHaveTextContent("col_c3 equals v3");
+    expect(screen.getByRole("checkbox", { name: "Group 1 (OR, 2 members)" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Group 2 (AND, 2 members)" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("These groups are not joined");
+    // A second removal affects only that selected group; the unrelated group remains.
+    fireEvent.click(screen.getByRole("button", { name: "Remove Group 1" }));
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent("col_c2 equals v2");
+    expect(screen.getByRole("checkbox", { name: "Condition 1: col_c0 equals v0" })).toBeInTheDocument();
+  });
+
   it("renders the persisted overall OR root above its nested groups", () => {
     const tree: GroupNode = {
       kind: "or",

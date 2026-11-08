@@ -210,6 +210,16 @@ describe("RuleEditor", () => {
       "group 1: condition 1 AND condition 2",
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Remove Group 2" }));
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent('a must equal "1"');
+    expect(screen.getByRole("checkbox", { name: 'Condition 3: c must equal "3"' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("pick-group:0"));
+    fireEvent.click(screen.getByRole("checkbox", { name: 'Condition 3: c must equal "3"' }));
+    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
+    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+    expect(screen.getByTestId("tree-Group 2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Remove all groups" }));
     expect(screen.getByLabelText("Combining Conditions with")).toHaveValue("");
     expect(screen.queryByTestId("grouping-preview")).not.toBeInTheDocument();

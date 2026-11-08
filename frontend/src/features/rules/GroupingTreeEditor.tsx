@@ -243,7 +243,13 @@ function PerGroupingEditor({
   }
 
   function removeGroup(index: number): void {
-    const next = rootGroups.filter((_, i) => i !== index);
+    // Remove only this grouping relationship. Nested groups become independent
+    // draft roots; direct leaf members return to the ungrouped clause picker.
+    const removed = rootGroups[index];
+    const childGroups = removed && removed.kind !== "leaf"
+      ? removed.children.filter((child) => child.kind !== "leaf")
+      : [];
+    const next = rootGroups.flatMap((group, i) => i === index ? childGroups : [group]);
     setSelectedMembers([]);
     setEditingPath(null);
     emitRoot(next);
