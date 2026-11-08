@@ -157,7 +157,7 @@ export function ResultsPage() {
       <h2 id="results-title" className="section-heading">3. Results</h2>
 
       {!state.result && (
-        <div className="card">
+        <div className="card run-confirmation">
           <h3 className="results-card-title">Run comparison &amp; validation</h3>
           <ul className="run-summary">
             <li>{completeFilters(state.filters).length} filter(s)</li>

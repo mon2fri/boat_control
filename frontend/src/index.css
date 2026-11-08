@@ -2907,3 +2907,7 @@ dl.card dd {
 
 .scope-title-row.results-card-title { justify-content: flex-start; }
 .scope-title-row > label { font: inherit; color: inherit; text-transform: none; letter-spacing: inherit; margin: 0; }
+
+/* Pre-run scope follows content; card-edge title margins would overlap the rule list. */
+.run-confirmation .enabled-run-rules { margin-bottom: calc(var(--space) * 2); }
+.run-confirmation .scope-title-row.results-card-title { margin: 0 0 calc(var(--space) * 2); }

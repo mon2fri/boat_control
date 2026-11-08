@@ -52,3 +52,13 @@ index/name list, matching the run request rather than the catalog's current
 visible page. Empty/loading/error cases are covered. Component + journey checks:
 4 passed; TypeScript/build and diff check passed. Chrome verified all 11 enabled
 rules, including the off-page rule, using isolated storage with no page errors.
+
+## Pre-run scope spacing correction
+
+Reproduced the enabled-rule/scope overlap (-4px gap) in real Chrome. Scoped the
+margin correction to the Run now card and rebuilt production assets. No rule
+selection, execution, catalog or user data behavior changed. Browser verification
+uses the isolated 11-rule preset; screenshot `/tmp/run-summary-spacing-fixed.png`.
+Final Chrome geometry checks passed at 1600px, 900px and 600px, each with a
+16px gap and no page errors. Production build/TypeScript and diff check passed.
+Temporary isolated server 45305 was stopped; standard app 45303 is available.

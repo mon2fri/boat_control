@@ -127,3 +127,15 @@ names visible, including the off-page rule, no page errors. Screenshot:
 `/tmp/enabled-run-rules.png`; log `/tmp/enabled-run-rules-browser.log`.
 No user catalog/config/data changes. Backend restart is unnecessary for this
 frontend-only change; hard-refresh the running standard app at port 45303.
+
+## Follow-up — pre-run scope heading overlaps the enabled-rule list
+
+Cause: the shared results title style uses a negative top margin to reach a
+card's edge. On Run now, the scope heading follows the enabled-rule section
+instead of starting a card, so that margin overlapped the previous content.
+Chrome reproduced a -4px section gap with 11 enabled rules.
+
+Added a pre-run card class and scoped spacing overrides: no negative scope-title
+margins there, plus separation below the enabled-rule list. Completed-results
+card headings retain their existing style. Production build/TypeScript passed;
+Chrome geometry verification and screenshot are recorded in the review.
