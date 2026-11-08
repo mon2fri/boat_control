@@ -17,9 +17,12 @@ main/integration branch was modified.
 The reviewer should cherry-pick in this order:
 
 1. `656ed15` — feat(frontend): add grouped row filters and multi-outcome rule logic
-2. docs commit (hash reported in the final handover) — docs: record Worker D grouped validation implementation and delivery
+2. `9704c2c` — docs: record Worker D grouped validation implementation and delivery
+3. final docs clarification commit (hash reported in the handover) — documents the
+   multi-outcome `logic` mirror requirement for Worker C
 
-Exact source hash is above; the final docs hash is reported in the handover message.
+Exact source/docs hashes are above; the last clarification hash is reported in the
+handover message.
 
 ## Changed files
 
@@ -58,7 +61,9 @@ data is committed.
 - Required Worker C interface (published in the implementation doc): filter
   grouping props/state/transport; rule outcome domain/wire/config/restoration fields;
   runtime-id ↔ indexed-id mapping; legacy single-outcome compatibility; rejection of
-  contradictory representations.
+  contradictory representations. Multi-outcome drafts carry `logic` as a mirror of
+  `logicClauses[0]` for `RuleDraft` compatibility; C must accept/omit that consistent
+  mirror rather than treating it as a conflicting expression.
 - Required A/B backend semantics: tree evaluation, null/blank semantics, compound
   outcome detail/report context, canonical identity. D did not edit backend modules.
 

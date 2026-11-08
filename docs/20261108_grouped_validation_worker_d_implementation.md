@@ -105,7 +105,11 @@ do match. Whitespace-only text remains literal (no new trimming/case normalisati
    at serialization and back at restoration. Tree leaf IDs in this editor are the
    current runtime IDs.
 4. Keep legacy single-outcome `logic` unchanged; reject contradictory legacy/new
-   representations rather than choosing one silently.
+   representations rather than choosing one silently. The D editor emits `logic` as a
+   compatibility mirror of the first outcome whenever `logicClauses.length > 1`, because
+   the current shared `RuleDraft` type requires it. C should treat that mirror as
+   consistent when it equals `logicClauses[0]` (or omit it from the wire), not as a
+   competing expression; genuinely different legacy/new content must be rejected.
 5. Complete frontend config persistence (rows-and-columns and rules), saved-run
    restoration, family expansion remapping, and validation before run. D did not edit
    those C-owned modules.
