@@ -18,7 +18,10 @@ visual component, other worktree or main branch was modified.
 - Ordered commits for reviewer cherry-pick:
   1. `81fa44b` — `feat(frontend): transport grouped filters and rule outcomes`
      (source, tests, implementation documentation)
-  2. This delivery-record commit (documentation only)
+  2. `d6b97a9` — `docs: record worker C grouped validation delivery`
+  3. `a6edaa7` — `fix(frontend): treat no filters as unrestricted and reject mixed legacy outcomes`
+     (fix source/tests plus implementation/delivery documentation)
+  4. This final delivery-record commit (documentation only)
 
 Dependency commits: **none**. C did not cherry-pick or merge A/B/D work. The
 payload shape follows `planning/20261108_grouped_validation_shared_contract.md`
