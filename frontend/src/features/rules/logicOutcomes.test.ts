@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GroupNode, LogicClause, Rule } from "../../api/domain";
 import {
+  clearLogicOutcomeGrouping,
   columnModeHasRetainedOutcomes,
   formatLogicOutcomeExpression,
   getRuleLogicClauses,
@@ -126,6 +127,13 @@ describe("logic outcome grouping", () => {
       logicGroupingTree: twoGroups,
     };
     expect(getRuleLogicGrouping(rule)).toEqual({ mode: "custom", tree: twoGroups });
+  });
+
+  it("clears only the grouping choice and leaves clauses untouched", () => {
+    expect(clearLogicOutcomeGrouping()).toEqual({ mode: null, tree: null });
+    expect(
+      validateLogicOutcomes(outcomes, clearLogicOutcomeGrouping()).errors.join(" "),
+    ).toMatch(/Choose AND, OR, or CUSTOM GROUPS/i);
   });
 
   it("adapts an outcome to the shared tree-editor condition shape", () => {

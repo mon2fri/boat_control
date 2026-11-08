@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { FilterRow, GroupNode } from "../../api/domain";
 import {
+  clearFilterGrouping,
   defaultFilterGrouping,
   filterRowsAsConditions,
   formatFilterGroupingExpression,
+  formatFilterGroupingHierarchy,
   repairFilterGroupingTree,
   resetFilterGroupingTree,
   validateFilterGrouping,
@@ -52,6 +54,47 @@ describe("filter grouping", () => {
     expect(expression).toBe(
       '(Filter 1: Book type equals "MO" AND Filter 2: SYSTEM equals "Traded Risk") OR Filter 3: Book type equals "FO"',
     );
+  });
+
+  it("formats a hierarchical custom hint with the overall root line", () => {
+    const tree: GroupNode = {
+      kind: "or",
+      children: [
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "f1" },
+            { kind: "leaf", conditionId: "f2" },
+          ],
+        },
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "f3" },
+            { kind: "leaf", conditionId: "f4" },
+          ],
+        },
+      ],
+    };
+    const fourRows = [...rows, row("f4", "SYSTEM", "Risk")];
+    expect(formatFilterGroupingHierarchy(fourRows, { mode: "custom", tree })).toBe(
+      "overall: group 1 OR group 2\n" +
+      "group 1: filter 1 AND filter 2\n" +
+      "group 2: filter 3 AND filter 4",
+    );
+  });
+
+  it("shows the overall line for flat AND/OR grouping too", () => {
+    expect(formatFilterGroupingHierarchy(rows.slice(0, 2), { mode: "and", tree: null })).toBe(
+      "overall: filter 1 AND filter 2",
+    );
+    expect(formatFilterGroupingHierarchy(rows.slice(0, 2), { mode: "or", tree: null })).toBe(
+      "overall: filter 1 OR filter 2",
+    );
+  });
+
+  it("clears grouping information without changing filters", () => {
+    expect(clearFilterGrouping()).toEqual({ mode: null, tree: null });
   });
 
   it("rejects missing, unknown and duplicate references", () => {

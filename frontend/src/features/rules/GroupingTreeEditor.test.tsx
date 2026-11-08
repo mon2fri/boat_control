@@ -34,7 +34,7 @@ function ControlledEditor({ initial = null }: { initial?: GroupNode | null }) {
 }
 
 describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
-  it("renders both root groups when the value already contains two root groups", () => {
+  it("renders the persisted overall OR root above its nested groups", () => {
     const tree: GroupNode = {
       kind: "or",
       children: [
@@ -57,13 +57,21 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     render(<ControlledEditor initial={tree} />);
     expect(screen.getByText("Group 1")).toBeInTheDocument();
     expect(screen.getByText("Group 2")).toBeInTheDocument();
-    // No sibling group was nested into the other: both top-level groups are
-    // listed as root tree nodes, without card/fieldset wrappers.
-    expect(screen.getAllByRole("list")[0]!.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(2);
-    expect(screen.getAllByRole("list")[0]!.querySelector("fieldset")).not.toBeInTheDocument();
+    expect(screen.getByText("Group 3")).toBeInTheDocument();
+
+    // The root is rendered, not flattened into a two-group forest: both
+    // child groups sit under the overall Group 3 OR node.
+    const rootList = screen.getAllByRole("list")[0]!;
+    expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(1);
+    const rootNode = rootList.querySelector(":scope > .group-tree-node--group") as HTMLElement;
+    expect(rootNode).toHaveAttribute("data-testid", "tree-Group 3");
+    expect(within(rootNode).getByText("OR")).toBeInTheDocument();
+    expect(within(rootNode).getByTestId("tree-Group 1")).toBeInTheDocument();
+    expect(within(rootNode).getByTestId("tree-Group 2")).toBeInTheDocument();
+    expect(rootList.querySelector("fieldset")).not.toBeInTheDocument();
   });
 
-  it("keeps both groups at root after the user creates two disjoint groups", () => {
+  it("shows the overall root once two disjoint groups are created", () => {
     render(<ControlledEditor />);
 
     // Step 1: create Group 1 with c0 + c1
@@ -80,10 +88,15 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     fireEvent.click(screen.getByLabelText("col_c3 equals v3"));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
-    // Both groups now coexist at root — Group 1 must NOT have been
-    // silently dropped, nested, or otherwise hidden.
+    // Both groups now sit under an explicit overall Group 3 OR root so the
+    // user can see how they combine instead of inferring a hidden wrapper.
     expect(screen.getByText("Group 1")).toBeInTheDocument();
     expect(screen.getByText("Group 2")).toBeInTheDocument();
+    expect(screen.getByText("Group 3")).toBeInTheDocument();
+    const rootList = screen.getAllByRole("list")[0]!;
+    expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(1);
+    const rootNode = rootList.querySelector(":scope > .group-tree-node--group") as HTMLElement;
+    expect(within(rootNode).getByText("OR")).toBeInTheDocument();
   });
 
   it("splits the create-new-group checklist into Conditions and Existing groups sections", () => {
@@ -232,22 +245,42 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     expect(screen.getByText(/col_c0 equals v0/)).toBeInTheDocument();
   });
 
-  it("creates an OR group containing only existing groups", () => {
-    render(<ControlledEditor />);
-    for (const ids of [["c0", "c1"], ["c2", "c3"]]) {
-      for (const id of ids) fireEvent.click(screen.getByLabelText(`col_${id} equals v${id.slice(1)}`));
-      fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+  it("shows an overall OR root and disables Remove group for nested groups", () => {
+    const tree: GroupNode = {
+      kind: "or",
+      children: [
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ],
+        },
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "c2" },
+            { kind: "leaf", conditionId: "c3" },
+          ],
+        },
+      ],
+    };
+    render(<ControlledEditor initial={tree} />);
+
+    const rootNode = screen.getByTestId("tree-Group 3");
+    expect(within(rootNode).getByRole("button", { name: "Remove Group 3" })).toBeEnabled();
+
+    for (const number of [1, 2]) {
+      const nested = screen.getByTestId(`tree-Group ${number}`);
+      expect(within(nested).getByRole("button", { name: `Remove Group ${number}` })).toBeDisabled();
+
+      const tooltip = `This group is part of group 3, please remove group 3 first to remove this group.`;
+      const hint = screen.getByTestId(`nested-remove-hint-Group ${number}`);
+      expect(hint).toHaveAttribute("title", tooltip);
+      expect(hint).toHaveAttribute("tabindex", "0");
+      hint.focus();
+      expect(hint).toHaveFocus();
+      expect(within(hint).getByRole("tooltip")).toHaveTextContent(tooltip);
     }
-
-    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
-    fireEvent.click(screen.getByTestId("pick-group:0"));
-    fireEvent.click(screen.getByTestId("pick-group:1"));
-    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
-
-    const rootList = screen.getAllByRole("list")[0]!;
-    expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(1);
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
-    expect(screen.getByText("Group 3")).toBeInTheDocument();
   });
 });

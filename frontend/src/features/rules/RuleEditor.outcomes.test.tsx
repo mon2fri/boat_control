@@ -144,23 +144,22 @@ describe("RuleEditor grouped outcomes", () => {
     fireEvent.change(screen.getByLabelText("Combining expected outcomes with"), {
       target: { value: "custom" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Use all outcomes in an AND group" }));
 
-    // Split the seeded four-member AND group into Outcome 1+2 and Outcome 3+4.
-    fireEvent.click(screen.getByRole("button", { name: "Edit Group 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Remove Outcome 4:/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Edit Group 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Remove Outcome 3:/ }));
+    // Build the first AND group from Outcome 1 + Outcome 2.
+    fireEvent.click(screen.getByLabelText(/Outcome 1:/));
+    fireEvent.click(screen.getByLabelText(/Outcome 2:/));
+    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
+    // Build the second AND group from Outcome 3 + Outcome 4. Two root groups
+    // are now joined by the visible overall Group 3 OR root.
     fireEvent.click(screen.getByLabelText(/Outcome 3:/));
     fireEvent.click(screen.getByLabelText(/Outcome 4:/));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
-    // Now combine the two existing AND groups into an OR group.
-    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
-    fireEvent.click(screen.getByTestId("pick-group:0"));
-    fireEvent.click(screen.getByTestId("pick-group:1"));
-    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+    expect(screen.getByText("Group 3")).toBeInTheDocument();
+    expect(screen.getByTestId("logic-grouping-preview").textContent).toContain(
+      "overall: group 1 OR group 2",
+    );
 
     const preview = screen.getByTestId("rule-logic-preview").textContent ?? "";
     expect(preview).toContain(
@@ -238,6 +237,13 @@ describe("RuleEditor grouped outcomes", () => {
     } as Rule;
     const { onSave } = setup({ rule });
 
+    expect(screen.getByTestId("logic-grouping-preview").textContent).toContain(
+      "overall: group 1 OR group 2",
+    );
+    expect(screen.getByTestId("logic-grouping-preview").textContent).toContain(
+      "group 1: outcome 1 AND outcome 2",
+    );
+    expect(screen.getByText("Group 3")).toBeInTheDocument();
     expect(screen.getByTestId("rule-logic-preview").textContent).toContain(
       '(Outcome 1: SA Contributory must equal "Y" AND Outcome 2: SA-CVA Hedge Book must equal "N") OR (Outcome 3: SA Contributory must equal "N" AND Outcome 4: SA-CVA Hedge Book must equal "Y")',
     );
@@ -269,6 +275,58 @@ describe("RuleEditor grouped outcomes", () => {
         ] },
       ],
     });
+  });
+
+  it("removes all outcome groups, keeps the clauses and blocks save until explicit grouping", () => {
+    const rule = {
+      index: "R079",
+      identifier: "CBR1_00000000000000000000",
+      name: "UI Flags - opposite Yes No",
+      description: "",
+      conditions: [],
+      conditionJoin: null,
+      conditionGrouping: null,
+      groupTree: null,
+      logic: FOUR_OUTCOMES[0]!,
+      logicClauses: FOUR_OUTCOMES,
+      logicRelation: "or",
+      logicGroupTree: TWO_GROUPS,
+    } as Rule;
+    const { onSave } = setup({ rule });
+
+    expect(screen.queryByRole("button", { name: /Use single outcome/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove all groups" }));
+
+    expect(screen.getByLabelText("Combining expected outcomes with")).toHaveValue("");
+    expect(screen.queryByTestId("logic-grouping-preview")).not.toBeInTheDocument();
+    expect(screen.getByTestId("rule-logic-preview").textContent).toContain("Outcome 4");
+    expect(screen.getAllByRole("group", { name: /Outcome \d/ })).toHaveLength(4);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(/Choose AND, OR, or CUSTOM GROUPS to combine multiple expected outcomes/i),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Combining expected outcomes with"), {
+      target: { value: "or" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+
+    const draft = onSave.mock.calls[0]![0] as RuleDraft & {
+      logicClauses?: LogicClause[];
+      logicRelation?: string;
+      logicGroupTree?: GroupNode;
+    };
+    expect(draft.logicClauses).toEqual(FOUR_OUTCOMES);
+    expect(draft.logicRelation).toBe("or");
+    expect(draft.logicGroupTree).toBeUndefined();
+
+    const payload = mapRuleToWireDraft(draft);
+    expect(payload.logic_relation).toBe("or");
+    expect(payload.logic_clauses).toHaveLength(4);
+    expect(payload.logic_grouping_tree).toBeUndefined();
   });
 
   it("edits one R079 outcome and still saves all four clauses with both AND groups", () => {
