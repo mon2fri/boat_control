@@ -32,3 +32,14 @@ READY FOR USER UI VALIDATION. Final release frontend suite: 661 passed / 3
 skipped; backend: 797 passed; build/TypeScript, mypy, changed-file Ruff and
 whitespace checks passed. Existing Vite bundle-size advisory remains. User
 functional acceptance is pending. No push or main merge was performed.
+
+## Screenshot correction
+
+Removed repeated hierarchy/flat-list text from valid Results filter summaries.
+Single-filter presentation is `Filters: system contains "oomber"`; multi-filter
+expressions retain numbered clauses. Invalid saved configurations keep diagnostics.
+Excel breakdown remains unchanged. Run now scope/confirmation heading bands now
+align horizontally without reintroducing overlap. Real Chrome confirmed equal
+left edges/widths and a 16px vertical gap at 1600/900/600px; downloaded standalone
+HTML matched the single expression, no page errors. 19 frontend and 22 backend
+focused checks, build/TypeScript, changed-file Ruff and diff check passed.

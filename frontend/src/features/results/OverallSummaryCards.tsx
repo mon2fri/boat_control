@@ -4,6 +4,7 @@ import type {
   GroupRelation,
   OverallSummary,
 } from "../../api/domain";
+import { formatFilterRow } from "../filters/formatFilterRow";
 import { summarizeAppliedFilters } from "./appliedFilterSummary";
 
 const METRICS: { key: keyof OverallSummary; label: string }[] = [
@@ -48,6 +49,9 @@ export function OverallSummaryCards({
     filtersGroupingErrors,
   });
   const hasFilters = (filtersApplied?.length ?? 0) > 0;
+  const filterExpression = filtersApplied?.length === 1 && !filterSummary.invalid
+    ? formatFilterRow(filtersApplied[0]!)
+    : filterSummary.expression;
 
   return (
     <div className="overall-summary">
@@ -66,23 +70,16 @@ export function OverallSummaryCards({
       <div className="applied-filter-summary" aria-label="Applied filter grouping">
         {hasFilters ? (
           <>
-            {filterSummary.expression && (
+            {filterExpression && (
               <p className="section-logic" data-testid="applied-filters-expression">
-                Filters: {filterSummary.expression}
+                Filters: {filterExpression}
               </p>
             )}
-            {!filterSummary.invalid && (
-              <p className="field-hint" data-testid="applied-filters-grouping">
-                <span className="visually-hidden">Applied filter grouping: </span>
-                <code style={{ whiteSpace: "pre-wrap" }}>
-                  {filterSummary.hierarchy.join("\n")}
-                </code>
+            {filterSummary.invalid && (
+              <p className="field-hint" data-testid="applied-filters-statement">
+                {filterSummary.clauses.join("; ")}
               </p>
             )}
-            <p className="field-hint" data-testid="applied-filters-statement">
-              <span className="visually-hidden">Applied filters: </span>
-              {filterSummary.clauses.join("; ")}
-            </p>
           </>
         ) : (
           <p className="field-hint" data-testid="applied-filters-statement">

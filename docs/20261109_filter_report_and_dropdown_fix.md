@@ -58,3 +58,22 @@ review. All tests/browser runs use isolated storage; user config/data are untouc
   with no migration/catalog sync. Log `/tmp/filter-dropdown-standard-server.log`,
   PID file `/tmp/filter-dropdown-standard-server.pid`. Hard-refresh for the new
   frontend bundle. User configuration and data remain unchanged.
+
+## Screenshot follow-up — heading alignment and duplicate filter text
+
+The screenshot showed redundant presentation: a full expression, short hierarchy,
+and flat clause list repeated the same single filter three times. Results now
+show one expression only; a single filter omits unnecessary Filter 1 numbering.
+Multi-filter expressions retain numbered predicates and all parentheses. Invalid
+saved grouping still shows its error/diagnostic clauses. Standalone HTML clones
+the same clean layout; direct backend HTML follows the single-filter wording.
+Excel retains the separately requested numbered/multiline breakdown.
+
+The Run now scope heading now shares the confirmation heading's horizontal
+card-edge margins, while keeping zero negative top margin and 16px separation
+from enabled rules. Chrome measured identical heading left edges/widths at
+1600, 900 and 600px, with 16px vertical gaps. UI and downloaded HTML showed the
+single expression exactly once and no page errors. Screenshots:
+`/tmp/run-now-heading-aligned.png`, `/tmp/filters-single-line.png`.
+Validation: 19 focused frontend checks; 22 report/backend checks; production
+build/TypeScript, changed-file Ruff and diff whitespace check all passed.

@@ -34,9 +34,6 @@ const nestedTree: GroupNode = {
   ],
 };
 
-function groupingText(): string | null | undefined {
-  return screen.getByTestId("applied-filters-grouping").querySelector("code")?.textContent;
-}
 
 describe("OverallSummaryCards", () => {
   it("keeps the six overall counts and no-filter legacy message", () => {
@@ -51,6 +48,13 @@ describe("OverallSummaryCards", () => {
     expect(screen.queryByTestId("applied-filters-grouping")).not.toBeInTheDocument();
   });
 
+  it("shows a single filter once, without redundant numbering or hierarchy", () => {
+    render(<OverallSummaryCards summary={summary} filtersApplied={[filters[0]!]} />);
+    expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent('Filters: system contains "oomber"');
+    expect(screen.queryByTestId("applied-filters-grouping")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("applied-filters-statement")).not.toBeInTheDocument();
+  });
+
   it("renders the complete nested grouping above the full filter list", () => {
     render(
       <OverallSummaryCards
@@ -61,15 +65,12 @@ describe("OverallSummaryCards", () => {
       />,
     );
 
-    expect(groupingText()).toBe(
-      ["overall: FILTER 1 AND group 1", "group 1: FILTER 2 OR FILTER 3"].join("\n"),
-    );
+    expect(screen.queryByTestId("applied-filters-grouping")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("applied-filters-statement")).not.toBeInTheDocument();
     expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent(
       'Filters: (Filter 1: system contains "oomber" AND (Filter 2: status equals "active" OR Filter 3: status equals "inactive"))',
     );
-    expect(screen.getByTestId("applied-filters-statement")).toHaveTextContent(
-      'FILTER 1: system contains "oomber"; FILTER 2: status equals "active"; FILTER 3: status equals "inactive"',
-    );
+
   });
 
   it("renders a legacy flat AND when the saved run has no tree", () => {
@@ -80,7 +81,9 @@ describe("OverallSummaryCards", () => {
       />,
     );
 
-    expect(groupingText()).toBe("overall: FILTER 1 AND FILTER 2");
+    expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent(
+      'Filters: (Filter 1: system contains "oomber" AND Filter 2: status equals "active")',
+    );
   });
 
   it("shows an error and keeps the filters when the saved grouping is invalid", () => {
@@ -121,20 +124,11 @@ describe("OverallSummaryCards", () => {
       />,
     );
 
-    expect(groupingText()).toBe(
-      ["overall: FILTER 1 AND group 1", "group 1: FILTER 2 OR FILTER 3"].join("\n"),
-    );
+    expect(screen.queryByTestId("applied-filters-grouping")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("applied-filters-statement")).not.toBeInTheDocument();
     expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent(
       'Filters: (Filter 1: system contains "oomber" AND (Filter 2: status equals "active" OR Filter 3: status equals "inactive"))',
     );
-    expect(screen.getByTestId("applied-filters-statement")).toHaveTextContent(
-      'FILTER 1: system contains "oomber"',
-    );
-    expect(screen.getByTestId("applied-filters-statement")).toHaveTextContent(
-      'FILTER 2: status equals "active"',
-    );
-    expect(screen.getByTestId("applied-filters-statement")).toHaveTextContent(
-      'FILTER 3: status equals "inactive"',
-    );
+
   });
 });

@@ -183,7 +183,10 @@ def _format_filter_expression(result: dict[str, Any]) -> str:
         return "No filtering applied"
     labels = {i: f"Filter {i + 1}: {_format_filter_row(row)}" for i, row in enumerate(filters)}
     try:
-        return _filter_tree_text(_report_filter_tree(result), labels)
+        tree = _report_filter_tree(result)
+        if len(filters) == 1:
+            return _format_filter_row(filters[0])
+        return _filter_tree_text(tree, labels)
     except ValueError as error:
         return str(error)
 
