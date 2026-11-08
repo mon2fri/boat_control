@@ -20,7 +20,6 @@ import { buildSectionGroupStatistics } from "../features/results/sectionGroupSta
 import { clearUploadSession, loadRun } from "../api/endpoints";
 import { formatDateTime } from "../utils/format";
 import type { FilterRow, RunRequest } from "../api/domain";
-import { formatFilterRow } from "../features/filters/formatFilterRow";
 import type { WorkflowState } from "../state/WorkflowContext";
 
 /** Keep only fully-specified filter rows for the run request. */
@@ -340,14 +339,15 @@ function ResultView({
           {targetColumns.length === 0
             ? "all common columns"
             : `${targetColumns.length} target columns`}{" "}
-          with {completeFilters(filters).length} filter(s).
+          with {(result.filtersApplied ?? completeFilters(filters)).length} filter(s).
         </p>
-        <OverallSummaryCards summary={result.overall} />
-        <p className="field-hint" data-testid="applied-filters-statement">
-          {result.filtersApplied && result.filtersApplied.length > 0
-            ? `Filtering: ${result.filtersApplied.map(formatFilterRow).join("; ")}`
-            : "No filtering rows applied"}
-        </p>
+        <OverallSummaryCards
+          summary={result.overall}
+          filtersApplied={result.filtersApplied}
+          filtersRelation={result.filtersRelation}
+          filtersGroupTree={result.filtersGroupTree}
+          filtersGroupingErrors={result.filtersGroupingErrors}
+        />
         {nestedAggregationEnabled && aggregationColumns.length > 0 ? (
           <NestedAggregationPanel
             details={result.changeDetails}
