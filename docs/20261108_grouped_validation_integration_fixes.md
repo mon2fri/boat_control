@@ -275,3 +275,32 @@ the compound-value contract.
 - `git diff --check` passed. User config/data changes were not staged or
   committed; preservation hashes and server state are in
   `docs/20261108_grouped_validation_ui_verification.md`.
+
+## Fix 5 — render compound R079 run responses
+
+- **Finding/cause:** R079 execution succeeds, but grouped violations store
+  `violating_value` as a map of column names to observed CSV scalars. Frontend
+  run and paginated-detail schemas admitted only scalar values. The previous
+  S35 explicit-null fix did not address this independent mismatch. Existing
+  saved grouped runs were affected as well as new execute responses.
+- **Contract decision:** Preserve the backend's complete observed-value map
+  and historical payloads. Explicitly permit a scalar or a flat string-keyed map
+  of scalars in violation values and paginated comparison-side detail values.
+  Ordinary attribute changes, keys and extra values remain scalar-only. Nested
+  maps and arrays remain rejected; this is not arbitrary JSON acceptance.
+- **Fix:** Added `wireOutcomeValueSchema` and a shared `displayOutcomeValue`
+  formatter used by inline and paginated exception mapping. Display shows each
+  column/value pair, distinguishing `(null)` and `(blank)`; no `[object Object]`.
+- **Regression:** `r079GroupedRunResponse.test.ts` uses an actual captured
+  response from run `b0f8aafcff63` (detail arrays sampled) to verify execute-response
+  validation, saved-run loading, mapping, paginated values, null/blank display and
+  malformed-value rejection. No user catalog/history/config data was changed.
+- **Verification:** Focused frontend tests: 4 files / 64 passed. TypeScript and
+  production bundle build passed (existing chunk-size advisory). Real headless
+  Chrome opened `/results/b0f8aafcff63` at `127.0.0.1:45303`, rendered R079 and
+  readable grouped values with no page errors or response-validation error.
+  Screenshot: `/tmp/r079-fixed-results.png`. Browser verification loaded an
+  existing saved run; it did not create a new user-data run.
+- **Final full frontend gate:** `npm --prefix frontend test -- --maxWorkers=2`
+  passed 610 tests (2 skipped), 67 files passed (2 skipped). `git diff --check`
+  passed. Backend behavior and user CSV/configuration files were unchanged.

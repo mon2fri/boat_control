@@ -613,6 +613,16 @@ export function mapRunRequestToWire(request: {
   };
 }
 
+/** Keep grouped observations readable in inline and paginated exception tables. */
+export function displayOutcomeValue(value: WireScalar | Record<string, WireScalar>): string | null {
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value)
+      .map(([column, observed]) => `${column}=${observed === null ? "(null)" : observed === "" ? '(blank)' : String(observed)}`)
+      .join(", ");
+  }
+  return displayScalar(value);
+}
+
 function displayScalar(value: WireScalar): string | null {
   return value === null ? null : String(value);
 }
@@ -659,7 +669,7 @@ export function mapViolation(
 ): DetailRow {
   const column = violation.violating_column ?? violation.rule_id;
   const violatingValue = violation.violating_value !== undefined
-    ? displayScalar(violation.violating_value)
+    ? displayOutcomeValue(violation.violating_value)
     : null;
   const comparisonValue = violation.comparison_value !== undefined
     ? displayScalar(violation.comparison_value)
@@ -684,7 +694,7 @@ export function mapViolation(
     kind: "exception",
     ...(violation.violating_column ? { violatingColumn: violation.violating_column } : {}),
     ...(violation.violating_value !== undefined
-      ? { violatingValue: displayScalar(violation.violating_value) }
+      ? { violatingValue: displayOutcomeValue(violation.violating_value) }
       : {}),
     ...(violation.extra_values
       ? {

@@ -1,0 +1,458 @@
+{
+  "run_id": "b0f8aafcff63",
+  "report_name": "baseline_vs_candidate",
+  "file_a_name": "baseline.csv",
+  "file_b_name": "candidate.csv",
+  "created_at": "2026-11-08T12:10:11.195717+00:00",
+  "as_of_date": "2026-10-30",
+  "upload_refs": [
+    "617510eef42899eba16b3a0beff4a1a9af44c3d4175b3011d0b3981d949624c9.csv",
+    "e7deb25dbfca4261a09e139e96aa61881d6d6174e8ff80f58ac1c8bbd7100aaa.csv"
+  ],
+  "result": {
+    "comparison": {
+      "total_rows_a": 37,
+      "total_rows_b": 40,
+      "matched_rows": 37,
+      "rows_with_changes": 38,
+      "total_attribute_changes": 94,
+      "row_details": [],
+      "new_book_count": 3,
+      "new_book_details": [
+        {
+          "row_index": -1,
+          "key_columns": {
+            "id": "41",
+            "name": "Oliver"
+          },
+          "grouping_values": {
+            "status": "active",
+            "region": "East"
+          },
+          "extra_values": {
+            "name": "Oliver",
+            "status": "active",
+            "region": "East",
+            "id": "41",
+            "score": "84"
+          }
+        },
+        {
+          "row_index": -1,
+          "key_columns": {
+            "id": "42",
+            "name": "Patricia"
+          },
+          "grouping_values": {
+            "status": "inactive",
+            "region": "West"
+          },
+          "extra_values": {
+            "name": "Patricia",
+            "status": "inactive",
+            "region": "West",
+            "id": "42",
+            "score": "77"
+          }
+        },
+        {
+          "row_index": -1,
+          "key_columns": {
+            "id": "43",
+            "name": "Quincy"
+          },
+          "grouping_values": {
+            "status": "active",
+            "region": "South"
+          },
+          "extra_values": {
+            "name": "Quincy",
+            "status": "active",
+            "region": "South",
+            "id": "43",
+            "score": "80"
+          }
+        }
+      ]
+    },
+    "validation": {
+      "total_violations": 34,
+      "distinct_violating_rows": 34,
+      "distinct_violating_attributes": 34,
+      "violations_by_rule": {
+        "R079": [
+          {
+            "row_index": 0,
+            "rule_id": "R079",
+            "rule_name": "UI Flags - opposite Yes No",
+            "key_columns": {
+              "id": "1",
+              "name": "Alice"
+            },
+            "details": "Grouped outcome expression failed for columns 'cva_flag, sa_flag' violating R079",
+            "violating_column": "cva_flag, sa_flag",
+            "violating_value": {
+              "sa_flag": "Yes",
+              "cva_flag": "Yes"
+            },
+            "rule_logic": "((Outcome 1: sa_flag equals 'Yes' AND Outcome 2: cva_flag equals 'No') OR (Outcome 3: sa_flag equals 'No' AND Outcome 4: cva_flag equals 'Yes'))",
+            "comparison_value": null,
+            "extra_values": {
+              "sa_flag": "Yes",
+              "cva_flag": "Yes",
+              "system": "Bloomberg",
+              "status": "active",
+              "region": "North"
+            },
+            "grouping_values": {
+              "status": "active",
+              "region": "North"
+            },
+            "rule_identifier": "CBR1_1FB1N7BHJ3WTCD3BB1KW",
+            "detail_values": {
+              "name": "Alice",
+              "status": "active",
+              "score": "87"
+            },
+            "exception_id": "CBR1_1FB1N7BHJ3WTCD3BB1KW_1_Alice",
+            "exception_status": "New",
+            "outcome_columns": [
+              "sa_flag",
+              "cva_flag"
+            ],
+            "outcome_values": {
+              "sa_flag": "Yes",
+              "cva_flag": "Yes"
+            },
+            "outcome_results": {
+              "sa_flag": false,
+              "cva_flag": false
+            }
+          }
+        ]
+      },
+      "violation_count_by_rule": {
+        "R079": 34
+      },
+      "violating_rows_by_rule": {
+        "R079": 34
+      },
+      "violating_attributes_by_rule": {
+        "R079": 34
+      },
+      "rule_summaries": {
+        "R079": {
+          "name": "UI Flags - opposite Yes No",
+          "description": "Root CSV UI validation: Yes/No, empty and ACDS.",
+          "logic": "((Outcome 1: sa_flag equals 'Yes' AND Outcome 2: cva_flag equals 'No') OR (Outcome 3: sa_flag equals 'No' AND Outcome 4: cva_flag equals 'Yes'))",
+          "condition": "",
+          "condition_grouping": "",
+          "hide_comparison": false,
+          "rule_identifier": "CBR1_1FB1N7BHJ3WTCD3BB1KW"
+        }
+      }
+    },
+    "rule_bindings": {
+      "R079": "CBR1_1FB1N7BHJ3WTCD3BB1KW"
+    },
+    "common_columns": [
+      "name",
+      "status",
+      "id",
+      "region",
+      "score",
+      "sa_flag",
+      "cva_flag",
+      "system"
+    ],
+    "target_columns": [
+      "name",
+      "status",
+      "id",
+      "region",
+      "score",
+      "sa_flag",
+      "cva_flag",
+      "system"
+    ],
+    "key_columns": [
+      "id",
+      "name"
+    ],
+    "filters_applied": [],
+    "filter_relation": null,
+    "filter_grouping_tree": null,
+    "aggregation_columns": [
+      "status",
+      "region"
+    ],
+    "aggregation_column_labels": {},
+    "nested_aggregation_enabled": true,
+    "comparison_sections": [
+      {
+        "id": "cs-1",
+        "name": "TBBBB",
+        "columns": [
+          "region",
+          "status"
+        ],
+        "extra_columns": []
+      },
+      {
+        "id": "cs-2",
+        "name": "asdfadf",
+        "columns": [
+          "name",
+          "status"
+        ],
+        "extra_columns": []
+      }
+    ],
+    "exception_columns": [
+      "name",
+      "status",
+      "region",
+      "id",
+      "score"
+    ],
+    "extra_column_display": {
+      "overall_result_page": true,
+      "overall_html_report": true,
+      "overall_excel_report": true,
+      "new_books_result_page": true,
+      "new_books_html_report": true,
+      "new_books_excel_report": true,
+      "exception_tables": false
+    },
+    "group_statistics": {
+      "overall": [
+        {
+          "column": "status",
+          "unique_count": 40,
+          "attribute_count": 128,
+          "rows": [
+            {
+              "value": "Total",
+              "unique_count": 40,
+              "attribute_count": 128
+            },
+            {
+              "value": "active",
+              "unique_count": 24,
+              "attribute_count": 77
+            },
+            {
+              "value": "inactive",
+              "unique_count": 16,
+              "attribute_count": 51
+            }
+          ]
+        },
+        {
+          "column": "region",
+          "unique_count": 40,
+          "attribute_count": 128,
+          "rows": [
+            {
+              "value": "Total",
+              "unique_count": 40,
+              "attribute_count": 128
+            },
+            {
+              "value": "East",
+              "unique_count": 10,
+              "attribute_count": 33
+            },
+            {
+              "value": "North",
+              "unique_count": 9,
+              "attribute_count": 25
+            },
+            {
+              "value": "South",
+              "unique_count": 11,
+              "attribute_count": 37
+            },
+            {
+              "value": "West",
+              "unique_count": 10,
+              "attribute_count": 33
+            }
+          ]
+        }
+      ],
+      "attribute_changes": [
+        {
+          "column": "status",
+          "unique_count": 38,
+          "attribute_count": 94,
+          "rows": [
+            {
+              "value": "Total",
+              "unique_count": 38,
+              "attribute_count": 94
+            },
+            {
+              "value": "active",
+              "unique_count": 22,
+              "attribute_count": 57
+            },
+            {
+              "value": "inactive",
+              "unique_count": 16,
+              "attribute_count": 37
+            }
+          ]
+        },
+        {
+          "column": "region",
+          "unique_count": 38,
+          "attribute_count": 94,
+          "rows": [
+            {
+              "value": "Total",
+              "unique_count": 38,
+              "attribute_count": 94
+            },
+            {
+              "value": "East",
+              "unique_count": 9,
+              "attribute_count": 24
+            },
+            {
+              "value": "North",
+              "unique_count": 9,
+              "attribute_count": 18
+            },
+            {
+              "value": "South",
+              "unique_count": 11,
+              "attribute_count": 29
+            },
+            {
+              "value": "West",
+              "unique_count": 9,
+              "attribute_count": 23
+            }
+          ]
+        }
+      ],
+      "validation_rules": {
+        "R079": [
+          {
+            "column": "status",
+            "unique_count": 34,
+            "attribute_count": 34,
+            "rows": [
+              {
+                "value": "Total",
+                "unique_count": 34,
+                "attribute_count": 34
+              },
+              {
+                "value": "active",
+                "unique_count": 20,
+                "attribute_count": 20
+              },
+              {
+                "value": "inactive",
+                "unique_count": 14,
+                "attribute_count": 14
+              }
+            ]
+          },
+          {
+            "column": "region",
+            "unique_count": 34,
+            "attribute_count": 34,
+            "rows": [
+              {
+                "value": "Total",
+                "unique_count": 34,
+                "attribute_count": 34
+              },
+              {
+                "value": "East",
+                "unique_count": 9,
+                "attribute_count": 9
+              },
+              {
+                "value": "North",
+                "unique_count": 7,
+                "attribute_count": 7
+              },
+              {
+                "value": "South",
+                "unique_count": 8,
+                "attribute_count": 8
+              },
+              {
+                "value": "West",
+                "unique_count": 10,
+                "attribute_count": 10
+              }
+            ]
+          }
+        ]
+      },
+      "new_books": [
+        {
+          "column": "status",
+          "unique_count": 3,
+          "attribute_count": 3,
+          "rows": [
+            {
+              "value": "Total",
+              "unique_count": 3,
+              "attribute_count": 3
+            },
+            {
+              "value": "active",
+              "unique_count": 2,
+              "attribute_count": 2
+            },
+            {
+              "value": "inactive",
+              "unique_count": 1,
+              "attribute_count": 1
+            }
+          ]
+        },
+        {
+          "column": "region",
+          "unique_count": 3,
+          "attribute_count": 3,
+          "rows": [
+            {
+              "value": "Total",
+              "unique_count": 3,
+              "attribute_count": 3
+            },
+            {
+              "value": "East",
+              "unique_count": 1,
+              "attribute_count": 1
+            },
+            {
+              "value": "South",
+              "unique_count": 1,
+              "attribute_count": 1
+            },
+            {
+              "value": "West",
+              "unique_count": 1,
+              "attribute_count": 1
+            }
+          ]
+        }
+      ]
+    },
+    "commentary_template_columns": [
+      "name",
+      "status",
+      "score"
+    ],
+    "new_exceptions_only": true
+  },
+  "new_exceptions_only": true
+}

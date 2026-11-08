@@ -129,3 +129,12 @@ must use isolated databases, configuration, uploads, reports and tracking files.
 Do not symlink writable data/config between worktrees. No approval registry or
 business metadata enhancement is in scope. Commit scoped source/tests/docs; workers
 must not commit generated bundles or local databases, caches, dependency folders.
+
+### R079 response value clarification
+
+Grouped violations use `violating_value` as either a legacy scalar or a flat
+column-to-scalar map. Paginated violation details also carry that map as
+`file_b_value`. Frontend schemas explicitly validate that bounded union and
+render readable column/value pairs, preserving existing saved grouped runs.
+Nested objects/arrays are invalid. Ordinary CSV attribute values stay scalar.
+See integration Fix 5 for cause, regression evidence and verification.

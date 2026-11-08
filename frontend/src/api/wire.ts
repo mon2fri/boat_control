@@ -5,6 +5,9 @@ import { z } from "zod";
  * them as text at the API boundary. */
 export const wireScalarSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
+/** Compound outcomes carry one observed scalar per column, never nested JSON. */
+export const wireOutcomeValueSchema = z.union([wireScalarSchema, z.record(z.string(), wireScalarSchema)]);
+
 /**
  * Wire-format schemas for the backend. All field names are snake_case as the
  * Django serializers emit them. Domain-level types (camelCase, used inside
@@ -384,9 +387,9 @@ export const wireDetailPageSchema = z.object({
       key_columns: z.record(z.string(), wireScalarSchema).optional(),
       column: z.string(),
       file_a_value: wireScalarSchema,
-      file_b_value: wireScalarSchema,
+      file_b_value: wireOutcomeValueSchema,
       violating_column: z.string().optional(),
-      violating_value: wireScalarSchema.optional(),
+      violating_value: wireOutcomeValueSchema.optional(),
       /** Stable tracking identity for paginated exception rows. */
       exception_id: z.string().nullable().optional(),
       rule_identifier: z.string().nullable().optional(),
@@ -426,7 +429,7 @@ export const wireViolationSchema = z.object({
   // mapper derives fallbacks from the rest of the violation record so the UI
   // is never blank for an in-flight release.
   violating_column: z.string().optional(),
-  violating_value: wireScalarSchema.optional(),
+  violating_value: wireOutcomeValueSchema.optional(),
   comparison_value: wireScalarSchema.optional(),
   extra_values: z.record(z.string(), wireScalarSchema).optional(),
   rule_logic: z.string().optional(),

@@ -321,3 +321,13 @@ response-contract fix; this did not affect the S35/R056/R057 verification.
 Current integration HEAD before the final reviewer-owned verification/docs
 commit: `98d559cd89285cc2443bf019abca445f7788a9c8`. Accepted follow-up hashes and
 the final HEAD are reported in the handoff.
+
+## R079 violating-run response follow-up
+
+The previously outstanding object-valued `violating_value` mismatch is fixed
+in the frontend contract and inline/paginated display, including old saved runs.
+See Fix 5 in the integration fix record. Focused tests passed (64); TypeScript
+and production build passed. Chrome verified the existing failing R079 saved
+run now renders without validation/page errors. User configuration and data
+were preserved; only source, regression fixture/tests, docs and generated bundle
+are included in this fix. Full user functional acceptance remains pending.

@@ -292,3 +292,14 @@ setup doc, and source CSV uploads remain local and are excluded from fix commits
 Final follow-up gates: targeted frontend actual-response/editor/mapping tests **42
 passed**, full frontend **606 passed / 2 skipped**, targeted backend **137
 passed**, TypeScript and production build passed, and `git diff --check` passed.
+
+## R079 response-contract fix retest
+
+The compound violating-value response mismatch is fixed, including saved-run
+and paginated-detail loading. The production bundle has been rebuilt. For the
+currently running standard-settings instance at http://127.0.0.1:45303/, hard
+refresh (Ctrl+Shift+R) and reopen `/results/b0f8aafcff63` or run R079 again.
+Chrome verified that saved run shows 34 exception rows with readable flag maps
+and no response-validation/page errors. No new user run was created during that
+browser verification. The isolated 45304 instance remains a separate startup
+option; do not assume its server is running. Full user acceptance is still pending.

@@ -32,6 +32,7 @@ import {
   wireSourceFileListSchema,
 } from "./wire";
 import {
+  displayOutcomeValue,
   mapColumnValue,
   mapCommentaryImportResult,
   mapExceptionTrackingList,
@@ -214,11 +215,11 @@ export function fetchDetailPage(
         keyColumns,
         column: row.column,
         file1Value: row.file_a_value === null ? null : String(row.file_a_value),
-        file2Value: row.file_b_value === null ? null : String(row.file_b_value),
+        file2Value: displayOutcomeValue(row.file_b_value),
         kind: kind === "violation" ? "exception" : kind,
         ...(row.violating_column ? { violatingColumn: row.violating_column } : {}),
         ...(row.violating_value !== undefined
-          ? { violatingValue: row.violating_value === null ? null : String(row.violating_value) }
+          ? { violatingValue: displayOutcomeValue(row.violating_value) }
           : {}),
         ...(row.extra_values
           ? {
