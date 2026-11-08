@@ -50,8 +50,14 @@ export function FilterBuilder({
   const [localGrouping, setLocalGrouping] = useState<FilterGrouping>(() =>
     defaultFilterGrouping(rows),
   );
+  const [controlledMode, setControlledMode] = useState<FilterGroupingMode | null>(() =>
+    defaultFilterGrouping(rows).mode,
+  );
   const activeGrouping = controlled
-    ? (grouping ?? EMPTY_FILTER_GROUPING)
+    ? {
+        ...(grouping ?? EMPTY_FILTER_GROUPING),
+        mode: grouping?.mode ?? controlledMode,
+      }
     : localGrouping;
 
   // A config load replaces every row id. Reset the local grouping to the
@@ -66,8 +72,10 @@ export function FilterBuilder({
     const replacedAll = previous.length > 0
       && next.length > 0
       && !next.some((id) => previous.includes(id));
-    if (!controlled && (replacedAll || next.length === 0)) {
-      setLocalGrouping(defaultFilterGrouping(rows));
+    if (replacedAll || next.length === 0) {
+      const nextGrouping = defaultFilterGrouping(rows);
+      setLocalGrouping(nextGrouping);
+      setControlledMode(nextGrouping.mode);
     }
     previousRowIds.current = rowIdsKey;
   }, [rowIdsKey, controlled, rows]);
@@ -77,7 +85,8 @@ export function FilterBuilder({
   const preview = formatFilterGroupingExpression(rows, activeGrouping);
 
   function updateGrouping(next: FilterGrouping): void {
-    if (!controlled) setLocalGrouping(next);
+    setLocalGrouping(next);
+    setControlledMode(next.mode);
     onGroupingChange?.(next);
   }
 

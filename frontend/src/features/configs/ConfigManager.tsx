@@ -7,6 +7,8 @@ interface ConfigManagerProps {
   onLoad: (name: string) => void;
   currentContent: unknown;
   disabled?: boolean;
+  /** Prevent saving when the current editor configuration is incomplete/invalid. */
+  saveDisabled?: boolean;
   hasUnsavedChanges?: boolean;
   /** Some config types replace committed server state even without editor dirtiness. */
   confirmBeforeLoad?: boolean;
@@ -23,6 +25,7 @@ export function ConfigManager({
   onLoad,
   currentContent,
   disabled,
+  saveDisabled = false,
   hasUnsavedChanges,
   confirmBeforeLoad = false,
   title,
@@ -121,7 +124,7 @@ export function ConfigManager({
                   <button
                     type="button"
                     className="btn"
-                    disabled={disabled || update.isPending}
+                    disabled={disabled || saveDisabled || update.isPending}
                     onClick={() => setShowSaveToConfigConfirm(true)}
                   >
                     Save to config
@@ -132,7 +135,7 @@ export function ConfigManager({
               <button
                 type="button"
                 className="btn"
-                disabled={disabled}
+                disabled={disabled || saveDisabled}
                 onClick={() => setShowSavePrompt(true)}
               >
                  Save to new config

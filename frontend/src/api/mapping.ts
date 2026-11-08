@@ -204,7 +204,7 @@ export function mapFilterConfigurationToWire(
   filters: FilterRow[],
   relation: GroupRelation | null | undefined,
   groupTree: GroupNode | null | undefined,
-  options: { label?: string } = {},
+  options: { label?: string; requireExplicitForMultiple?: boolean } = {},
 ): {
   rows: ReturnType<typeof mapFilterRowToWire>[];
   relation: GroupRelation | null;
@@ -213,7 +213,10 @@ export function mapFilterConfigurationToWire(
   const label = options.label ?? "filter grouping";
   const resolved = resolveGroupedExpression(filters, relation, groupTree, {
     label,
-    allowLegacyAnd: true,
+    allowLegacyAnd: !options.requireExplicitForMultiple,
+    ...(options.requireExplicitForMultiple !== undefined
+      ? { requireExplicitForMultiple: options.requireExplicitForMultiple }
+      : {}),
   });
   if (!resolved.valid) {
     throw new GroupingValidationError(resolved.errors);
@@ -529,6 +532,7 @@ export function mapRunRequestToWire(request: {
   filterRelation?: GroupRelation | null;
   filterGroupTree?: GroupNode | null;
   filterGroupingErrors?: string[];
+  filterGroupingRequired?: boolean;
   targetColumns: string[];
   keyColumns: string[];
   aggregationColumns: string[];
@@ -548,7 +552,12 @@ export function mapRunRequestToWire(request: {
     request.filters,
     request.filterRelation ?? null,
     request.filterGroupTree ?? null,
-    { label: "row filter grouping" },
+    {
+      label: "row filter grouping",
+      ...(request.filterGroupingRequired !== undefined
+        ? { requireExplicitForMultiple: request.filterGroupingRequired }
+        : {}),
+    },
   );
   return {
     session_id: request.sessionId,

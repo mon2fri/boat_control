@@ -136,6 +136,18 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     if (resolved.warnings.length > 0) {
       setConfigWarnings(resolved.warnings.map((warning) => warning.message));
     }
+    const blockingWarnings = resolved.warnings.filter(
+      (warning) => warning.type === "invalid_grouping",
+    );
+    if (blockingWarnings.length > 0) {
+      setConfigError(
+        `Rule configuration was not applied: ${blockingWarnings.map((warning) => warning.message).join(" ")}`,
+      );
+      setIsApplyingConfig(false);
+      setLoadedConfigData(null);
+      setLoadedConfigName(null);
+      return;
+    }
     importRulesConfig(resolved.drafts.map(mapRuleToWireDraft), loadedConfigName)
       .then((result) => {
         setConfigNotice(`Configuration applied: ${result.imported} imported, ${result.reused} reused, ${result.enabled} enabled.`);
@@ -179,6 +191,18 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     setRuleConflicts(null);
     setIsApplyingConfig(true);
     const resolved = resolveRulesConfig(loadedConfigData, families, columns);
+    const blockingWarnings = resolved.warnings.filter(
+      (warning) => warning.type === "invalid_grouping",
+    );
+    if (blockingWarnings.length > 0) {
+      setConfigError(
+        `Rule configuration was not applied: ${blockingWarnings.map((warning) => warning.message).join(" ")}`,
+      );
+      setIsApplyingConfig(false);
+      setLoadedConfigData(null);
+      setLoadedConfigName(null);
+      return;
+    }
     importRulesConfig(resolved.drafts.map(mapRuleToWireDraft), loadedConfigName, decisions)
       .then(() => {
         setConfigNotice("Configuration applied with the selected rule decisions.");

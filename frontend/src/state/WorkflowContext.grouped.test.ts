@@ -35,6 +35,8 @@ function baseState(): WorkflowState {
     filters,
     filterRelation: "or",
     filterGroupTree: tree,
+    filterGroupingMode: "custom",
+    filterGroupingRequired: true,
     filterGroupingErrors: [],
     targetColumns: [],
     keyColumns: [],
@@ -177,6 +179,51 @@ describe("workflowReducer grouped filter actions", () => {
     });
     expect(next.filterRelation).toBe("and");
     expect(next.filterGroupingErrors).toEqual([]);
+  });
+
+  it("blocks newly authored multiple filters until AND, OR or a custom tree is selected", () => {
+    const empty = {
+      ...baseState(),
+      filters: [],
+      filterRelation: null,
+      filterGroupTree: null,
+      filterGroupingMode: null,
+    };
+    const incomplete = workflowReducer(empty, { type: "setFilters", filters });
+    expect(incomplete.filterGroupingRequired).toBe(true);
+    expect(incomplete.filterGroupingErrors.join(" ")).toMatch(/must choose AND, OR, or a custom/i);
+
+    const selected = workflowReducer(incomplete, {
+      type: "setFilterConfiguration",
+      filters,
+      relation: "or",
+      groupTree: null,
+      mode: "or",
+      requireExplicit: true,
+    });
+    expect(selected.filterGroupingErrors).toEqual([]);
+  });
+
+  it("retains the custom tree when the selected expression temporarily switches to flat AND", () => {
+    const custom = workflowReducer(baseState(), {
+      type: "setFilterConfiguration",
+      filters,
+      relation: null,
+      groupTree: tree,
+      mode: "custom",
+      requireExplicit: true,
+    });
+    const flat = workflowReducer(custom, {
+      type: "setFilterConfiguration",
+      filters,
+      relation: "and",
+      groupTree: tree,
+      mode: "and",
+      requireExplicit: true,
+    });
+    expect(flat.filterGroupTree).toEqual(tree);
+    expect(flat.filterGroupingMode).toBe("and");
+    expect(flat.filterGroupingErrors).toEqual([]);
   });
 
   it("marks filters invalid when their columns are removed but keeps the expression", () => {

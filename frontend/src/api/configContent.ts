@@ -3,6 +3,7 @@ import type {
   Condition,
   Family,
   FilterRow,
+  FilterGroupingMode,
   GroupNode,
   GroupRelation,
   LogicClause,
@@ -269,6 +270,7 @@ export function resolveRowsColumnsConfig(
   const aggregationColumns: string[] = [];
   const aggregationColumnLabels: Record<string, string> = {};
   const filters: FilterRow[] = [];
+  const unresolvedFilterErrors: string[] = [];
   const targetColumns: string[] = [];
   let nestedAggregationEnabled = false;
   const comparisonSections: ResolvedComparisonSection[] = [];
@@ -364,6 +366,9 @@ export function resolveRowsColumnsConfig(
         filterIdsByConfigIndex.push([id]);
       } else {
         filterIdsByConfigIndex.push([]);
+        const message = `Configured filter ${filterIdsByConfigIndex.length} could not be resolved against the available columns or families. Repair or remove it before running.`;
+        unresolvedFilterErrors.push(message);
+        warnings.push({ type: "invalid_grouping", message });
       }
       warnings.push(...w);
     }
@@ -394,7 +399,7 @@ export function resolveRowsColumnsConfig(
     filterGroupTree,
     { label: "filter grouping", allowLegacyAnd: true },
   );
-  const filterGroupingErrors = [...filterGrouping.errors];
+  const filterGroupingErrors = [...filterGrouping.errors, ...unresolvedFilterErrors];
   for (const message of filterGroupingErrors) {
     warnings.push({ type: "invalid_grouping", message });
   }
@@ -478,6 +483,9 @@ export function mapWorkflowToRowsColumnsConfig(
     filters: FilterRow[];
     filterRelation?: GroupRelation | null;
     filterGroupTree?: GroupNode | null;
+    filterGroupingMode?: FilterGroupingMode | null;
+    filterGroupingRequired?: boolean;
+    filterGroupingErrors?: string[];
     targetColumns: string[];
     exceptionColumns?: string[];
     commentaryColumns?: string[];
@@ -492,6 +500,33 @@ export function mapWorkflowToRowsColumnsConfig(
   },
   families: Family[],
 ): RowsColumnsConfigContent {
+  const filterRelation = state.filterGroupingMode
+    ? state.filterGroupingMode === "custom" ? null : state.filterGroupingMode
+    : state.filterRelation;
+  const filterGroupTree = state.filterGroupingMode
+    ? state.filterGroupingMode === "custom" ? state.filterGroupTree : null
+    : state.filterGroupTree;
+  const filterGrouping = resolveGroupedExpression(
+    state.filters,
+    filterRelation,
+    filterGroupTree,
+    {
+      label: "row filter grouping",
+      allowLegacyAnd: !state.filterGroupingRequired,
+      requireExplicitForMultiple: state.filterGroupingRequired ?? false,
+    },
+  );
+  if (!filterGrouping.valid) {
+    throw new GroupingValidationError(filterGrouping.errors);
+  }
+  if (state.filterGroupingErrors?.length) {
+    throw new GroupingValidationError(state.filterGroupingErrors);
+  }
+  if (state.filters.some((filter) => !filter.column.trim() || filter.values.length === 0)) {
+    throw new GroupingValidationError([
+      "Row filter grouping contains an incomplete filter. Fill it in or remove it before saving.",
+    ]);
+  }
   const result: RowsColumnsConfigContent = {
     comparisonColumns: columnsToRefs(state.comparisonColumns, families),
     keyColumns: state.keyColumns.map((c) => ({ kind: "column" as const, name: c })),
@@ -506,11 +541,11 @@ export function mapWorkflowToRowsColumnsConfig(
       operator: f.operator,
       filter_values: f.values,
     })),
-    ...(state.filterRelation && state.filters.length > 0
-      ? { filterRelation: state.filterRelation }
+    ...(filterRelation && state.filters.length > 0
+      ? { filterRelation }
       : {}),
-    ...(state.filterGroupTree && state.filters.length > 0
-      ? { filterGroupingTree: toPersistedGroupingTree(state.filterGroupTree, state.filters) }
+    ...(filterGroupTree && state.filters.length > 0
+      ? { filterGroupingTree: toPersistedGroupingTree(filterGroupTree, state.filters) }
       : {}),
     targetColumns: columnsToRefs(state.targetColumns, families),
     extraColumns: (state.exceptionColumns ?? []).map((c) => ({ kind: "column" as const, name: c })),
@@ -525,6 +560,20 @@ export function mapWorkflowToRowsColumnsConfig(
     })),
   };
   return result;
+}
+
+export function tryMapWorkflowToRowsColumnsConfig(
+  state: Parameters<typeof mapWorkflowToRowsColumnsConfig>[0],
+  families: Family[],
+): { content: RowsColumnsConfigContent | null; error: string | null } {
+  try {
+    return { content: mapWorkflowToRowsColumnsConfig(state, families), error: null };
+  } catch (error) {
+    return {
+      content: null,
+      error: error instanceof Error ? error.message : "Invalid rows-and-columns configuration.",
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -633,8 +682,8 @@ function resolveValuesRefs(
         result.push(...family.values);
       } else {
         warnings.push({
-          type: "missing_family",
-          message: `Value family "${vr.name}" not found.`,
+          type: "invalid_grouping",
+          message: `Value family "${vr.name}" not found; the rule outcome was not imported.`,
         });
       }
     }
@@ -680,6 +729,7 @@ export function resolveConfigRule(
 
   const resolvedConditions: Condition[] = [];
   const conditionIdsByConfigIndex: string[][] = [];
+  const conditionCombineKinds: Array<"and" | "or"> = [];
   const familyConditionCounts = new Map<string, number>();
   for (const cond of rule.conditions ?? []) {
     if (isColumnFamilyRef(cond.column_name)) {
@@ -695,6 +745,8 @@ export function resolveConfigRule(
       const conditionResult = resolveConfigRuleCondition(cond, families, availableColumns);
       let resolved = conditionResult.resolved;
       const w = conditionResult.warnings;
+      const negative = ["neq", "ncontains", "not equals", "not contains"].includes(cond.operator);
+      conditionCombineKinds.push(negative ? "and" : "or");
       if (
         isColumnFamilyRef(cond.column_name)
         && resolved.length > 1
@@ -717,6 +769,10 @@ export function resolveConfigRule(
       }
       conditionIdsByConfigIndex.push(ids);
       warnings.push(...w);
+      if (ids.length === 0) {
+        const message = `Rule "${rule.name}" condition ${conditionIdsByConfigIndex.length} references a column or family with no available members; the rule was not imported.`;
+        warnings.push({ type: "invalid_grouping", message });
+      }
     }
   }
 
@@ -758,6 +814,9 @@ export function resolveConfigRule(
       warnings.push(...colResult.warnings);
       if (colResult.resolved.length === 0) {
         logicIdsByConfigIndex.push([]);
+        const message = `Rule "${rule.name}" outcome ${logicIdsByConfigIndex.length} references a column or family with no available members; the rule was not imported.`;
+        logicGroupingErrors.push(message);
+        warnings.push({ type: "invalid_grouping", message });
         continue;
       }
       const values = resolveValuesRefs(clause.target_values, families, warnings);
@@ -786,7 +845,8 @@ export function resolveConfigRule(
     if (rule.logic_grouping_tree) {
       logicGroupTree = mapGroupTreeLeaves(rule.logic_grouping_tree as GroupNode, (savedId) => {
         const match = /^c(\d+)$/.exec(savedId);
-        const ids = match ? logicIdsByConfigIndex[Number(match[1])] ?? [] : [];
+        const index = match ? Number(match[1]) : -1;
+        const ids = index >= 0 ? logicIdsByConfigIndex[index] ?? [] : [];
         if (ids.length === 0) {
           return { kind: "leaf", conditionId: `__missing_${savedId}__` };
         }
@@ -794,17 +854,34 @@ export function resolveConfigRule(
           return { kind: "leaf", conditionId: ids[0]! };
         }
         return {
-          kind: "and",
+          kind: ["neq", "ncontains"].includes(rule.logic_clauses?.[index]?.operator ?? "")
+            ? "and"
+            : "or",
           children: ids.map((conditionId) => ({ kind: "leaf" as const, conditionId })),
         };
       });
+    } else if (logicIdsByConfigIndex.some((ids) => ids.length > 1)) {
+      const originalClauses = rule.logic_clauses!;
+      const children: GroupNode[] = logicIdsByConfigIndex.map((ids, index) => {
+        if (ids.length <= 1) {
+          return { kind: "leaf", conditionId: ids[0] ?? `__missing_c${index}__` };
+        }
+        const operator = originalClauses[index]?.operator;
+        return {
+          kind: operator === "neq" || operator === "ncontains" ? "and" : "or",
+          children: ids.map((conditionId) => ({ kind: "leaf" as const, conditionId })),
+        };
+      });
+      logicGroupTree = children.length === 1
+        ? children[0]!
+        : { kind: rule.logic_relation ?? "and", children };
     }
     const grouped = resolveGroupedExpression(logicClauses, logicRelation, logicGroupTree, {
       label: "rule outcome grouping",
       requireExplicitForMultiple: true,
       allowLegacyAnd: false,
     });
-    logicGroupingErrors = grouped.errors;
+    logicGroupingErrors = [...logicGroupingErrors, ...grouped.errors];
     for (const message of logicGroupingErrors) {
       warnings.push({ type: "invalid_grouping", message });
     }
@@ -813,6 +890,17 @@ export function resolveConfigRule(
     warnings.push(...logicResult.warnings);
 
     if (!logicResult.resolved) {
+      const message = `Rule "${rule.name}" legacy outcome references a column or family with no available members; the rule was not imported.`;
+      warnings.push({ type: "invalid_grouping", message });
+      return { resolved: null, warnings };
+    }
+
+    if (
+      isColumnFamilyRef(rule.logic!.column_name)
+      && resolveColumnRef(rule.logic!.column_name, families, availableColumns).resolved.length > 1
+    ) {
+      const message = `Rule "${rule.name}" legacy single-outcome column family expands to multiple columns; convert it to an explicit grouped outcome before import.`;
+      warnings.push({ type: "invalid_grouping", message });
       return { resolved: null, warnings };
     }
 
@@ -881,14 +969,31 @@ export function resolveConfigRule(
     resolved.groupTree = mapGroupTreeLeaves(savedTree, (savedId) => {
       const configIndex = savedIdToConfigIndex.get(savedId);
       const ids = configIndex === undefined ? [] : conditionIdsByConfigIndex[configIndex] ?? [];
-      if (ids.length <= 1) {
-        return { kind: "leaf", conditionId: ids[0] ?? savedId };
+      if (ids.length === 0) {
+        return { kind: "leaf", conditionId: `__missing_${savedId}__` };
+      }
+      if (ids.length === 1) {
+        return { kind: "leaf", conditionId: ids[0]! };
       }
       return {
-        kind: "and",
+        kind: conditionCombineKinds[configIndex ?? -1] ?? "or",
         children: ids.map((conditionId) => ({ kind: "leaf", conditionId })),
       };
     });
+    resolved.conditionJoin = "per_grouping";
+  } else if (conditionIdsByConfigIndex.some((ids) => ids.length > 1)) {
+    const children: GroupNode[] = conditionIdsByConfigIndex.map((ids, index) => {
+      if (ids.length <= 1) {
+        return { kind: "leaf", conditionId: ids[0] ?? `__missing_c${index}__` };
+      }
+      return {
+        kind: conditionCombineKinds[index] ?? "or",
+        children: ids.map((conditionId) => ({ kind: "leaf" as const, conditionId })),
+      };
+    });
+    resolved.groupTree = children.length === 1
+      ? children[0]!
+      : { kind: rule.condition_relation ?? "and", children };
     resolved.conditionJoin = "per_grouping";
   }
 

@@ -8,7 +8,10 @@ import { HeaderReview } from "../features/upload/HeaderReview";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { ConfigLoadNotice } from "../features/configs/ConfigLoadNotice";
-import { resolveRowsColumnsConfig, mapWorkflowToRowsColumnsConfig } from "../api/configContent";
+import {
+  resolveRowsColumnsConfig,
+  tryMapWorkflowToRowsColumnsConfig,
+} from "../api/configContent";
 import type { SourceFile } from "../api/domain";
 import { AsOfDateField } from "../features/tracking/AsOfDateField";
 import { useExceptionTrackingDates } from "../features/tracking/useTracking";
@@ -32,6 +35,29 @@ export function UploadPage() {
 
   const familiesQuery = useFamilies();
   const families = familiesQuery.data ?? [];
+  const currentRowsColumnsConfig = tryMapWorkflowToRowsColumnsConfig(
+    {
+      comparisonColumns: state.comparisonColumns,
+      keyColumns: state.keyColumns,
+      aggregationColumns: state.aggregationColumns,
+      aggregationColumnLabels: state.aggregationColumnLabels,
+      filters: state.filters,
+      filterRelation: state.filterRelation,
+      filterGroupTree: state.filterGroupTree,
+      filterGroupingMode: state.filterGroupingMode,
+      filterGroupingRequired: state.filterGroupingRequired,
+      filterGroupingErrors: state.filterGroupingErrors,
+      targetColumns: state.targetColumns,
+      exceptionColumns: state.exceptionColumns,
+      commentaryColumns: state.commentaryColumns,
+      ...(state.extraColumnDisplay
+        ? { extraColumnDisplay: state.extraColumnDisplay }
+        : {}),
+      nestedAggregationEnabled: state.nestedAggregationEnabled,
+      comparisonSections: state.comparisonSections,
+    },
+    families,
+  );
 
   const [configWarnings, setConfigWarnings] = useState<string[]>([]);
   const [configNotice, setConfigNotice] = useState<string | null>(null);
@@ -126,7 +152,20 @@ export function UploadPage() {
     dispatch({ type: "setKeyColumns", columns: result.keyColumns });
     dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns });
     dispatch({ type: "setAggregationColumnLabels", labels: result.aggregationColumnLabels });
-    dispatch({ type: "setFilters", filters: result.filters });
+    const groupingMode = result.filterGroupTree
+      ? "custom"
+      : result.filterRelation ?? (result.filters.length > 1 ? "and" : null);
+    dispatch({
+      type: "setFilterConfiguration",
+      filters: result.filters,
+      relation: result.filterRelation,
+      groupTree: result.filterGroupTree,
+      mode: groupingMode,
+      errors: result.filterGroupingErrors,
+      requireExplicit: Boolean(
+        result.filterRelation || result.filterGroupTree || result.filterGroupingErrors.length,
+      ),
+    });
     dispatch({ type: "setTargetColumns", columns: result.targetColumns });
     dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled });
     dispatch({ type: "setComparisonSections", sections: result.comparisonSections });
@@ -368,30 +407,19 @@ export function UploadPage() {
             configManager={
               <ConfigManager
                 configType="rows-and-columns"
-                currentContent={mapWorkflowToRowsColumnsConfig(
-                  {
-                    comparisonColumns: state.comparisonColumns,
-                    keyColumns: state.keyColumns,
-                    aggregationColumns: state.aggregationColumns,
-                    aggregationColumnLabels: state.aggregationColumnLabels,
-                    filters: state.filters,
-                    targetColumns: state.targetColumns,
-                    exceptionColumns: state.exceptionColumns,
-                    commentaryColumns: state.commentaryColumns,
-                    ...(state.extraColumnDisplay
-                      ? { extraColumnDisplay: state.extraColumnDisplay }
-                      : {}),
-                    nestedAggregationEnabled: state.nestedAggregationEnabled,
-                    comparisonSections: state.comparisonSections,
-                  },
-                  families,
-                )}
+                currentContent={currentRowsColumnsConfig.content}
+                saveDisabled={!currentRowsColumnsConfig.content}
                 onLoad={(name) => setConfigLoadName(name)}
                 hasUnsavedChanges={state.comparisonColumns.length > 0 || state.keyColumns.length > 0}
                 title="Load config for rows and columns"
               />
             }
           />
+          {currentRowsColumnsConfig.error && (
+            <p className="alert alert--error" role="alert">
+              Cannot save this rows-and-columns config: {currentRowsColumnsConfig.error}
+            </p>
+          )}
           {configWarnings.length > 0 && (
             <div className="alert alert--warn" role="alert">
               {configWarnings.map((w, i) => (

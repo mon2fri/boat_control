@@ -1,0 +1,16 @@
+ID,BOOK_TYPE,SYSTEM,STATUS,RG_REGION,SA,CVA,COMMENT
+1,MO,Traded Risk,Active,Asia Pacific,Y,N,opposite y n
+2,MO,Traded Risk,Active,Asia Pacific,N,Y,opposite n y
+3,MO,Traded Risk,Active,Asia Pacific,Y,Y,equal flags
+4,MO,Traded Risk,Active,Asia Pacific,N,N,equal flags
+5,MO,Traded Risk,Active,Asia Pacific,MAYBE,N,invalid flag
+6,MO,Traded Risk,Active,Asia Pacific,Y,,unquoted empty csv field
+7,MO,Traded Risk,Inactive,Asia Pacific,Y,N,inactive mo
+8,FO,Other,Active,Asia Pacific,N,Y,opposite n y fo
+9,FO,Other,Active,Asia Pacific,Y,Y,equal flags fo
+10,FO,Other,Active,Asia Pacific,N,N,equal flags fo
+11,FO,Other,Inactive,Asia Pacific,N,Y,inactive fo
+12,MO,Other,Active,Asia Pacific,N,Y,alternative mo
+13,FO,Other,Active,Europe,Y,N,alternative region
+14,FO,Other,Active,Asia Pacific, ,Y,whitespace test
+15,FO,Other,Active,Asia Pacific,Y,"",quoted empty csv field test

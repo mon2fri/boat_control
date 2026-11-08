@@ -79,6 +79,8 @@ function base(): WorkflowState {
     filters: [],
     filterRelation: null,
     filterGroupTree: null,
+    filterGroupingMode: null,
+    filterGroupingRequired: false,
     filterGroupingErrors: [],
     targetColumns: [],
     keyColumns: ["id"],

@@ -12,7 +12,10 @@ import { ConfigLoadNotice } from "../features/configs/ConfigLoadNotice";
 import { useFamilies } from "../features/settings/useSettings";
 import { prepareFilters } from "../api/endpoints";
 import type { PrepareResult } from "../api/domain";
-import { resolveRowsColumnsConfig, mapWorkflowToRowsColumnsConfig } from "../api/configContent";
+import {
+  resolveRowsColumnsConfig,
+  tryMapWorkflowToRowsColumnsConfig,
+} from "../api/configContent";
 import { useSessionExpiryDispatcher } from "../features/session/useSessionExpiry";
 import { RulesPage } from "./RulesPage";
 
@@ -59,6 +62,27 @@ export function PreparePage() {
     : Math.min(99, Math.floor((loadingElapsedMs / PREPARATION_ESTIMATE_MS) * 99));
 
   const hasUnsavedChanges = state.filters.length > 0 || state.targetColumns.length > 0 || state.keyColumns.length > 0 || state.exceptionColumns.length > 0 || state.commentaryColumns.length > 0;
+  const currentRowsColumnsConfig = tryMapWorkflowToRowsColumnsConfig(
+    {
+      comparisonColumns,
+      keyColumns: state.keyColumns,
+      aggregationColumns: state.aggregationColumns,
+      aggregationColumnLabels: state.aggregationColumnLabels,
+      filters: state.filters,
+      filterRelation: state.filterRelation,
+      filterGroupTree: state.filterGroupTree,
+      filterGroupingMode: state.filterGroupingMode,
+      filterGroupingRequired: state.filterGroupingRequired,
+      filterGroupingErrors: state.filterGroupingErrors,
+      targetColumns: state.targetColumns,
+      exceptionColumns: state.exceptionColumns,
+      commentaryColumns: state.commentaryColumns,
+      extraColumnDisplay,
+      nestedAggregationEnabled: state.nestedAggregationEnabled,
+      comparisonSections: state.comparisonSections,
+    },
+    families,
+  );
 
   useEffect(() => {
     if (!header) return;
@@ -125,7 +149,20 @@ export function PreparePage() {
 
     const warnings: string[] = [];
 
-    dispatch({ type: "setFilters", filters: result.filters });
+    const groupingMode = result.filterGroupTree
+      ? "custom"
+      : result.filterRelation ?? (result.filters.length > 1 ? "and" : null);
+    dispatch({
+      type: "setFilterConfiguration",
+      filters: result.filters,
+      relation: result.filterRelation,
+      groupTree: result.filterGroupTree,
+      mode: groupingMode,
+      errors: result.filterGroupingErrors,
+      requireExplicit: Boolean(
+        result.filterRelation || result.filterGroupTree || result.filterGroupingErrors.length,
+      ),
+    });
     dispatch({ type: "setTargetColumns", columns: result.targetColumns });
     dispatch({ type: "setKeyColumns", columns: result.keyColumns });
     dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns });
@@ -164,27 +201,18 @@ export function PreparePage() {
         </div>
         <ConfigManager
           configType="rows-and-columns"
-          currentContent={mapWorkflowToRowsColumnsConfig(
-            {
-              comparisonColumns,
-              keyColumns: state.keyColumns,
-              aggregationColumns: state.aggregationColumns,
-              aggregationColumnLabels: state.aggregationColumnLabels,
-              filters: state.filters,
-              targetColumns: state.targetColumns,
-              exceptionColumns: state.exceptionColumns,
-              commentaryColumns: state.commentaryColumns,
-              extraColumnDisplay,
-              nestedAggregationEnabled: state.nestedAggregationEnabled,
-              comparisonSections: state.comparisonSections,
-            },
-            families,
-          )}
+          currentContent={currentRowsColumnsConfig.content}
+          saveDisabled={!currentRowsColumnsConfig.content}
           onLoad={(name) => setConfigLoadName(name)}
           disabled={prepare.status === "loading"}
           hasUnsavedChanges={hasUnsavedChanges}
           title="Load config for rows and columns"
         />
+        {currentRowsColumnsConfig.error && (
+          <p className="alert alert--error" role="alert">
+            Cannot save this rows-and-columns config: {currentRowsColumnsConfig.error}
+          </p>
+        )}
       </div>
 
       {configLoadName && (
@@ -253,6 +281,21 @@ export function PreparePage() {
       <FilterBuilder
         columns={comparisonColumns}
         rows={state.filters}
+        grouping={{ mode: state.filterGroupingMode, tree: state.filterGroupTree }}
+        onGroupingChange={(grouping) => {
+          if (!grouping) return;
+          const relation = grouping.mode === "and" || grouping.mode === "or"
+            ? grouping.mode
+            : null;
+          dispatch({
+            type: "setFilterConfiguration",
+            filters: state.filters,
+            relation,
+            groupTree: grouping.tree,
+            mode: grouping.mode,
+            requireExplicit: state.filters.length > 1,
+          });
+        }}
         columnValues={prepare.data?.columnValues ?? {}}
         loadingValues={prepare.status === "loading"}
         onChange={(rows) => dispatch({ type: "setFilters", filters: rows })}

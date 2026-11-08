@@ -209,6 +209,8 @@
           "target_columns": {"type": "array", "items": {"type": "string"}, "nullable": true},
           "key_columns": {"type": "array", "items": {"type": "string"}, "minItems": 1},
           "filters": {"type": "array", "items": {"$ref": "#/definitions/filter_row"}},
+          "filter_relation": {"type": "string", "enum": ["and", "or"]},
+          "filter_grouping_tree": {"$ref": "#/definitions/group_node"},
           "rule_ids": {"type": "array", "items": {"type": "string"}}
         }
       },
@@ -297,11 +299,16 @@
     },
     "filter_row": {
       "type": "object",
-      "required": ["column", "operator", "filter_value"],
+      "required": ["column", "operator"],
+      "anyOf": [
+        {"required": ["filter_value"]},
+        {"required": ["filter_values"]}
+      ],
       "properties": {
         "column": {"type": "string"},
         "operator": {"type": "string", "enum": ["eq", "neq", "contains", "ncontains"]},
-        "filter_value": {"type": "string"}
+        "filter_value": {"type": "string"},
+        "filter_values": {"type": "array", "items": {"type": "string"}, "minItems": 1}
       }
     },
     "condition": {
@@ -320,7 +327,9 @@
         "format": {"type": "string", "enum": ["value_vs_column", "column_vs_column"]},
         "column_name": {"type": "string"},
         "operator": {"type": "string"},
-        "target_value": {"type": "string"}
+        "target_value": {"type": "string"},
+        "target_values": {"type": "array", "items": {"type": "string"}},
+        "comparison_mode": {"type": "string", "enum": ["comparison_vs_baseline", "comparison_vs_comparison"]}
       }
     },
     "group_node": {
@@ -353,19 +362,30 @@
     },
     "rule_draft": {
       "type": "object",
-      "required": ["name", "logic"],
+      "required": ["name"],
+      "oneOf": [
+        {"required": ["logic"], "not": {"required": ["logic_clauses"]}},
+        {"required": ["logic_clauses"], "not": {"required": ["logic"]}}
+      ],
       "properties": {
         "name": {"type": "string", "minLength": 1},
         "description": {"type": "string", "default": ""},
         "conditions": {"type": "array", "items": {"$ref": "#/definitions/condition"}},
         "condition_relation": {"type": "string", "enum": ["and", "or"], "nullable": true},
         "grouping_tree": {"$ref": "#/definitions/group_node", "nullable": true},
-        "logic": {"$ref": "#/definitions/logic_clause"}
+        "logic": {"$ref": "#/definitions/logic_clause"},
+        "logic_clauses": {"type": "array", "items": {"$ref": "#/definitions/logic_clause"}, "minItems": 1},
+        "logic_relation": {"type": "string", "enum": ["and", "or"]},
+        "logic_grouping_tree": {"$ref": "#/definitions/group_node"}
       }
     },
     "rule": {
       "type": "object",
-      "required": ["rule_id", "rule_identifier", "enabled", "name", "description", "conditions", "logic"],
+      "required": ["rule_id", "rule_identifier", "enabled", "name", "description", "conditions"],
+      "oneOf": [
+        {"required": ["logic"], "not": {"required": ["logic_clauses"]}},
+        {"required": ["logic_clauses"], "not": {"required": ["logic"]}}
+      ],
       "properties": {
         "rule_id": {"type": "string", "pattern": "^R\\d{3,}$"},
         "rule_identifier": {"type": "string", "pattern": "^CBR1_[0-9A-Z]{20}$"},
@@ -375,7 +395,10 @@
         "conditions": {"type": "array", "items": {"$ref": "#/definitions/condition"}},
         "condition_relation": {"type": "string", "enum": ["and", "or"], "nullable": true},
         "grouping_tree": {"$ref": "#/definitions/group_node", "nullable": true},
-        "logic": {"$ref": "#/definitions/logic_clause"}
+        "logic": {"$ref": "#/definitions/logic_clause"},
+        "logic_clauses": {"type": "array", "items": {"$ref": "#/definitions/logic_clause"}, "minItems": 1},
+        "logic_relation": {"type": "string", "enum": ["and", "or"]},
+        "logic_grouping_tree": {"$ref": "#/definitions/group_node"}
       }
     },
     "attribute_change": {
@@ -421,7 +444,10 @@
         "violating_column": {"type": "string"},
         "violating_value": {},
         "rule_logic": {"type": "string"},
-        "details": {"type": "string"}
+        "details": {"type": "string"},
+        "outcome_columns": {"type": "array", "items": {"type": "string"}},
+        "outcome_values": {"type": "object"},
+        "outcome_results": {"type": "object", "additionalProperties": {"type": "boolean"}}
       }
     },
     "validation_result": {
@@ -448,6 +474,8 @@
         "target_columns": {"type": "array", "items": {"type": "string"}},
         "key_columns": {"type": "array", "items": {"type": "string"}},
         "filters_applied": {"type": "array", "items": {"$ref": "#/definitions/filter_row"}},
+        "filter_relation": {"type": "string", "enum": ["and", "or"]},
+        "filter_grouping_tree": {"$ref": "#/definitions/group_node"},
         "rule_bindings": {"type": "object", "additionalProperties": {"type": "string"}}
       }
     },

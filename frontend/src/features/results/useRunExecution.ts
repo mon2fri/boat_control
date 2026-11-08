@@ -37,6 +37,7 @@ export function useRunExecution(onSuccess: (result: RunResult) => void) {
         request.filterRelation ?? null,
         request.filterGroupTree ?? null,
         request.comparisonColumns,
+        request.filterGroupingRequired ?? false,
       );
       const groupingErrors = [
         ...new Set([...(request.filterGroupingErrors ?? []), ...validation.errors]),

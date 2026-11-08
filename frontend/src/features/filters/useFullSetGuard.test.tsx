@@ -9,6 +9,8 @@ const baseState: WorkflowState = {
   filters: [],
   filterRelation: null,
   filterGroupTree: null,
+  filterGroupingMode: null,
+  filterGroupingRequired: false,
   filterGroupingErrors: [],
   targetColumns: [],
   keyColumns: [],

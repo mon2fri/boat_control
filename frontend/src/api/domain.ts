@@ -8,6 +8,7 @@ export type FilterOperator = "equals" | "not_equals" | "contains" | "not_contain
 export type LogicOperator = FilterOperator | "greater_than" | "less_than";
 /** Flat joiner for a clause list when no custom tree is configured. */
 export type GroupRelation = "and" | "or";
+export type FilterGroupingMode = GroupRelation | "custom";
 
 export const FILTER_OPERATORS: { value: FilterOperator; label: string }[] = [
   { value: "equals", label: "equals to" },
@@ -169,6 +170,8 @@ export interface RunRequest {
   filterGroupTree?: GroupNode | null;
   /** Non-empty when the restored filter expression must be repaired before running. */
   filterGroupingErrors?: string[];
+  /** Require explicit grouping for editor-authored multi-filter expressions. */
+  filterGroupingRequired?: boolean;
   targetColumns: string[];
   /**
    * Columns used to identify a record across the two files. At least one is

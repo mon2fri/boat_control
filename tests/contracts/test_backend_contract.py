@@ -205,6 +205,63 @@ class TestRulesContract:
         resp = api_client.delete(f"/api/rules/{rule_id}/")
         assert resp.status_code == 200
 
+    def test_grouped_outcome_rule_round_trip_shape(self, api_client: APIClient) -> None:
+        response = api_client.post(
+            "/api/rules/",
+            {
+                "name": "Opposite flags",
+                "conditions": [],
+                "logic_clauses": [
+                    {
+                        "format": "value_vs_column",
+                        "column_name": "sa",
+                        "operator": "eq",
+                        "target_value": "Y",
+                    },
+                    {
+                        "format": "value_vs_column",
+                        "column_name": "cva",
+                        "operator": "eq",
+                        "target_value": "N",
+                    },
+                    {
+                        "format": "value_vs_column",
+                        "column_name": "sa",
+                        "operator": "eq",
+                        "target_value": "N",
+                    },
+                    {
+                        "format": "value_vs_column",
+                        "column_name": "cva",
+                        "operator": "eq",
+                        "target_value": "Y",
+                    },
+                ],
+                "logic_relation": "or",
+                "logic_grouping_tree": {
+                    "kind": "or",
+                    "children": [
+                        {"kind": "and", "children": [
+                            {"kind": "leaf", "conditionId": "c0"},
+                            {"kind": "leaf", "conditionId": "c1"},
+                        ]},
+                        {"kind": "and", "children": [
+                            {"kind": "leaf", "conditionId": "c2"},
+                            {"kind": "leaf", "conditionId": "c3"},
+                        ]},
+                    ],
+                },
+            },
+            format="json",
+        )
+        assert response.status_code == 201
+        rule = response.json()
+        assert "logic" not in rule
+        assert len(rule["logic_clauses"]) == 4
+        assert rule["logic_relation"] == "or"
+        assert rule["logic_grouping_tree"]["children"][0]["kind"] == "and"
+        assert api_client.delete(f"/api/rules/{rule['rule_id']}/").status_code == 200
+
 
 class TestExecuteContract:
     def test_execute_response_shape(self, api_client: APIClient, session: dict) -> None:
@@ -266,6 +323,41 @@ class TestExecuteContract:
         assert resp.status_code == 200
         data = resp.json()
         assert data["result"]["validation"]["total_violations"] == 0
+
+    def test_execute_persists_nested_filter_grouping(
+        self, api_client: APIClient, session: dict
+    ) -> None:
+        response = api_client.post(
+            "/api/runs/execute/",
+            {
+                "session_id": session["session_id"],
+                "target_columns": ["status"],
+                "key_columns": ["id"],
+                "filters": [
+                    {"column": "name", "operator": "eq", "filter_value": "alice"},
+                    {"column": "status", "operator": "eq", "filter_value": "active"},
+                    {"column": "name", "operator": "contains", "filter_value": "car"},
+                ],
+                "filter_relation": "and",
+                "filter_grouping_tree": {
+                    "kind": "or",
+                    "children": [
+                        {"kind": "and", "children": [
+                            {"kind": "leaf", "conditionId": "c0"},
+                            {"kind": "leaf", "conditionId": "c1"},
+                        ]},
+                        {"kind": "leaf", "conditionId": "c2"},
+                    ],
+                },
+                "rule_ids": [],
+            },
+            format="json",
+        )
+        assert response.status_code == 200
+        result = response.json()["result"]
+        assert result["filter_relation"] == "and"
+        assert result["filter_grouping_tree"]["kind"] == "or"
+        assert result["filter_grouping_tree"]["children"][0]["kind"] == "and"
 
 
 class TestHistoryContract:

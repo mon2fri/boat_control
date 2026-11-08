@@ -5,6 +5,7 @@ import { render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WorkflowProvider, useWorkflow } from "../state/WorkflowContext";
+import type { HeaderReport } from "../api/domain";
 import { RulesPage } from "./RulesPage";
 
 const wireRule = {
@@ -61,12 +62,32 @@ function WorkflowStateProbe({
   return null;
 }
 
-function renderPageWithProbe(): {
+function renderPageWithHeaderAndProbe(): {
   states: { selectedRuleIndexes: string[] }[];
   queryClient: QueryClient;
 } {
+  function HeaderSeeder() {
+    const { dispatch } = useWorkflow();
+    useEffect(() => {
+      dispatch({
+        type: "setHeader",
+        header: {
+          sessionId: "rules-config-session",
+          file1Name: "baseline.csv",
+          file2Name: "comparison.csv",
+          file1Deduplicated: false,
+          file2Deduplicated: false,
+          common: ["id", "name", "status", "score", "region"],
+          file1Only: [],
+          file2Only: [],
+        } satisfies HeaderReport,
+      });
+    }, [dispatch]);
+    return null;
+  }
+
   const states: { selectedRuleIndexes: string[] }[] = [];
-  const onChange = (s: { selectedRuleIndexes: string[] }) => states.push(s);
+  const onChange = (state: { selectedRuleIndexes: string[] }) => states.push(state);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -74,6 +95,7 @@ function renderPageWithProbe(): {
     <QueryClientProvider client={queryClient}>
       <WorkflowProvider>
         <MemoryRouter>
+          <HeaderSeeder />
           <RulesPage />
           <WorkflowStateProbe onChange={onChange} />
         </MemoryRouter>
@@ -355,7 +377,7 @@ describe("RulesPage", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const { states } = renderPageWithProbe();
+    const { states } = renderPageWithHeaderAndProbe();
     await waitFor(() => expect(screen.getByText(/Region present/)).toBeInTheDocument());
 
     // Trigger the config load through the UI: pick "v2" in the ConfigManager

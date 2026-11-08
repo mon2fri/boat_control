@@ -7,7 +7,7 @@
  * shape here so it can be wired to those fields without changing the tree
  * editor itself.
  */
-import type { Condition, FilterRow, GroupNode } from "../../api/domain";
+import type { Condition, FilterGroupingMode, FilterRow, GroupNode } from "../../api/domain";
 import { formatFilterRow } from "./formatFilterRow";
 import {
   buildFlatGroupingTree,
@@ -17,7 +17,7 @@ import {
   type GroupingValidation,
 } from "../rules/groupingEditorSupport";
 
-export type FilterGroupingMode = "and" | "or" | "custom";
+export type { FilterGroupingMode } from "../../api/domain";
 
 export interface FilterGrouping {
   mode: FilterGroupingMode | null;

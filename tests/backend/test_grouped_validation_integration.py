@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import polars as pl
-from apps.rules.services import rule_from_payload
-from apps.runs.services import validate_rows
+from apps.rules.services import rule_from_payload, validate_rule
+from apps.runs.services import apply_filters, validate_rows
 
 
 def _leaf(index: int) -> dict[str, str]:
@@ -83,3 +85,54 @@ def test_materialized_nested_outcome_rule_runs_exact_y_n_truth_table() -> None:
     ]
     assert all(item.outcome_columns == ("SA", "CVA") for item in violations)
     assert all(set(item.outcome_values) == {"SA", "CVA"} for item in violations)
+
+
+def test_single_outcome_clause_cannot_silently_discard_grouping_fields() -> None:
+    result = validate_rule({
+        "name": "Contradictory single outcome",
+        "conditions": [],
+        "logic_clauses": [{
+            "format": "value_vs_column",
+            "column_name": "status",
+            "operator": "eq",
+            "target_value": "Active",
+        }],
+        "logic_relation": "or",
+    })
+    assert result.valid is False
+    assert any("Single-outcome" in error for error in result.errors)
+
+
+def test_reproducible_sample_population_has_documented_11_rows() -> None:
+    sample_dir = Path(__file__).resolve().parents[2] / "samples" / "grouped_validation"
+    baseline = pl.scan_csv(sample_dir / "baseline.csv", infer_schema_length=0)
+    comparison = pl.scan_csv(sample_dir / "comparison.csv", infer_schema_length=0)
+    filters = [
+        {"column": "BOOK_TYPE", "operator": "eq", "filter_value": "MO"},
+        {"column": "SYSTEM", "operator": "eq", "filter_value": "Traded Risk"},
+        {"column": "BOOK_TYPE", "operator": "eq", "filter_value": "FO"},
+        {"column": "STATUS", "operator": "eq", "filter_value": "Active"},
+        {"column": "RG_REGION", "operator": "eq", "filter_value": "Asia Pacific"},
+    ]
+    tree = {
+        "kind": "and",
+        "children": [
+            {
+                "kind": "or",
+                "children": [
+                    _and(_leaf(0), _leaf(1)),
+                    _leaf(2),
+                ],
+            },
+            _leaf(3),
+            _leaf(4),
+        ],
+    }
+
+    _, filtered_comparison = apply_filters(baseline, comparison, filters, "and", tree)
+
+    selected = filtered_comparison.collect()
+    assert selected.height == 11
+    assert selected.get_column("ID").to_list() == [
+        "1", "2", "3", "4", "5", "6", "8", "9", "10", "14", "15",
+    ]

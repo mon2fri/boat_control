@@ -573,6 +573,10 @@ def _validate_outcome_form(rule_data: dict[str, Any], errors: list[str]) -> None
         errors.append(f"Invalid logic_relation. Must be one of: {valid_ops}")
 
     tree_raw = rule_data.get("logic_grouping_tree")
+    if len(clauses) == 1 and (relation is not None or tree_raw is not None):
+        errors.append(
+            "Single-outcome logic_clauses must not include relation or grouping fields."
+        )
     if len(clauses) >= 2 and relation is None and tree_raw is None:
         errors.append("logic_relation is required when there are 2+ logic clauses.")
     if tree_raw is not None:

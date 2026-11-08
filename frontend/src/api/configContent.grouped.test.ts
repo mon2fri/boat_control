@@ -94,6 +94,54 @@ describe("rows-and-columns filter grouping", () => {
     expect(resolved.filterGroupingErrors).toEqual([]);
   });
 
+  it("saves the selected flat relation without activating a retained custom tree", () => {
+    const content = mapWorkflowToRowsColumnsConfig({
+      comparisonColumns: availableColumns,
+      keyColumns: [],
+      aggregationColumns: [],
+      filters: [
+        { id: "runtime-book", column: "book", operator: "equals", values: ["MO"] },
+        { id: "runtime-system", column: "system", operator: "equals", values: ["Traded Risk"] },
+        { id: "runtime-status", column: "status", operator: "equals", values: ["Active"] },
+      ],
+      filterRelation: null,
+      filterGroupTree: {
+        kind: "or",
+        children: [
+          { kind: "leaf", conditionId: "runtime-book" },
+          {
+            kind: "and",
+            children: [
+              { kind: "leaf", conditionId: "runtime-system" },
+              { kind: "leaf", conditionId: "runtime-status" },
+            ],
+          },
+        ],
+      },
+      filterGroupingMode: "and",
+      filterGroupingRequired: true,
+      targetColumns: [],
+      comparisonSections: [],
+    }, families);
+    expect(content.filterRelation).toBe("and");
+    expect(content.filterGroupingTree).toBeUndefined();
+  });
+
+  it("blocks saving newly authored multiple filters without an explicit expression", () => {
+    expect(() => mapWorkflowToRowsColumnsConfig({
+      comparisonColumns: availableColumns,
+      keyColumns: [],
+      aggregationColumns: [],
+      filters: [
+        { id: "a", column: "book", operator: "equals", values: ["MO"] },
+        { id: "b", column: "system", operator: "equals", values: ["Traded Risk"] },
+      ],
+      filterGroupingRequired: true,
+      targetColumns: [],
+      comparisonSections: [],
+    }, families)).toThrow(/must choose AND, OR, or a custom grouping/i);
+  });
+
   it("does not silently drop an unresolved referenced filter", () => {
     const content = {
       comparisonColumns: ["book", "system"],
@@ -125,6 +173,22 @@ describe("rows-and-columns filter grouping", () => {
     expect(resolved.filterGroupingErrors.join(" ")).toMatch(/unknown or removed/i);
     expect(resolved.warnings.some((warning) => warning.type === "invalid_grouping")).toBe(true);
     expect(resolved.warnings.some((warning) => warning.type === "excluded_column")).toBe(true);
+  });
+
+  it("blocks unresolved flat or legacy filter rows instead of broadening their population", () => {
+    const resolved = resolveRowsColumnsConfig({
+      comparisonColumns: ["book", "system"],
+      keyColumns: [],
+      aggregationColumns: [],
+      filters: [
+        { column: "book", operator: "eq", filter_values: ["MO"] },
+        { column: "Missing Column", operator: "eq", filter_values: ["X"] },
+      ],
+      filterRelation: "and",
+      targetColumns: [],
+    }, families, availableColumns);
+    expect(resolved.filters).toHaveLength(1);
+    expect(resolved.filterGroupingErrors.join(" ")).toMatch(/configured filter 2 could not be resolved/i);
   });
 
   it("reads snake_case grouping aliases from exported configs", () => {
@@ -335,7 +399,7 @@ describe("rules config outcome grouping", () => {
       kind: "or",
       children: [
         {
-          kind: "and",
+          kind: "or",
           children: [
             { kind: "leaf", conditionId: "l0" },
             { kind: "leaf", conditionId: "l1" },
@@ -344,5 +408,75 @@ describe("rules config outcome grouping", () => {
         { kind: "leaf", conditionId: "l2" },
       ],
     });
+  });
+
+  it("expands condition families with operator semantics inside their original grouping", () => {
+    const { drafts, warnings } = resolveRulesConfig([{
+      name: "Family condition",
+      conditions: [
+        {
+          column_name: { kind: "column_family", name: "Name Family" },
+          operator: "eq",
+          filter_value: "X",
+        },
+        { column_name: "sa", operator: "eq", filter_value: "Y" },
+      ],
+      condition_relation: "and",
+      logic: { format: "value_vs_column", column_name: "status", operator: "eq", target_value: "Active" },
+    }], families, availableColumns);
+    expect(warnings).toEqual([]);
+    expect(drafts[0]?.groupTree).toEqual({
+      kind: "and",
+      children: [
+        {
+          kind: "or",
+          children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ],
+        },
+        { kind: "leaf", conditionId: "c2" },
+      ],
+    });
+  });
+
+  it("keeps unresolved condition references distinct from later resolved indexes", () => {
+    const { drafts, warnings } = resolveRulesConfig([{
+      name: "Missing condition",
+      conditions: [
+        { column_name: "missing", operator: "eq", filter_value: "X" },
+        { column_name: "sa", operator: "eq", filter_value: "Y" },
+      ],
+      condition_relation: "or",
+      grouping_tree: {
+        kind: "or",
+        children: [
+          { kind: "leaf", conditionId: "c0" },
+          { kind: "leaf", conditionId: "c1" },
+        ],
+      },
+      logic: { format: "value_vs_column", column_name: "status", operator: "eq", target_value: "Active" },
+    }], families, availableColumns);
+    expect(drafts[0]?.groupTree).toEqual({
+      kind: "or",
+      children: [
+        { kind: "leaf", conditionId: "__missing_c0__" },
+        { kind: "leaf", conditionId: "c0" },
+      ],
+    });
+    expect(warnings.some((warning) => warning.type === "invalid_grouping")).toBe(true);
+  });
+
+  it("marks a missing flat grouped outcome as blocking instead of dropping its clause", () => {
+    const { drafts, warnings } = resolveRulesConfig([{
+      name: "Missing outcome",
+      logic_clauses: [
+        { format: "value_vs_column", column_name: "missing", operator: "eq", target_value: "Y" },
+        { format: "value_vs_column", column_name: "cva", operator: "eq", target_value: "N" },
+      ],
+      logic_relation: "and",
+    }], families, availableColumns);
+    expect(drafts[0]?.logicGroupingErrors?.join(" ")).toMatch(/outcome 1.*no available members/i);
+    expect(warnings.some((warning) => warning.type === "invalid_grouping")).toBe(true);
   });
 });

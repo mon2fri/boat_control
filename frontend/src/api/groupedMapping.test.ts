@@ -185,6 +185,17 @@ describe("filter grouping transport", () => {
     expect(body).not.toHaveProperty("filter_grouping_tree");
   });
 
+  it("requires explicit grouping for newly authored multi-filter runs", () => {
+    expect(() => mapRunRequestToWire({
+      ...baseRequest,
+      filters,
+      filterGroupingRequired: true,
+    })).toThrow(/must choose AND, OR, or a custom grouping/i);
+
+    const legacy = mapRunRequestToWire({ ...baseRequest, filters });
+    expect(legacy.filter_relation).toBeUndefined();
+  });
+
   it("restores persisted grouping into runtime row IDs", () => {
     const result = mapRunDocumentToResult(runDocument({
       filter_relation: "or",

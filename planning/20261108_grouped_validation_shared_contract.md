@@ -64,6 +64,28 @@ This contract is a coordination starting point, not permission to disregard the
 requirement. A and B publish actual Python interfaces in their implementation docs
 and C aligns transport. Any necessary adjustment must be recorded in the shared
 contract by the reviewer, with affected workers notified through manual handover.
+
+## Integration clarifications (reviewed 2026-11-08)
+
+- B's runtime consumes A's concrete `Rule.outcome_expression` (`LogicExpression`),
+  including an already parsed immutable `GroupingNode`; it must not assume
+  `logic_grouping_tree` is still a wire dictionary. Runtime predicate and tree
+  behavior delegates to A's `apps.validation_logic` helpers.
+- Frontend-only `filterGroupingMode` and `filterGroupingRequired` track whether a
+  newly authored multi-filter expression is incomplete and which expression is
+  currently active. They are workflow/editor state, not persisted wire fields.
+  A newly authored multi-filter must choose AND, OR, or a valid custom tree;
+  a loaded legacy config/run with no grouping retains AND. When a flat mode is
+  active, a retained inactive custom tree is not sent or saved; when custom mode
+  is active, the tree is authoritative.
+- A configured filter or rule condition/outcome that cannot resolve to an
+  available column/family member is a blocking restoration/import error even
+  when a flat relation (rather than a tree) is in use. It must not be dropped
+  and thereby change the expression or broaden its population.
+- Family expansion preserves the clause's own operator semantics inside its
+  parent expression: positive predicates combine concrete members with OR;
+  negative predicates combine them with AND. If references cannot be preserved,
+  the expression is rejected with an actionable error.
 Workers must not independently choose incompatible payload shapes.
 
 ## Ownership and parallel work

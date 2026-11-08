@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useMemo, useReducer, type React
 import type {
   ComparisonSection,
   FilterRow,
+  FilterGroupingMode,
   GroupNode,
   GroupRelation,
   HeaderReport,
@@ -35,6 +36,10 @@ export interface WorkflowState {
   filterRelation: GroupRelation | null;
   /** Runtime grouping tree for filters; leaves reference `filters[].id`. */
   filterGroupTree: GroupNode | null;
+  /** UI mode preserves a custom tree while the user temporarily selects AND/OR. */
+  filterGroupingMode: FilterGroupingMode | null;
+  /** New/editor-authored multi-filter expressions cannot fall back to legacy AND. */
+  filterGroupingRequired: boolean;
   /** Non-empty when the current filter expression needs repair before running. */
   filterGroupingErrors: string[];
   targetColumns: string[];
@@ -76,6 +81,8 @@ const initialState: WorkflowState = {
   filters: [],
   filterRelation: null,
   filterGroupTree: null,
+  filterGroupingMode: null,
+  filterGroupingRequired: false,
   filterGroupingErrors: [],
   targetColumns: [],
   keyColumns: [],
@@ -116,7 +123,9 @@ type Action =
       filters: FilterRow[];
       relation?: GroupRelation | null;
       groupTree?: GroupNode | null;
+      mode?: FilterGroupingMode | null;
       errors?: string[];
+      requireExplicit?: boolean;
     }
   | { type: "setFilterRelation"; relation: GroupRelation | null }
   | { type: "setFilterGroupTree"; groupTree: GroupNode | null }
@@ -149,10 +158,12 @@ export function validateWorkflowFilters(
   relation: GroupRelation | null,
   groupTree: GroupNode | null,
   availableColumns?: string[],
+  requireExplicitForMultiple = false,
 ): FilterStateValidation {
   const grouped = resolveGroupedExpression(filters, relation, groupTree, {
     label: "Row filter grouping",
-    allowLegacyAnd: true,
+    allowLegacyAnd: !requireExplicitForMultiple,
+    requireExplicitForMultiple,
   });
   const errors = [...grouped.errors];
   const columnSet = availableColumns ? new Set(availableColumns) : null;
@@ -186,6 +197,8 @@ export function workflowConfigurationFromRun(
   filters: FilterRow[];
   filterRelation: GroupRelation | null;
   filterGroupTree: GroupNode | null;
+  filterGroupingMode: FilterGroupingMode | null;
+  filterGroupingRequired: boolean;
   filterGroupingErrors: string[];
   nestedAggregationEnabled: boolean;
   aggregationColumns: string[];
@@ -201,16 +214,25 @@ export function workflowConfigurationFromRun(
   );
   const filterRelation = result.filtersRelation ?? null;
   const filterGroupTree = result.filtersGroupTree ?? null;
+  const filterGroupingMode: FilterGroupingMode | null = filterGroupTree
+    ? "custom"
+    : result.filtersRelation ?? (filters.length > 1 ? "and" : null);
+  const filterGroupingRequired = Boolean(
+    filterRelation || filterGroupTree || result.filtersGroupingErrors?.length,
+  );
   const validation = validateWorkflowFilters(
     filters,
-    filterRelation,
-    filterGroupTree,
+    filterGroupingMode === "custom" ? null : filterGroupingMode,
+    filterGroupingMode === "custom" ? filterGroupTree : null,
     availableColumns,
+    filterGroupingRequired,
   );
   return {
     filters,
     filterRelation,
     filterGroupTree,
+    filterGroupingMode,
+    filterGroupingRequired,
     filterGroupingErrors: result.filtersGroupingErrors?.length
       ? [...result.filtersGroupingErrors]
       : validation.errors,
@@ -239,17 +261,22 @@ function withFilterValidation(
   relation: GroupRelation | null,
   groupTree: GroupNode | null,
   availableColumns?: string[],
-): Pick<WorkflowState, "filters" | "filterRelation" | "filterGroupTree" | "filterGroupingErrors"> {
+  requireExplicit = state.filterGroupingRequired,
+  mode = state.filterGroupingMode,
+): Pick<WorkflowState, "filters" | "filterRelation" | "filterGroupTree" | "filterGroupingMode" | "filterGroupingRequired" | "filterGroupingErrors"> {
   const validation = validateWorkflowFilters(
     filters,
-    relation,
-    groupTree,
+    mode === "custom" ? null : mode,
+    mode === "custom" ? groupTree : null,
     availableColumns ?? state.comparisonColumns,
+    requireExplicit,
   );
   return {
     filters,
     filterRelation: relation,
     filterGroupTree: groupTree,
+    filterGroupingMode: mode,
+    filterGroupingRequired: requireExplicit,
     filterGroupingErrors: validation.errors,
   };
 }
@@ -283,6 +310,7 @@ export function workflowReducer(state: WorkflowState, action: Action): WorkflowS
           state.filterRelation,
           state.filterGroupTree,
           cols,
+          state.filterGroupingRequired,
         ),
         comparisonColumns: cols,
         preparedData: null,
@@ -318,6 +346,7 @@ export function workflowReducer(state: WorkflowState, action: Action): WorkflowS
           state.filterRelation,
           state.filterGroupTree,
           next,
+          state.filterGroupingRequired,
         ),
         comparisonColumns: next,
         preparedData: null,
@@ -347,6 +376,8 @@ export function workflowReducer(state: WorkflowState, action: Action): WorkflowS
           action.filters,
           state.filterRelation,
           state.filterGroupTree,
+          undefined,
+          action.filters.length > 1,
         ),
         confirmFullSet: false,
       };
@@ -356,6 +387,13 @@ export function workflowReducer(state: WorkflowState, action: Action): WorkflowS
         action.filters,
         action.relation !== undefined ? action.relation : state.filterRelation,
         action.groupTree !== undefined ? action.groupTree : state.filterGroupTree,
+        undefined,
+        action.requireExplicit ?? state.filterGroupingRequired,
+        action.mode !== undefined
+          ? action.mode
+          : action.groupTree
+            ? "custom"
+            : action.relation ?? state.filterGroupingMode,
       );
       return {
         ...state,
@@ -374,6 +412,9 @@ export function workflowReducer(state: WorkflowState, action: Action): WorkflowS
           state.filters,
           action.relation,
           state.filterGroupTree,
+          undefined,
+          state.filters.length > 1,
+          action.relation,
         ),
         confirmFullSet: false,
       };
@@ -385,6 +426,9 @@ export function workflowReducer(state: WorkflowState, action: Action): WorkflowS
           state.filters,
           state.filterRelation,
           action.groupTree,
+          undefined,
+          state.filters.length > 1,
+          action.groupTree ? "custom" : state.filterGroupingMode,
         ),
         confirmFullSet: false,
       };

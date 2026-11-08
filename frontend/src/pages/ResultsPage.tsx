@@ -28,7 +28,7 @@ function completeFilters(filters: FilterRow[]): FilterRow[] {
   return filters.filter((f) => f.column.trim() !== "" && f.values.length > 0);
 }
 
-function buildRunRequest(
+export function buildRunRequest(
   state: WorkflowState,
   newExceptionsOnly: boolean = state.newExceptionsOnly,
 ): RunRequest | null {
@@ -39,6 +39,12 @@ function buildRunRequest(
     newExceptionsOnly,
     comparisonColumns: state.comparisonColumns,
     filters: completeFilters(state.filters),
+    filterRelation: state.filterGroupingMode === "and" || state.filterGroupingMode === "or"
+      ? state.filterGroupingMode
+      : null,
+    filterGroupTree: state.filterGroupingMode === "custom" ? state.filterGroupTree : null,
+    filterGroupingErrors: state.filterGroupingErrors,
+    filterGroupingRequired: state.filterGroupingRequired,
     targetColumns: state.targetColumns,
     keyColumns: state.keyColumns,
     aggregationColumns: state.aggregationColumns,
@@ -95,24 +101,18 @@ export function ResultsPage() {
         if (cancelled) return;
         // Restore the configuration that produced this run so subsequent
         // renders (e.g. nested aggregation tree) match the persisted state.
-        dispatch({ type: "setResult", result });
+        dispatch({
+          type: "restoreRunConfiguration",
+          result,
+          ...(result.comparisonColumns
+            ? { availableColumns: result.comparisonColumns }
+            : {}),
+        });
         // Restore the As-of Date used by this run, including for historical
         // runs that predate tracking (leave the workflow default untouched).
         if (result.asOfDate) {
           dispatch({ type: "setAsOfDate", date: result.asOfDate });
         }
-        // Always restore nested-aggregation flag (including false).
-        dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled ?? false });
-        // Always restore aggregation columns (including empty array).
-        dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns ?? [] });
-        dispatch({ type: "setAggregationColumnLabels", labels: result.aggregationColumnLabels ?? {} });
-        // Always restore key columns (including empty array).
-        dispatch({ type: "setKeyColumns", columns: result.keyColumns ?? [] });
-        // Always restore exception columns (including empty array).
-        dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns ?? [] });
-        dispatch({ type: "setCommentaryColumns", columns: result.commentaryColumns ?? [] });
-        dispatch({ type: "setNewExceptionsOnly", enabled: result.newExceptionsOnly ?? true });
-        dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true } });
       })
       .catch(() => {
         // Surface a quiet failure by leaving the result empty; the page's
