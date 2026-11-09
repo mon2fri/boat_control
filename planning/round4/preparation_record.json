@@ -1,0 +1,51 @@
+{
+  "prepared_utc": "20261109T122143Z",
+  "implementation_base": "484902fc88e2170ce242633aba702f51dca69ab5",
+  "archive": "/home/zwj808/PycharmProjects/boat_control-worktree-archives/round4-preparation-20261109T122143Z/grouped-validation-source-and-runtime.tar.gz",
+  "archive_excludes": [
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "node_modules"
+  ],
+  "old_worktrees": [
+    {
+      "worktree": "/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/integration",
+      "HEAD": "484902fc88e2170ce242633aba702f51dca69ab5",
+      "branch": "refs/heads/work/20261108-grouped-validation-integration",
+      "archive_branch": "archive/20261109-pre-round4/integration"
+    },
+    {
+      "worktree": "/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/worker-a",
+      "HEAD": "b9ab55dfc0537a0954681a2310d075502dfbc919",
+      "branch": "refs/heads/work/20261108-grouped-validation-round1-worker-a",
+      "archive_branch": "archive/20261109-pre-round4/worker-a"
+    },
+    {
+      "worktree": "/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/worker-b",
+      "HEAD": "113f055df8ede81722cb1c3d4d0423abb580ecd9",
+      "branch": "refs/heads/work/20261108-grouped-validation-round1-worker-b",
+      "archive_branch": "archive/20261109-pre-round4/worker-b"
+    },
+    {
+      "worktree": "/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/worker-c",
+      "HEAD": "f9fd4c494aef9c75ed5d9224dbc9ff5f09b53d33",
+      "branch": "refs/heads/work/20261108-grouped-validation-round1-worker-c",
+      "archive_branch": "archive/20261109-pre-round4/worker-c"
+    },
+    {
+      "worktree": "/home/zwj808/PycharmProjects/boat_control-worktrees/grouped-validation/worker-d",
+      "HEAD": "ac17b61873560a07894266a48cbcf6540771ea0e",
+      "branch": "refs/heads/work/20261108-grouped-validation-round1-worker-d",
+      "archive_branch": "archive/20261109-pre-round4/worker-d"
+    }
+  ],
+  "new_root": "/home/zwj808/PycharmProjects/boat_control-worktrees/round4",
+  "workers": 3,
+  "main_head": "6b4bc94c3f52a848a7c1871dce40501c7e643603",
+  "main_index_tree_before": "2dc06091aa192b71714ea4d4c24b78b2bf6c5a0a",
+  "note": "Preparation commit is the initial commit shared by new worktrees; resolve it using git log --all --grep=\"prepare round 4 worker allocation\". Main tracked changes and index remain untouched."
+}
