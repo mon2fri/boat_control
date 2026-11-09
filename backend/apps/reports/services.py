@@ -26,6 +26,9 @@ _FILTER_OP_LABELS: dict[str, str] = {
 }
 _EXCEL_MAX_ROWS = 1_048_576
 _EXCEL_MAX_COLUMNS = 16_384
+# Round 4 enhancement 3 exact copy (including source typo `thie`); pending user
+# copy review. Used for exported HTML + Excel empty-rule sections.
+_EMPTY_RULE_HINT = "Nil exception was captured by thie rule."
 
 
 def _observed_item_text(value: Any) -> str:
@@ -867,7 +870,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
                 sections.append("</tr>")
             sections.append("</table>")
         else:
-            sections.append("<p>Nil exception detected under current rule.</p>")
+            sections.append(f"<p>{_escape_html(_EMPTY_RULE_HINT)}</p>")
         sections.append("</section>")
 
     sections.append(_render_exception_table(result, validation, key_columns))
@@ -1224,31 +1227,37 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
             )
         )
         hide_comparison = bool(summary.get("hide_comparison", False))
-        if len(violations) + 8 > _EXCEL_MAX_ROWS:
-            raise ValueError(f"Rule {rule_id} exceeds Excel's 1,048,576-row worksheet limit.")
-        headers = [*(key_columns or ["Row"]), *extra_columns]
-        if not hide_comparison:
-            headers.extend(["Column", "In Baseline", "In Comparison"])
-        _append_row(sheet, 8, headers)
-        row_number = 9
-        for violation in violations:
-            values = _excel_identity(
-                key_columns,
-                violation.get("key_columns") or {},
-                violation.get("row_index", ""),
-            )
-            extra_values = violation.get("extra_values") or {}
-            values.extend(extra_values.get(column, "—") for column in extra_columns)
+        if not violations:
+            # Empty enabled rule: explicit hint instead of an empty detail table.
+            # Heading (A1), Conditions/Groupings/Expectations/Identifier rows
+            # above are retained; no placeholder records or counts are added.
+            sheet.cell(8, 1, _excel_value(_EMPTY_RULE_HINT))
+        else:
+            if len(violations) + 8 > _EXCEL_MAX_ROWS:
+                raise ValueError(f"Rule {rule_id} exceeds Excel's 1,048,576-row worksheet limit.")
+            headers = [*(key_columns or ["Row"]), *extra_columns]
             if not hide_comparison:
-                values.extend(
-                    [
-                        violation.get("violating_column", rule_id),
-                        violation.get("comparison_value", ""),
-                        violation.get("violating_value", ""),
-                    ]
+                headers.extend(["Column", "In Baseline", "In Comparison"])
+            _append_row(sheet, 8, headers)
+            row_number = 9
+            for violation in violations:
+                values = _excel_identity(
+                    key_columns,
+                    violation.get("key_columns") or {},
+                    violation.get("row_index", ""),
                 )
-            _append_row(sheet, row_number, values)
-            row_number += 1
+                extra_values = violation.get("extra_values") or {}
+                values.extend(extra_values.get(column, "—") for column in extra_columns)
+                if not hide_comparison:
+                    values.extend(
+                        [
+                            violation.get("violating_column", rule_id),
+                            violation.get("comparison_value", ""),
+                            violation.get("violating_value", ""),
+                        ]
+                    )
+                _append_row(sheet, row_number, values)
+                row_number += 1
 
     agg_columns = list(result.get("aggregation_columns") or [])
     agg_labels = result.get("aggregation_column_labels") or {}

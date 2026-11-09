@@ -125,7 +125,8 @@ class TestExportHtml:
         assert "Grouping:" in result
         assert "Expectation:" in result
         assert "R002 — No exception" in result
-        assert "Nil exception detected under current rule." in result
+        assert "Nil exception was captured by thie rule." in result
+        assert "Nil exception detected under current rule." not in result
 
         summary_position = result.index("Exception Rule Summary")
         changes_position = result.index("<h2>Attribute changes</h2>")
