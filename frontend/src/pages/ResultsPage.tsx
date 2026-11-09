@@ -332,7 +332,7 @@ function ResultView({
           Commentary-template columns: {commentaryColumns.length > 0
             ? commentaryColumns.join(", ")
             : "no additional columns selected"}
-          . Commentary downloads always include all exceptions.
+          . Commentary downloads always include all of this run's exceptions.
         </p>
       </section>
       <section id="overall" aria-labelledby="overall-title" className="card">
