@@ -324,6 +324,56 @@ describe("ConfigManager", () => {
     });
   });
 
+  it("keeps controls frozen after a fast save completes", async () => {
+    const updateMutate = vi.fn(
+      (_args: unknown, opts: { onSuccess?: () => void }) => {
+        opts.onSuccess?.();
+      },
+    );
+    vi.mocked(useDeleteConfig).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useDeleteConfig>);
+    vi.mocked(useConfigs).mockReturnValue({
+      data: [{ name: "my-config", version: 3, content: {} }],
+      isPending: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useConfigs>);
+    vi.mocked(useCreateConfig).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useCreateConfig>);
+    vi.mocked(useUpdateConfig).mockReturnValue({
+      mutate: updateMutate,
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useUpdateConfig>);
+
+    renderManager();
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "my-config" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save to config" }));
+    const dialog = screen.getByRole("alertdialog", { name: "Save to config?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    // Success is reported only after the saved config's cache is refreshed,
+    // and the controls stay frozen for the minimum freeze window even though
+    // the mutation already settled. The saving indicator yields to the saved
+    // message; the freeze is observable through the disabled controls.
+    await waitFor(() => {
+      expect(screen.getByText("Saved to config: my-config")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Saving config…/)).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Load config" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save to config" })).toBeDisabled();
+  });
+
   it("calls create.mutate on save new", async () => {
     const createMutate = vi.fn();
     vi.mocked(useDeleteConfig).mockReturnValue({
