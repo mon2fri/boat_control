@@ -11,7 +11,7 @@ from apps.reports.services import _EMPTY_RULE_HINT, export_csv, export_excel, ex
 from apps.runs.tracking_context import filter_result_for_new_exceptions
 from openpyxl import load_workbook
 
-HINT = "Nil exception was captured by thie rule."
+HINT = "Nil exception was captured by the rule."
 
 
 def _summary(rule_id, name="Rule", identifier="CID_X"):

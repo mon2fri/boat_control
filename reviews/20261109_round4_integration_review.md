@@ -45,7 +45,7 @@ No old round-1 branches merged. No shared-file edit conflicts (ownerships disjoi
 
 ## Requested-copy typo
 
-Requirement asks `Nil exception was captured by thie rule.` (`thie`). Used verbatim in HTML + Excel via `_EMPTY_RULE_HINT`; replaces old `Nil exception detected under current rule.` without duplication. Flagged for user copy review — one-constant rename when confirmed.
+Requirement asked `Nil exception was captured by thie rule.` (`thie`). Corrected per user 2026-11-09 request to `Nil exception was captured by the rule.` in `_EMPTY_RULE_HINT` (HTML + Excel); replaces old `Nil exception detected under current rule.` without duplication. Planning snapshot/worker instructions retain the original wording as history.
 
 ## Manual UI checklist (pending, not executed)
 

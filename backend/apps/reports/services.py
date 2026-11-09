@@ -26,9 +26,9 @@ _FILTER_OP_LABELS: dict[str, str] = {
 }
 _EXCEL_MAX_ROWS = 1_048_576
 _EXCEL_MAX_COLUMNS = 16_384
-# Round 4 enhancement 3 exact copy (including source typo `thie`); pending user
-# copy review. Used for exported HTML + Excel empty-rule sections.
-_EMPTY_RULE_HINT = "Nil exception was captured by thie rule."
+# Round 4 enhancement 3 copy, corrected per user 2026-11-09 request.
+# Used for exported HTML + Excel empty-rule sections.
+_EMPTY_RULE_HINT = "Nil exception was captured by the rule."
 
 
 def _observed_item_text(value: Any) -> str:
