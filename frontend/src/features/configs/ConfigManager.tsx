@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { useConfigs, useCreateConfig, useDeleteConfig, useUpdateConfig } from "../settings/useSettings";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { ConfigLoadNotice } from "./ConfigLoadNotice";
 
 interface ConfigManagerProps {
   configType: "rules" | "filters" | "rows-and-columns";
@@ -40,12 +41,17 @@ export function ConfigManager({
   const [pendingDeleteName, setPendingDeleteName] = useState<string | null>(null);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [showSaveToConfigConfirm, setShowSaveToConfigConfirm] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   const heading = title ?? "Load config for rows and columns";
 
   const selectedVersion = selectedName
     ? configs.data?.find((c) => c.name === selectedName)?.version ?? null
     : null;
+
+  // Either save path in flight: block the dropdown and every action so a
+  // load cannot apply stale cached content mid-save.
+  const saving = create.isPending || update.isPending;
 
   function handleLoad(name: string): void {
     if (!name) return;
@@ -58,13 +64,16 @@ export function ConfigManager({
   }
 
   function handleSaveNew(): void {
-    if (!saveName.trim()) return;
+    const name = saveName.trim();
+    if (!name) return;
+    setSavedMessage(null);
     create.mutate(
-      { name: saveName.trim(), content: currentContent },
+      { name, content: currentContent },
       {
         onSuccess: () => {
           setSaveName("");
           setShowSavePrompt(false);
+          setSavedMessage(`Saved to config: ${name}`);
         },
       },
     );
@@ -72,8 +81,17 @@ export function ConfigManager({
 
   const handleSaveToConfig = useCallback(() => {
     if (!selectedName || selectedVersion === null) return;
+    setSavedMessage(null);
     setShowSaveToConfigConfirm(false);
-    update.mutate({ name: selectedName, content: currentContent, version: selectedVersion });
+    const name = selectedName;
+    update.mutate(
+      { name, content: currentContent, version: selectedVersion },
+      {
+        onSuccess: () => {
+          setSavedMessage(`Saved to config: ${name}`);
+        },
+      },
+    );
   }, [selectedName, selectedVersion, currentContent, update]);
 
   return (
@@ -92,7 +110,7 @@ export function ConfigManager({
               onChange={(e) => {
                 setSelectedName(e.target.value);
               }}
-              disabled={disabled}
+              disabled={disabled || saving}
             >
               {configs.data.length === 0 ? (
                 <option value="">(new config)</option>
@@ -114,7 +132,7 @@ export function ConfigManager({
                   <button
                     type="button"
                     className="btn btn--primary"
-                    disabled={disabled}
+                    disabled={disabled || saving}
                     onClick={() => {
                       handleLoad(selectedName);
                     }}
@@ -124,7 +142,7 @@ export function ConfigManager({
                   <button
                     type="button"
                     className="btn"
-                    disabled={disabled || saveDisabled || update.isPending}
+                    disabled={disabled || saveDisabled || saving}
                     onClick={() => setShowSaveToConfigConfirm(true)}
                   >
                     Save to config
@@ -135,7 +153,7 @@ export function ConfigManager({
               <button
                 type="button"
                 className="btn"
-                disabled={disabled || saveDisabled}
+                disabled={disabled || saveDisabled || saving}
                 onClick={() => setShowSavePrompt(true)}
               >
                  Save to new config
@@ -145,7 +163,7 @@ export function ConfigManager({
                 <button
                   type="button"
                   className="btn btn--danger"
-                  disabled={disabled || del.isPending}
+                  disabled={disabled || del.isPending || saving}
                   onClick={() => setPendingDeleteName(selectedName)}
                 >
                   Remove
@@ -153,6 +171,13 @@ export function ConfigManager({
               )}
             </div>
           </div>
+
+          {saving && (
+            <p role="status" aria-live="polite" className="busy-row">
+              <span className="spinner" aria-hidden="true" /> Saving config…
+            </p>
+          )}
+          {!saving && <ConfigLoadNotice message={savedMessage} />}
 
           {create.isError && (
             <p className="alert alert--error" style={{ marginTop: "var(--space)" }}>
@@ -181,6 +206,7 @@ export function ConfigManager({
         title="Save new config"
         open={showSavePrompt}
         confirmLabel="Save"
+        confirmDisabled={saving}
         onCancel={() => {
           setShowSavePrompt(false);
           setSaveName("");
@@ -203,6 +229,7 @@ export function ConfigManager({
         title="Save to config?"
         open={showSaveToConfigConfirm}
         confirmLabel="Save"
+        confirmDisabled={saving}
         onCancel={() => setShowSaveToConfigConfirm(false)}
         onConfirm={handleSaveToConfig}
       >

@@ -8,6 +8,8 @@ interface Props {
   cancelLabel?: string;
   confirmLabel?: string;
   confirmTone?: "primary" | "danger";
+  /** Disable the confirm button while an async action is in flight. */
+  confirmDisabled?: boolean;
   children: React.ReactNode;
 }
 
@@ -24,6 +26,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   confirmLabel = "Confirm",
   confirmTone = "primary",
+  confirmDisabled = false,
   children,
 }: Props) {
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -60,6 +63,7 @@ export function ConfirmDialog({
             type="button"
             className={confirmTone === "danger" ? "btn btn--danger" : "btn btn--primary"}
             onClick={onConfirm}
+            disabled={confirmDisabled}
           >
             {confirmLabel}
           </button>

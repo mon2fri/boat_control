@@ -197,6 +197,133 @@ describe("ConfigManager", () => {
     });
   });
 
+  it("disables controls and shows saving state while a save is in flight", async () => {
+    vi.mocked(useDeleteConfig).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useDeleteConfig>);
+    vi.mocked(useConfigs).mockReturnValue({
+      data: [{ name: "my-config", version: 3, content: {} }],
+      isPending: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useConfigs>);
+    vi.mocked(useCreateConfig).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: true,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useCreateConfig>);
+    vi.mocked(useUpdateConfig).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useUpdateConfig>);
+
+    renderManager();
+
+    expect(screen.getByText(/Saving config…/)).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save to new config" })).toBeDisabled();
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "my-config" } });
+    expect(screen.getByRole("button", { name: "Load config" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save to config" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeDisabled();
+    expect(screen.queryByText(/Saved to config:/)).not.toBeInTheDocument();
+  });
+
+  it("shows saved message after save to new config succeeds", async () => {
+    const createMutate = vi.fn(
+      (_args: unknown, opts: { onSuccess?: () => void }) => {
+        opts.onSuccess?.();
+      },
+    );
+    vi.mocked(useDeleteConfig).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useDeleteConfig>);
+    vi.mocked(useConfigs).mockReturnValue({
+      data: [],
+      isPending: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useConfigs>);
+    vi.mocked(useCreateConfig).mockReturnValue({
+      mutate: createMutate,
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useCreateConfig>);
+    vi.mocked(useUpdateConfig).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useUpdateConfig>);
+
+    renderManager();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save to new config" }));
+    const dialog = screen.getByRole("alertdialog", { name: "Save new config" });
+    fireEvent.change(within(dialog).getByPlaceholderText("my-config"), { target: { value: "test-rules" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved to config: test-rules")).toBeInTheDocument();
+    });
+  });
+
+  it("shows saved message after save to config succeeds", async () => {
+    const updateMutate = vi.fn(
+      (_args: unknown, opts: { onSuccess?: () => void }) => {
+        opts.onSuccess?.();
+      },
+    );
+    vi.mocked(useDeleteConfig).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useDeleteConfig>);
+    vi.mocked(useConfigs).mockReturnValue({
+      data: [{ name: "my-config", version: 3, content: {} }],
+      isPending: false,
+      isError: false,
+    } as unknown as ReturnType<typeof useConfigs>);
+    vi.mocked(useCreateConfig).mockReturnValue({
+      mutate: vi.fn(),
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useCreateConfig>);
+    vi.mocked(useUpdateConfig).mockReturnValue({
+      mutate: updateMutate,
+      isPending: false,
+      isError: false,
+      isSuccess: false,
+    } as unknown as ReturnType<typeof useUpdateConfig>);
+
+    renderManager();
+
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "my-config" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save to config" }));
+
+    const dialog = screen.getByRole("alertdialog", { name: "Save to config?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(updateMutate).toHaveBeenCalledWith(
+        { name: "my-config", content: {}, version: 3 },
+        expect.any(Object),
+      );
+      expect(screen.getByText("Saved to config: my-config")).toBeInTheDocument();
+    });
+  });
+
   it("calls create.mutate on save new", async () => {
     const createMutate = vi.fn();
     vi.mocked(useDeleteConfig).mockReturnValue({
