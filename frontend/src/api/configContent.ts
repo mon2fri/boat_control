@@ -443,19 +443,6 @@ export function resolveRowsColumnsConfig(
 }
 
 /**
- * Convert a single column to a ColumnRef, using a Column Family reference
- * when the column belongs to exactly one family.
- */
-function columnToRef(column: string, families: Family[]): ColumnRef {
-  for (const f of families) {
-    if (f.kind === "column" && f.columns.includes(column)) {
-      return { kind: "column_family", name: f.name };
-    }
-  }
-  return column;
-}
-
-/**
  * Convert a set of columns to ColumnRefs, collapsing into family references
  * where possible. A family reference is used only when ALL its members are
  * present in the set.
@@ -542,8 +529,13 @@ export function mapWorkflowToRowsColumnsConfig(
         .filter(([column, label]) => state.aggregationColumns.includes(column) && label.trim())
         .map(([column, label]) => [column, label.trim()]),
     ),
+    // Save the exact concrete column the user selected. A bare family
+    // member must never collapse to a family reference here: the loader
+    // resolves a family ref to its first available member, so collapsing
+    // would silently rewrite the filter on reload (e.g. status -> Test
+    // family -> name). Other column sets keep their own ref rules.
     filters: state.filters.map((f) => ({
-      column: columnToRef(f.column, families),
+      column: { kind: "column" as const, name: f.column },
       operator: f.operator,
       filter_values: f.values,
     })),

@@ -142,6 +142,49 @@ describe("rows-and-columns filter grouping", () => {
     }, families)).toThrow(/must choose AND, OR, or a custom grouping/i);
   });
 
+  it("round-trips a concrete family-member filter column without collapsing to the family", () => {
+    // Regression: saving rewrote `status` to the `Name Family` reference and
+    // loading resolved it back to the first member `name`, so a saved
+    // `status == active` filter silently reloaded as `name == active`.
+    const content = mapWorkflowToRowsColumnsConfig({
+      comparisonColumns: availableColumns,
+      keyColumns: [],
+      aggregationColumns: [],
+      filters: [
+        { id: "runtime-system", column: "system", operator: "equals", values: ["Traded Risk"] },
+        { id: "runtime-status-a", column: "status", operator: "equals", values: ["Active"] },
+        { id: "runtime-status-b", column: "status", operator: "equals", values: ["Inactive"] },
+      ],
+      filterGroupTree: {
+        kind: "and" as const,
+        children: [
+          { kind: "leaf" as const, conditionId: "runtime-system" },
+          {
+            kind: "or" as const,
+            children: [
+              { kind: "leaf" as const, conditionId: "runtime-status-a" },
+              { kind: "leaf" as const, conditionId: "runtime-status-b" },
+            ],
+          },
+        ],
+      },
+      targetColumns: [],
+      comparisonSections: [],
+    }, families);
+    expect(content.filters?.map((filter) => filter.column)).toEqual([
+      { kind: "column", name: "system" },
+      { kind: "column", name: "status" },
+      { kind: "column", name: "status" },
+    ]);
+    const resolved = resolveRowsColumnsConfig(content, families, availableColumns);
+    expect(resolved.filterGroupingErrors).toEqual([]);
+    expect(resolved.filters.map((filter) => filter.column)).toEqual([
+      "system",
+      "status",
+      "status",
+    ]);
+  });
+
   it("does not silently drop an unresolved referenced filter", () => {
     const content = {
       comparisonColumns: ["book", "system"],
