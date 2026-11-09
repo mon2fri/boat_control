@@ -403,7 +403,7 @@ def list_template_detail_columns(
 
 
 # ---------------------------------------------------------------------------
-# Report-run vs tracking-date template scope (Round 4, Worker A).
+# Report-run vs tracking-date template scope (Round 4, integrated A+B).
 #
 # Report-page download = exactly the persisted exceptions captured by one run's
 # enabled rules (membership from the run snapshot's exception IDs, commentary
@@ -412,35 +412,41 @@ def list_template_detail_columns(
 # current rule catalog or display state (New Exceptions Only, screen filters,
 # pagination, current catalog selection).
 #
-# Proposed Worker B workbook contract (keyword-only, optional). A passes this
-# through when the installed workbook supports it and omits it otherwise, so
-# this module works both before and after B's rendering lands:
+# Workbook contract (keyword-only, optional): Worker B owns rendering.
 #
 #   build_commentary_workbook(records, as_of_date, *, generated_at=None,
-#       detail_columns=(), detail_values=None, rule_summaries=None)
+#       detail_columns=(), detail_values=None, rule_summaries=None,
+#       rule_snapshot_notes=())
 #
 # ``rule_summaries`` is ``Mapping[str, Mapping[str, Any]] | None`` keyed by
 # run-local rule index (``"R001"``). Each value is a persisted validation
-# summary with keys: ``name``, ``rule_identifier`` (canonical),
-# ``condition_clauses`` (``list[str]`` like ``"Condition 1: ..."``),
-# ``expectation_clauses`` (``list[str]``), ``condition_groupings`` (``str``),
-# ``expectation_groupings`` (``str``), plus legacy fallbacks ``condition``,
-# ``condition_grouping``, ``logic``. Missing/``None`` entries must render as explicit "unavailable"
-# metadata, never by inventing current-catalog logic.
+# summary exactly as stored under ``result["validation"]["rule_summaries"]``.
+# Missing/``None`` entries render as explicit "Unavailable" metadata, never by
+# inventing current-catalog logic. Date-wide union policy (integrator
+# resolution of A/B divergence): merge that date's runs in ascending run_id
+# order via ``merge_rule_snapshots`` — first snapshot wins per Rxxx, every
+# distinct index kept, differing snapshots of the same rule returned as
+# human-readable notes rendered above the table, snapshot-less known rule IDs
+# rendered as "Unavailable" rows. No new historical storage; no live-catalog
+# reads for historical logic.
 # ---------------------------------------------------------------------------
 
-_BUILD_SUPPORTS_RULE_SUMMARIES: bool | None = None
+_BUILD_SUPPORTED_PARAMS: set[str] | None = None
 
 
-def _workbook_supports_rule_summaries() -> bool:
-    global _BUILD_SUPPORTS_RULE_SUMMARIES
-    if _BUILD_SUPPORTS_RULE_SUMMARIES is None:
+def _workbook_param_supported(name: str) -> bool:
+    global _BUILD_SUPPORTED_PARAMS
+    if _BUILD_SUPPORTED_PARAMS is None:
         try:
             parameters = inspect.signature(build_commentary_workbook).parameters
         except (TypeError, ValueError):
             parameters = {}
-        _BUILD_SUPPORTS_RULE_SUMMARIES = "rule_summaries" in parameters
-    return _BUILD_SUPPORTS_RULE_SUMMARIES
+        _BUILD_SUPPORTED_PARAMS = set(parameters)
+    return name in _BUILD_SUPPORTED_PARAMS
+
+
+def _workbook_supports_rule_summaries() -> bool:
+    return _workbook_param_supported("rule_summaries")
 
 
 def _build_workbook(
@@ -451,20 +457,23 @@ def _build_workbook(
     detail_columns: list[str] | None = None,
     detail_values: dict[str, dict[str, str]] | None = None,
     rule_summaries: Mapping[str, Mapping[str, Any]] | None = None,
+    rule_snapshot_notes: Iterable[str] = (),
 ) -> bytes:
-    """Build the workbook, forwarding rule summaries only when supported.
+    """Build the workbook, forwarding rule summaries/notes when supported.
 
-    Worker B owns the ``rule_summaries`` rendering. Until B's workbook input
-    lands, summaries are documented but not rendered; the exception rows are
-    always scope-correct regardless.
+    Worker B owns the ``rule_summaries`` rendering. Exception rows are always
+    scope-correct regardless of workbook support.
     """
     kwargs: dict[str, Any] = {
         "generated_at": generated_at,
         "detail_columns": detail_columns or (),
         "detail_values": detail_values or {},
     }
-    if rule_summaries is not None and _workbook_supports_rule_summaries():
+    if rule_summaries is not None and _workbook_param_supported("rule_summaries"):
         kwargs["rule_summaries"] = rule_summaries
+    notes = [str(note) for note in (rule_snapshot_notes or []) if str(note).strip()]
+    if notes and _workbook_param_supported("rule_snapshot_notes"):
+        kwargs["rule_snapshot_notes"] = notes
     return build_commentary_workbook(records, as_of_date, **kwargs)
 
 
@@ -571,48 +580,55 @@ def _run_as_of_date(run_data: Mapping[str, Any], run_id: str) -> date:
     return resolve_as_of_date(str(persisted))
 
 
-def collect_date_rule_summaries(as_of_date: date) -> dict[str, dict[str, Any]]:
+def collect_date_rule_summaries(
+    as_of_date: date,
+    known_rule_ids: Iterable[str] = (),
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
     """Union persisted enabled-rule snapshots for one as-of date.
 
-    Later runs override earlier runs for the same run-local rule index
-    (``Rxxx``), ordered by stored creation time for determinism. Rules with
-    date-known exceptions but no surviving snapshot (retention-expired or
-    legacy runs) are left out here; the workbook must mark them explicitly
-    unavailable rather than inventing current-catalog logic. Failures while
-    listing runs never fail the export: the date-wide exception rows are
+    Integrator-resolved A/B policy: iterate that date's runs in ascending
+    run_id order via ``merge_rule_snapshots`` — first snapshot wins per
+    ``Rxxx``, every distinct index kept, differing snapshots of the same rule
+    returned as notes (not silently collapsed to latest). ``known_rule_ids``
+    (for example rule indexes seen on the date's exceptions) with no surviving
+    snapshot become ``{}`` entries so the workbook renders explicit
+    "Unavailable" rows instead of inventing current-catalog logic. Failures
+    while listing runs never fail the export: the date-wide exception rows are
     still returned with whatever snapshots survived.
     """
+    from apps.exception_tracking.rule_summary import merge_rule_snapshots
+
     try:
         from apps.runs.persistence import list_runs, load_run
     except ImportError:
         logger.warning("Run history is unavailable; exporting without rule summaries.")
-        return {}
+        return {}, []
     try:
         metas = list_runs()
     except Exception as exc:
         logger.warning("Could not list runs for rule summaries: %s", exc)
-        return {}
+        return {}, []
     target = as_of_date.isoformat()
-    dated: list[tuple[str, dict[str, Any]]] = []
+    run_ids: list[str] = []
     for meta in metas:
         if getattr(meta, "as_of_date", None) != target:
             continue
+        run_ids.append(str(getattr(meta, "run_id", "")))
+    labeled: list[tuple[str, dict[str, dict[str, Any]]]] = []
+    for run_id in sorted(run_ids):
         try:
-            data = load_run(meta.run_id)
+            data = load_run(run_id)
         except Exception as exc:  # a corrupt run must not fail the export
-            logger.warning("Could not load run %s for rule summaries: %s", meta.run_id, exc)
+            logger.warning("Could not load run %s for rule summaries: %s", run_id, exc)
             continue
         if data is None:
             continue
-        created = data.get("created_at") or getattr(meta, "created_at", "") or ""
-        dated.append((str(created), data))
-    dated.sort(key=lambda item: item[0])
-    merged: dict[str, dict[str, Any]] = {}
-    for _, data in dated:
         summaries = _run_rule_summaries(data)
-        if summaries:
-            merged.update(summaries)
-    return merged
+        if summaries is None:
+            summaries = {}
+        labeled.append((run_id, summaries))
+    merged, notes = merge_rule_snapshots(labeled, known_rule_ids=known_rule_ids)
+    return merged, notes
 
 
 def export_run_commentary(
@@ -662,6 +678,7 @@ def export_run_commentary(
         detail_columns=detail_columns,
         detail_values=detail_values,
         rule_summaries=rule_summaries,
+        rule_snapshot_notes=(),
     )
     return content, as_of_date
 
@@ -672,14 +689,23 @@ def export_commentary(
     *,
     generated_at: datetime | None = None,
     rule_summaries: Mapping[str, Mapping[str, Any]] | None = None,
+    rule_snapshot_notes: Iterable[str] = (),
 ) -> bytes:
     repo = repository or get_repository()
     records = list_exceptions(as_of_date, repo)
     effective_summaries = rule_summaries
-    if effective_summaries is None:
+    effective_notes = list(rule_snapshot_notes)
+    if effective_summaries is None and not effective_notes:
         # Best-effort date union for the tracking-date scope; an empty union
         # still exports all rows with explicitly unavailable rule metadata.
-        effective_summaries = collect_date_rule_summaries(as_of_date) or None
+        known_ids = {
+            str(record.get("rule_index") or record.get("exception_rule_index") or "")
+            for record in records
+        }
+        known_ids.discard("")
+        merged, notes = collect_date_rule_summaries(as_of_date, known_rule_ids=known_ids)
+        effective_summaries = merged or None
+        effective_notes = notes
     detail_columns = list_template_detail_columns(repo, as_of_date)
     detail_values = {
         record["exception_id"]: record.get("detail_values") or {}
@@ -692,6 +718,7 @@ def export_commentary(
         detail_columns=detail_columns,
         detail_values=detail_values,
         rule_summaries=effective_summaries,
+        rule_snapshot_notes=effective_notes,
     )
 
 

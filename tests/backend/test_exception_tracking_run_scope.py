@@ -121,7 +121,7 @@ class FakeRepository:
 def repository(monkeypatch: pytest.MonkeyPatch) -> FakeRepository:
     fake = FakeRepository()
     monkeypatch.setattr(api_services, "get_repository", lambda: fake)
-    monkeypatch.setattr(api_services, "_BUILD_SUPPORTS_RULE_SUMMARIES", None)
+    monkeypatch.setattr(api_services, "_BUILD_SUPPORTED_PARAMS", None)
     return fake
 
 
@@ -532,30 +532,34 @@ def test_run_summaries_reach_workbook_only_when_supported(
         detail_columns: Any = (),
         detail_values: Any = None,
         rule_summaries: Any = None,
+        rule_snapshot_notes: Any = (),
     ) -> bytes:
         captured["rule_summaries"] = rule_summaries
         captured["record_count"] = len(list(records))
         return b"workbook-bytes"
 
     monkeypatch.setattr(api_services, "build_commentary_workbook", fake_build)
-    monkeypatch.setattr(api_services, "_BUILD_SUPPORTS_RULE_SUMMARIES", True)
+    monkeypatch.setattr(
+        api_services, "_BUILD_SUPPORTED_PARAMS", {"rule_summaries", "rule_snapshot_notes"}
+    )
 
     content, _ = api_services.export_run_commentary("run-a")
     assert content == b"workbook-bytes"
     assert captured["record_count"] == 1
     assert captured["rule_summaries"] == summaries
 
-    # Date scope unions snapshots with later runs winning per rule index.
+    # Date scope unions snapshots with first run winning per rule index
+    # (integrator-resolved A/B policy); differing snapshots surface as notes.
     runs["run-b"] = _run_data(
         "run-b",
         TRACKING_DATE,
         {"R001": ["ONLY_A"]},
-        {"R001": _summary("Later wins")},
+        {"R001": _summary("Later differs")},
         created_at="2026-10-30T12:00:00+00:00",
     )
     api_services.export_commentary(TRACKING_DATE, repository)
     assert captured["rule_summaries"] == {
-        "R001": _summary("Later wins"),
+        "R001": _summary("Populated"),
         "R002": _summary("Empty but enabled", "CBR1_EMPTY"),
     }
 
@@ -588,7 +592,7 @@ def test_workbook_without_summary_input_still_exports_rows(
         "run-a", TRACKING_DATE, {"R001": ["ONLY_A"]}, {"R001": _summary()}
     )
     monkeypatch.setattr(api_services, "build_commentary_workbook", legacy_build)
-    monkeypatch.setattr(api_services, "_BUILD_SUPPORTS_RULE_SUMMARIES", False)
+    monkeypatch.setattr(api_services, "_BUILD_SUPPORTED_PARAMS", set())
 
     content, as_of_date = api_services.export_run_commentary("run-a")
     assert as_of_date == TRACKING_DATE
