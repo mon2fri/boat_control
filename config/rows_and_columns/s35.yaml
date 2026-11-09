@@ -19,19 +19,21 @@ aggregationColumns:
   name: region
 aggregationColumnLabels: {}
 filters:
-- column: system
+- column:
+    kind: column
+    name: system
   operator: contains
   filter_values:
   - oomber
 - column:
-    kind: column_family
-    name: Test
+    kind: column
+    name: status
   operator: equals
   filter_values:
   - active
 - column:
-    kind: column_family
-    name: Test
+    kind: column
+    name: status
   operator: equals
   filter_values:
   - inactive
@@ -97,4 +99,4 @@ comparisonSections:
   - kind: column
     name: status
   extraColumns: []
-_version: 11
+_version: 17
