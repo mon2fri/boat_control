@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import {
-  downloadExceptionCommentaryTemplate,
   downloadExport,
+  downloadRunCommentaryTemplate,
   ExportError,
 } from "../../api/endpoints";
 import { exportRenderedHtml } from "./exportRenderedHtml";
@@ -101,12 +101,15 @@ export function ExportControls({ runId, reportName, asOfDate, newExceptionsOnly 
   }
 
   async function downloadCommentary(): Promise<void> {
-    if (!asOfDate) return;
+    // Report scope: exactly this run's persisted exceptions (enabled rules),
+    // independent of New Exceptions Only, screen filters, pagination, or the
+    // current catalog. The tracking tab keeps the date-wide download.
+    if (!runId) return;
     setError(null);
     setSuccess(null);
     setCommentaryBusy(true);
     try {
-      const result = await downloadExceptionCommentaryTemplate(asOfDate);
+      const result = await downloadRunCommentaryTemplate(runId);
       saveBlob(result.blob, result.filename);
     } catch (err) {
       setError(
@@ -128,6 +131,7 @@ export function ExportControls({ runId, reportName, asOfDate, newExceptionsOnly 
   const percent =
     busy && busy.total && busy.total > 0 ? Math.min(100, Math.round((busy.received / busy.total) * 100)) : null;
   const anyBusy = busy !== null || commentaryBusy;
+  const commentaryUnavailable = !runId || !asOfDate;
 
   return (
     <div className="export-controls" role="group" aria-label="Export result" data-export-exclude>
@@ -141,10 +145,10 @@ export function ExportControls({ runId, reportName, asOfDate, newExceptionsOnly 
         type="button"
         className="btn"
         onClick={() => void downloadCommentary()}
-        disabled={anyBusy || !asOfDate}
+        disabled={anyBusy || commentaryUnavailable}
         title={
           asOfDate
-            ? `Download the selected-date commentary template (As-of Date ${asOfDate})`
+            ? `Download this run's commentary template (run scope, As-of Date ${asOfDate})`
             : "This run has no As-of Date, so no commentary template is available."
         }
       >

@@ -125,11 +125,20 @@ class CommentaryTemplateExportView(APIView):  # type: ignore[misc]
         serializer = ExportQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         try:
-            as_of_date = api_services.resolve_export_as_of_date(
-                as_of_date=serializer.validated_data.get("as_of_date"),
-                run_id=serializer.validated_data.get("run_id"),
-            )
-            content = api_services.export_commentary(as_of_date)
+            # Report scope (run_id) exports exactly the persisted exceptions
+            # captured by that run's enabled rules. Date scope (as_of_date or
+            # default) exports all known exceptions for the selected date.
+            # Both validation paths reject missing/invalid IDs and
+            # contradictory arguments explicitly; a run export never falls
+            # back to date-wide records.
+            run_id = serializer.validated_data.get("run_id")
+            if run_id:
+                content, as_of_date = api_services.export_run_commentary(run_id)
+            else:
+                as_of_date = api_services.resolve_export_as_of_date(
+                    as_of_date=serializer.validated_data.get("as_of_date"),
+                )
+                content = api_services.export_commentary(as_of_date)
         except api_services.TrackingAPIError as exc:
             return _error_response(exc)
         except Exception as exc:  # pragma: no cover - defensive boundary
@@ -152,6 +161,7 @@ class CommentaryTemplateImportView(APIView):  # type: ignore[misc]
             result = api_services.import_commentary(
                 content,
                 requested_as_of_date=serializer.validated_data.get("as_of_date"),
+                run_id=serializer.validated_data.get("run_id"),
             )
         except api_services.TrackingAPIError as exc:
             return _error_response(exc)

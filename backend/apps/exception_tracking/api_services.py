@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from collections.abc import Iterable, Mapping
 from datetime import UTC, date, datetime
@@ -401,25 +402,296 @@ def list_template_detail_columns(
     return fallback_columns
 
 
+# ---------------------------------------------------------------------------
+# Report-run vs tracking-date template scope (Round 4, Worker A).
+#
+# Report-page download = exactly the persisted exceptions captured by one run's
+# enabled rules (membership from the run snapshot's exception IDs, commentary
+# and status from the live date records). Tracking-tab download = all known
+# exceptions for the selected as-of date. Neither scope consults the mutable
+# current rule catalog or display state (New Exceptions Only, screen filters,
+# pagination, current catalog selection).
+#
+# Proposed Worker B workbook contract (keyword-only, optional). A passes this
+# through when the installed workbook supports it and omits it otherwise, so
+# this module works both before and after B's rendering lands:
+#
+#   build_commentary_workbook(records, as_of_date, *, generated_at=None,
+#       detail_columns=(), detail_values=None, rule_summaries=None)
+#
+# ``rule_summaries`` is ``Mapping[str, Mapping[str, Any]] | None`` keyed by
+# run-local rule index (``"R001"``). Each value is a persisted validation
+# summary with keys: ``name``, ``rule_identifier`` (canonical),
+# ``condition_clauses`` (``list[str]`` like ``"Condition 1: ..."``),
+# ``expectation_clauses`` (``list[str]``), ``condition_groupings`` (``str``),
+# ``expectation_groupings`` (``str``), plus legacy fallbacks ``condition``,
+# ``condition_grouping``, ``logic``. Missing/``None`` entries must render as explicit "unavailable"
+# metadata, never by inventing current-catalog logic.
+# ---------------------------------------------------------------------------
+
+_BUILD_SUPPORTS_RULE_SUMMARIES: bool | None = None
+
+
+def _workbook_supports_rule_summaries() -> bool:
+    global _BUILD_SUPPORTS_RULE_SUMMARIES
+    if _BUILD_SUPPORTS_RULE_SUMMARIES is None:
+        try:
+            parameters = inspect.signature(build_commentary_workbook).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        _BUILD_SUPPORTS_RULE_SUMMARIES = "rule_summaries" in parameters
+    return _BUILD_SUPPORTS_RULE_SUMMARIES
+
+
+def _build_workbook(
+    records: list[dict[str, Any]],
+    as_of_date: date,
+    *,
+    generated_at: datetime | None = None,
+    detail_columns: list[str] | None = None,
+    detail_values: dict[str, dict[str, str]] | None = None,
+    rule_summaries: Mapping[str, Mapping[str, Any]] | None = None,
+) -> bytes:
+    """Build the workbook, forwarding rule summaries only when supported.
+
+    Worker B owns the ``rule_summaries`` rendering. Until B's workbook input
+    lands, summaries are documented but not rendered; the exception rows are
+    always scope-correct regardless.
+    """
+    kwargs: dict[str, Any] = {
+        "generated_at": generated_at,
+        "detail_columns": detail_columns or (),
+        "detail_values": detail_values or {},
+    }
+    if rule_summaries is not None and _workbook_supports_rule_summaries():
+        kwargs["rule_summaries"] = rule_summaries
+    return build_commentary_workbook(records, as_of_date, **kwargs)
+
+
+def _run_membership_ids(run_data: Mapping[str, Any], run_id: str) -> set[str]:
+    """Return the persisted exception IDs captured by one run's enabled rules.
+
+    Membership comes from the run snapshot's stored violations (all statuses;
+    never the New Exceptions Only display projection) keyed by literal
+    exception ID, which already encodes the canonical rule identifier plus
+    configured key values. Display rule indices are never used. Legacy
+    snapshots without stored violations raise explicitly instead of falling
+    back to date-wide records.
+    """
+    result = run_data.get("result")
+    if not isinstance(result, Mapping):
+        raise TrackingAPIError(
+            f"Run {run_id} predates exception tracking snapshots and has no "
+            "stored exception membership. Re-run the comparison to capture "
+            "tracking data; no date-wide records were substituted.",
+            code="run_has_no_tracking_snapshot",
+        )
+    validation = result.get("validation")
+    if not isinstance(validation, Mapping) or not isinstance(
+        validation.get("violations_by_rule"), Mapping
+    ):
+        raise TrackingAPIError(
+            f"Run {run_id} has no stored exception membership. Re-run the "
+            "comparison to capture tracking data; no date-wide records were "
+            "substituted.",
+            code="run_has_no_tracking_snapshot",
+        )
+    membership: set[str] = set()
+    without_identity: list[str] = []
+    violations_by_rule = validation.get("violations_by_rule")
+    assert isinstance(violations_by_rule, Mapping)
+    for rule_id, violations in violations_by_rule.items():
+        if not isinstance(violations, list):
+            continue
+        for violation in violations:
+            if not isinstance(violation, Mapping):
+                continue
+            exception_id = violation.get("exception_id")
+            if isinstance(exception_id, str) and exception_id.strip():
+                membership.add(exception_id)
+            else:
+                without_identity.append(str(rule_id))
+    if without_identity:
+        raise TrackingAPIError(
+            f"Run {run_id} has stored exceptions without exception IDs "
+            f"(rules: {', '.join(sorted(set(without_identity)))}). No IDs were "
+            "guessed and no date-wide records were substituted.",
+            code="run_has_no_tracking_snapshot",
+        )
+    return membership
+
+
+def _run_rule_summaries(
+    run_data: Mapping[str, Any],
+) -> dict[str, dict[str, Any]] | None:
+    """Return one run's persisted enabled-rule snapshots, or None when absent.
+
+    The snapshot (not the live catalog) is the source: reopening an older run
+    keeps that run's rule text even after later runs update the same date.
+    Enabled rules with zero exceptions are included via ``rule_summaries``
+    although they contribute no exception rows.
+    """
+    result = run_data.get("result")
+    validation = result.get("validation") if isinstance(result, Mapping) else None
+    summaries = validation.get("rule_summaries") if isinstance(validation, Mapping) else None
+    if not isinstance(summaries, Mapping):
+        return None
+    return {
+        str(rule_id): dict(summary) if isinstance(summary, Mapping) else {}
+        for rule_id, summary in summaries.items()
+    }
+
+
+def _load_run_or_raise(run_id: str) -> dict[str, Any]:
+    from apps.runs.persistence import load_run
+
+    if not run_id or not run_id.strip():
+        raise TrackingAPIError(
+            "A run ID is required for run-scoped export.",
+            code="run_not_found",
+            status_code=404,
+        )
+    run_data = load_run(run_id)
+    if run_data is None:
+        raise TrackingAPIError(
+            f"Run {run_id} not found.",
+            code="run_not_found",
+            status_code=404,
+        )
+    return run_data
+
+
+def _run_as_of_date(run_data: Mapping[str, Any], run_id: str) -> date:
+    persisted = run_data.get("as_of_date")
+    if not persisted:
+        raise TrackingAPIError(
+            "This saved run has no As-of Date. Select a date on the Exception Tracking tab.",
+            code="run_has_no_as_of_date",
+        )
+    return resolve_as_of_date(str(persisted))
+
+
+def collect_date_rule_summaries(as_of_date: date) -> dict[str, dict[str, Any]]:
+    """Union persisted enabled-rule snapshots for one as-of date.
+
+    Later runs override earlier runs for the same run-local rule index
+    (``Rxxx``), ordered by stored creation time for determinism. Rules with
+    date-known exceptions but no surviving snapshot (retention-expired or
+    legacy runs) are left out here; the workbook must mark them explicitly
+    unavailable rather than inventing current-catalog logic. Failures while
+    listing runs never fail the export: the date-wide exception rows are
+    still returned with whatever snapshots survived.
+    """
+    try:
+        from apps.runs.persistence import list_runs, load_run
+    except ImportError:
+        logger.warning("Run history is unavailable; exporting without rule summaries.")
+        return {}
+    try:
+        metas = list_runs()
+    except Exception as exc:
+        logger.warning("Could not list runs for rule summaries: %s", exc)
+        return {}
+    target = as_of_date.isoformat()
+    dated: list[tuple[str, dict[str, Any]]] = []
+    for meta in metas:
+        if getattr(meta, "as_of_date", None) != target:
+            continue
+        try:
+            data = load_run(meta.run_id)
+        except Exception as exc:  # a corrupt run must not fail the export
+            logger.warning("Could not load run %s for rule summaries: %s", meta.run_id, exc)
+            continue
+        if data is None:
+            continue
+        created = data.get("created_at") or getattr(meta, "created_at", "") or ""
+        dated.append((str(created), data))
+    dated.sort(key=lambda item: item[0])
+    merged: dict[str, dict[str, Any]] = {}
+    for _, data in dated:
+        summaries = _run_rule_summaries(data)
+        if summaries:
+            merged.update(summaries)
+    return merged
+
+
+def export_run_commentary(
+    run_id: str,
+    repository: Any | None = None,
+    *,
+    generated_at: datetime | None = None,
+) -> tuple[bytes, date]:
+    """Export exactly one run's persisted exceptions (report-page scope).
+
+    Membership is the run snapshot's exception IDs; commentary, status and
+    detail values come from the live date records for those IDs so post-run
+    commentary edits are reflected. A zero-exception run yields an empty
+    valid template, never a date-wide fallback. Every run membership ID must
+    resolve in the date store; otherwise an explicit ``tracking_context_missing``
+    error is raised instead of silently dropping rows.
+    """
+    run_data = _load_run_or_raise(run_id)
+    as_of_date = _run_as_of_date(run_data, run_id)
+    membership = _run_membership_ids(run_data, run_id)
+    rule_summaries = _run_rule_summaries(run_data)
+
+    repo = repository or get_repository()
+    records = list_exceptions(as_of_date, repo)
+    by_id = {record["exception_id"]: record for record in records}
+    missing = sorted(membership - set(by_id))
+    if missing:
+        raise TrackingAPIError(
+            f"Run {run_id} captured {len(membership)} exception(s) but "
+            f"{len(missing)} are absent from the tracking data for "
+            f"{as_of_date.isoformat()}. The tracking database may have been "
+            "replaced since the run; no partial template was generated.",
+            code="tracking_context_missing",
+            status_code=500,
+            details={"missing_ids": missing},
+        )
+    scoped = [by_id[exception_id] for exception_id in sorted(membership)]
+    detail_columns = list_template_detail_columns(repo, as_of_date)
+    detail_values = {
+        record["exception_id"]: record.get("detail_values") or {}
+        for record in scoped
+    }
+    content = _build_workbook(
+        scoped,
+        as_of_date,
+        generated_at=generated_at,
+        detail_columns=detail_columns,
+        detail_values=detail_values,
+        rule_summaries=rule_summaries,
+    )
+    return content, as_of_date
+
+
 def export_commentary(
     as_of_date: date,
     repository: Any | None = None,
     *,
     generated_at: datetime | None = None,
+    rule_summaries: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> bytes:
     repo = repository or get_repository()
     records = list_exceptions(as_of_date, repo)
+    effective_summaries = rule_summaries
+    if effective_summaries is None:
+        # Best-effort date union for the tracking-date scope; an empty union
+        # still exports all rows with explicitly unavailable rule metadata.
+        effective_summaries = collect_date_rule_summaries(as_of_date) or None
     detail_columns = list_template_detail_columns(repo, as_of_date)
     detail_values = {
         record["exception_id"]: record.get("detail_values") or {}
         for record in records
     }
-    return build_commentary_workbook(
+    return _build_workbook(
         records,
         as_of_date,
         generated_at=generated_at,
         detail_columns=detail_columns,
         detail_values=detail_values,
+        rule_summaries=effective_summaries,
     )
 
 
@@ -437,33 +709,65 @@ def _import_details(
 
 
 def _validate_ids(
-    parsed: ParsedCommentaryTemplate, existing: list[dict[str, Any]]
+    parsed: ParsedCommentaryTemplate,
+    existing: list[dict[str, Any]],
+    *,
+    expected_ids: set[str] | None = None,
+    run_id: str | None = None,
 ) -> None:
+    """Validate workbook IDs. Unknown and duplicate IDs always fail atomically.
+
+    Date scope (``expected_ids=None``) accepts safe partial templates: a run
+    subset containing only some of the date's IDs uploads without clearing
+    the omitted date records, which are left untouched. Run scope
+    (``expected_ids`` given) additionally requires every run membership ID to
+    be present and rejects date IDs outside the run, so an accidentally
+    trimmed run template is reported instead of silently applied.
+    """
     existing_ids = {record["exception_id"] for record in existing}
     provided_ids = set(parsed.commentaries)
     unknown = provided_ids - existing_ids
-    missing = existing_ids - provided_ids
     duplicates = set(parsed.duplicate_ids)
-    if not (unknown or missing or duplicates):
+    details = _import_details(unknown=unknown, duplicates=duplicates)
+    if duplicates:
+        raise TrackingAPIError(
+            "The workbook contains duplicate Exception IDs.",
+            code="duplicate_exception_ids",
+            details=details,
+        )
+    if unknown:
+        raise TrackingAPIError(
+            f"The workbook contains exception IDs that are not present on "
+            f"{parsed.as_of_date.isoformat()}.",
+            code="unknown_exception_ids",
+            details=details,
+        )
+    if expected_ids is None:
+        # Safe partial: omitted date IDs are preserved, never cleared.
         return
 
-    details = _import_details(unknown=unknown, duplicates=duplicates, missing=missing)
-    if duplicates:
-        code = "duplicate_exception_ids"
-        message = "The workbook contains duplicate Exception IDs."
-    elif unknown:
-        code = "unknown_exception_ids"
-        message = (
-            f"The workbook contains exception IDs that are not present on "
-            f"{parsed.as_of_date.isoformat()}."
+    missing = sorted(expected_ids - provided_ids)
+    outside_scope = sorted(provided_ids - expected_ids)
+    if missing or outside_scope:
+        scope_details = dict(details)
+        scope_details["missing_ids"] = missing
+        if outside_scope:
+            scope_details["outside_run_scope_ids"] = outside_scope
+        if run_id is not None:
+            scope_details["run_id"] = run_id
+        if missing:
+            raise TrackingAPIError(
+                f"The workbook is missing {len(missing)} exception ID(s) "
+                f"captured by run {run_id or 'the selected run'}.",
+                code="missing_exception_ids",
+                details=scope_details,
+            )
+        raise TrackingAPIError(
+            "The workbook contains exception IDs outside the selected run's "
+            "scope. Upload run subsets without adding other date records.",
+            code="unexpected_exception_ids",
+            details=scope_details,
         )
-    else:
-        code = "missing_exception_ids"
-        message = (
-            f"The workbook is missing exception IDs for "
-            f"{parsed.as_of_date.isoformat()}."
-        )
-    raise TrackingAPIError(message, code=code, details=details)
 
 
 def _commentary(record: Mapping[str, Any]) -> str:
@@ -475,11 +779,17 @@ def import_commentary(
     *,
     requested_as_of_date: str | None = None,
     repository: Any | None = None,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     """Validate and atomically apply a commentary template.
 
     All identity validation happens before the single repository update call.
     Worker A owns transaction/rollback inside ``update_commentaries``.
+
+    Date scope (no ``run_id``) accepts safe partial templates: only the IDs
+    present in the workbook are updated and omitted date records keep their
+    commentary. Run scope (``run_id`` given) requires the workbook to contain
+    exactly that run's membership IDs.
     """
     try:
         parsed = parse_commentary_workbook(content)
@@ -487,6 +797,22 @@ def import_commentary(
         raise TrackingAPIError(
             str(exc), code=exc.code, details=exc.details
         ) from exc
+
+    expected_ids: set[str] | None = None
+    if run_id is not None:
+        run_data = _load_run_or_raise(run_id)
+        run_date = _run_as_of_date(run_data, run_id)
+        if run_date != parsed.as_of_date:
+            raise TrackingAPIError(
+                "The workbook As-of Date does not match the selected run's As-of Date.",
+                code="date_mismatch",
+                details={
+                    "workbook_as_of_date": parsed.as_of_date.isoformat(),
+                    "run_as_of_date": run_date.isoformat(),
+                    "run_id": run_id,
+                },
+            )
+        expected_ids = _run_membership_ids(run_data, run_id)
 
     if requested_as_of_date:
         try:
@@ -505,7 +831,7 @@ def import_commentary(
 
     repo = repository or get_repository()
     existing = list_exceptions(parsed.as_of_date, repo)
-    _validate_ids(parsed, existing)
+    _validate_ids(parsed, existing, expected_ids=expected_ids, run_id=run_id)
 
     updates: dict[str, str] = {}
     updated = 0
@@ -513,6 +839,10 @@ def import_commentary(
     unchanged = 0
     for record in existing:
         exception_id = record["exception_id"]
+        if exception_id not in parsed.commentaries:
+            # Safe partial: omitted date records are preserved, never cleared.
+            unchanged += 1
+            continue
         before = _commentary(record)
         after = parsed.commentaries[exception_id]
         if after == before:
@@ -535,7 +865,7 @@ def import_commentary(
             ) from exc
 
     records = list_exceptions(parsed.as_of_date, repo)
-    return {
+    result = {
         "as_of_date": parsed.as_of_date.isoformat(),
         "updated": updated,
         "cleared": cleared,
@@ -543,3 +873,9 @@ def import_commentary(
         "total": len(records),
         "exceptions": records,
     }
+    if run_id is not None:
+        result["scope"] = "run"
+        result["run_id"] = run_id
+    else:
+        result["scope"] = "date"
+    return result
