@@ -54,6 +54,8 @@ export function ConfigManager({
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [showSaveToConfigConfirm, setShowSaveToConfigConfirm] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  // Target of the in-progress save, shown as "Saving to config: xxx".
+  const [savingName, setSavingName] = useState<string | null>(null);
   const queryClient = useQueryClient();
   // Extra freeze beyond the mutation itself: fast saves would otherwise
   // flash the disabled state for milliseconds, and the buttons would enable
@@ -77,7 +79,9 @@ export function ConfigManager({
   // settles, while the invalidated config cache may still be refetching.
   const saving = create.isPending || update.isPending || cooling;
 
-  /** Refresh the saved config's cache entries, then end the freeze. */
+  /** Refresh the saved config's cache entries, then end the freeze. The
+   * "Saving to config: xxx" message stays up through the whole freeze and is
+   * swapped for "Saved to config: xxx" exactly when the buttons enable. */
   async function finishSave(name: string, startedAt: number, ok: boolean): Promise<void> {
     saveInFlight.current = false;
     if (ok) {
@@ -91,18 +95,20 @@ export function ConfigManager({
         // normal query error states to surface on next load. Either way the
         // saved message below is accurate about the save.
       }
-      setSavedMessage(`Saved to config: ${name}`);
     }
     const remaining = SAVE_FREEZE_MS - (Date.now() - startedAt);
-    if (remaining <= 0) {
+    const done = () => {
+      coolingTimer.current = null;
       setCooling(false);
+      setSavingName(null);
+      if (ok) setSavedMessage(`Saved to config: ${name}`);
+    };
+    if (remaining <= 0) {
+      done();
       return;
     }
     if (coolingTimer.current !== null) window.clearTimeout(coolingTimer.current);
-    coolingTimer.current = window.setTimeout(() => {
-      coolingTimer.current = null;
-      setCooling(false);
-    }, remaining);
+    coolingTimer.current = window.setTimeout(done, remaining);
   }
 
   function handleLoad(name: string): void {
@@ -120,6 +126,7 @@ export function ConfigManager({
     if (!name || saveInFlight.current) return;
     saveInFlight.current = true;
     setSavedMessage(null);
+    setSavingName(name);
     setCooling(true);
     const startedAt = Date.now();
     create.mutate(
@@ -141,6 +148,7 @@ export function ConfigManager({
     if (!selectedName || selectedVersion === null || saveInFlight.current) return;
     saveInFlight.current = true;
     setSavedMessage(null);
+    setSavingName(selectedName);
     setCooling(true);
     const startedAt = Date.now();
     const name = selectedName;
@@ -236,9 +244,10 @@ export function ConfigManager({
             </div>
           </div>
 
-          {saving && !savedMessage && (
+          {saving && (
             <p role="status" aria-live="polite" className="busy-row">
-              <span className="spinner" aria-hidden="true" /> Saving config…
+              <span className="spinner" aria-hidden="true" />{" "}
+              {savingName ? `Saving to config: ${savingName}…` : "Saving config…"}
             </p>
           )}
           <ConfigLoadNotice message={savedMessage} />

@@ -272,9 +272,15 @@ describe("ConfigManager", () => {
     fireEvent.change(within(dialog).getByPlaceholderText("my-config"), { target: { value: "test-rules" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    await waitFor(() => {
-      expect(screen.getByText("Saved to config: test-rules")).toBeInTheDocument();
-    });
+    // The in-progress message names the target; the saved message only
+    // appears once the freeze (and cache refresh) completes.
+    expect(screen.getByText("Saving to config: test-rules…")).toBeInTheDocument();
+    await waitFor(
+      () => {
+        expect(screen.getByText("Saved to config: test-rules")).toBeInTheDocument();
+      },
+      { timeout: 2500 },
+    );
   });
 
   it("shows saved message after save to config succeeds", async () => {
@@ -315,13 +321,17 @@ describe("ConfigManager", () => {
     const dialog = screen.getByRole("alertdialog", { name: "Save to config?" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
-    await waitFor(() => {
-      expect(updateMutate).toHaveBeenCalledWith(
-        { name: "my-config", content: {}, version: 3 },
-        expect.any(Object),
-      );
-      expect(screen.getByText("Saved to config: my-config")).toBeInTheDocument();
-    });
+    expect(screen.getByText("Saving to config: my-config…")).toBeInTheDocument();
+    await waitFor(
+      () => {
+        expect(updateMutate).toHaveBeenCalledWith(
+          { name: "my-config", content: {}, version: 3 },
+          expect.any(Object),
+        );
+        expect(screen.getByText("Saved to config: my-config")).toBeInTheDocument();
+      },
+      { timeout: 2500 },
+    );
   });
 
   it("keeps controls frozen after a fast save completes", async () => {
@@ -363,15 +373,23 @@ describe("ConfigManager", () => {
 
     // Success is reported only after the saved config's cache is refreshed,
     // and the controls stay frozen for the minimum freeze window even though
-    // the mutation already settled. The saving indicator yields to the saved
-    // message; the freeze is observable through the disabled controls.
-    await waitFor(() => {
-      expect(screen.getByText("Saved to config: my-config")).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/Saving config…/)).not.toBeInTheDocument();
+    // the mutation already settled: the "Saving to config: xxx" message is
+    // visible first with everything disabled, then it is swapped for the
+    // saved message exactly when the buttons enable.
+    expect(screen.getByText("Saving to config: my-config…")).toBeInTheDocument();
     expect(screen.getByRole("combobox")).toBeDisabled();
     expect(screen.getByRole("button", { name: "Load config" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save to config" })).toBeDisabled();
+    await waitFor(
+      () => {
+        expect(screen.getByText("Saved to config: my-config")).toBeInTheDocument();
+      },
+      { timeout: 2500 },
+    );
+    expect(screen.queryByText(/Saving to config:/)).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Load config" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save to config" })).toBeEnabled();
   });
 
   it("calls create.mutate on save new", async () => {
