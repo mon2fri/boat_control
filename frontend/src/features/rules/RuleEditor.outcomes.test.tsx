@@ -87,6 +87,34 @@ const TWO_GROUPS: GroupNode = {
 };
 
 describe("RuleEditor grouped outcomes", () => {
+  it("creates a copy preserving conditions and both grouping trees without the source index", () => {
+    const conditions = ["c1", "c2", "c3"].map((id) => ({
+      id, column: COLUMNS[0]!, operator: "equals" as const, values: ["Y"], value: "Y",
+    }));
+    const conditionTree: GroupNode = { kind: "or", children: [
+      { kind: "and", children: [{ kind: "leaf", conditionId: "c1" }, { kind: "leaf", conditionId: "c2" }] },
+      { kind: "leaf", conditionId: "c3" },
+    ] };
+    const initialRule: Rule = {
+      index: "R079", name: "", description: "", conditions,
+      conditionJoin: "per_grouping", conditionGrouping: null, groupTree: conditionTree,
+      logic: FOUR_OUTCOMES[0]!, logicClauses: FOUR_OUTCOMES,
+      logicRelation: "or", logicGroupTree: TWO_GROUPS,
+    };
+    const before = JSON.stringify(initialRule);
+    const { onSave } = setup({ initialRule });
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New refinement" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).toHaveBeenCalledOnce();
+    const draft = onSave.mock.calls[0]![0];
+    expect(draft.index).toBeUndefined();
+    expect(draft.conditions).toEqual(conditions);
+    expect(draft.groupTree).toEqual(conditionTree);
+    expect(draft.logicClauses).toEqual(FOUR_OUTCOMES);
+    expect(draft.logicGroupTree).toEqual(TWO_GROUPS);
+    expect(JSON.stringify(initialRule)).toBe(before);
+  });
+
   it("requires an explicit relation for multiple outcomes and saves AND", () => {
     const { onSave } = setup();
     fillTwoOutcomes();

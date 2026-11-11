@@ -31,6 +31,9 @@ import {
 interface Props {
   /** Existing rule when editing; undefined when creating. */
   rule?: Rule;
+  /** Seed a new rule without treating it as an update to the source. */
+  initialRule?: Rule;
+  confirmDiscard?: boolean;
   columns: string[];
   columnValues?: Record<string, { value: string; starred: boolean }[]>;
   saving: boolean;
@@ -128,10 +131,10 @@ function conditionValues(condition: Condition): string[] {
  * logic clause in either Value-against-Column or Column-against-Column format.
  * Guards against discarding unsaved edits.
  */
-export function RuleEditor({ rule, columns, columnValues = {}, saving, error, onSave, onCancel }: Props) {
+export function RuleEditor({ rule, initialRule, confirmDiscard = true, columns, columnValues = {}, saving, error, onSave, onCancel }: Props) {
   const { data: families = [] } = useFamilies();
-  const [draft, setDraft] = useState<DraftState>(() => initialDraft(rule));
-  const [pristine] = useState<DraftState>(() => initialDraft(rule));
+  const [draft, setDraft] = useState<DraftState>(() => initialDraft(rule ?? initialRule));
+  const [pristine] = useState<DraftState>(() => initialDraft(rule ?? initialRule));
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [conditionGroupingReset, setConditionGroupingReset] = useState(0);
   const [expectationGroupingReset, setExpectationGroupingReset] = useState(0);
@@ -244,7 +247,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
   }
 
   function requestCancel(): void {
-    if (isDirty) setConfirmCancel(true);
+    if (isDirty && confirmDiscard) setConfirmCancel(true);
     else onCancel();
   }
 

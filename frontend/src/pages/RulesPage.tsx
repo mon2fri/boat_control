@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RuleEditor } from "../features/rules/RuleEditor";
+import { RuleEditorOverlay } from "../features/rules/RuleEditorOverlay";
 import { useCreateRule, useDeleteRule, useReorderRules, useRules, useSetRulesEnabled, useUpdateRule } from "../features/rules/useRules";
 import { SortableRuleList } from "../features/rules/SortableRuleList";
 import { useFamilies } from "../features/settings/useSettings";
@@ -18,7 +19,7 @@ import type { Rule, RuleDraft } from "../api/domain";
 const RULES_KEY = ["rules"] as const;
 const CONTINUATION_CATALOG_PAGE_SIZE = 10;
 
-type EditorState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; rule: Rule };
+type EditorState = { mode: "closed" } | { mode: "create" } | { mode: "edit"; rule: Rule } | { mode: "copy"; rule: Rule };
 
 export function RulesPage({ embedded = false, disabled = false, columnValues = {} }: { embedded?: boolean; disabled?: boolean; columnValues?: Record<string, { value: string; starred: boolean }[]> }) {
   const navigate = useNavigate();
@@ -50,6 +51,12 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
   const [catalogPage, setCatalogPage] = useState(0);
   const [syncedEnabledKey, setSyncedEnabledKey] = useState<string | null>(null);
   const [paginationNotice, setPaginationNotice] = useState<string | null>(null);
+
+  function openEditor(next: EditorState): void {
+    createRule.reset();
+    updateRule.reset();
+    setEditor(next);
+  }
 
   useEffect(() => {
     if (!configNotice) return;
@@ -262,12 +269,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
              ]);
            }
            dispatch({ type: "setSelectedRules", ruleIndexes: [...selected, created.index] });
-           if (draft.name.trim()) {
-             setEditor({ mode: "closed" });
-           } else {
-             setConfigWarnings(["Rule saved as Unnamed. Enter a rule name and save again."]);
-             setEditor({ mode: "edit", rule: created });
-           }
+           setEditor({ mode: "closed" });
         },
       });
     }
@@ -281,6 +283,23 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     editor.mode === "edit"
       ? updateRule.error?.message ?? null
       : createRule.error?.message ?? null;
+
+  const editorOverlay = editor.mode !== "closed" ? (
+    <RuleEditorOverlay>
+      <RuleEditor
+        key={editor.mode === "create" ? "create" : `${editor.mode}-${editor.rule.index}`}
+        {...(editor.mode === "edit" ? { rule: editor.rule } : {})}
+        {...(editor.mode === "copy" ? { initialRule: { ...structuredClone(editor.rule), name: "", description: "" } } : {})}
+        confirmDiscard={false}
+        columns={columns}
+        columnValues={columnValues}
+        saving={createRule.isPending || updateRule.isPending}
+        error={saveError}
+        onSave={handleSave}
+        onCancel={() => setEditor({ mode: "closed" })}
+      />
+    </RuleEditorOverlay>
+  ) : null;
 
   if (embedded) {
     return (
@@ -330,7 +349,8 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                     disabled={disabled || reorderRules.isPending}
                     onToggle={toggle}
                     onToggleAll={toggleAll}
-                    onEdit={(rule) => setEditor({ mode: "edit", rule })}
+                    onEdit={(rule) => openEditor({ mode: "edit", rule })}
+                    onCopy={(rule) => openEditor({ mode: "copy", rule })}
                     onDelete={setPendingDelete}
                     onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}
                     serverPaged
@@ -350,30 +370,11 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                 </div>
                 {paginationNotice && <p className="alert alert--warn" role="status">{paginationNotice}</p>}
                 {editor.mode === "closed" && (
-                  <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
+                  <button type="button" className="btn" onClick={() => openEditor({ mode: "create" })}>
                     + Add rule
                   </button>
                 )}
               </>
-            )}
-          </div>
-
-          <div>
-            {editor.mode !== "closed" ? (
-              <RuleEditor
-                key={editor.mode === "edit" ? editor.rule.index : "create"}
-                {...(editor.mode === "edit" ? { rule: editor.rule } : {})}
-                columns={columns}
-                columnValues={columnValues}
-                saving={createRule.isPending || updateRule.isPending}
-                error={saveError}
-                onSave={handleSave}
-                onCancel={() => setEditor({ mode: "closed" })}
-              />
-            ) : (
-              <div className="card">
-                <p className="card-hint">Select a rule to edit, or add a new rule.</p>
-              </div>
             )}
           </div>
         </div>
@@ -445,6 +446,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
           </ConfirmDialog>
         )}
         </fieldset>
+        {editorOverlay}
 
         <ConfirmDialog
           title="Delete rule?"
@@ -520,14 +522,15 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                 disabled={reorderRules.isPending}
                 onToggle={toggle}
                 onToggleAll={toggleAll}
-                onEdit={(rule) => setEditor({ mode: "edit", rule })}
+                onEdit={(rule) => openEditor({ mode: "edit", rule })}
+                onCopy={(rule) => openEditor({ mode: "copy", rule })}
                 onDelete={setPendingDelete}
                 onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}
                 serverPaged
               />
             )}
             {editor.mode === "closed" && (
-           <button type="button" className="btn" onClick={() => setEditor({ mode: "create" })}>
+           <button type="button" className="btn" onClick={() => openEditor({ mode: "create" })}>
                 + Add rule
               </button>
             )}
@@ -546,18 +549,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
             {paginationNotice && <p className="alert alert--warn" role="status">{paginationNotice}</p>}
           </div>
 
-          {editor.mode !== "closed" && (
-            <RuleEditor
-              key={editor.mode === "edit" ? editor.rule.index : "create"}
-              {...(editor.mode === "edit" ? { rule: editor.rule } : {})}
-              columns={columns}
-              columnValues={columnValues}
-              saving={createRule.isPending || updateRule.isPending}
-              error={saveError}
-              onSave={handleSave}
-              onCancel={() => setEditor({ mode: "closed" })}
-            />
-          )}
+          {editorOverlay}
         </>
       )}
 

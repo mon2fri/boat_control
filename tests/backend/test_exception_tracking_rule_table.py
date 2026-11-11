@@ -102,8 +102,9 @@ def test_headers_match_contract_and_sheet_names_preserved() -> None:
     assert template["A1"].value == "Exception Commentary Template"
     assert template["B2"].value == TEMPLATE_VERSION
     assert template["B3"].value == "2026-10-30"
-    assert template.cell(7, 1).value == "Enabled Rules"
-    assert [template.cell(8, column).value for column in range(1, 8)] == list(RULE_TABLE_HEADERS)
+    assert all(template.cell(7, column).value is None for column in range(1, 8))
+    assert template.cell(8, 1).value == "Enabled Rules"
+    assert [template.cell(9, column).value for column in range(1, 8)] == list(RULE_TABLE_HEADERS)
     sheet = workbook["Exceptions"]
     assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
 
@@ -259,12 +260,12 @@ def test_table_cells_wrap_and_have_useful_dimensions() -> None:
     assert template.column_dimensions["D"].width >= 20
     assert template.column_dimensions["E"].width >= 20
     assert template.column_dimensions["F"].width >= 20
-    for row in (8, 9, 10):
+    for row in (9, 10, 11):
         for column in range(1, 7):
             assert template.cell(row, column).alignment.wrap_text is True
         assert template.row_dimensions[row].height >= 30
     # Multi-line rule needs a taller row than a single-line rule.
-    assert template.row_dimensions[9].height > template.row_dimensions[10].height
+    assert template.row_dimensions[10].height > template.row_dimensions[11].height
 
 
 def test_generated_workbook_upload_round_trip_with_table() -> None:
@@ -284,8 +285,8 @@ def test_generated_workbook_upload_round_trip_with_table() -> None:
     template = load_workbook(io.BytesIO(content))["Template"]
     assert template["B2"].value == TEMPLATE_VERSION
     assert template["B3"].value == "2026-10-30"
-    assert template.cell(8, 1).value == "Snapshot Notes"
-    assert "runA" in str(template.cell(8, 2).value)
+    assert template.cell(9, 1).value == "Snapshot Notes"
+    assert "runA" in str(template.cell(9, 2).value)
     assert _table_rows(content)[0][0] == "R001 - Opposite flags only"
 
 

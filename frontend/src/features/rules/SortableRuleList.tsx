@@ -16,6 +16,7 @@ interface Props {
   onToggle: (ruleId: string) => void;
   onToggleAll: (ruleIds: string[], enabled: boolean) => void;
   onEdit: (rule: Rule) => void;
+  onCopy?: (rule: Rule) => void;
   onDelete: (rule: Rule) => void;
   onReorder: (ruleIds: string[]) => void;
   serverPaged?: boolean;
@@ -54,6 +55,7 @@ export function SortableRuleList({
   onToggle,
   onToggleAll,
   onEdit,
+  onCopy,
   onDelete,
   onReorder,
   serverPaged = false,
@@ -205,6 +207,7 @@ export function SortableRuleList({
               <div className="rule-actions">
                 <code className="rule-logic">{ruleLogicSummary(rule)}</code>
                 <button type="button" className="btn" onClick={() => onEdit(rule)}>Edit</button>
+                {onCopy && <button type="button" className="btn" onClick={() => onCopy(rule)}>Copy</button>}
                 <button type="button" className="btn btn--danger" onClick={() => onDelete(rule)}>Delete</button>
               </div>
             </li>

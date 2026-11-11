@@ -199,8 +199,8 @@ def test_report_exports_contain_only_own_run_membership(
     assert template["A5"].value == "Instructions"
     assert template["A6"].value == "Report Name"
     assert template["B6"].value == "October comparison"
-    assert template["G8"].value == "Description"
-    assert template["G9"].value == "Check the saved rule description"
+    assert template["G9"].value == "Description"
+    assert template["G10"].value == "Check the saved rule description"
     assert sorted(_exception_ids(run_a.content)) == ["ONLY_A", "SHARED"]
     assert sorted(_exception_ids(run_b.content)) == ["ONLY_B", "SHARED"]
     assert sorted(_exception_ids(tracking.content)) == ["ONLY_A", "ONLY_B", "SHARED"]

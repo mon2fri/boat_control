@@ -179,13 +179,14 @@ def _write_rule_summary_table(
 ) -> None:
     """Additive enabled-rule table below the Template metadata block.
 
-    Title row 7 keeps parser-critical B2/B3 positions untouched; the
+    Blank row 7 separates metadata from the title on row 8 and keeps
+    parser-critical B2/B3 positions untouched; the
     Exceptions sheet and its import validation are unaffected.
     """
     notes = [str(note) for note in (rule_snapshot_notes or []) if str(note).strip()]
-    sheet.cell(7, 1, "Enabled Rules").font = Font(bold=True, size=12)
+    sheet.cell(8, 1, "Enabled Rules").font = Font(bold=True, size=12)
 
-    row = 8
+    row = 9
     if notes:
         sheet.cell(row, 1, "Snapshot Notes").font = Font(bold=True)
         sheet.cell(row, 2, _protect_text("\n".join(notes)))

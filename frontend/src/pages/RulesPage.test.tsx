@@ -28,13 +28,13 @@ const rulesList = {
   has_more: false,
 };
 
-function renderPage() {
+function renderPage(embedded = false) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <WorkflowProvider>
         <MemoryRouter>
-          <RulesPage />
+          <RulesPage embedded={embedded} />
         </MemoryRouter>
       </WorkflowProvider>
     </QueryClientProvider>,
@@ -108,6 +108,63 @@ function renderPageWithHeaderAndProbe(): {
 afterEach(() => vi.restoreAllMocks());
 
 describe("RulesPage", () => {
+  it.each([false, true])("opens an overlay and cancels edits (embedded=%s)", async (embedded) => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse(rulesList)));
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage(embedded);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog", { name: "Rule editor" });
+    expect(dialog.parentElement).toBe(document.body);
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("Region present");
+    fireEvent.click(dialog);
+    fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Edited" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "+ Add rule" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("copies into a new rule with blank metadata and saves through POST", async () => {
+    const sourceRule = { ...wireRule, logic: { ...wireRule.logic, target_value: "active" } };
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return Promise.resolve(jsonResponse({ ...sourceRule, rule_id: "R002", name: "Copied rule" }));
+      return Promise.resolve(jsonResponse({ ...rulesList, rules: [sourceRule] }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("");
+    expect(within(dialog).getByLabelText(/Description/)).toHaveValue("");
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Copied rule" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save rule" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    const request = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
+    expect(request?.[0]).toBe("/api/rules/");
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({ name: "Copied rule", logic: sourceRule.logic });
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the overlay and draft open when saving fails", async () => {
+    vi.stubGlobal("fetch", vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return Promise.resolve(jsonResponse({ error: "Could not save rule" }, false, 500));
+      return Promise.resolve(jsonResponse({ ...rulesList, rules: [{ ...wireRule, logic: { ...wireRule.logic, target_value: "active" } }] }));
+    }));
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Copy" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Keep my draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    await waitFor(() => expect(within(screen.getByRole("dialog")).getByRole("alert")).toBeInTheDocument());
+    expect(screen.getByLabelText("Name")).toHaveValue("Keep my draft");
+    vi.unstubAllGlobals();
+  });
+
   it("shows ten rules per page and navigates to the next ten rules", async () => {
     const bufferedRules = Array.from({ length: 10 }, (_, index) => ({
       ...wireRule,

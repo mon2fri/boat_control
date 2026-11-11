@@ -2149,7 +2149,7 @@ table.data td {
   padding: 0;
 }
 .rule-select-list li {
-  padding: var(--space) 0;
+  padding: calc(var(--space) * 2) 0;
   border-bottom: 1px solid var(--color-rule);
 }
 .rule-select-list li:last-child {
@@ -2418,7 +2418,7 @@ dl.card dd {
 
 .rules-layout {
   display: grid;
-  grid-template-columns: 25% 75%;
+  grid-template-columns: minmax(0, 1fr);
   gap: calc(var(--space) * 3);
   align-items: start;
 }
@@ -2429,8 +2429,40 @@ dl.card dd {
 }
 
 .rules-layout .rule-select-panel {
-  position: sticky;
-  top: var(--space);
+  min-width: 0;
+}
+
+.rule-editor-overlay {
+  width: min(1200px, calc(100vw - 48px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-elevated);
+  overflow: auto;
+}
+
+.rule-editor-overlay::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.rule-editor-overlay > .card {
+  margin: 0;
+  border: 0;
+}
+
+.rule-select-panel .rule-select-list__main {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+  .rule-editor-overlay {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
 }
 
 /* ============================================================
