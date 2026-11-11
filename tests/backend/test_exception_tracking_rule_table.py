@@ -93,6 +93,7 @@ def test_headers_match_contract_and_sheet_names_preserved() -> None:
         "Expectations",
         "Expectation Groupings",
         "Rule Identifier",
+        "Description",
     )
     content = build_commentary_workbook([_record()], date(2026, 10, 30))
     workbook = load_workbook(io.BytesIO(content))
@@ -102,7 +103,7 @@ def test_headers_match_contract_and_sheet_names_preserved() -> None:
     assert template["B2"].value == TEMPLATE_VERSION
     assert template["B3"].value == "2026-10-30"
     assert template.cell(7, 1).value == "Enabled Rules"
-    assert [template.cell(8, column).value for column in range(1, 7)] == list(RULE_TABLE_HEADERS)
+    assert [template.cell(8, column).value for column in range(1, 8)] == list(RULE_TABLE_HEADERS)
     sheet = workbook["Exceptions"]
     assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
 

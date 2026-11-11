@@ -57,6 +57,7 @@ RULE_TABLE_HEADERS: tuple[str, ...] = (
     "Expectations",
     "Expectation Groupings",
     "Rule Identifier",
+    "Description",
 )
 
 MISSING_METADATA = "Unavailable"
@@ -65,6 +66,7 @@ NO_SNAPSHOTS_MESSAGE = "No enabled rule snapshots available for this run."
 
 _COMPARED_SNAPSHOT_KEYS: tuple[str, ...] = (
     "name",
+    "description",
     "rule_identifier",
     "condition_clauses",
     "expectation_clauses",
@@ -176,8 +178,8 @@ def merge_rule_snapshots(
 
 def build_rule_table_rows(
     summaries: Mapping[str, Any] | None,
-) -> list[tuple[str, str, str, str, str, str]]:
-    """One 6-cell row per enabled rule, sorted numerically (R2 before R10).
+) -> list[tuple[str, ...]]:
+    """One row per enabled rule, sorted numerically (R2 before R10).
 
     Cell text matches ``apps.reports.rule_headers.excel_rule_headers``
     semantics verbatim (conditions, condition groupings, expectations,
@@ -186,12 +188,12 @@ def build_rule_table_rows(
     preserved (a single ungrouped clause has no groupings); wholly missing
     snapshots render as ``"Unavailable"``.
     """
-    rows: list[tuple[str, str, str, str, str, str]] = []
+    rows: list[tuple[str, ...]] = []
     enabled = enabled_rule_summaries(summaries)
     for rule_id in sorted(enabled, key=rule_sort_key):
         summary = enabled[rule_id]
         if not summary:
-            rows.append((rule_id, *(MISSING_METADATA,) * 4, MISSING_METADATA))
+            rows.append((rule_id, *(MISSING_METADATA,) * (len(RULE_TABLE_HEADERS) - 1)))
             continue
         conditions, condition_groups, expectations, expectation_groups = excel_rule_headers(summary)
         rows.append(
@@ -202,6 +204,7 @@ def build_rule_table_rows(
                 expectations,
                 expectation_groups,
                 rule_identifier_text(summary),
+                str(summary.get("description") or MISSING_METADATA),
             )
         )
     return rows

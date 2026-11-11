@@ -202,7 +202,7 @@ def _write_rule_summary_table(
 
     rows = build_rule_table_rows(rule_summaries)
     if not rows:
-        rows = [(NO_SNAPSHOTS_MESSAGE, *(MISSING_METADATA,) * 5)]
+        rows = [(NO_SNAPSHOTS_MESSAGE, *(MISSING_METADATA,) * (len(RULE_TABLE_HEADERS) - 1))]
     for values in rows:
         if len(values) != len(RULE_TABLE_HEADERS):
             values = tuple(list(values) + [""] * len(RULE_TABLE_HEADERS))[: len(RULE_TABLE_HEADERS)]
@@ -219,6 +219,7 @@ def _write_rule_summary_table(
     sheet.column_dimensions["D"].width = 48
     sheet.column_dimensions["E"].width = 32
     sheet.column_dimensions["F"].width = 36
+    sheet.column_dimensions["G"].width = 60
 
 
 def _status_rank(value: object) -> int:
@@ -234,6 +235,7 @@ def build_commentary_workbook(
     detail_values: Mapping[str, Mapping[str, Any]] | None = None,
     rule_summaries: Mapping[str, Any] | None = None,
     rule_snapshot_notes: Iterable[str] = (),
+    report_name: str = "",
 ) -> bytes:
     """Build the shared EXCEPTION commentary template.
 
@@ -277,6 +279,8 @@ def build_commentary_workbook(
         "for this as-of date. Do not change exception IDs. Columns after Rule Index "
         "are informational context and are ignored during upload."
     )
+    template["A6"] = "Report Name"
+    template["B6"] = _protect_text(report_name or MISSING_METADATA)
     template.column_dimensions["A"].width = 24
     template.column_dimensions["B"].width = 90
     _write_rule_summary_table(

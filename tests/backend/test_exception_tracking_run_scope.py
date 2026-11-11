@@ -183,6 +183,10 @@ def test_report_exports_contain_only_own_run_membership(
         {"R001": ["SHARED"], "R002": ["ONLY_B"]},
         {"R001": _summary("First"), "R002": _summary("Second")},
     )
+    runs["run-a"]["report_name"] = "October comparison"
+    runs["run-a"]["result"]["validation"]["rule_summaries"]["R001"]["description"] = (
+        "Check the saved rule description"
+    )
 
     run_a = APIClient().get("/api/exception-tracking/export/?run_id=run-a")
     run_b = APIClient().get("/api/exception-tracking/export/?run_id=run-b")
@@ -191,6 +195,12 @@ def test_report_exports_contain_only_own_run_membership(
     )
 
     assert run_a.status_code == run_b.status_code == tracking.status_code == 200
+    template = load_workbook(io.BytesIO(run_a.content))["Template"]
+    assert template["A5"].value == "Instructions"
+    assert template["A6"].value == "Report Name"
+    assert template["B6"].value == "October comparison"
+    assert template["G8"].value == "Description"
+    assert template["G9"].value == "Check the saved rule description"
     assert sorted(_exception_ids(run_a.content)) == ["ONLY_A", "SHARED"]
     assert sorted(_exception_ids(run_b.content)) == ["ONLY_B", "SHARED"]
     assert sorted(_exception_ids(tracking.content)) == ["ONLY_A", "ONLY_B", "SHARED"]

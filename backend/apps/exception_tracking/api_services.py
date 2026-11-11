@@ -458,6 +458,7 @@ def _build_workbook(
     detail_values: dict[str, dict[str, str]] | None = None,
     rule_summaries: Mapping[str, Mapping[str, Any]] | None = None,
     rule_snapshot_notes: Iterable[str] = (),
+    report_name: str = "",
 ) -> bytes:
     """Build the workbook, forwarding rule summaries/notes when supported.
 
@@ -474,6 +475,8 @@ def _build_workbook(
     notes = [str(note) for note in (rule_snapshot_notes or []) if str(note).strip()]
     if notes and _workbook_param_supported("rule_snapshot_notes"):
         kwargs["rule_snapshot_notes"] = notes
+    if report_name and _workbook_param_supported("report_name"):
+        kwargs["report_name"] = report_name
     return build_commentary_workbook(records, as_of_date, **kwargs)
 
 
@@ -679,6 +682,7 @@ def export_run_commentary(
         detail_values=detail_values,
         rule_summaries=rule_summaries,
         rule_snapshot_notes=(),
+        report_name=str(run_data.get("report_name") or ""),
     )
     return content, as_of_date
 
