@@ -8,7 +8,6 @@ import { formatFilterRow } from "../filters/formatFilterRow";
 import { summarizeAppliedFilters } from "./appliedFilterSummary";
 
 const METRICS: { key: keyof OverallSummary; label: string }[] = [
-  { key: "recordsLoaded", label: "Books after filters" },
   { key: "ruleViolationRowCount", label: "Books with rule exception" },
   { key: "ruleViolationAttributeCount", label: "Attributes with rule exception" },
   { key: "changedRowCount", label: "Books with changes" },
@@ -29,7 +28,7 @@ export interface OverallSummaryCardsProps {
 }
 
 /**
- * The six required overall counts plus the complete applied-filter grouping.
+ * The five headline counts plus the complete applied-filter grouping.
  *
  * The filter block is rendered from the persisted run fields so a saved result
  * never reflects unsaved editor changes. A broken saved expression is shown as
@@ -92,6 +91,9 @@ export function OverallSummaryCards({
           </p>
         )}
       </div>
+      <p className="field-hint">
+        Books after filters: {summary.recordsLoaded.toLocaleString()}
+      </p>
     </div>
   );
 }

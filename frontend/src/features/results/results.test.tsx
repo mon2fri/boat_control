@@ -74,12 +74,13 @@ describe("result components", () => {
   });
 
   it("renders all five overall counts with their values", () => {
-    render(<OverallSummaryCards summary={result.overall} />);
+    render(<OverallSummaryCards summary={{ ...result.overall, newBookCount: 2 }} />);
     const region = screen.getByLabelText("Overall result summary");
-    expect(within(region).getByText("1,200")).toBeInTheDocument();
+    expect(within(region).queryByText("1,200")).not.toBeInTheDocument();
+    expect(within(region).queryByText("Books after filters")).not.toBeInTheDocument();
     expect(within(region).getByText("Books with rule exception")).toBeInTheDocument();
     expect(within(region).getByText("Attributes changed")).toBeInTheDocument();
-    // Six metric cards (five always shown, newBooks shown only when > 0).
+    expect(within(region).getByText("New Books")).toBeInTheDocument();
     expect(region.querySelectorAll(".metric")).toHaveLength(5);
   });
 

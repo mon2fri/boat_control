@@ -133,7 +133,7 @@ describe("ExportControls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Download commentary template" }));
     await waitFor(() =>
       expect(screen.getByText(/Saved as/)).toHaveTextContent(
-        "exception_commentary_2026-10-30.xlsx",
+        "my_run_commentary_template.xlsx",
       ),
     );
     // Report scope: the run ID selects membership on the server. The request

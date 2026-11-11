@@ -4,7 +4,7 @@ import {
   downloadRunCommentaryTemplate,
   ExportError,
 } from "../../api/endpoints";
-import { exportRenderedHtml } from "./exportRenderedHtml";
+import { exportRenderedHtml, safeFilename } from "./exportRenderedHtml";
 
 interface Props {
   runId: string;
@@ -110,7 +110,7 @@ export function ExportControls({ runId, reportName, asOfDate, newExceptionsOnly 
     setCommentaryBusy(true);
     try {
       const result = await downloadRunCommentaryTemplate(runId);
-      saveBlob(result.blob, result.filename);
+      saveBlob(result.blob, `${safeFilename(reportName)}_commentary_template.xlsx`);
     } catch (err) {
       setError(
         err instanceof ExportError

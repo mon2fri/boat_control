@@ -337,13 +337,6 @@ function ResultView({
       </section>
       <section id="overall" aria-labelledby="overall-title" className="card">
         <h3 id="overall-title" className="results-card-title">Overall result</h3>
-        <p className="section-logic">
-          Comparison across{" "}
-          {targetColumns.length === 0
-            ? "all common columns"
-            : `${targetColumns.length} target columns`}{" "}
-          with {(result.filtersApplied ?? completeFilters(filters)).length} filter(s).
-        </p>
         <OverallSummaryCards
           summary={result.overall}
           filtersApplied={result.filtersApplied}
@@ -351,6 +344,13 @@ function ResultView({
           filtersGroupTree={result.filtersGroupTree}
           filtersGroupingErrors={result.filtersGroupingErrors}
         />
+        <p className="section-logic">
+          Comparison across{" "}
+          {targetColumns.length === 0
+            ? "all common columns"
+            : `${targetColumns.length} target columns`}{" "}
+          with {(result.filtersApplied ?? completeFilters(filters)).length} filter(s).
+        </p>
         {nestedAggregationEnabled && aggregationColumns.length > 0 ? (
           <NestedAggregationPanel
             details={result.changeDetails}

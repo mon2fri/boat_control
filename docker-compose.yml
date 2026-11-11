@@ -1,0 +1,20 @@
+services:
+  boat-control:
+    image: boat-control:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    init: true
+    environment:
+      BOAT_CONTROL_PORT: "45303"
+    ports:
+      - "127.0.0.1:45303:45303"
+    volumes:
+      - boat-data:/app/data
+      - boat-config:/app/config
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+volumes:
+  boat-data:
+  boat-config:

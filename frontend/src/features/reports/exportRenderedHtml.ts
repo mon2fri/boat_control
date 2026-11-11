@@ -653,7 +653,7 @@ function collectDocumentCss(): string {
   return chunks.join("\n");
 }
 
-function safeFilename(value: string): string {
+export function safeFilename(value: string): string {
   const cleaned = value
     .replace(/[^a-zA-Z0-9 _-]/g, "_")
     .trim()

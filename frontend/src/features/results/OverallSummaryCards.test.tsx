@@ -36,11 +36,12 @@ const nestedTree: GroupNode = {
 
 
 describe("OverallSummaryCards", () => {
-  it("keeps the six overall counts and no-filter legacy message", () => {
-    render(<OverallSummaryCards summary={summary} filtersApplied={[]} />);
+  it("keeps five headline counts and the plain filtered count", () => {
+    render(<OverallSummaryCards summary={{ ...summary, newBookCount: 2 }} filtersApplied={[]} />);
 
     const region = screen.getByLabelText("Overall result summary");
-    expect(within(region).getByText("1,200")).toBeInTheDocument();
+    expect(within(region).queryByText("1,200")).not.toBeInTheDocument();
+    expect(screen.getByText("Books after filters: 1,200")).toBeInTheDocument();
     expect(region.querySelectorAll(".metric")).toHaveLength(5);
     expect(screen.getByTestId("applied-filters-statement")).toHaveTextContent(
       "No filtering rows applied",
