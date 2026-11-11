@@ -84,19 +84,19 @@ describe("result components", () => {
     expect(region.querySelectorAll(".metric")).toHaveLength(5);
   });
 
-  it("shows the rule logic under the section title", () => {
+  it("moves rule logic from inline expressions into the hover preview", () => {
     render(<RuleResultSection result={{
       ...ruleResult,
       conditionSummary: "Condition 1: region equals 'EMEA'; Condition 2: owner equals 'Ops'",
       conditionGroupingSummary: "Condition 1 AND Condition 2",
     }} />);
     const section = screen.getByRole("region", { name: /Region present/ });
-    expect(within(section).getByText("Condition:")).toBeInTheDocument();
-    expect(within(section).getByText(/Condition 1: region equals/)).toBeInTheDocument();
-    expect(within(section).getByText("Grouping:")).toBeInTheDocument();
-    expect(within(section).getByText("Condition 1 AND Condition 2")).toBeInTheDocument();
-    expect(within(section).getByText("Expectation:")).toBeInTheDocument();
-    expect(within(section).getByText(/region must not equal/)).toBeInTheDocument();
+    expect(within(section).queryByText("Expectation:")).not.toBeInTheDocument();
+    expect(within(section).queryByText("Grouping:")).not.toBeInTheDocument();
+    fireEvent.mouseEnter(within(section).getByRole("button", { name: /Preview grouping/ }));
+    const preview = screen.getByRole("tooltip");
+    expect(within(preview).getByRole("region", { name: "Conditions" })).toBeInTheDocument();
+    expect(within(preview).getByText(/region must not equal/)).toBeInTheDocument();
     expect(within(section).getByText("3")).toBeInTheDocument();
   });
 

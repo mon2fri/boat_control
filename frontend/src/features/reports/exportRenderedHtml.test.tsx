@@ -16,6 +16,19 @@ async function buildExport(root: HTMLElement, reportName: string): Promise<strin
 }
 
 describe("exportRenderedHtml — Table of Contents FAB", () => {
+  it("preserves grouping data once per eye and embeds the shared offline renderer", async () => {
+    const root = document.createElement("section");
+    const button = document.createElement("button");
+    button.setAttribute("data-grouping-preview", JSON.stringify({ title: "Historical rule", sections: [] }));
+    button.setAttribute("aria-describedby", "live-tooltip");
+    root.appendChild(button);
+    const html = await buildExport(root, "Grouping");
+    const exported = new DOMParser().parseFromString(html, "text/html");
+    expect(exported.querySelectorAll("[data-grouping-preview]")).toHaveLength(1);
+    expect(exported.querySelector("[data-grouping-preview]")!.hasAttribute("aria-describedby")).toBe(false);
+    expect(html).toContain("report-grouping-preview");
+    expect(html).toContain("data-grouping-preview");
+  });
   it("preserves the current scope checkbox state and hover help in a standalone report", async () => {
     const root = document.createElement("section");
     root.innerHTML = '<div class="scope-title-row"><label class="results-card-title"><input id="new-exceptions-only" type="checkbox">New Exceptions Only</label><span class="section-hint-icon" tabindex="0"><span role="tooltip">Scope help</span></span></div>';

@@ -19,6 +19,7 @@ import {
   findConditionId,
 } from "./groupingTree";
 import { PER_GROUPING_HELP_TEXT } from "./groupingEditorSupport";
+import { ClauseLabel } from "./ClauseLabel";
 
 interface Props {
   conditions: Condition[];
@@ -756,14 +757,4 @@ function pickUnusedConditionId(available: Set<string>, node: GroupNode): string 
   const used = collectConditionIds(node);
   for (const id of available) if (!used.has(id)) return id;
   return "__empty__";
-}
-
-/** Match the numbered row badge while keeping the predicate readable. */
-function ClauseLabel({ label }: { label: string }) {
-  const match = /^(Filter|Condition|Expectation) (\d+):\s*(.*)$/i.exec(label);
-  if (!match) return <>{label}</>;
-  return <span className="group-clause-label">
-    <span className="condition-number">{match[1]} {match[2]}</span>
-    <span>{match[3]}</span>
-  </span>;
 }

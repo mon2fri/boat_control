@@ -243,6 +243,12 @@ export interface RuleResult {
   logicSummary: string;
   conditionSummary?: string;
   conditionGroupingSummary?: string;
+  conditionClauses?: string[];
+  expectationClauses?: string[];
+  conditionGroupings?: string;
+  expectationGroupings?: string;
+  conditionTree?: GroupNode | null;
+  expectationTree?: GroupNode | null;
   violationRowCount: number;
   violationAttributeCount: number;
   details: DetailRow[];

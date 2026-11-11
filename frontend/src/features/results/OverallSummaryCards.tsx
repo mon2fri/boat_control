@@ -4,7 +4,6 @@ import type {
   GroupRelation,
   OverallSummary,
 } from "../../api/domain";
-import { formatFilterRow } from "../filters/formatFilterRow";
 import { summarizeAppliedFilters } from "./appliedFilterSummary";
 
 const METRICS: { key: keyof OverallSummary; label: string }[] = [
@@ -28,7 +27,7 @@ export interface OverallSummaryCardsProps {
 }
 
 /**
- * The five headline counts plus the complete applied-filter grouping.
+ * The five headline counts and a discreet filtered-book count.
  *
  * The filter block is rendered from the persisted run fields so a saved result
  * never reflects unsaved editor changes. A broken saved expression is shown as
@@ -48,9 +47,6 @@ export function OverallSummaryCards({
     filtersGroupingErrors,
   });
   const hasFilters = (filtersApplied?.length ?? 0) > 0;
-  const filterExpression = filtersApplied?.length === 1 && !filterSummary.invalid
-    ? formatFilterRow(filtersApplied[0]!)
-    : filterSummary.expression;
 
   return (
     <div className="overall-summary">
@@ -67,20 +63,7 @@ export function OverallSummaryCards({
         })}
       </div>
       <div className="applied-filter-summary" aria-label="Applied filter grouping">
-        {hasFilters ? (
-          <>
-            {filterExpression && (
-              <p className="section-logic" data-testid="applied-filters-expression">
-                Filters: {filterExpression}
-              </p>
-            )}
-            {filterSummary.invalid && (
-              <p className="field-hint" data-testid="applied-filters-statement">
-                {filterSummary.clauses.join("; ")}
-              </p>
-            )}
-          </>
-        ) : (
+        {!hasFilters && (
           <p className="field-hint" data-testid="applied-filters-statement">
             No filtering rows applied
           </p>

@@ -762,6 +762,12 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
         ...(persistedSummary?.condition_grouping
           ? { conditionGroupingSummary: persistedSummary.condition_grouping }
           : {}),
+        ...(persistedSummary?.condition_clauses ? { conditionClauses: persistedSummary.condition_clauses } : {}),
+        ...(persistedSummary?.expectation_clauses ? { expectationClauses: persistedSummary.expectation_clauses } : {}),
+        ...(persistedSummary?.condition_groupings !== undefined ? { conditionGroupings: persistedSummary.condition_groupings } : {}),
+        ...(persistedSummary?.expectation_groupings !== undefined ? { expectationGroupings: persistedSummary.expectation_groupings } : {}),
+        ...(persistedSummary?.condition_tree !== undefined ? { conditionTree: persistedSummary.condition_tree } : {}),
+        ...(persistedSummary?.expectation_tree !== undefined ? { expectationTree: persistedSummary.expectation_tree } : {}),
         violationRowCount: perRuleRowCount,
         violationAttributeCount: perRuleAttributeCount,
         details: violations.map((v, i) =>

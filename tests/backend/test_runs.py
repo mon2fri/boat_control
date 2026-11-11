@@ -190,6 +190,8 @@ class TestValidateRows:
             "condition_groupings": "",
             "expectation_clauses": ["Expectation 1: status equals 'active'"],
             "expectation_groupings": "",
+            "condition_tree": None,
+            "expectation_tree": None,
             "name": "Active Check",
             "description": "",
             "logic": "status equals 'active'",
@@ -294,6 +296,13 @@ class TestValidateRows:
             "Condition 2: owner does not equal 'Ops'"
         )
         assert summary["condition_grouping"] == "Condition 1 AND Condition 2"
+        assert summary["condition_tree"] == {
+            "kind": "and",
+            "children": [
+                {"kind": "leaf", "conditionId": "c0"},
+                {"kind": "leaf", "conditionId": "c1"},
+            ],
+        }
 
     def test_column_logic_can_compare_different_columns_in_comparison(
         self, rules_file: Path

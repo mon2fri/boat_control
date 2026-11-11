@@ -6,6 +6,7 @@ import { RequireSession } from "../components/RequireSession";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useRunExecution } from "../features/results/useRunExecution";
 import { OverallSummaryCards } from "../features/results/OverallSummaryCards";
+import { OverallGroupingPreview } from "../features/results/ResultGroupingPreview";
 import { RuleResultSection } from "../features/results/RuleResultSection";
 import { ExceptionTable } from "../features/results/ExceptionTable";
 import { ReportName } from "../features/reports/ReportName";
@@ -336,7 +337,13 @@ function ResultView({
         </p>
       </section>
       <section id="overall" aria-labelledby="overall-title" className="card">
-        <h3 id="overall-title" className="results-card-title">Overall result</h3>
+        <h3 id="overall-title" className="results-card-title">
+          <span className="result-heading-with-preview">
+            <OverallGroupingPreview filtersApplied={result.filtersApplied} filtersRelation={result.filtersRelation}
+              filtersGroupTree={result.filtersGroupTree} filtersGroupingErrors={result.filtersGroupingErrors} />
+            Overall result
+          </span>
+        </h3>
         <OverallSummaryCards
           summary={result.overall}
           filtersApplied={result.filtersApplied}

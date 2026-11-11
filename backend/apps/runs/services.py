@@ -444,6 +444,8 @@ def validate_rows(
             ],
             "condition_groupings": grouping_lines(condition_tree, "Condition"),
             "expectation_groupings": grouping_lines(expectation_tree, "Expectation"),
+            "condition_tree": condition_tree,
+            "expectation_tree": expectation_tree,
             "name": rule.name,
             "description": rule.description,
             "logic": describe_outcomes(outcomes),

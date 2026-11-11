@@ -163,7 +163,7 @@ describe("critical user journey: upload → prepare → rules → run → result
       as_of_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       new_exceptions_only: true,
     });
-    expect(screen.getByText("220")).toBeInTheDocument();
+    expect(screen.getByText("Books after filters: 220")).toBeInTheDocument();
 
     const scopeToggle = screen.getByRole("checkbox", { name: "New Exceptions Only" });
     expect(scopeToggle).toBeChecked();

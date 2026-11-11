@@ -49,14 +49,13 @@ describe("OverallSummaryCards", () => {
     expect(screen.queryByTestId("applied-filters-grouping")).not.toBeInTheDocument();
   });
 
-  it("shows a single filter once, without redundant numbering or hierarchy", () => {
+  it("keeps single-filter details in the hover preview only", () => {
     render(<OverallSummaryCards summary={summary} filtersApplied={[filters[0]!]} />);
-    expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent('Filters: system contains "oomber"');
     expect(screen.queryByTestId("applied-filters-grouping")).not.toBeInTheDocument();
     expect(screen.queryByTestId("applied-filters-statement")).not.toBeInTheDocument();
   });
 
-  it("renders the complete nested grouping above the full filter list", () => {
+  it("does not show nested filter clauses inline", () => {
     render(
       <OverallSummaryCards
         summary={summary}
@@ -68,13 +67,11 @@ describe("OverallSummaryCards", () => {
 
     expect(screen.queryByTestId("applied-filters-grouping")).not.toBeInTheDocument();
     expect(screen.queryByTestId("applied-filters-statement")).not.toBeInTheDocument();
-    expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent(
-      'Filters: (Filter 1: system contains "oomber" AND (Filter 2: status equals "active" OR Filter 3: status equals "inactive"))',
-    );
+    expect(screen.queryByTestId("applied-filters-expression")).not.toBeInTheDocument();
 
   });
 
-  it("renders a legacy flat AND when the saved run has no tree", () => {
+  it("does not show legacy filter clauses inline", () => {
     render(
       <OverallSummaryCards
         summary={summary}
@@ -82,12 +79,10 @@ describe("OverallSummaryCards", () => {
       />,
     );
 
-    expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent(
-      'Filters: (Filter 1: system contains "oomber" AND Filter 2: status equals "active")',
-    );
+    expect(screen.queryByTestId("applied-filters-expression")).not.toBeInTheDocument();
   });
 
-  it("shows an error and keeps the filters when the saved grouping is invalid", () => {
+  it("shows an error without inline clauses when saved grouping is invalid", () => {
     render(
       <OverallSummaryCards
         summary={summary}
@@ -106,11 +101,9 @@ describe("OverallSummaryCards", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Filter grouping could not be restored",
     );
-    expect(screen.getByTestId("applied-filters-statement")).toHaveTextContent("FILTER 1");
-    expect(screen.getByTestId("applied-filters-statement")).toHaveTextContent("FILTER 2");
   });
 
-  it("derives the saved S35 nested expression from persisted run fields only", () => {
+  it("does not show saved S35 clauses inline", () => {
     const result = mapRunDocumentToResult(
       wireRunDocumentResponseSchema.parse(s35NestedFilterRunResponse),
     );
@@ -127,9 +120,7 @@ describe("OverallSummaryCards", () => {
 
     expect(screen.queryByTestId("applied-filters-grouping")).not.toBeInTheDocument();
     expect(screen.queryByTestId("applied-filters-statement")).not.toBeInTheDocument();
-    expect(screen.getByTestId("applied-filters-expression")).toHaveTextContent(
-      'Filters: (Filter 1: system contains "oomber" AND (Filter 2: status equals "active" OR Filter 3: status equals "inactive"))',
-    );
+    expect(screen.queryByTestId("applied-filters-expression")).not.toBeInTheDocument();
 
   });
 });

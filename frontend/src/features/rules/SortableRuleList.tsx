@@ -1,12 +1,7 @@
 import { useCallback, useRef, useState, useMemo } from "react";
 import type { Rule } from "../../api/domain";
-import { describeLogic } from "./useRules";
-import {
-  formatLogicOutcomeExpression,
-  getRuleLogicClauses,
-  getRuleLogicGrouping,
-  type RuleWithLogicGrouping,
-} from "./logicOutcomes";
+import { getRuleLogicClauses } from "./logicOutcomes";
+import { RuleGroupingPreview } from "./RuleGroupingPreview";
 
 interface Props {
   rules: Rule[];
@@ -37,14 +32,6 @@ function referencedColumns(rule: Rule): string[] {
   if (rule.logic.format === "column") columns.add(rule.logic.target);
   for (const column of rule.extraColumns ?? []) columns.add(column);
   return [...columns].filter(Boolean);
-}
-
-function ruleLogicSummary(rule: Rule): string {
-  const declared = (rule as RuleWithLogicGrouping).logicClauses;
-  if (declared && declared.length > 1) {
-    return formatLogicOutcomeExpression(declared, getRuleLogicGrouping(rule));
-  }
-  return describeLogic(rule);
 }
 
 export function SortableRuleList({
@@ -194,6 +181,7 @@ export function SortableRuleList({
                   ⠿
                 </span>
                 <span className="rule-order-number" aria-hidden="true">{globalIndex + 1}.</span>
+                <RuleGroupingPreview rule={rule} />
                 <label>
                   <input
                     type="checkbox"
@@ -205,7 +193,7 @@ export function SortableRuleList({
                 </label>
               </div>
               <div className="rule-actions">
-                <code className="rule-logic">{ruleLogicSummary(rule)}</code>
+                <span className="rule-list-description">{rule.description || "No description"}</span>
                 <button type="button" className="btn" onClick={() => onEdit(rule)}>Edit</button>
                 {onCopy && <button type="button" className="btn" onClick={() => onCopy(rule)}>Copy</button>}
                 <button type="button" className="btn btn--danger" onClick={() => onDelete(rule)}>Delete</button>

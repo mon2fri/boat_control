@@ -4,10 +4,11 @@ import { DetailTable, filterDetailRows } from "./DetailTable";
 import { GroupStatisticsPanel } from "./GroupStatisticsPanel";
 import { sectionId } from "./anchors";
 import { resolveExceptionId } from "../../lib/exceptionIdentity";
+import { RuleResultGroupingPreview } from "./ResultGroupingPreview";
 
 /**
- * One rule's result: heading with its identifier, the rule logic shown under
- * the title, its violation counts, and a virtualized detail table. Exception
+ * One rule's result: heading with its identifier and saved grouping preview,
+ * its violation counts, and a virtualized detail table. Exception
  * detail rows use the stable Exception ID as their identifier.
  */
 export function RuleResultSection({
@@ -94,7 +95,7 @@ export function RuleResultSection({
   return (
     <section id={sectionId(result.ruleIndex)} aria-labelledby={headingId} className="card">
       <h3 id={headingId} className="results-card-title">
-        <span>{result.ruleIndex} — {result.ruleName}</span>
+        <span className="result-heading-with-preview"><RuleResultGroupingPreview result={result} />{result.ruleIndex} — {result.ruleName}</span>
         {result.ruleIdentifier && (
           <code className="result-rule-identifier">{result.ruleIdentifier}</code>
         )}
@@ -102,22 +103,6 @@ export function RuleResultSection({
       {result.ruleDescription && (
         <p className="rule-result-description">{result.ruleDescription}</p>
       )}
-      {result.conditionSummary && (
-        <p className="section-logic">
-          <span>Condition: </span>
-          <code>{result.conditionSummary}</code>
-        </p>
-      )}
-      {result.conditionGroupingSummary && (
-        <p className="section-logic">
-          <span>Grouping: </span>
-          <code>{result.conditionGroupingSummary}</code>
-        </p>
-      )}
-      <p className="section-logic">
-        <span>Expectation: </span>
-        <code>{result.logicSummary}</code>
-      </p>
       <div className="summary-grid" style={{ marginBottom: "var(--space)" }}>
         <div className="metric">
           <b>{result.violationRowCount.toLocaleString()}</b>
