@@ -9,6 +9,8 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from apps.exception_tracking.dates import default_as_of_date, parse_iso_date
+from apps.exception_tracking.domain import CommentaryUploadDecision
+from apps.exception_tracking.errors import UnknownExceptionError
 from apps.exception_tracking.workbook import (
     ParsedCommentaryTemplate,
     WorkbookValidationError,
@@ -852,6 +854,65 @@ def _commentary(record: Mapping[str, Any]) -> str:
     return str(record.get("exception_commentary") or "")
 
 
+def _is_pending(record: Mapping[str, Any]) -> bool:
+    """Whether a wire record is awaiting recertification.
+
+    Pending wins over commentary text everywhere: inherited text must not
+    collapse into ``Commented``. The flag check covers real wire rows; the
+    status check covers contract fakes that only carry the frozen status.
+    """
+
+    if record.get("recertification_required") is True:
+        return True
+    return str(record.get("status")) == "RecertificationRequired"
+
+
+def _decide_upload(
+    record: Mapping[str, Any],
+    supplied: str,
+    action: str,
+) -> CommentaryUploadDecision | None:
+    """Decide one row's upload outcome from CURRENT database state.
+
+    ``supplied`` is the trimmed spreadsheet text; ``action`` is the validated
+    ``Commentary Recertify`` choice (``""`` when the column is blank or the
+    template predates it). ``None`` means "preserve the row untouched".
+    """
+
+    before = _commentary(record)
+    pending = _is_pending(record)
+    if pending:
+        if action == "Keep Current":
+            # Ignore the spreadsheet text; keep the stored value and accept
+            # it for the current revision (nonempty DB text reads Commented
+            # afterwards, empty DB text reads Not Commented).
+            return CommentaryUploadDecision(
+                commentary=None, clear_recertification=True
+            )
+        if action == "Updated":
+            # Deliberate replacement: empty input clears the stored
+            # commentary, nonempty input stores the supplied text. Either
+            # way the pending mark is cleared; unchanged text still counts
+            # as explicit acceptance.
+            return CommentaryUploadDecision(
+                commentary=supplied, clear_recertification=True
+            )
+        # Blank: ignore spreadsheet commentary changes and preserve the
+        # current text, status, and pending mark.
+        return None
+    # Ordinary (nonpending) rows: the recertification choice, when present,
+    # never overrides these rules. Nonempty input is accepted as the new
+    # value (even on stale templates); empty input preserves the stored
+    # accepted text and status rather than clearing it.
+    if supplied == "":
+        return None
+    if supplied == before:
+        return None
+    return CommentaryUploadDecision(
+        commentary=supplied, clear_recertification=False
+    )
+
+
 def import_commentary(
     content: bytes,
     *,
@@ -861,8 +922,21 @@ def import_commentary(
 ) -> dict[str, Any]:
     """Validate and atomically apply a commentary template.
 
-    All identity validation happens before the single repository update call.
-    Worker A owns transaction/rollback inside ``update_commentaries``.
+    Round-2 upload semantics (decided from CURRENT database state per row):
+
+    - Pending rows need an explicit ``Commentary Recertify`` choice.
+      ``Keep Current`` keeps the stored text and accepts it; ``Updated``
+      stores the supplied text (empty input deliberately clears it) and
+      accepts it. A blank choice preserves the row, including its pending
+      mark.
+    - Ordinary rows ignore the recertification column. Nonempty input is
+      accepted as the new value; empty (or whitespace-only) input preserves
+      the stored text and status and never clears an accepted comment.
+    - The ``Commentary Recertify`` column is validated for every row before
+      any database write; only blank, ``Keep Current`` and ``Updated`` are
+      accepted. All identity validation happens before the single repository
+      update call. Worker A owns transaction/rollback inside
+      ``apply_commentary_upload``.
 
     Date scope (no ``run_id``) accepts safe partial templates: only the IDs
     present in the workbook are updated and omitted date records keep their
@@ -911,7 +985,7 @@ def import_commentary(
     existing = list_exceptions(parsed.as_of_date, repo)
     _validate_ids(parsed, existing, expected_ids=expected_ids, run_id=run_id)
 
-    updates: dict[str, str] = {}
+    decisions: dict[str, CommentaryUploadDecision] = {}
     updated = 0
     cleared = 0
     unchanged = 0
@@ -921,20 +995,46 @@ def import_commentary(
             # Safe partial: omitted date records are preserved, never cleared.
             unchanged += 1
             continue
-        before = _commentary(record)
-        after = parsed.commentaries[exception_id]
-        if after == before:
+        # Trim the spreadsheet input before processing: whitespace-only is
+        # empty, while internal whitespace and line breaks are preserved.
+        # Exception IDs and book keys are never normalized.
+        supplied = parsed.commentaries[exception_id].strip()
+        action = parsed.recertifications.get(exception_id, "")
+        decision = _decide_upload(record, supplied, action)
+        if decision is None:
             unchanged += 1
             continue
-        updates[exception_id] = after
-        if after.strip():
+        new_text = (
+            _commentary(record)
+            if decision.commentary is None
+            else decision.commentary
+        )
+        before = _commentary(record)
+        if new_text == before and not (
+            decision.clear_recertification and _is_pending(record)
+        ):
+            unchanged += 1
+            continue
+        decisions[exception_id] = decision
+        if new_text == before:
+            # Text kept (Keep Current, or Updated with identical text) while
+            # the pending mark is cleared: explicit acceptance without a
+            # text change.
+            unchanged += 1
+        elif new_text.strip():
             updated += 1
         else:
             cleared += 1
 
-    if updates:
+    if decisions:
         try:
-            repo.update_commentaries(parsed.as_of_date, updates)
+            repo.apply_commentary_upload(parsed.as_of_date, decisions)
+        except UnknownExceptionError as exc:
+            raise TrackingAPIError(
+                str(exc),
+                code="unknown_exception_ids",
+                details={"unknown_ids": list(exc.unknown_ids)},
+            ) from exc
         except (OSError, ValueError) as exc:
             raise TrackingAPIError(
                 str(exc),

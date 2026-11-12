@@ -118,6 +118,19 @@ class RecertificationSummary:
         return len(self.accepted) + len(self.already_accepted)
 
 
+@dataclass(frozen=True)
+class CommentaryUploadDecision:
+    """One row's authoritative upload outcome, decided from current DB state.
+
+    ``commentary=None`` keeps the stored text; any string (including ``""``)
+    replaces it. ``clear_recertification=True`` clears a pending
+    recertification mark, recording the acceptance time for audit.
+    """
+
+    commentary: str | None = None
+    clear_recertification: bool = False
+
+
 def status_for(
     commentary: str,
     *,

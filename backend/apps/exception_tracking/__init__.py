@@ -21,6 +21,7 @@ from apps.exception_tracking.columns import (
 )
 from apps.exception_tracking.domain import (
     RECERTIFICATION_REASON,
+    CommentaryUploadDecision,
     ExceptionOccurrence,
     ExceptionRecord,
     ExceptionStatus,
@@ -57,6 +58,7 @@ from apps.exception_tracking.identity import (
 from apps.exception_tracking.repository import (
     DEFAULT_DATABASE_RELATIVE_PATH,
     ExceptionTrackingRepository,
+    apply_commentary_upload,
     default_database_path,
     get_exception,
     get_extra_column_union,
@@ -78,6 +80,7 @@ __all__ = [
     "RECERTIFICATION_REASON",
     "RESERVED_EXTRA_COLUMN_NAMES",
     "BlankCommentaryCertificationError",
+    "CommentaryUploadDecision",
     "ExceptionIdentity",
     "ExceptionIdentityCollisionError",
     "ExceptionOccurrence",
@@ -96,6 +99,7 @@ __all__ = [
     "SchemaMismatchError",
     "StaleRevisionTokenError",
     "UnknownExceptionError",
+    "apply_commentary_upload",
     "build_exception_id",
     "build_exception_identity",
     "capture_exceptions",

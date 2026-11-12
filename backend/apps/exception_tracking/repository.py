@@ -33,6 +33,7 @@ from apps.exception_tracking.columns import (
 )
 from apps.exception_tracking.domain import (
     RECERTIFICATION_REASON,
+    CommentaryUploadDecision,
     ExceptionOccurrence,
     ExceptionRecord,
     RecertificationSummary,
@@ -872,6 +873,116 @@ class ExceptionTrackingRepository:
                     "WHERE exception_id = ?",
                     (commentary, exception_id),
                 )
+                changed += 1
+            return changed
+
+    def apply_commentary_upload(
+        self, as_of_date: date | str, decisions: Mapping[str, CommentaryUploadDecision]
+    ) -> int:
+        """Atomically apply Round-2 commentary-upload decisions for one date.
+
+        Each decision carries replacement text (``None`` keeps the stored
+        value, ``""`` clears it) plus an explicit pending-recertification
+        clear. Unknown IDs reject the whole call with
+        :class:`UnknownExceptionError`; no partial update is committed.
+        Clearing a pending mark records the acceptance time in
+        ``recertified_at`` for audit. Returns the number of rows whose stored
+        commentary or pending flag changed.
+        """
+
+        parsed_date = parse_as_of_date(as_of_date)
+        if not isinstance(decisions, Mapping):
+            raise ExceptionTrackingError(
+                "Commentary upload decisions must map exception IDs to decisions."
+            )
+        if not decisions:
+            return 0
+
+        normalized: dict[str, CommentaryUploadDecision] = {}
+        for exception_id, decision in decisions.items():
+            if not isinstance(exception_id, str) or not exception_id:
+                raise ExceptionTrackingError(
+                    "Commentary upload keys must be non-empty exception IDs."
+                )
+            if not isinstance(decision, CommentaryUploadDecision):
+                raise ExceptionTrackingError(
+                    f"Commentary upload decision for exception '{exception_id}' "
+                    "must be a CommentaryUploadDecision."
+                )
+            if decision.commentary is not None and not isinstance(
+                decision.commentary, str
+            ):
+                raise ExceptionTrackingError(
+                    f"Commentary for exception '{exception_id}' must be text; use an "
+                    "empty string to clear it."
+                )
+            normalized[exception_id] = decision
+
+        if not self._path.exists():
+            raise UnknownExceptionError(
+                f"No exception tracking data exists for {parsed_date.isoformat()}; "
+                f"unknown exception IDs: {', '.join(sorted(normalized))}.",
+                unknown_ids=list(normalized),
+            )
+
+        with self._write_connection() as connection:
+            table = table_name_for_date(parsed_date)
+            if not _table_exists(connection, table):
+                raise UnknownExceptionError(
+                    f"No exception tracking table exists for "
+                    f"{parsed_date.isoformat()}; unknown exception IDs: "
+                    f"{', '.join(sorted(normalized))}.",
+                    unknown_ids=list(normalized),
+                )
+            _validate_date_table(connection, table)
+
+            quoted = quote_identifier(table)
+            existing: dict[str, sqlite3.Row] = {}
+            for chunk in _chunks(list(normalized)):
+                rows = connection.execute(
+                    f"SELECT * FROM {quoted} "
+                    f"WHERE exception_id IN ({_placeholders(len(chunk))})",
+                    tuple(chunk),
+                ).fetchall()
+                for row in rows:
+                    existing[_text(row, "exception_id")] = row
+
+            unknown = [exception_id for exception_id in normalized if exception_id not in existing]
+            if unknown:
+                raise UnknownExceptionError(
+                    f"The commentary upload contains exception IDs that are not "
+                    f"present on {parsed_date.isoformat()}: {', '.join(sorted(unknown))}. "
+                    "No commentary was changed.",
+                    unknown_ids=unknown,
+                )
+
+            now = utc_now().isoformat()
+            changed = 0
+            for exception_id, decision in normalized.items():
+                row = existing[exception_id]
+                stored_commentary = _commentary_text(row)
+                new_commentary = (
+                    stored_commentary
+                    if decision.commentary is None
+                    else decision.commentary
+                )
+                pending = _pending_flag(row)
+                clear_pending = bool(decision.clear_recertification and pending)
+                if new_commentary == stored_commentary and not clear_pending:
+                    continue
+                if clear_pending:
+                    connection.execute(
+                        f"UPDATE {quoted} SET exception_commentary = ?, "
+                        "recertification_required = 0, recertified_at = ? "
+                        "WHERE exception_id = ?",
+                        (new_commentary, now, exception_id),
+                    )
+                else:
+                    connection.execute(
+                        f"UPDATE {quoted} SET exception_commentary = ? "
+                        "WHERE exception_id = ?",
+                        (new_commentary, exception_id),
+                    )
                 changed += 1
             return changed
 
@@ -1820,6 +1931,16 @@ def update_commentaries(
 ) -> int:
     return ExceptionTrackingRepository(database_path).update_commentaries(
         as_of_date, updates
+    )
+
+
+def apply_commentary_upload(
+    database_path: str | Path,
+    as_of_date: date | str,
+    decisions: Mapping[str, CommentaryUploadDecision],
+) -> int:
+    return ExceptionTrackingRepository(database_path).apply_commentary_upload(
+        as_of_date, decisions
     )
 
 
