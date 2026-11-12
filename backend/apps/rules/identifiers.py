@@ -256,6 +256,49 @@ def calculate_rule_identifier(rule_or_draft: Mapping[str, Any] | Any) -> str:
     return calculate_rule_identity_details(rule_or_draft)[0]
 
 
+def normalized_condition_clauses(rule_or_draft: Mapping[str, Any] | Any) -> list[str]:
+    """Order-insensitive normalized executable condition clauses.
+
+    Used for extensive-edit detection: reordering equivalent clauses or
+    changing grouping alone keeps this set unchanged. Pure helper; the
+    canonical identifier algorithm above is untouched.
+    """
+    if isinstance(rule_or_draft, Mapping):
+        raw = rule_or_draft.get("conditions", [])
+    elif hasattr(rule_or_draft, "authored_payload"):
+        raw = rule_or_draft.authored_payload.get("conditions", [])
+    elif hasattr(rule_or_draft, "__dict__"):
+        raw = vars(rule_or_draft).get("conditions", [])
+    else:
+        raise RuleIdentityError("Rule must be a mapping or authored object")
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        raise RuleIdentityError("conditions must be a sequence")
+    return sorted(serialize_canonical_rule(_condition(item)) for item in raw)
+
+
+def normalized_expectation_clauses(rule_or_draft: Mapping[str, Any] | Any) -> list[str]:
+    """Order-insensitive normalized executable expectation clauses."""
+    if isinstance(rule_or_draft, Mapping):
+        data = rule_or_draft
+    elif hasattr(rule_or_draft, "authored_payload"):
+        data = rule_or_draft.authored_payload
+    elif hasattr(rule_or_draft, "__dict__"):
+        data = vars(rule_or_draft)
+    else:
+        raise RuleIdentityError("Rule must be a mapping or authored object")
+    clauses_raw = data.get("logic_clauses")
+    if (
+        isinstance(clauses_raw, Sequence)
+        and not isinstance(clauses_raw, (str, bytes))
+        and len(clauses_raw) > 0
+    ):
+        return sorted(serialize_canonical_rule(_logic_clause(item)) for item in clauses_raw)
+    logic_raw = data.get("logic")
+    if logic_raw is None:
+        return []
+    return [serialize_canonical_rule(_logic_clause(logic_raw))]
+
+
 def verify_identity(identifier: str, full_digest: str, canonical_payload: str) -> None:
     if not identifier.startswith(IDENTIFIER_PREFIX) or len(identifier) != 25:
         raise RuleIdentityError("Invalid canonical rule identifier")
