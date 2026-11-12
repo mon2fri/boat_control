@@ -15,6 +15,7 @@ from typing import Any
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from apps.exception_tracking.dates import parse_iso_date
 from apps.exception_tracking.rule_summary import (
@@ -67,10 +68,11 @@ _EXCEPTION_FIELDS: tuple[str, ...] = (
     "exception_last_seen_as_of_date",
 )
 
-#: Additive recertification/provenance columns appended after the standard
-#: metadata (and before user detail columns). They are informational only:
-#: import validation ignores everything past the required prefix, so uploads
-#: never certify inherited text implicitly by touching these cells.
+#: Additive recertification/provenance columns from the Round-1 template layout.
+#: They are NO LONGER written to downloaded templates (Round-2 removed every
+#: visible provenance column), but the names stay reserved so user detail
+#: columns cannot recreate them, and old workbooks carrying them still import
+#: (their values are ignored during upload; provenance lives in the database).
 RECERT_HEADERS: tuple[str, ...] = (
     "Recertification Reason",
     "Carried From Exception ID",
@@ -80,7 +82,7 @@ RECERT_HEADERS: tuple[str, ...] = (
     "Recertified At",
 )
 _RECERT_FIELDS: tuple[str, ...] = (
-    "recertification_reason",
+    "recertification_required",
     "carried_from_exception_id",
     "carried_from_as_of_date",
     "carried_from_rule_identifier",
@@ -88,11 +90,18 @@ _RECERT_FIELDS: tuple[str, ...] = (
     "recertified_at",
 )
 
+#: Round-2 review column appended after the standard metadata (and before
+#: user detail columns). It defaults to blank; the Excel dropdown offers the
+#: only accepted nonblank values. Pending recertification is displayed
+#: through Exception Status, never through this column's value.
+RECERTIFY_COLUMN = "Commentary Recertify"
+RECERTIFY_OPTIONS: tuple[str, ...] = ("Keep Current", "Updated")
+
 # Full standard Exceptions-sheet header row: identity/status metadata followed
-# by the additive recertification/provenance block. User detail columns append
-# after these. Import validation only requires the leading visible prefix, so
-# older workbooks without the provenance block keep importing.
-STANDARD_EXCEPTION_HEADERS: tuple[str, ...] = (*EXCEPTION_HEADERS, *RECERT_HEADERS)
+# by the review column. Import validation only requires the leading visible
+# prefix, so older workbooks without the review column keep importing (their
+# rows behave as if the column were left blank).
+STANDARD_EXCEPTION_HEADERS: tuple[str, ...] = (*EXCEPTION_HEADERS, RECERTIFY_COLUMN)
 
 MAX_TEMPLATE_BYTES = 10 * 1024 * 1024
 MAX_TEMPLATE_ROWS = 100_000
@@ -124,6 +133,14 @@ class ParsedCommentaryTemplate:
     row_count: int
     duplicate_ids: tuple[str, ...] = field(default_factory=tuple)
     template_version: str = TEMPLATE_VERSION
+    recertifications: dict[str, str] = field(default_factory=dict)
+    """Trimmed ``Commentary Recertify`` choice per exception ID.
+
+    Only ``""`` (blank), ``"Keep Current"`` and ``"Updated"`` can appear
+    here; anything else fails parsing before any database write. Templates
+    without the column (legacy or pre-Round-2 workbooks) yield ``{}`` and
+    every row behaves as blank.
+    """
 
 
 def _needs_formula_protection(value: str) -> bool:
@@ -172,7 +189,10 @@ def _header_key(value: object) -> str:
 
 
 def _unique_detail_columns(columns: Iterable[str]) -> tuple[str, ...]:
-    used = {_header_key(header) for header in (*EXCEPTION_HEADERS, *RECERT_HEADERS)}
+    used = {
+        _header_key(header)
+        for header in (*EXCEPTION_HEADERS, *RECERT_HEADERS, RECERTIFY_COLUMN)
+    }
     result: list[str] = []
     for raw in columns:
         name = str(raw).strip()
@@ -303,9 +323,12 @@ def build_commentary_workbook(
     template["B4"] = _protect_text(generated.isoformat())
     template["A5"] = "Instructions"
     template["B5"] = _protect_text(
-        "Edit only the Commentary column. A blank commentary cell clears the value "
-        "for this as-of date. Do not change exception IDs. Columns after Rule Index "
-        "are informational context and are ignored during upload."
+        "Edit only the Commentary and Commentary Recertify columns. Rows with "
+        "Exception Status RecertificationRequired need a Commentary Recertify "
+        "choice (Keep Current or Updated) to complete the review; a blank "
+        "choice leaves the row pending. Do not change exception IDs. Columns "
+        "after Commentary Recertify are informational context and are ignored "
+        "during upload."
     )
     template["A6"] = "Report Name"
     template["B6"] = _protect_text(report_name or MISSING_METADATA)
@@ -318,18 +341,19 @@ def build_commentary_workbook(
     )
 
     appended = _unique_detail_columns(detail_columns)
-    headers = [*EXCEPTION_HEADERS, *RECERT_HEADERS, *appended]
+    headers = [*EXCEPTION_HEADERS, RECERTIFY_COLUMN, *appended]
     sheet = workbook.create_sheet(EXCEPTIONS_SHEET)
     sheet.append(
         [
             *EXCEPTION_HEADERS,
-            *[_protect_text(column) for column in RECERT_HEADERS],
+            RECERTIFY_COLUMN,
             *[_protect_text(column) for column in appended],
         ]
     )
     _style_header(sheet)
 
     values_by_id = detail_values or {}
+    recertify_column = len(EXCEPTION_HEADERS) + 1
     ordered = sorted(
         records,
         key=lambda item: (
@@ -343,14 +367,35 @@ def build_commentary_workbook(
         sheet.append(
             [
                 *[_protect_text(_record_value(record, field)) for field in _EXCEPTION_FIELDS],
-                *[_protect_text(_record_value(record, field)) for field in _RECERT_FIELDS],
+                # The review choice always exports blank; pending review is
+                # shown through Exception Status, and provenance stays in the
+                # database rather than in visible template columns.
+                "",
                 *[_protect_text(_detail_text(detail.get(column))) for column in appended],
             ]
         )
 
+    if ordered:
+        last_row = len(ordered) + 1
+        recertify_letter = get_column_letter(recertify_column)
+        dropdown = DataValidation(
+            type="list",
+            formula1=f'"{",".join(RECERTIFY_OPTIONS)}"',
+            allow_blank=True,
+        )
+        dropdown.error = "Leave blank, or choose Keep Current or Updated."
+        dropdown.errorTitle = "Invalid Commentary Recertify value"
+        dropdown.prompt = (
+            "Keep Current keeps the stored commentary; "
+            "Updated applies the Commentary cell."
+        )
+        dropdown.promptTitle = "Commentary Recertify"
+        sheet.add_data_validation(dropdown)
+        dropdown.add(f"{recertify_letter}2:{recertify_letter}{last_row}")
+
     widths = (
         52, 18, 52, 16, 34, 42, 26, 22, 28, 28,
-        30, 52, 22, 34, 30, 24,
+        20,
         *([24] * len(appended)),
     )
     for index, width in enumerate(widths, start=1):
@@ -369,7 +414,7 @@ def build_commentary_workbook(
     return buffer.getvalue()
 
 
-def _validated_headers(row: tuple[Any, ...], version: str) -> tuple[int, int]:
+def _validated_headers(row: tuple[Any, ...], version: str) -> tuple[int, int, int | None]:
     headers = tuple(_cell_text(cell.value) for cell in row)
     if version == LEGACY_TEMPLATE_VERSION:
         expected = LEGACY_EXCEPTION_HEADERS
@@ -383,7 +428,13 @@ def _validated_headers(row: tuple[Any, ...], version: str) -> tuple[int, int]:
             f"The Exceptions sheet's required {version} columns are missing or out of order.",
             details={"expected_columns": list(expected)},
         )
-    return required_count, commentary_index
+    recertify_index: int | None = None
+    if version != LEGACY_TEMPLATE_VERSION:
+        for position, header in enumerate(headers):
+            if _header_key(header) == _header_key(RECERTIFY_COLUMN):
+                recertify_index = position
+                break
+    return required_count, commentary_index, recertify_index
 
 
 def parse_commentary_workbook(
@@ -436,9 +487,13 @@ def parse_commentary_workbook(
         header_row = next(rows, None)
         if header_row is None:
             raise WorkbookValidationError("The Exceptions sheet has no header row.")
-        required_count, commentary_index = _validated_headers(header_row, version)
+        required_count, commentary_index, recertify_index = _validated_headers(
+            header_row, version
+        )
 
         commentaries: dict[str, str] = {}
+        recertifications: dict[str, str] = {}
+        invalid_recertifications: list[dict[str, Any]] = []
         duplicates: list[str] = []
         seen: set[str] = set()
         row_count = 0
@@ -488,11 +543,47 @@ def parse_commentary_workbook(
                     details={"row": row_number},
                 )
 
+            if recertify_index is not None and recertify_index < len(cells):
+                recertify_cell = cells[recertify_index]
+                raw_recertify = (
+                    recertify_cell.value if recertify_cell is not None else None
+                )
+                if getattr(recertify_cell, "data_type", None) == "f" or (
+                    isinstance(raw_recertify, str) and raw_recertify.startswith("=")
+                ):
+                    invalid_recertifications.append(
+                        {
+                            "row": row_number,
+                            "exception_id": exception_id,
+                            "value": _restore_text(raw_recertify),
+                        }
+                    )
+                else:
+                    recertify_choice = _restore_text(raw_recertify).strip()
+                    if recertify_choice not in ("", *RECERTIFY_OPTIONS):
+                        invalid_recertifications.append(
+                            {
+                                "row": row_number,
+                                "exception_id": exception_id,
+                                "value": recertify_choice,
+                            }
+                        )
+                    elif recertify_choice:
+                        recertifications[exception_id] = recertify_choice
+
             if exception_id in seen:
                 duplicates.append(exception_id)
             seen.add(exception_id)
             commentaries[exception_id] = commentary
             row_count += 1
+
+        if invalid_recertifications:
+            raise WorkbookValidationError(
+                "The Commentary Recertify column contains invalid values. "
+                "Leave the cell blank, or choose Keep Current or Updated.",
+                code="invalid_recertification_selection",
+                details={"invalid_rows": invalid_recertifications},
+            )
 
         return ParsedCommentaryTemplate(
             as_of_date=as_of_date,
@@ -500,6 +591,7 @@ def parse_commentary_workbook(
             row_count=row_count,
             duplicate_ids=tuple(dict.fromkeys(duplicates)),
             template_version=version,
+            recertifications=recertifications,
         )
     finally:
         workbook.close()

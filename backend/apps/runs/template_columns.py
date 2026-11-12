@@ -43,6 +43,15 @@ RESERVED_HEADERS = frozenset(
         "exception last seen as-of date",
         "exception first seen timestamp",
         "exception last seen timestamp",
+        # Round-1 provenance columns stay reserved (they must not be
+        # recreated as user detail columns), plus the Round-2 review column.
+        "recertification reason",
+        "carried from exception id",
+        "carried from as-of date",
+        "carried from rule identifier",
+        "rule evolution event id",
+        "recertified at",
+        "commentary recertify",
     }
 )
 

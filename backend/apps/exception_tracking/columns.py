@@ -44,6 +44,7 @@ RESERVED_EXTRA_COLUMN_NAMES: tuple[str, ...] = (
     "Carried From Rule Identifier",
     "Rule Evolution Event ID",
     "Recertified At",
+    "Commentary Recertify",
 )
 _RESERVED_KEYS = frozenset(normalize_column_key(name) for name in RESERVED_EXTRA_COLUMN_NAMES)
 
