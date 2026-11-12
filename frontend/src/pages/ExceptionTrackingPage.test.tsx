@@ -239,7 +239,7 @@ describe("ExceptionTrackingPage", () => {
         /rejected: Unknown exception ID: MISSING_ID/,
       ),
     );
-    expect(screen.queryByText(/Updated/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Updated \d+ exceptions/)).not.toBeInTheDocument();
   });
 
   it("rejects a non-XLSX selection before calling the backend", async () => {

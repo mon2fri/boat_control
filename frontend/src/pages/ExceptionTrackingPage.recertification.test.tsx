@@ -118,14 +118,21 @@ function renderPage() {
 }
 
 describe("ExceptionTrackingPage recertification", () => {
-  it("shows the pending marker separately from commentary text", async () => {
+  it("shows a single status with the R marker beside the exception ID", async () => {
     installFetch();
     renderPage();
 
     const pendingRow = await screen.findByRole("row", { name: new RegExp(`${V2}_id_7`) });
-    // Exact marker text appears as a badge in the status cell...
-    expect(within(pendingRow).getByText("Recertification due to rule change")).toBeInTheDocument();
+    // The status cell carries exactly one status presentation...
     expect(within(pendingRow).getByText("RecertificationRequired")).toBeInTheDocument();
+    expect(within(pendingRow).queryByText("Recertification due to rule change")).not.toBeInTheDocument();
+    // ...with the small purple R beside the exception ID. The exact label stays
+    // available to assistive tech, with source provenance in the tooltip.
+    const markers = within(pendingRow).getAllByRole("img", { name: /Recertification due to rule change/ });
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toHaveTextContent("R");
+    expect(markers[0]?.getAttribute("title")).toContain("2026-09-30");
+    expect(markers[0]?.getAttribute("title")).toContain(`${V1}_id_7`);
     // ...while the commentary column keeps only the carried text.
     const commentaryCell = within(pendingRow).getByText("Known issue carried forward");
     expect(commentaryCell.closest("td")?.textContent).not.toContain("Recertification due to rule change");
@@ -237,5 +244,16 @@ describe("ExceptionTrackingPage recertification", () => {
       screen.getByText(/Uploading commentary text never recertifies carried commentary/),
     ).toBeInTheDocument();
     expect(screen.getByText(/including unchanged text/)).toBeInTheDocument();
+  });
+
+  it("describes the Commentary Recertify column semantics", async () => {
+    installFetch();
+    renderPage();
+    await screen.findByRole("row", { name: new RegExp(`${V2}_id_7`) });
+    expect(screen.getByText(/Commentary Recertify/)).toBeInTheDocument();
+    expect(screen.getByText(/Keep Current ignores the sheet text/)).toBeInTheDocument();
+    expect(screen.getByText(/unchanged text\s*counts as acceptance/)).toBeInTheDocument();
+    expect(screen.getByText(/Invalid dropdown values are rejected for that row only/)).toBeInTheDocument();
+    expect(screen.getByText(/pending recertification shows via Exception Status/)).toBeInTheDocument();
   });
 });

@@ -472,7 +472,7 @@ export function ExceptionTable({
                       <code>{row.exceptionId ?? "—"}</code>
                       {row.exceptionStatus === "RecertificationRequired" && (
                         <>
-                          <br />
+                          {" "}
                           <RecertificationBadge
                             reason={row.recertificationReason}
                             carriedFromExceptionId={row.carriedFromExceptionId}

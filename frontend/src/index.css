@@ -2909,6 +2909,26 @@ dl.card dd {
   border-color: var(--rag-purple, #7c3aed);
 }
 
+/* Compact pending-recertification marker: a small purple "R" beside
+   exception IDs. The exact label + provenance live in its title tooltip
+   and accessible name, never as a second visible badge. */
+.recertification-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.25rem;
+  border-radius: var(--radius-pill);
+  background: var(--rag-purple, #7c3aed);
+  color: var(--white);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+
 .table-scroll {
   overflow-x: auto;
   max-width: 100%;

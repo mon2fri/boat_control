@@ -289,21 +289,13 @@ export function ExceptionTrackingPage() {
 
   function renderCell(column: ExceptionTrackingColumn, row: TrackedException) {
     if (column.key === "status") {
+      // Single status presentation: the status badge alone. Pending
+      // provenance (exact reason + carried-from detail) lives in the purple
+      // R marker beside the exception ID, as a title tooltip / accessible
+      // name — never as a second visible badge.
       return (
         <span className="tracking-status-cell">
           <StatusBadge status={row.status} />
-          {row.recertificationRequired && (
-            <>
-              <br />
-              <RecertificationBadge
-                reason={row.recertificationReason}
-                carriedFromExceptionId={row.carriedFromExceptionId}
-                carriedFromAsOfDate={row.carriedFromAsOfDate}
-                carriedFromRuleIdentifier={row.carriedFromRuleIdentifier}
-                ruleEvolutionEventId={row.ruleEvolutionEventId}
-              />
-            </>
-          )}
         </span>
       );
     }
@@ -320,7 +312,25 @@ export function ExceptionTrackingPage() {
         "—"
       );
     }
-    if (column.key === "exception_id") return <code>{row.exceptionId}</code>;
+    if (column.key === "exception_id") {
+      return (
+        <span className="tracking-exception-id">
+          <code>{row.exceptionId}</code>
+          {row.recertificationRequired && (
+            <>
+              {" "}
+              <RecertificationBadge
+                reason={row.recertificationReason}
+                carriedFromExceptionId={row.carriedFromExceptionId}
+                carriedFromAsOfDate={row.carriedFromAsOfDate}
+                carriedFromRuleIdentifier={row.carriedFromRuleIdentifier}
+                ruleEvolutionEventId={row.ruleEvolutionEventId}
+              />
+            </>
+          )}
+        </span>
+      );
+    }
     if (column.key === "commentary") {
       return <span className="tracking-commentary">{row.exceptionCommentary || "—"}</span>;
     }
@@ -427,10 +437,16 @@ export function ExceptionTrackingPage() {
         )}
         <p className="field-hint">
           Unknown, duplicate or mismatched exception IDs are rejected as a whole; no partial
-          commentary updates are applied. Columns after the standard tracking metadata are
-          informational and ignored. Uploading commentary text never recertifies carried
-          commentary — use <strong>Recertify selected</strong> below to accept it, including
-          unchanged text.
+          commentary updates are applied. Downloaded templates no longer carry the six
+          provenance columns — pending recertification shows via Exception Status instead.
+          Use the <strong>Commentary Recertify</strong> column to act on carried commentary:
+          Keep Current ignores the sheet text and retains the stored commentary; Updated
+          stores the sheet text (an empty cell deliberately clears it, while unchanged text
+          counts as acceptance); a blank cell preserves the stored commentary. For ordinary
+          commented rows, a nonempty cell accepts the text and an empty cell preserves it.
+          Invalid dropdown values are rejected for that row only; nothing is partially applied.
+          Uploading commentary text never recertifies carried commentary — use{" "}
+          <strong>Recertify selected</strong> below to accept it, including unchanged text.
         </p>
       </div>
 
