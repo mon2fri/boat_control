@@ -123,14 +123,11 @@ unknown/new columns still fail closed via `SchemaMismatchError`.
 
 ## Remaining issues / explicit requests to the integrator
 
-1. **Prerequisite (blocking final integration check):** please arrange
-   cherry-pick of Worker A commit `337a7e6` (evolution service) into this
-   worktree — it depends on `3bc6c09` (lineage/evolution-history models and
-   migration) from the same A branch, so both are needed to import the real
-   service. Worker B will then run the actual integration check (isolated
-   config + tracking stores, Sept 30 → Oct 30 through the real
-   `get_predecessor_chain`) and report. No uncommitted files pulled; B's own
-   branch stays B-owned.
+1. ~~Prerequisite (blocking final integration check)~~ RESOLVED 2026-11-12:
+   integrator approved and Worker B cherry-picked, in dependency order,
+   `3bc6c09` → `51c03ac` (A models + migration, `-x`) and `337a7e6` →
+   `665cd65` (A evolution service, `-x`). Both applied cleanly, unsquashed;
+   `backend/apps/rules/**` untouched otherwise.
 2. Tracking/recertify JSON placement sketches are published in
    `docs/20261112_rule_evolution_tracking_contract.md` (§1–§5; §6 updated to
    the frozen A details). No competing field names invented.
@@ -139,3 +136,36 @@ unknown/new columns still fail closed via `SchemaMismatchError`.
 4. The 5 pre-existing `test_runs.py` base failures are out of Worker B scope
    (confirmed present on clean base `4b7c5bf`; noted in the freeze broadcast).
 5. No push/merge/cherry-pick into integration performed by Worker B.
+
+## Addendum — real-service integration check (2026-11-12, post-prerequisite)
+
+Cherry-picks: `51c03ac` (A `3bc6c09`), `665cd65` (A `337a7e6`), both clean.
+B-side divergence found by integrating: unexpected lineage-lookup errors
+(e.g. unreachable config DB) propagated out of capture instead of degrading.
+Fixed in `5dd6135` — degrade to legacy same-identity carry with an explicit
+warning (log + `carry_warnings`); ambiguous/cyclic lineage now also suppresses
+the same-identity fallback so a reused identifier can never silently copy.
+No wire changes (B contract frozen at integrator `a6e2c21`).
+
+New evidence: `tests/backend/test_rule_evolution_real_service.py`
+(`fd6b747`) — Sept 30 v1 commentary, recorded `executable_revision`
+(`carry_forward_recertification`, no intervening run), Oct 30 v2 capture with
+`lineage_resolver=None` resolving the REAL `get_predecessor_chain` on
+Django's isolated test database (tracking store: isolated `tmp_path`).
+
+Manual check (isolated stores, no stub):
+`GROUPED_VALIDATION_HOME=/tmp/opencode/rule-evolution-int-home`
+`DJANGO_SETTINGS_MODULE=boat_control.grouped_validation_settings`
+`uv run python /tmp/opencode/rule_evolution_real_check.py`
+(migrate isolated config DB; record creation + revision via real
+`record_event`; Sept 30 capture; Oct 30 capture with auto-discovered real
+service) → `REAL-SERVICE INTEGRATION CHECK: PASS`:
+carried text verbatim, exact `Recertification due to rule change` reason,
+provenance (source ID/date/identifier, chain event ID), both exception IDs
+intact (`..._xxxx` under v1/v2 identifiers), statuses
+Commented → RecertificationRequired.
+
+Full suite after integration: `uv run pytest tests/backend` →
+838 passed, 5 failed (the known pre-existing `test_runs.py` base failures
+only). Live user DBs/configs untouched (no live DB files exist in this
+worktree; checks used isolated homes, test DB, and `tmp_path`).
