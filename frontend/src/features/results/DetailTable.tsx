@@ -2,6 +2,12 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DetailRow } from "../../api/domain";
 import { RecertificationBadge } from "./RecertificationBadge";
+import {
+  buildViolationSequenceIndex,
+  sortBySequence,
+  violationSequenceNumber,
+  SEQUENCE_SORT_KEY,
+} from "./exceptionSequence";
 
 interface ColumnFilter {
   key: string;
@@ -23,8 +29,19 @@ interface StaticProps {
   extraColumnLabels?: Record<string, string>;
   hideComparison?: boolean;
   emptyMessage?: string;
-  /** Show the stable Exception ID as the leading row identifier. */
+  /**
+   * Show the stable Exception ID as the row identifier. Leading by default;
+   * moved to the far right when `sequenceSource` enables per-rule sequencing.
+   */
   showExceptionId?: boolean;
+  /**
+   * The rule's ordered violation set. When provided together with
+   * `showExceptionId`, the table uses the per-rule presentation: a leading
+   * "#" sequence column (1-based positions over this ordered set, stable
+   * across filter/sort/page/export) with Exception ID moved to the far
+   * right. Presentation only — never identity, never import matching.
+   */
+  sequenceSource?: DetailRow[];
   /** Optional column filters shown as filterable headers. */
   columnFilters?: ColumnFilter[];
   /** Active filter values per column key. */
@@ -86,6 +103,7 @@ export function DetailTable({
   hideComparison = false,
   emptyMessage = "No detail rows.",
   showExceptionId = false,
+  sequenceSource,
   columnFilters = [],
   activeFilters = {},
   onFilterChange,
@@ -94,11 +112,20 @@ export function DetailTable({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [exportMode, setExportMode] = useState(false);
   const [sort, setSort] = useState<{ key: string; direction: SortDirection } | null>(null);
-  const baseRenderedRows = exportMode ? (exportRows ?? rows) : rows;
-  const renderedRows = useMemo(
-    () => sort ? sortDetailRows(baseRenderedRows, sort.key, sort.direction) : baseRenderedRows,
-    [baseRenderedRows, sort],
+  /** Per-rule presentation: leading "#" sequence, Exception ID far right. */
+  const sequenced = showExceptionId && sequenceSource !== undefined;
+  const sequenceIndex = useMemo(
+    () => (sequenced && sequenceSource ? buildViolationSequenceIndex(sequenceSource) : null),
+    [sequenced, sequenceSource],
   );
+  const baseRenderedRows = exportMode ? (exportRows ?? rows) : rows;
+  const renderedRows = useMemo(() => {
+    if (!sort) return baseRenderedRows;
+    if (sort.key === SEQUENCE_SORT_KEY && sequenceIndex) {
+      return sortBySequence(baseRenderedRows, sequenceIndex, sort.direction);
+    }
+    return sortDetailRows(baseRenderedRows, sort.key, sort.direction);
+  }, [baseRenderedRows, sort, sequenceIndex]);
   const toggleSort = useCallback((key: string) => {
     setSort((current) => current?.key === key
       ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
@@ -155,30 +182,47 @@ export function DetailTable({
   const extraColumnNames = configuredExtraColumnNames
     ?? [...new Set(renderedRows.flatMap((row) => Object.keys(row.extraValues ?? {})))];
   const colWidths: number[] = [];
-  if (showExceptionId) colWidths.push(260);
+  if (sequenced) colWidths.push(56);
+  if (showExceptionId && !sequenced) colWidths.push(260);
   for (let i = 0; i < keyColCount; i++) colWidths.push(150);
   colWidths.push(...extraColumnNames.map(() => 180));
   if (!hideComparison) colWidths.push(150, 180, 180);
+  if (sequenced) colWidths.push(260);
   const tableMinWidth = colWidths.reduce((a, b) => a + b, 0);
   const colTemplate = [
-    ...(showExceptionId ? ["minmax(260px, 1.4fr)"] : []),
+    ...(sequenced ? ["minmax(56px, 0.4fr)"] : []),
+    ...(showExceptionId && !sequenced ? ["minmax(260px, 1.4fr)"] : []),
     ...Array.from({ length: keyColCount }, () => "minmax(150px, 1fr)"),
     ...extraColumnNames.map(() => "minmax(180px, 1.2fr)"),
     ...(!hideComparison
       ? ["minmax(150px, 1fr)", "minmax(180px, 1.2fr)", "minmax(180px, 1.2fr)"]
       : []),
+    ...(sequenced ? ["minmax(260px, 1.4fr)"] : []),
   ].join(" ");
+
+  const exceptionIdHeader = showExceptionId && (
+    <SortableTh
+      label="Exception ID"
+      sortKey="exceptionId"
+      sort={sort}
+      onSort={toggleSort}
+    />
+  );
 
   const headerCells = (
     <>
-      {showExceptionId && (
-        <SortableTh
-          label="Exception ID"
-          sortKey="exceptionId"
-          sort={sort}
-          onSort={toggleSort}
-        />
+      {sequenced && (
+        <div
+          className="sortable-th"
+          role="columnheader"
+          aria-label="Sequence"
+          aria-sort={sort?.key === SEQUENCE_SORT_KEY ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+        >
+          <span aria-hidden="true">#</span>
+          <SortButton label="Sequence" sortKey={SEQUENCE_SORT_KEY} sort={sort} onSort={toggleSort} />
+        </div>
       )}
+      {showExceptionId && !sequenced && exceptionIdHeader}
       {keyColumnNames.length > 0 ? (
         keyColumnNames.map((name) => {
           const cf = columnFilters.find((f) => f.key === `key_${name}`);
@@ -238,6 +282,7 @@ export function DetailTable({
       })()}
       {!hideComparison && <SortableTh label="In Baseline" sortKey="file1" sort={sort} onSort={toggleSort} />}
       {!hideComparison && <SortableTh label="In Comparison" sortKey="file2" sort={sort} onSort={toggleSort} />}
+      {sequenced && exceptionIdHeader}
     </>
   );
 
@@ -301,7 +346,12 @@ export function DetailTable({
                     }
                   : { gridTemplateColumns: colTemplate }}
               >
-                {showExceptionId && (
+                {sequenced && (
+                  <div role="cell" className="exception-sequence">
+                    {sequenceIndex ? (violationSequenceNumber(sequenceIndex, row) ?? "—") : "—"}
+                  </div>
+                )}
+                {showExceptionId && !sequenced && (
                   <div role="cell" className="exception-detail-id">
                     <code>{row.exceptionId ?? "—"}</code>
                     {row.exceptionStatus === "RecertificationRequired" && (
@@ -331,6 +381,23 @@ export function DetailTable({
                 {!hideComparison && <div role="cell">{row.column}</div>}
                 {!hideComparison && <div role="cell">{row.file1Value ?? "—"}</div>}
                 {!hideComparison && <div role="cell">{row.file2Value ?? "—"}</div>}
+                {sequenced && (
+                  <div role="cell" className="exception-detail-id">
+                    <code>{row.exceptionId ?? "—"}</code>
+                    {row.exceptionStatus === "RecertificationRequired" && (
+                      <>
+                        {" "}
+                        <RecertificationBadge
+                          reason={row.recertificationReason}
+                          carriedFromExceptionId={row.carriedFromExceptionId}
+                          carriedFromAsOfDate={row.carriedFromAsOfDate}
+                          carriedFromRuleIdentifier={row.carriedFromRuleIdentifier}
+                          ruleEvolutionEventId={row.ruleEvolutionEventId}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

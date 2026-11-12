@@ -127,6 +127,7 @@ export function RuleResultSection({
         onFilterChange={handleFilterChange}
         hideComparison={result.hideComparison ?? false}
         showExceptionId
+        sequenceSource={result.details}
       />
     </section>
   );
