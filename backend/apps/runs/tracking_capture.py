@@ -24,7 +24,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 from apps.runs.services import ExecutionResult
 
@@ -216,37 +216,72 @@ def _normalize_lineage_context(
 
 def _auto_lineage_context(
     identifiers: Sequence[str],
-) -> dict[str, str | None]:
-    """Best-effort target lineage context from Worker A's agreed service.
+) -> dict[str, dict[str, Any]]:
+    """Best-effort target revision context from Worker A's frozen service.
 
-    Returns an empty mapping when Worker A's revision-describe service is not
-    integrated yet; the capture then proceeds without lineage disambiguation
-    and the repository degrades to same-identity carry. This hook is filled in
-    once Worker A's prerequisite commit lands.
+    Returns ``{identifier: {lineage_id, revision_number?, event_id?}}`` for
+    identifiers the frozen `resolve_revision_context` resolves cleanly.
+    Missing/ambiguous identifiers are omitted and the capture proceeds without
+    lineage disambiguation. Returns ``{}`` until Worker A's committed
+    prerequisite lands.
     """
 
     try:
-        from apps.exception_tracking.lineage import get_lineage_resolver
+        from apps.exception_tracking.lineage import (
+            fetch_revision_context,
+            get_lineage_service,
+        )
     except ImportError:  # pragma: no cover - defensive boundary
         return {}
     try:
-        resolver = get_lineage_resolver()
+        service = get_lineage_service()
     except Exception:  # pragma: no cover - defensive boundary
         return {}
-    if resolver is None:
+    if service is None:
         return {}
-    describe = getattr(resolver, "describe_revision", None)
-    if not callable(describe):
-        return {}
-    context: dict[str, str | None] = {}
+    context: dict[str, dict[str, Any]] = {}
     for identifier in dict.fromkeys(identifiers):
-        try:
-            descriptor = describe(identifier)
-        except Exception:  # one bad identifier must not fail the capture
-            continue
-        lineage_id = getattr(descriptor, "lineage_id", None) if descriptor else None
-        context[identifier] = lineage_id if isinstance(lineage_id, str) and lineage_id.strip() else None
+        entry = fetch_revision_context(service, identifier)
+        if entry:
+            context[identifier] = entry
     return context
+
+
+def normalize_snapshot_lineage_context(
+    lineage_context: Mapping[str, object] | None,
+) -> dict[str, dict[str, Any]]:
+    """Normalize per-rule lineage context for additive run-snapshot storage.
+
+    Accepts a lineage-ID string or a mapping carrying `lineage_id`,
+    `revision_number`, and `event_id` (the frozen Worker A `RevisionContext`
+    shape persisted per the contract). Rules without a usable `lineage_id`
+    are omitted; older snapshots without this key keep loading.
+    """
+
+    if lineage_context is None:
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for rule_id, value in lineage_context.items():
+        entry: dict[str, Any] = {}
+        if isinstance(value, Mapping):
+            raw_lineage = value.get("lineage_id")
+            if isinstance(raw_lineage, str) and raw_lineage.strip():
+                entry["lineage_id"] = raw_lineage.strip()
+            raw_revision = value.get("revision_number")
+            if isinstance(raw_revision, bool):
+                pass
+            elif isinstance(raw_revision, int):
+                entry["revision_number"] = raw_revision
+            elif isinstance(raw_revision, str) and raw_revision.strip().isdigit():
+                entry["revision_number"] = int(raw_revision.strip())
+            raw_event = value.get("event_id")
+            if isinstance(raw_event, str) and raw_event.strip():
+                entry["event_id"] = raw_event.strip()
+        elif isinstance(value, str) and value.strip():
+            entry["lineage_id"] = value.strip()
+        if entry:
+            result[str(rule_id)] = entry
+    return result
 
 
 def build_occurrences(
@@ -336,12 +371,15 @@ def _supports_lineage_resolver(function: object) -> str | None:
 
 def resolve_run_lineage_context(
     result: ExecutionResult,
-) -> dict[str, str]:
-    """Resolve target lineage context for one run, keyed by run-local rule ID.
+) -> dict[str, dict[str, Any]]:
+    """Resolve target revision context for one run, keyed by run-local rule ID.
 
-    Best-effort: rules whose lineage cannot be resolved are omitted and the
-    capture proceeds without lineage disambiguation. Returns ``{}`` until
-    Worker A's revision-describe prerequisite lands.
+    Values carry the frozen Worker A `RevisionContext` shape persisted in run
+    snapshots: ``lineage_id`` (always present), ``revision_number`` and
+    ``event_id`` when known. Best-effort: rules whose lineage cannot be
+    resolved are omitted and the capture proceeds without lineage
+    disambiguation. Returns ``{}`` until Worker A's committed prerequisite
+    lands.
     """
 
     identifiers: dict[str, str] = {}
@@ -353,9 +391,9 @@ def resolve_run_lineage_context(
             continue
     auto = _auto_lineage_context(list(dict.fromkeys(identifiers.values())))
     return {
-        rule_id: lineage_id
+        rule_id: dict(auto[identifier])
         for rule_id, identifier in identifiers.items()
-        if (lineage_id := auto.get(identifier)) is not None
+        if identifier in auto
     }
 
 
@@ -440,12 +478,13 @@ def capture_run_exceptions(
     capture contract.
 
     ``lineage_context`` maps run-local rule IDs to lineage IDs (or mappings
-    carrying ``lineage_id``) and is threaded into each occurrence so the
-    tracking store can disambiguate predecessor chains. When omitted, a
-    best-effort auto-resolution runs against Worker A's agreed service (empty
-    until Worker A's prerequisite lands). ``lineage_resolver`` injects the
-    agreed lineage service (a stub only in focused tests) and is forwarded to
-    the tracking store; ``None`` probes the agreed service.
+    carrying ``lineage_id``/``revision_number``/``event_id``) and is threaded
+    into each occurrence so the tracking store can disambiguate predecessor
+    chains. When omitted, a best-effort auto-resolution runs against Worker
+    A's frozen `resolve_revision_context` (empty until Worker A's prerequisite
+    lands). ``lineage_resolver`` injects the frozen lineage service (a stub
+    only in focused tests) and is forwarded to the tracking store; ``None``
+    probes the frozen service module.
     """
 
     if isinstance(as_of_date, datetime) or not isinstance(as_of_date, date):
@@ -466,15 +505,15 @@ def capture_run_exceptions(
         ]
         auto = _auto_lineage_context(identifiers)
         if auto:
-            by_identifier = dict(auto)
             for rule_id, violations in result.validation.violations_by_rule.items():
                 if not violations or rule_id in normalized_context:
                     continue
                 identifier = _rule_identifier(
                     result, rule_id, violations[0].rule_identifier
                 )
-                if identifier in by_identifier:
-                    normalized_context[rule_id] = by_identifier[identifier]
+                entry = auto.get(identifier)
+                if entry is not None:
+                    normalized_context[rule_id] = entry.get("lineage_id")
     occurrences = build_occurrences(
         result,
         captured_at=timestamp,

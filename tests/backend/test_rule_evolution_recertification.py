@@ -26,10 +26,7 @@ from apps.exception_tracking.domain import (
     status_for,
 )
 from apps.exception_tracking.identity import table_name_for_date
-from apps.exception_tracking.lineage import (
-    InMemoryLineageResolver,
-    PredecessorEdge,
-)
+from apps.exception_tracking.lineage import InMemoryLineageResolver
 from apps.exception_tracking.repository import (
     ExceptionTrackingRepository,
     list_exceptions,
@@ -60,16 +57,29 @@ def _edge(
     target: str,
     event: str,
     *,
-    relationship: str = "revision",
+    change_type: str = "executable_revision",
+    save_decision: str = "modify_current",
+    commentary_policy: str = "carry_forward_recertification",
     lineage: str = LINEAGE,
-) -> PredecessorEdge:
-    return PredecessorEdge(
-        source_identifier=source,
-        target_identifier=target,
-        relationship=relationship,
-        event_id=event,
-        lineage_id=lineage,
-    )
+    revision: int = 0,
+) -> dict[str, Any]:
+    """One frozen-shape predecessor edge for the focused-test stub.
+
+    Field names mirror Worker A's frozen `PredecessorLink`; the stub filters
+    exactly like A (inheritable `modify_current` executable revisions only).
+    """
+
+    return {
+        "event_id": event,
+        "lineage_id": lineage,
+        "revision_number": revision,
+        "source_identifier": source,
+        "target_identifier": target,
+        "relationship": "revision",
+        "change_type": change_type,
+        "save_decision": save_decision,
+        "commentary_policy": commentary_policy,
+    }
 
 
 def _occurrence(
@@ -103,8 +113,8 @@ def db_path(tmp_path: Path) -> Path:
 def resolver() -> InMemoryLineageResolver:
     return InMemoryLineageResolver(
         [
-            _edge(V1, V2, "event-oct15-revision"),
-            _edge(V2, V3, "event-oct25-revision"),
+            _edge(V1, V2, "event-oct15-revision", revision=2),
+            _edge(V2, V3, "event-oct25-revision", revision=3),
         ]
     )
 
@@ -442,9 +452,17 @@ def test_save_as_new_and_unrelated_edges_never_carry(db_path: Path) -> None:
     resolver = InMemoryLineageResolver(
         [
             # Same business lineage but recorded as a separate new rule.
-            _edge(V1, V2, "event-save-as-new", relationship="save_as_new"),
+            _edge(
+                V1,
+                V2,
+                "event-save-as-new",
+                change_type="save_as_new",
+                save_decision="save_as_new",
+                commentary_policy="no_inheritance",
+                revision=2,
+            ),
             # An edge for an unrelated target identifier.
-            _edge(V1, OTHER, "event-other-lineage"),
+            _edge(V1, OTHER, "event-other-lineage", revision=2),
         ]
     )
     repo.record_exceptions(
@@ -480,10 +498,15 @@ def test_equal_date_candidates_prefer_closest_revision(db_path: Path) -> None:
     )
     repo.record_exceptions(
         SEPT_30, [_occurrence(V2, SEPT_30, commentary="v2 note")],
-        lineage_resolver=InMemoryLineageResolver([_edge(V1, V2, "event-e1")]),
+        lineage_resolver=InMemoryLineageResolver(
+            [_edge(V1, V2, "event-e1", revision=2)]
+        ),
     )
     resolver = InMemoryLineageResolver(
-        [_edge(V2, V3, "event-e2"), _edge(V1, V3, "event-e1")]
+        [
+            _edge(V2, V3, "event-e2", revision=5),
+            _edge(V1, V3, "event-e1", revision=4),
+        ]
     )
     repo.record_exceptions(
         OCT_30, [_occurrence(V3, OCT_30)], lineage_resolver=resolver
@@ -551,14 +574,17 @@ def test_canonical_reuse_after_revert_still_requires_recertification(
 
     repo = ExceptionTrackingRepository(db_path)
     _sept_comment(repo)
-    Oct15 = InMemoryLineageResolver([_edge(V1, V2, "event-oct15-revision")])
+    Oct15 = InMemoryLineageResolver([_edge(V1, V2, "event-oct15-revision", revision=2)])
     repo.record_exceptions(
         OCT_20, [_occurrence(V2, OCT_20)], lineage_resolver=Oct15
     )
     # Nov 30: the rule reverts to the v1 executable definition, but the
     # lineage records the round trip, so same-ID text must not copy silently.
     revert = InMemoryLineageResolver(
-        [_edge(V2, V1, "event-nov01-revert"), _edge(V1, V2, "event-oct15-revision")]
+        [
+            _edge(V2, V1, "event-nov01-revert", revision=3),
+            _edge(V1, V2, "event-oct15-revision", revision=2),
+        ]
     )
     repo.record_exceptions(
         NOV_30, [_occurrence(V1, NOV_30)], lineage_resolver=revert
@@ -1007,11 +1033,24 @@ def test_run_snapshot_persists_lineage_context(tmp_path: Path) -> None:
             "a.csv",
             "b.csv",
             as_of_date=OCT_30,
-            lineage_context={"R001": LINEAGE},
+            lineage_context={
+                "R001": {
+                    "lineage_id": LINEAGE,
+                    "revision_number": 2,
+                    "event_id": "event-oct15-revision",
+                }
+            },
         )
         loaded = load_run(meta.run_id)
     assert loaded is not None
-    assert loaded["result"]["lineage_context"] == {"R001": LINEAGE}
+    # Frozen per-rule snapshot shape: lineage_id + revision_number + event_id.
+    assert loaded["result"]["lineage_context"] == {
+        "R001": {
+            "lineage_id": LINEAGE,
+            "revision_number": 2,
+            "event_id": "event-oct15-revision",
+        }
+    }
 
 
 # ------------------------------------------------------------------- reports
@@ -1116,3 +1155,149 @@ def test_reports_keep_pending_visible_with_marker_and_counts() -> None:
     assert "Recertification due to rule change" not in export_html(
         accepted_result, "Accepted Report"
     )
+
+
+def test_cyclic_lineage_carries_nothing_and_warns(
+    db_path: Path, resolver: InMemoryLineageResolver
+) -> None:
+    repo = ExceptionTrackingRepository(db_path)
+    _sept_comment(repo)
+    resolver.mark_cyclic(V2)
+    summary = repo.record_exceptions(
+        OCT_30, [_occurrence(V2, OCT_30)], lineage_resolver=resolver
+    )
+    assert len(summary.carry_warnings) == 1
+    assert "loop" in summary.carry_warnings[0]
+    target = repo.get_exception(OCT_30, f"{V2}_xxxx")
+    assert target is not None
+    assert target.exception_commentary == ""
+    assert target.status == "New"
+
+
+def test_frozen_service_shape_adapter_without_a_checkout(db_path: Path) -> None:
+    """B adapts to A's exact frozen function/exception names via duck typing."""
+
+    from types import SimpleNamespace
+
+    from apps.exception_tracking.lineage import fetch_predecessor_links
+
+    class LineageAmbiguous(Exception):
+        def __init__(self, message: str, lineage_ids: Any = ()) -> None:
+            super().__init__(message)
+            self.lineage_ids = list(lineage_ids)
+
+    class LineageNotFound(Exception):
+        pass
+
+    frozen_link = SimpleNamespace(
+        event_id="event-oct15-revision",
+        lineage_id=LINEAGE,
+        revision_number=2,
+        source_identifier=V1,
+        target_identifier=V2,
+        relationship="revision",
+        change_type="executable_revision",
+        save_decision="modify_current",
+        created_at=None,
+    )
+    service = SimpleNamespace(
+        get_predecessor_chain=lambda target, **kwargs: (
+            [frozen_link] if target == V2 else (_ for _ in ()).throw(
+                LineageNotFound(target)
+            )
+        ),
+    )
+    links, warning = fetch_predecessor_links(service, V2)
+    assert warning is None
+    assert [link.event_id for link in links] == ["event-oct15-revision"]
+    assert links[0].revision_number == 2
+
+    repo = ExceptionTrackingRepository(db_path)
+    _sept_comment(repo)
+    repo.record_exceptions(
+        OCT_30, [_occurrence(V2, OCT_30)], lineage_resolver=service
+    )
+    carried = repo.get_exception(OCT_30, f"{V2}_xxxx")
+    assert carried is not None
+    assert carried.exception_commentary == "September review note"
+    assert carried.status == "RecertificationRequired"
+
+    unknown_links, unknown_warning = fetch_predecessor_links(service, OTHER)
+    assert unknown_links == [] and unknown_warning is None
+
+    ambiguous = SimpleNamespace(
+        get_predecessor_chain=lambda target, **kwargs: (_ for _ in ()).throw(
+            LineageAmbiguous(target, ["lineage-a", "lineage-b"])
+        ),
+    )
+    no_links, ambiguity_warning = fetch_predecessor_links(ambiguous, V2)
+    assert no_links == []
+    assert ambiguity_warning is not None
+    assert "lineage-a" in ambiguity_warning and "lineage-b" in ambiguity_warning
+
+
+def test_run_lineage_context_resolves_revision_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto-resolution persists lineage_id/revision_number/event_id per rule."""
+
+    import apps.exception_tracking.lineage as lineage_module
+    from apps.runs.services import (
+        ComparisonResult,
+        ExecutionResult,
+        ValidationResult,
+        ValidationViolation,
+    )
+    from apps.runs.tracking_capture import resolve_run_lineage_context
+
+    stub = InMemoryLineageResolver(
+        [_edge(V1, V2, "event-oct15-revision", revision=2)]
+    )
+    monkeypatch.setattr(
+        lineage_module, "get_lineage_service", lambda: stub
+    )
+    violation = ValidationViolation(
+        row_index=0,
+        rule_id="R001",
+        rule_name="Rule 1",
+        key_columns={"book": "xxxx"},
+        details="violated",
+        violating_column="status",
+        violating_value="bad",
+        rule_logic="status eq 'good'",
+        rule_identifier=V2,
+        exception_id=None,
+        exception_status=None,
+    )
+    result = ExecutionResult(
+        comparison=ComparisonResult(
+            total_rows_a=1,
+            total_rows_b=1,
+            matched_rows=1,
+            rows_with_changes=0,
+            total_attribute_changes=0,
+            row_details=[],
+        ),
+        validation=ValidationResult(
+            total_violations=1,
+            distinct_violating_rows=1,
+            distinct_violating_attributes=1,
+            violations_by_rule={"R001": [violation]},
+            violation_count_by_rule={"R001": 1},
+            violating_rows_by_rule={"R001": 1},
+            violating_attributes_by_rule={"R001": 1},
+            rule_summaries={"R001": {"rule_identifier": V2}},
+        ),
+        common_columns=["book", "status"],
+        target_columns=["status"],
+        key_columns=["book"],
+        filters_applied=[],
+        rule_bindings={"R001": V2},
+    )
+    assert resolve_run_lineage_context(result) == {
+        "R001": {
+            "lineage_id": LINEAGE,
+            "revision_number": 2,
+            "event_id": "event-oct15-revision",
+        }
+    }

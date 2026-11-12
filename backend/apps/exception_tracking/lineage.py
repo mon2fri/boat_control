@@ -1,23 +1,27 @@
-"""Rule-evolution lineage interface consumed by Worker B.
+"""Rule-evolution lineage adapter consumed by Worker B.
 
 Worker A owns the rule catalog, revision history, and the authoritative
-predecessor edges in the configuration database. This module defines the
-narrow read contract Worker B needs for cross-revision commentary
-carry-forward. Worker B never queries A's tables directly and never guesses
-predecessor links from rule names, local ``Rxxx`` indices, or canonical
-identifier substrings.
+predecessor edges in the configuration database. This module adapts Worker's
+B commentary carry-forward to Worker A's FROZEN service
+(`backend/apps/rules/evolution.py`, frozen 2026-11-12):
 
-Agreed lookup (final module path frozen by the integrator): Worker A provides
-``apps.rules.rule_evolution.get_lineage_resolver()`` returning an object with
-``resolve_predecessors(target_identifier, *, lineage_id=None)``. Until that
-committed prerequisite lands, :func:`get_lineage_resolver` returns ``None``
-and Worker B degrades to same-identity carry only.
+- `get_predecessor_chain(target_identifier, *, lineage_id=None, max_depth=64)`
+  returns newest-first `PredecessorLink` values (`event_id`, `lineage_id`,
+  `revision_number`, `source_identifier`, `target_identifier`,
+  `relationship="revision"`, `change_type`, `save_decision`, `created_at`)
+  for inheritable `modify_current` executable-revision edges only
+  (`save_as_new` roots yield `[]`). Raises `LineageNotFound` /
+  `LineageAmbiguous(lineage_ids)` / `LineageCycle`; never guesses.
+- `resolve_revision_context(target_identifier, *, lineage_id=None,
+  revision_number=None, event_id=None)` returns a `RevisionContext` with
+  status `ok | missing | ambiguous`.
 
-Only edges with relationship ``"revision"`` (an executable revision saved via
-*modify current*) authorize commentary inheritance. ``save as new`` and Copy
-edges must use a different relationship value and are ignored here. When an
-edge carries an explicit ``commentary_policy``, only
-``"carry_with_recertification"`` authorizes inheritance.
+Worker B never queries A's tables directly and never guesses predecessor links
+from rule names, local `Rxxx` indices, or canonical identifier substrings.
+A-service exceptions are matched by class name (not by import) so this adapter
+stays importable in the B-only checkout; until the committed prerequisite
+lands, :func:`get_lineage_service` returns ``None`` and Worker B degrades to
+same-identity carry only.
 """
 
 from __future__ import annotations
@@ -25,282 +29,344 @@ from __future__ import annotations
 import importlib
 import logging
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
-
-from apps.exception_tracking.errors import ExceptionTrackingError
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Relationship value Worker A must use for executable revisions saved via
-# "modify current". Any other value (save as new, copy, creation, metadata
-# edit, duplicate reuse) does not authorize commentary inheritance.
+# Relationship value on every inheritable A link. Kept as a defensive check;
+# A's frozen service only emits "revision" links to B.
 RELATIONSHIP_REVISION = "revision"
 
-# Edge relationships that authorize cross-revision commentary carry-forward.
-INHERITANCE_RELATIONSHIPS = frozenset({RELATIONSHIP_REVISION})
+# Frozen A commentary-policy value authorizing carry with recertification.
+COMMENTARY_POLICY_CARRY = "carry_forward_recertification"
 
-# Explicit commentary policy value that authorizes carry with recertification.
-COMMENTARY_POLICY_CARRY = "carry_with_recertification"
+# Frozen A change types authorizing inheritance (informational; A filters).
+INHERITABLE_CHANGE_TYPES = frozenset({"executable_revision", "legacy_backfill"})
 
-# Agreed Worker A module/factory path. The integrator freezes the final path;
-# this is the provisional default Worker B probes.
-_AGREED_MODULE = "apps.rules.rule_evolution"
-_AGREED_FACTORY = "get_lineage_resolver"
-
-
-class LineageError(ExceptionTrackingError):
-    """Base class for rule-evolution lineage resolution failures."""
-
-
-class LineageUnavailableError(LineageError):
-    """A's lineage service is not installed or reachable in this checkout."""
-
-
-class AmbiguousLineageError(LineageError):
-    """The target identifier cannot be resolved to one unambiguous lineage."""
-
-    def __init__(self, message: str, *, target_identifier: str = "") -> None:
-        super().__init__(message)
-        self.target_identifier = target_identifier
-
-
-class LineageConflictError(LineageError):
-    """The recorded predecessor edges are missing, conflicting, or cyclic."""
-
-    def __init__(self, message: str, *, target_identifier: str = "") -> None:
-        super().__init__(message)
-        self.target_identifier = target_identifier
+# Frozen Worker A service module. Only this module is probed; no SQL, no guessing.
+_AGREED_MODULE = "apps.rules.evolution"
+_CHAIN_FUNCTION = "get_predecessor_chain"
+_CONTEXT_FUNCTION = "resolve_revision_context"
 
 
 @dataclass(frozen=True)
-class PredecessorEdge:
-    """One recorded predecessor link into a revised rule.
+class PredecessorLinkView:
+    """B-side view of one frozen A `PredecessorLink` (newest-first)."""
 
-    ``relationship`` must be ``"revision"`` for modify-current executable
-    revisions. ``commentary_policy``, when set by Worker A, must be
-    ``"carry_with_recertification"`` to authorize inheritance.
-    """
-
+    event_id: str
+    lineage_id: str
+    revision_number: int
     source_identifier: str
     target_identifier: str
-    relationship: str
-    event_id: str
-    lineage_id: str = ""
-    revision_number: int | None = None
-    commentary_policy: str | None = None
+    relationship: str = RELATIONSHIP_REVISION
 
 
-@dataclass(frozen=True)
-class LineageResolution:
-    """The bounded ordered predecessor chain for one target identifier.
+def get_lineage_service() -> Any | None:
+    """Return Worker A's frozen evolution service module, or ``None``.
 
-    ``chain`` is ordered nearest-predecessor-first. An empty chain means the
-    target has no recorded executable revision history (new or unrevised
-    rule), not an error.
+    ``None`` means the committed prerequisite is absent from this checkout;
+    callers must degrade to same-identity carry, never to guessing.
     """
 
-    target_identifier: str
-    lineage_id: str = ""
-    chain: tuple[PredecessorEdge, ...] = ()
-    target_event_id: str = ""
-
-
-@dataclass(frozen=True)
-class RevisionDescriptor:
-    """Target revision context Worker A reports for one canonical identifier."""
-
-    identifier: str
-    lineage_id: str = ""
-    revision_number: int | None = None
-    event_id: str = ""
-
-
-@runtime_checkable
-class LineageResolver(Protocol):
-    """Narrow lineage service Worker A implements and Worker B consumes."""
-
-    def resolve_predecessors(
-        self,
-        target_identifier: str,
-        *,
-        lineage_id: str | None = None,
-    ) -> LineageResolution: ...
-
-    def describe_revision(
-        self,
-        identifier: str,
-        *,
-        lineage_id: str | None = None,
-    ) -> RevisionDescriptor | None: ...
-
-
-def inheritable_edges(chain: tuple[PredecessorEdge, ...]) -> list[PredecessorEdge]:
-    """Return the chain edges that authorize commentary inheritance, in order."""
-
-    result: list[PredecessorEdge] = []
-    for edge in chain:
-        if edge.relationship not in INHERITANCE_RELATIONSHIPS:
-            continue
-        if (
-            edge.commentary_policy is not None
-            and edge.commentary_policy != COMMENTARY_POLICY_CARRY
-        ):
-            continue
-        if not edge.source_identifier or edge.source_identifier == edge.target_identifier:
-            continue
-        result.append(edge)
-    return result
-
-
-def _probe_agreed_resolver() -> LineageResolver | None:
     try:
-        module = importlib.import_module(_AGREED_MODULE)
+        return importlib.import_module(_AGREED_MODULE)
     except ImportError:
         return None
-    factory = vars(module).get(_AGREED_FACTORY)
-    if not callable(factory):
-        logger.debug(
-            "Worker A lineage module %s has no %s(); cross-revision carry disabled.",
-            _AGREED_MODULE,
-            _AGREED_FACTORY,
-        )
-        return None
+
+
+def _link_view(link: Any) -> PredecessorLinkView | None:
     try:
-        resolver = factory()
-    except Exception as exc:  # pragma: no cover - defensive boundary
-        logger.warning("Worker A lineage resolver factory failed: %s", exc)
-        return None
-    if not isinstance(resolver, LineageResolver):
-        logger.warning(
-            "Worker A lineage resolver does not implement the agreed protocol; "
-            "cross-revision carry disabled."
+        return PredecessorLinkView(
+            event_id=str(link.event_id),
+            lineage_id=str(link.lineage_id or ""),
+            revision_number=int(link.revision_number),
+            source_identifier=str(link.source_identifier or ""),
+            target_identifier=str(link.target_identifier or ""),
+            relationship=str(link.relationship or ""),
         )
+    except (AttributeError, TypeError, ValueError):
         return None
-    return resolver
 
 
-def get_lineage_resolver() -> LineageResolver | None:
-    """Return Worker A's agreed lineage resolver, or ``None`` when unavailable.
+def fetch_predecessor_links(
+    service: Any,
+    target_identifier: str,
+    *,
+    lineage_id: str | None = None,
+    max_depth: int = 64,
+) -> tuple[list[PredecessorLinkView], str | None]:
+    """Return ``(newest-first inheritable links, warning)`` for one target.
 
-    ``None`` means Worker B keeps legacy same-identity carry only. Callers
-    must not treat the absence as an empty lineage.
+    Unknown identifiers (`LineageNotFound`) yield ``([], None)`` so the caller
+    keeps legacy same-identity behavior for new rules. Ambiguity and cycles
+    yield ``([], warning)`` and the caller must not guess. Any other failure
+    propagates: masking a programming error would be worse than failing loudly.
     """
 
-    return _probe_agreed_resolver()
+    if service is None:
+        return [], None
+    function = getattr(service, _CHAIN_FUNCTION, None)
+    if not callable(function):
+        logger.debug(
+            "Lineage service has no %s(); cross-revision carry disabled.",
+            _CHAIN_FUNCTION,
+        )
+        return [], None
+    try:
+        if lineage_id:
+            raw_links = function(
+                target_identifier, lineage_id=lineage_id, max_depth=max_depth
+            )
+        else:
+            raw_links = function(target_identifier, max_depth=max_depth)
+    except Exception as exc:
+        name = type(exc).__name__
+        if name == "LineageNotFound":
+            return [], None
+        if name == "LineageAmbiguous":
+            candidates = getattr(exc, "lineage_ids", None) or ()
+            return [], (
+                f"No cross-revision commentary was carried for "
+                f"'{target_identifier}': the identifier belongs to several "
+                f"lineages ({', '.join(str(item) for item in candidates)}); "
+                f"explicit lineage context is required."
+            )
+        if name == "LineageCycle":
+            return [], (
+                f"No cross-revision commentary was carried for "
+                f"'{target_identifier}': recorded predecessor links loop; "
+                f"review required."
+            )
+        raise
+    links: list[PredecessorLinkView] = []
+    for raw in raw_links or ():
+        view = _link_view(raw)
+        if view is None:
+            continue
+        # Defensive: A only emits inheritable "revision" links, but never
+        # trust a non-revision or self-referential edge for inheritance.
+        if view.relationship != RELATIONSHIP_REVISION:
+            continue
+        if not view.source_identifier or view.source_identifier == view.target_identifier:
+            continue
+        links.append(view)
+    return links, None
+
+
+def fetch_revision_context(
+    service: Any,
+    identifier: str,
+    *,
+    lineage_id: str | None = None,
+) -> dict[str, Any]:
+    """Return snapshot lineage context for one identifier, or ``{}``.
+
+    Uses the frozen `resolve_revision_context`; `missing`/`ambiguous`/absent
+    service all yield ``{}`` so capture proceeds without disambiguation.
+    """
+
+    if service is None:
+        return {}
+    function = getattr(service, _CONTEXT_FUNCTION, None)
+    if not callable(function):
+        return {}
+    try:
+        if lineage_id:
+            context = function(identifier, lineage_id=lineage_id)
+        else:
+            context = function(identifier)
+    except Exception:  # a context lookup must never fail the capture
+        logger.warning(
+            "Revision-context lookup failed for %s; continuing without lineage.",
+            identifier,
+            exc_info=True,
+        )
+        return {}
+    if getattr(context, "status", None) != "ok":
+        return {}
+    resolved_lineage = getattr(context, "lineage_id", None)
+    if not resolved_lineage:
+        return {}
+    entry: dict[str, Any] = {"lineage_id": str(resolved_lineage)}
+    revision_number = getattr(context, "revision_number", None)
+    if revision_number is not None:
+        entry["revision_number"] = int(revision_number)
+    event_id = getattr(context, "event_id", None)
+    if event_id:
+        entry["event_id"] = str(event_id)
+    rule_id = getattr(context, "rule_id", None)
+    if rule_id:
+        entry["rule_id"] = str(rule_id)
+    return entry
+
+
+class LineageNotFound(Exception):
+    """Stub mirror of A's `LineageNotFound` for focused tests only."""
+
+
+class LineageAmbiguous(Exception):
+    """Stub mirror of A's `LineageAmbiguous` for focused tests only."""
+
+    def __init__(self, message: str, lineage_ids: Any = ()) -> None:
+        super().__init__(message)
+        self.lineage_ids = list(lineage_ids or ())
+
+
+class LineageCycle(Exception):
+    """Stub mirror of A's `LineageCycle` for focused tests only."""
+
+
+@dataclass
+class _StubLink:
+    event_id: str
+    lineage_id: str
+    revision_number: int
+    source_identifier: str
+    target_identifier: str
+    relationship: str = RELATIONSHIP_REVISION
+    change_type: str = "executable_revision"
+    save_decision: str = "modify_current"
+    commentary_policy: str = COMMENTARY_POLICY_CARRY
+    created_at: Any = None
+
+
+@dataclass
+class _StubRevisionContext:
+    status: str
+    lineage_id: str | None = None
+    revision_number: int | None = None
+    event_id: str | None = None
+    rule_id: str | None = None
+    candidates: tuple[str, ...] = ()
 
 
 class InMemoryLineageResolver:
-    """Explicit stub of the agreed Worker A interface for focused tests only.
+    """Explicit stub of the frozen A interface for focused tests only.
 
-    Not for production use and never a substitute for the committed Worker A
-    prerequisite. The delivery must pass an actual integration check after
-    Worker A lands.
+    Mirrors the frozen semantics: stored edges filtered to inheritable
+    `modify_current` executable revisions (newest-first), `save_as_new` roots
+    yielding `[]`, unknown identifiers raising `LineageNotFound`, explicit
+    ambiguity/cycle hooks. Not for production and never a substitute for the
+    committed Worker A prerequisite.
     """
 
-    def __init__(self, edges: tuple[PredecessorEdge, ...] | list[PredecessorEdge] = ()) -> None:
-        self._edges: dict[str, list[PredecessorEdge]] = {}
-        for edge in edges:
-            self._edges.setdefault(edge.target_identifier, []).append(edge)
+    def __init__(self, links: Any = ()) -> None:
+        self._by_target: dict[str, list[_StubLink]] = {}
         self._ambiguous: set[str] = set()
-        self._conflicts: dict[str, str] = {}
-        self._descriptors: dict[str, RevisionDescriptor] = {}
+        self._ambiguous_ids: dict[str, list[str]] = {}
+        self._cyclic: set[str] = set()
+        for link in links or ():
+            self.add_link(link)
 
-    def add_edge(self, edge: PredecessorEdge) -> None:
-        self._edges.setdefault(edge.target_identifier, []).append(edge)
+    def add_link(self, link: _StubLink | dict[str, Any]) -> None:
+        if isinstance(link, dict):
+            link = _StubLink(**link)
+        self._by_target.setdefault(link.target_identifier, []).append(link)
 
-    def add_descriptor(self, descriptor: RevisionDescriptor) -> None:
-        self._descriptors[descriptor.identifier] = descriptor
-
-    def mark_ambiguous(self, target_identifier: str) -> None:
+    def mark_ambiguous(
+        self, target_identifier: str, lineage_ids: Any = ("lineage-a", "lineage-b")
+    ) -> None:
         self._ambiguous.add(target_identifier)
+        self._ambiguous_ids[target_identifier] = list(lineage_ids)
 
-    def mark_conflict(self, target_identifier: str, message: str) -> None:
-        self._conflicts[target_identifier] = message
+    def mark_cyclic(self, target_identifier: str) -> None:
+        self._cyclic.add(target_identifier)
 
-    def resolve_predecessors(
+    def _inheritable(self, link: _StubLink) -> bool:
+        return (
+            link.change_type in INHERITABLE_CHANGE_TYPES
+            and link.commentary_policy == COMMENTARY_POLICY_CARRY
+            and link.relationship == RELATIONSHIP_REVISION
+            and bool(link.source_identifier)
+            and link.source_identifier != link.target_identifier
+        )
+
+    def get_predecessor_chain(
         self,
         target_identifier: str,
         *,
         lineage_id: str | None = None,
-        limit: int = 25,
-    ) -> LineageResolution:
+        max_depth: int = 64,
+    ) -> list[_StubLink]:
         if target_identifier in self._ambiguous:
-            raise AmbiguousLineageError(
-                f"Rule identifier {target_identifier} resolves to more than one "
-                "business lineage; refusing to guess a predecessor.",
-                target_identifier=target_identifier,
+            raise LineageAmbiguous(
+                f"Identifier {target_identifier} belongs to several lineages",
+                self._ambiguous_ids.get(target_identifier, ()),
             )
-        if target_identifier in self._conflicts:
-            raise LineageConflictError(
-                self._conflicts[target_identifier],
-                target_identifier=target_identifier,
-            )
-        # Transitive nearest-first walk with cycle guard, mirroring the agreed
-        # Worker A behavior of returning a bounded ordered predecessor chain.
-        chain: list[PredecessorEdge] = []
-        seen: set[str] = {target_identifier}
-        frontier: list[str] = [target_identifier]
-        while frontier and len(chain) < limit:
-            current = frontier.pop(0)
-            for edge in self._edges.get(current, ()):
-                if lineage_id and edge.lineage_id not in ("", lineage_id):
-                    continue
-                if edge.source_identifier in seen:
-                    continue
-                seen.add(edge.source_identifier)
-                chain.append(edge)
-                frontier.append(edge.source_identifier)
-        lineage = ""
-        for edge in chain:
-            if edge.lineage_id:
-                lineage = edge.lineage_id
-                break
-        return LineageResolution(
-            target_identifier=target_identifier,
-            lineage_id=lineage,
-            chain=tuple(chain),
+        if target_identifier in self._cyclic:
+            raise LineageCycle(f"Predecessor links loop at {target_identifier}")
+        chain: list[_StubLink] = []
+        emitted: set[str] = set()
+        enqueued: set[str] = {target_identifier}
+        queue: list[str] = [target_identifier]
+        known = any(
+            link.target_identifier == target_identifier
+            for links in self._by_target.values()
+            for link in links
         )
+        if not known:
+            raise LineageNotFound(
+                f"No recorded lineage contains identifier {target_identifier}"
+            )
+        while queue and len(chain) < max_depth:
+            current = queue.pop(0)
+            for link in self._by_target.get(current, ()):
+                if lineage_id and link.lineage_id not in ("", lineage_id):
+                    continue
+                if link.event_id in emitted:
+                    continue
+                emitted.add(link.event_id)
+                if self._inheritable(link):
+                    chain.append(link)
+                if link.source_identifier not in enqueued:
+                    enqueued.add(link.source_identifier)
+                    queue.append(link.source_identifier)
+        chain.sort(key=lambda link: link.revision_number, reverse=True)
+        return chain[:max_depth]
 
-    def describe_revision(
+    def resolve_revision_context(
         self,
         identifier: str,
         *,
         lineage_id: str | None = None,
-    ) -> RevisionDescriptor | None:
-        descriptor = self._descriptors.get(identifier)
-        if descriptor is None:
-            return None
-        if lineage_id and descriptor.lineage_id not in ("", lineage_id):
-            return None
-        return descriptor
-
-
-def revision_descriptor_to_context(descriptor: RevisionDescriptor | None) -> dict[str, Any]:
-    """Render a descriptor as the additive run-snapshot lineage context entry."""
-
-    if descriptor is None:
-        return {}
-    return {
-        "lineage_id": descriptor.lineage_id,
-        "revision_number": descriptor.revision_number,
-        "event_id": descriptor.event_id,
-    }
+        revision_number: int | None = None,
+        event_id: str | None = None,
+    ) -> _StubRevisionContext:
+        candidates = [
+            link
+            for links in self._by_target.values()
+            for link in links
+            if link.target_identifier == identifier
+            and (lineage_id is None or link.lineage_id in ("", lineage_id))
+            and (revision_number is None or link.revision_number == revision_number)
+            and (event_id is None or link.event_id == event_id)
+        ]
+        if not candidates:
+            return _StubRevisionContext(status="missing")
+        lineages = sorted({link.lineage_id for link in candidates if link.lineage_id})
+        if lineage_id is None and len(lineages) > 1:
+            return _StubRevisionContext(status="ambiguous", candidates=tuple(lineages))
+        best = max(candidates, key=lambda link: link.revision_number)
+        return _StubRevisionContext(
+            status="ok",
+            lineage_id=best.lineage_id or None,
+            revision_number=best.revision_number,
+            event_id=best.event_id,
+            rule_id=None,
+            candidates=(),
+        )
 
 
 __all__ = [
     "COMMENTARY_POLICY_CARRY",
-    "INHERITANCE_RELATIONSHIPS",
+    "INHERITABLE_CHANGE_TYPES",
     "RELATIONSHIP_REVISION",
-    "AmbiguousLineageError",
     "InMemoryLineageResolver",
-    "LineageConflictError",
-    "LineageError",
-    "LineageResolution",
-    "LineageResolver",
-    "LineageUnavailableError",
-    "PredecessorEdge",
-    "RevisionDescriptor",
-    "get_lineage_resolver",
-    "inheritable_edges",
-    "revision_descriptor_to_context",
+    "LineageAmbiguous",
+    "LineageCycle",
+    "LineageNotFound",
+    "PredecessorLinkView",
+    "fetch_predecessor_links",
+    "fetch_revision_context",
+    "get_lineage_service",
 ]

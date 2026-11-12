@@ -13,6 +13,7 @@ from typing import Any
 from django.conf import settings
 
 from apps.runs.services import ExecutionResult
+from apps.runs.tracking_capture import normalize_snapshot_lineage_context
 from apps.settings.services import get_run_history_dir
 
 _runs_lock = threading.Lock()
@@ -190,8 +191,12 @@ def save_run(
                 "commentary_template_columns": result.commentary_template_columns,
                 "new_exceptions_only": result.new_exceptions_only,
                 # Target lineage/revision context for cross-revision commentary
-                # carry. Additive: older snapshots load without this key.
-                "lineage_context": dict(lineage_context or {}),
+                # carry. Frozen shape per rule: lineage_id (required),
+                # revision_number and event_id when known. Additive: older
+                # snapshots load without this key.
+                "lineage_context": normalize_snapshot_lineage_context(
+                    lineage_context
+                ),
             },
         }
 

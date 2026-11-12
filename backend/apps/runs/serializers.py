@@ -142,7 +142,6 @@ class ExecutionResultSerializer(serializers.Serializer):  # type: ignore[misc]
     )
     new_exceptions_only = serializers.BooleanField(required=False, default=True)
     lineage_context = serializers.DictField(
-        child=serializers.CharField(allow_blank=True),
         required=False,
         default=dict,
     )

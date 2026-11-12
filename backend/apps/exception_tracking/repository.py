@@ -11,6 +11,7 @@ module owns transactions, history maintenance, and commentary precedence.
 from __future__ import annotations
 
 import importlib
+import logging
 import sqlite3
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
@@ -62,6 +63,8 @@ from apps.exception_tracking.identity import (
 )
 
 DEFAULT_DATABASE_RELATIVE_PATH = Path("data") / "exception_tracking.db"
+
+logger = logging.getLogger(__name__)
 
 LEGACY_COLUMNS: tuple[str, ...] = (
     "exception_id",
@@ -199,14 +202,14 @@ def resolve_database_path(database_path: str | Path | None = None) -> Path:
 
 
 def _default_lineage_resolver() -> Any | None:
-    """Probe Worker A's agreed lineage service; ``None`` when unavailable."""
+    """Probe Worker A's frozen evolution service; ``None`` when unavailable."""
 
     try:
-        from apps.exception_tracking.lineage import get_lineage_resolver
+        from apps.exception_tracking.lineage import get_lineage_service
     except ImportError:  # pragma: no cover - defensive boundary
         return None
     try:
-        return get_lineage_resolver()
+        return get_lineage_service()
     except Exception:  # pragma: no cover - defensive boundary
         return None
 
@@ -1212,27 +1215,24 @@ class ExceptionTrackingRepository:
 
         if resolver is None:
             return None, False
-        try:
-            from apps.exception_tracking.lineage import (
-                LineageError,
-                inheritable_edges,
-            )
+        from apps.exception_tracking.lineage import fetch_predecessor_links
 
-            if lineage_id:
-                resolution = resolver.resolve_predecessors(
-                    identity.exception_rule_identifier, lineage_id=lineage_id
-                )
-            else:
-                resolution = resolver.resolve_predecessors(
-                    identity.exception_rule_identifier
-                )
-        except LineageError as exc:
-            warnings.append(
-                f"No cross-revision commentary was carried for "
-                f"'{identity.exception_id}': {exc}"
-            )
+        links, warning = fetch_predecessor_links(
+            resolver,
+            identity.exception_rule_identifier,
+            lineage_id=lineage_id or None,
+        )
+        if warning is not None:
+            warnings.append(warning)
+            logger.warning("%s", warning)
             return None, False
-        edges = inheritable_edges(resolution.chain)
+        edges = [
+            link
+            for link in links
+            if link.relationship == "revision"
+            and link.source_identifier
+            and link.source_identifier != link.target_identifier
+        ]
         if not edges:
             return None, False
         target_map = dict(identity.key_columns)
@@ -1240,12 +1240,14 @@ class ExceptionTrackingRepository:
         seen_sources: set[str] = set()
         for distance, edge in enumerate(edges):
             if edge.source_identifier in seen_sources:
-                warnings.append(
+                repeated = (
                     f"No cross-revision commentary was carried for "
                     f"'{identity.exception_id}': recorded predecessor "
                     f"'{edge.source_identifier}' repeats in the revision chain; "
-                    "refusing to guess."
+                    f"refusing to guess."
                 )
+                warnings.append(repeated)
+                logger.warning("%s", repeated)
                 return None, True
             seen_sources.add(edge.source_identifier)
             occurrence = self._latest_predecessor_occurrence(
@@ -1273,11 +1275,13 @@ class ExceptionTrackingRepository:
             if item[1] == contenders[0][1]
         }
         if len(tied) > 1:
-            warnings.append(
+            contradictory = (
                 f"No cross-revision commentary was carried for "
                 f"'{identity.exception_id}': predecessor candidates on "
                 f"{best_date.isoformat()} remain contradictory; review required."
             )
+            warnings.append(contradictory)
+            logger.warning("%s", contradictory)
             return None, True
         # Provenance names the nearest (target-side) edge event: the recorded
         # revision that created the target, which is also the token binding
