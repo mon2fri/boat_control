@@ -22,7 +22,7 @@ All stores are isolated under ``tmp_path``; live databases are never touched.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -251,6 +251,41 @@ def test_same_id_carry_preserves_target_edits_and_clears(tmp_path: Path) -> None
     assert cleared is not None
     assert cleared.exception_commentary == ""
     assert cleared.status != "Commented"
+
+
+def test_same_revision_carry_needs_no_recertification(tmp_path: Path) -> None:
+    """Same-revision carry lands Commented directly, even from a pending row.
+
+    Oct-20 carries V1 text as pending (cross-revision: recertification
+    required). The Nov-1 capture is the SAME revision, so its carry applies
+    the text as ordinary commentary with no recertification marker.
+    """
+
+    db_path = tmp_path / "tracking.db"
+    repo = ExceptionTrackingRepository(db_path)
+    repo.record_exceptions(
+        OCT_31 - timedelta(days=1),
+        [_occurrence(RD, OCT_31 - timedelta(days=1), commentary="v1 note")],
+    )
+    revision = InMemoryLineageResolver([_edge(RD, RE, "event-rev5", 5)])
+    repo.record_exceptions(
+        OCT_31, [_occurrence(RE, OCT_31)], lineage_resolver=revision
+    )
+    middle = repo.get_exception(OCT_31, f"{RE}_xxxx")
+    assert middle is not None
+    assert middle.status == "RecertificationRequired"
+
+    repo.record_exceptions(
+        NOV_1, [_occurrence(RE, NOV_1)], lineage_resolver=revision
+    )
+    target = repo.get_exception(NOV_1, f"{RE}_xxxx")
+    assert target is not None
+    assert target.exception_commentary == "v1 note"
+    assert target.status == "Commented"
+    assert target.recertification_required is False
+    assert target.recertification_reason == ""
+    assert target.rule_evolution_event_id == ""
+    assert target.carried_from_exception_id == ""
 
 
 def test_commented_pair_scope_filtering_and_unrelated_books(tmp_path: Path) -> None:
