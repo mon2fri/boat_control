@@ -1072,14 +1072,17 @@ class ExceptionTrackingRepository:
 
                 commentary = item.commentary
                 carry: _CrossRevisionCarry | None = None
+                predecessor_seen: date | None = None
                 if commentary is None:
-                    carry, has_revision_edges = self._cross_revision_attempt(
-                        connection,
-                        item.identity,
-                        parsed_date,
-                        lineage_id=item.lineage_id,
-                        resolver=resolver,
-                        warnings=carry_warnings,
+                    carry, has_revision_edges, predecessor_seen = (
+                        self._cross_revision_attempt(
+                            connection,
+                            item.identity,
+                            parsed_date,
+                            lineage_id=item.lineage_id,
+                            resolver=resolver,
+                            warnings=carry_warnings,
+                        )
                     )
                     if carry is not None:
                         commentary = carry.commentary
@@ -1089,6 +1092,15 @@ class ExceptionTrackingRepository:
                         )
                     else:
                         commentary = ""
+                # A recorded predecessor occurrence without eligible commentary
+                # keeps the new row from looking brand new: first-seen points
+                # at the predecessor date (Not Commented), never at a pending
+                # carry (pending rows are new review items dated today).
+                first_seen_date = (
+                    parsed_date
+                    if carry is not None or predecessor_seen is None
+                    else predecessor_seen
+                )
                 connection.execute(
                     f"INSERT INTO {quoted} ("
                     "exception_id, exception_rule_identifier, key_columns, "
@@ -1109,7 +1121,7 @@ class ExceptionTrackingRepository:
                         item.timestamp.isoformat(),
                         commentary,
                         parsed_date.isoformat(),
-                        parsed_date.isoformat(),
+                        first_seen_date.isoformat(),
                         parsed_date.isoformat(),
                         item.timestamp.isoformat(),
                         item.timestamp.isoformat(),
@@ -1206,18 +1218,22 @@ class ExceptionTrackingRepository:
         lineage_id: str | None,
         resolver: Any | None,
         warnings: list[str],
-    ) -> tuple[_CrossRevisionCarry | None, bool]:
+    ) -> tuple[_CrossRevisionCarry | None, bool, date | None]:
         """Attempt commentary inheritance across a recorded rule revision.
 
-        Returns ``(carry, has_revision_edges)``. ``has_revision_edges`` tells
-        the caller whether legacy same-identity carry is still allowed: when
-        Worker A records executable-revision edges for the target, same-ID
-        text must not be copied silently (it would bypass recertification,
-        including for canonical-equivalent target reuse after a revert).
+        Returns ``(carry, has_revision_edges, predecessor_seen)``.
+        ``has_revision_edges`` tells the caller whether legacy same-identity
+        carry is still allowed: when Worker A records executable-revision
+        edges for the target, same-ID text must not be copied silently (it
+        would bypass recertification, including for canonical-equivalent
+        target reuse after a revert). ``predecessor_seen`` is the as-of date
+        of a recorded predecessor occurrence when one exists: the new row
+        then keeps Not Commented continuity instead of looking brand new,
+        without copying any text or requiring recertification.
         """
 
         if resolver is None:
-            return None, False
+            return None, False, None
         from apps.exception_tracking.lineage import fetch_predecessor_links
 
         try:
@@ -1236,13 +1252,13 @@ class ExceptionTrackingRepository:
             )
             warnings.append(degraded)
             logger.warning("%s", degraded)
-            return None, False
+            return None, False, None
         if warning is not None:
             warnings.append(warning)
             logger.warning("%s", warning)
             # Ambiguous or cyclic lineage: refuse to guess entirely, including
             # same-identity text that a reused identifier might silently copy.
-            return None, True
+            return None, True, None
         edges = [
             link
             for link in links
@@ -1251,10 +1267,11 @@ class ExceptionTrackingRepository:
             and link.source_identifier != link.target_identifier
         ]
         if not edges:
-            return None, False
+            return None, False, None
         target_map = dict(identity.key_columns)
         candidates: list[tuple[date, int, Any, _PredecessorOccurrence]] = []
         seen_sources: set[str] = set()
+        predecessor_seen: date | None = None
         for distance, edge in enumerate(edges):
             if edge.source_identifier in seen_sources:
                 repeated = (
@@ -1265,18 +1282,20 @@ class ExceptionTrackingRepository:
                 )
                 warnings.append(repeated)
                 logger.warning("%s", repeated)
-                return None, True
+                return None, True, None
             seen_sources.add(edge.source_identifier)
             occurrence = self._latest_predecessor_occurrence(
                 connection, edge.source_identifier, target_map, as_of_date
             )
             if occurrence is None:
                 continue
+            if predecessor_seen is None or occurrence.as_of_date > predecessor_seen:
+                predecessor_seen = occurrence.as_of_date
             if not occurrence.commentary.strip():
                 if occurrence.had_nonblank_history:
                     # An explicitly cleared latest source stays cleared: never
                     # resurrect older text, and never look past the tombstone.
-                    return None, True
+                    return None, True, None
                 continue
             candidates.append((occurrence.as_of_date, distance, edge, occurrence))
         if not candidates:
@@ -1291,11 +1310,11 @@ class ExceptionTrackingRepository:
             # revert/round trip), same-ID text may predate an intervening
             # revision and must not copy silently.
             if identity.exception_rule_identifier in seen_sources:
-                return None, True
+                return None, True, predecessor_seen
             pending = self._same_identity_pending(connection, identity, as_of_date)
             if pending is not None:
-                return pending, False
-            return None, False
+                return pending, False, None
+            return None, False, predecessor_seen
         best_date = max(item[0] for item in candidates)
         contenders = [item for item in candidates if item[0] == best_date]
         contenders.sort(key=lambda item: item[1])
@@ -1314,7 +1333,7 @@ class ExceptionTrackingRepository:
             )
             warnings.append(contradictory)
             logger.warning("%s", contradictory)
-            return None, True
+            return None, True, None
         # Provenance names the nearest (target-side) edge event: the recorded
         # revision that created the target, which is also the token binding
         # later acceptance to this revision. Source fields pin the text origin.
@@ -1328,6 +1347,7 @@ class ExceptionTrackingRepository:
                 event_id=edges[0].event_id,
             ),
             True,
+            None,
         )
 
     def _same_identity_pending(
@@ -1543,11 +1563,13 @@ class ExceptionTrackingRepository:
 
         occurrences: dict[str, list[tuple[date, datetime]]] = {}
         locations: dict[str, list[str]] = {}
+        stored_first_seen: dict[str, date] = {}
         for _, table in tables:
             quoted = quote_identifier(table)
             for chunk in _chunks(exception_ids):
                 rows = connection.execute(
-                    f"SELECT exception_id, exception_as_of_date, exception_timestamp "
+                    f"SELECT exception_id, exception_as_of_date, exception_timestamp, "
+                    f"exception_first_seen_as_of_date "
                     f"FROM {quoted} WHERE exception_id IN "
                     f"({_placeholders(len(chunk))})",
                     tuple(chunk),
@@ -1558,9 +1580,28 @@ class ExceptionTrackingRepository:
                     timestamp = parse_utc_timestamp(_text(row, "exception_timestamp"))
                     occurrences.setdefault(exception_id, []).append((row_date, timestamp))
                     locations.setdefault(exception_id, []).append(table)
+                    # Legacy tables predate the first-seen column; a corrupt or
+                    # unreadable value must never fail a capture, so keep the
+                    # computed minimum in that case.
+                    if "exception_first_seen_as_of_date" in row.keys():
+                        with suppress(Exception):
+                            stored = parse_as_of_date(
+                                _text(row, "exception_first_seen_as_of_date")
+                            )
+                            if (
+                                exception_id not in stored_first_seen
+                                or stored < stored_first_seen[exception_id]
+                            ):
+                                stored_first_seen[exception_id] = stored
 
         for exception_id, items in occurrences.items():
+            # A cross-revision continuity backfill may already record an
+            # earlier first-seen date than any same-ID row; never move it
+            # forward again.
             first_date = min(item[0] for item in items)
+            stored = stored_first_seen.get(exception_id)
+            if stored is not None and stored < first_date:
+                first_date = stored
             last_date = max(item[0] for item in items)
             first_timestamp = min(item[1] for item in items)
             last_timestamp = max(item[1] for item in items)

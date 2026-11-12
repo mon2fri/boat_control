@@ -42,6 +42,7 @@ from apps.runs.tracking_context import (
 OCT_30 = date(2026, 10, 30)
 OCT_31 = date(2026, 10, 31)
 NOV_1 = date(2026, 11, 1)
+NOV_2 = date(2026, 11, 2)
 
 RA = "CBR1_" + "E" * 20
 RB = "CBR1_" + "F" * 20
@@ -313,6 +314,47 @@ def test_same_revision_carry_preserves_pending_mark(tmp_path: Path) -> None:
     assert target.carried_from_rule_identifier == RE
     assert target.rule_evolution_event_id == "event-rev5"
     assert target.revision_token == "event-rev5"
+
+
+def test_cross_revision_uncommented_recurrence_stays_not_commented(
+    tmp_path: Path,
+) -> None:
+    """Wendy shape: an uncommented predecessor keeps the new ID Not Commented.
+
+    The Nov-1 occurrence under the old identifier has no commentary; after the
+    rule revision the same book still violates under the new identifier. The
+    new row recognizes the recorded predecessor/book continuity (first-seen
+    backfilled) instead of looking brand new, with no text copied and no
+    recertification required. Genuinely first-time IDs stay New.
+    """
+
+    db_path = tmp_path / "tracking.db"
+    repo = ExceptionTrackingRepository(db_path)
+    V1 = "CBR1_" + "N" * 20
+    V2 = "CBR1_" + "P" * 20
+    resolver = InMemoryLineageResolver([_edge(V1, V2, "event-nov02-revision", 2)])
+    repo.record_exceptions(
+        NOV_1, [_occurrence(V1, NOV_1, book="Wendy")], lineage_resolver=resolver
+    )
+    repo.record_exceptions(
+        NOV_2,
+        [
+            _occurrence(V2, NOV_2, book="Wendy"),
+            _occurrence(V2, NOV_2, book="Zoe"),
+        ],
+        lineage_resolver=resolver,
+    )
+    wendy = repo.get_exception(NOV_2, f"{V2}_Wendy")
+    assert wendy is not None
+    assert wendy.exception_commentary == ""
+    assert wendy.status == "NotCommented"
+    assert wendy.exception_first_seen_as_of_date == NOV_1
+    assert wendy.recertification_required is False
+    assert wendy.recertification_reason == ""
+    assert wendy.rule_evolution_event_id == ""
+    zoe = repo.get_exception(NOV_2, f"{V2}_Zoe")
+    assert zoe is not None
+    assert zoe.status == "New"
 
 
 def test_commented_pair_scope_filtering_and_unrelated_books(tmp_path: Path) -> None:

@@ -255,7 +255,10 @@ def test_explicitly_cleared_source_is_a_tombstone(
     assert target is not None
     assert target.exception_commentary == ""
     assert target.recertification_required is False
-    assert target.status == "New"
+    # Round-2 directive: a recorded predecessor occurrence keeps the new row
+    # from looking brand new (NotCommented), even though no text was
+    # cleared-carried and no recertification is required.
+    assert target.status == "NotCommented"
     assert target.rule_evolution_event_id == ""
 
 
