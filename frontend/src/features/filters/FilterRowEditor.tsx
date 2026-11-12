@@ -16,6 +16,11 @@ interface Props {
   loadingValues: boolean;
   onChange: (row: FilterRow) => void;
   onRemove: () => void;
+  /** Optional ordering controls; the builder renders them when supplied. */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
 }
 
 /**
@@ -36,6 +41,10 @@ export function FilterRowEditor({
   loadingValues,
   onChange,
   onRemove,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp = false,
+  canMoveDown = false,
 }: Props) {
   const { data: families = [] } = useFamilies();
   const columnOptions = useMemo<SelectOption[]>(
@@ -60,6 +69,9 @@ export function FilterRowEditor({
 
   return (
     <div className="filter-row" role="group" aria-label={`Filter ${index + 1}`}>
+      <span className="condition-number" aria-hidden="true">
+        Filter {index + 1}
+      </span>
       <SearchableSelect
         label="Column"
         options={columnOptions}
@@ -87,16 +99,48 @@ export function FilterRowEditor({
         selectedFirst
         selected={row.values}
         onChange={(values) => onChange({ ...row, values })}
-        placeholder={row.column ? "Search values…" : "Pick a column first"}
+        placeholder={row.column ? "Search or type values…" : "Pick a column first"}
         disabled={!row.column || loadingValues}
+        freeText
         hintTooltip={!loadingValues}
         hint={
           loadingValues
             ? "Loading values…"
-            : "Starred (*) values exist in only one file and cannot be chosen."
+            : "Type a value and press Enter to use free text (for example a contains fragment). Starred (*) values exist in only one file and cannot be chosen. Null/blank cells never satisfy equals/contains; they satisfy not equal/not contains."
         }
       />
-      <button type="button" className="btn btn--danger" onClick={onRemove}>
+      {(onMoveUp || onMoveDown) && (
+        <div className="filter-row__order" role="group" aria-label={`Reorder filter ${index + 1}`}>
+          {onMoveUp && (
+            <button
+              type="button"
+              className="btn"
+              onClick={onMoveUp}
+              disabled={!canMoveUp}
+              aria-label={`Move filter ${index + 1} up`}
+            >
+              ↑
+            </button>
+          )}
+          {onMoveDown && (
+            <button
+              type="button"
+              className="btn"
+              onClick={onMoveDown}
+              disabled={!canMoveDown}
+              aria-label={`Move filter ${index + 1} down`}
+            >
+              ↓
+            </button>
+          )}
+        </div>
+      )}
+      <button
+        type="button"
+        className="btn btn--danger"
+        onClick={onRemove}
+        aria-label={`Remove filter ${index + 1}`}
+      >
         Remove
         <span className="visually-hidden"> filter {index + 1}</span>
       </button>

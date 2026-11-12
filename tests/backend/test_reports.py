@@ -125,7 +125,8 @@ class TestExportHtml:
         assert "Grouping:" in result
         assert "Expectation:" in result
         assert "R002 — No exception" in result
-        assert "Nil exception detected under current rule." in result
+        assert "Nil exception was captured by the rule." in result
+        assert "Nil exception detected under current rule." not in result
 
         summary_position = result.index("Exception Rule Summary")
         changes_position = result.index("<h2>Attribute changes</h2>")
@@ -261,8 +262,8 @@ class TestExportExcel:
         assert any(cell.value == "Exception Rule Summary" for row in overall for cell in row)
         assert any(cell.value == "Aggregation: region" for row in overall for cell in row)
         assert any(cell.value == "Aggregation: owner" for row in overall for cell in row)
-        assert overall["A12"].value == "Aggregation: region"
-        assert overall["D12"].value == "Aggregation: owner"
+        assert overall["A13"].value == "Aggregation: region"
+        assert overall["D13"].value == "Aggregation: owner"
         assert not any(
             cell.value == "Aggregation: should_not_export" for row in overall for cell in row
         )
@@ -306,16 +307,16 @@ class TestExportExcel:
 
         rule = workbook["R001"]
         assert rule["A1"].value == "R001 - Test Rule"
-        assert rule["A2"].value == "Condition:"
+        assert rule["A2"].value == "Conditions:"
         assert rule["B2"].value == "Condition 1: region equals 'EMEA'"
-        assert rule["A3"].value == "Grouping:"
-        assert rule["B3"].value == "Condition 1 AND Condition 2"
-        assert rule["A4"].value == "Expectation:"
-        assert rule["B4"].value == "score less than '20'"
-        assert rule["A5"].value == "Rule identifier:"
-        assert rule["B5"].value == "CBR1_00000000000000000000"
-        assert rule["A6"].value is None
-        assert [rule.cell(7, column).value for column in range(1, 5)] == [
+        assert rule["A3"].value == "Condition Groupings:"
+        assert rule["B3"].value == "Overall: Group 1\nGroup 1: Condition 1 AND Condition 2"
+        assert rule["A4"].value == "Expectations:"
+        assert rule["B4"].value == "Expectation 1: score less than '20'"
+        assert rule["A5"].value == "Expectation Groupings:"
+        assert rule["B6"].value == "CBR1_00000000000000000000"
+        assert rule["A6"].value == "Rule Identifier:"
+        assert [rule.cell(8, column).value for column in range(1, 5)] == [
             "id",
             "Column",
             "In Baseline",
@@ -339,12 +340,12 @@ class TestExportExcel:
         workbook = load_workbook(BytesIO(export_excel(sample_result, "Test")))
         rule = workbook["R001"]
 
-        assert [rule.cell(7, column).value for column in range(1, 4)] == [
+        assert [rule.cell(8, column).value for column in range(1, 4)] == [
             "id",
             "region",
             "owner",
         ]
-        assert [rule.cell(8, column).value for column in range(1, 4)] == [
+        assert [rule.cell(9, column).value for column in range(1, 4)] == [
             "456",
             "EMEA",
             "Ops",

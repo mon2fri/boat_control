@@ -1,3 +1,4 @@
+import { compareRuleIndices } from "../lib/ruleOrder";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
@@ -5,6 +6,7 @@ import { RequireSession } from "../components/RequireSession";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { useRunExecution } from "../features/results/useRunExecution";
 import { OverallSummaryCards } from "../features/results/OverallSummaryCards";
+import { OverallGroupingPreview } from "../features/results/ResultGroupingPreview";
 import { RuleResultSection } from "../features/results/RuleResultSection";
 import { ExceptionTable } from "../features/results/ExceptionTable";
 import { ReportName } from "../features/reports/ReportName";
@@ -13,6 +15,7 @@ import { PaginatedDetailSection } from "../features/results/PaginatedDetailSecti
 import { GroupStatisticsPanel } from "../features/results/GroupStatisticsPanel";
 import { NestedAggregationPanel } from "../features/results/NestedAggregationPanel";
 import { ExceptionRuleSummary } from "../features/results/ExceptionRuleSummary";
+import { EnabledRunRules } from "../features/results/EnabledRunRules";
 import { NewExceptionsOnlyToggle } from "../features/results/NewExceptionsOnlyToggle";
 import { NewBooksCard } from "../features/results/NewBooksCard";
 import { ComparisonColumnList } from "../features/results/ComparisonColumnList";
@@ -20,7 +23,6 @@ import { buildSectionGroupStatistics } from "../features/results/sectionGroupSta
 import { clearUploadSession, loadRun } from "../api/endpoints";
 import { formatDateTime } from "../utils/format";
 import type { FilterRow, RunRequest } from "../api/domain";
-import { formatFilterRow } from "../features/filters/formatFilterRow";
 import type { WorkflowState } from "../state/WorkflowContext";
 
 /** Keep only fully-specified filter rows for the run request. */
@@ -28,7 +30,7 @@ function completeFilters(filters: FilterRow[]): FilterRow[] {
   return filters.filter((f) => f.column.trim() !== "" && f.values.length > 0);
 }
 
-function buildRunRequest(
+export function buildRunRequest(
   state: WorkflowState,
   newExceptionsOnly: boolean = state.newExceptionsOnly,
 ): RunRequest | null {
@@ -39,6 +41,12 @@ function buildRunRequest(
     newExceptionsOnly,
     comparisonColumns: state.comparisonColumns,
     filters: completeFilters(state.filters),
+    filterRelation: state.filterGroupingMode === "and" || state.filterGroupingMode === "or"
+      ? state.filterGroupingMode
+      : null,
+    filterGroupTree: state.filterGroupingMode === "custom" ? state.filterGroupTree : null,
+    filterGroupingErrors: state.filterGroupingErrors,
+    filterGroupingRequired: state.filterGroupingRequired,
     targetColumns: state.targetColumns,
     keyColumns: state.keyColumns,
     aggregationColumns: state.aggregationColumns,
@@ -95,24 +103,18 @@ export function ResultsPage() {
         if (cancelled) return;
         // Restore the configuration that produced this run so subsequent
         // renders (e.g. nested aggregation tree) match the persisted state.
-        dispatch({ type: "setResult", result });
+        dispatch({
+          type: "restoreRunConfiguration",
+          result,
+          ...(result.comparisonColumns
+            ? { availableColumns: result.comparisonColumns }
+            : {}),
+        });
         // Restore the As-of Date used by this run, including for historical
         // runs that predate tracking (leave the workflow default untouched).
         if (result.asOfDate) {
           dispatch({ type: "setAsOfDate", date: result.asOfDate });
         }
-        // Always restore nested-aggregation flag (including false).
-        dispatch({ type: "setNestedAggregationEnabled", enabled: result.nestedAggregationEnabled ?? false });
-        // Always restore aggregation columns (including empty array).
-        dispatch({ type: "setAggregationColumns", columns: result.aggregationColumns ?? [] });
-        dispatch({ type: "setAggregationColumnLabels", labels: result.aggregationColumnLabels ?? {} });
-        // Always restore key columns (including empty array).
-        dispatch({ type: "setKeyColumns", columns: result.keyColumns ?? [] });
-        // Always restore exception columns (including empty array).
-        dispatch({ type: "setExceptionColumns", columns: result.exceptionColumns ?? [] });
-        dispatch({ type: "setCommentaryColumns", columns: result.commentaryColumns ?? [] });
-        dispatch({ type: "setNewExceptionsOnly", enabled: result.newExceptionsOnly ?? true });
-        dispatch({ type: "setExtraColumnDisplay", display: result.extraColumnDisplay ?? { overallResultPage: false, overallHtmlReport: false, overallExcelReport: false, newBooksResultPage: false, newBooksHtmlReport: false, newBooksExcelReport: false, exceptionTables: true } });
       })
       .catch(() => {
         // Surface a quiet failure by leaving the result empty; the page's
@@ -156,7 +158,7 @@ export function ResultsPage() {
       <h2 id="results-title" className="section-heading">3. Results</h2>
 
       {!state.result && (
-        <div className="card">
+        <div className="card run-confirmation">
           <h3 className="results-card-title">Run comparison &amp; validation</h3>
           <ul className="run-summary">
             <li>{completeFilters(state.filters).length} filter(s)</li>
@@ -165,8 +167,8 @@ export function ResultsPage() {
                 ? "All common columns"
                 : `${state.targetColumns.length} target column(s)`}
             </li>
-            <li>{state.selectedRuleIndexes.length} rule(s) selected</li>
           </ul>
+          <EnabledRunRules ruleIndexes={state.selectedRuleIndexes} />
           <NewExceptionsOnlyToggle
             checked={state.newExceptionsOnly}
             onChange={(checked) => dispatch({ type: "setNewExceptionsOnly", enabled: checked })}
@@ -282,6 +284,7 @@ function ResultView({
   onViewHistory,
   onRename,
 }: ResultViewProps) {
+  const orderedRules = [...result.ruleResults].sort((a, b) => compareRuleIndices(a.ruleIndex, b.ruleIndex));
   const overallExtraLabels = Object.fromEntries(exceptionColumns.map((column) => [column, `${column}(Latest Value)`]));
   return (
     <div className="result-content results-layer-content" data-export-source="result">
@@ -330,23 +333,30 @@ function ResultView({
           Commentary-template columns: {commentaryColumns.length > 0
             ? commentaryColumns.join(", ")
             : "no additional columns selected"}
-          . Commentary downloads always include all exceptions.
+          . Commentary downloads always include all of this run's exceptions.
         </p>
       </section>
       <section id="overall" aria-labelledby="overall-title" className="card">
-        <h3 id="overall-title" className="results-card-title">Overall result</h3>
+        <h3 id="overall-title" className="results-card-title">
+          <span className="result-heading-with-preview">
+            <OverallGroupingPreview filtersApplied={result.filtersApplied} filtersRelation={result.filtersRelation}
+              filtersGroupTree={result.filtersGroupTree} filtersGroupingErrors={result.filtersGroupingErrors} />
+            Overall result
+          </span>
+        </h3>
+        <OverallSummaryCards
+          summary={result.overall}
+          filtersApplied={result.filtersApplied}
+          filtersRelation={result.filtersRelation}
+          filtersGroupTree={result.filtersGroupTree}
+          filtersGroupingErrors={result.filtersGroupingErrors}
+        />
         <p className="section-logic">
           Comparison across{" "}
           {targetColumns.length === 0
             ? "all common columns"
             : `${targetColumns.length} target columns`}{" "}
-          with {completeFilters(filters).length} filter(s).
-        </p>
-        <OverallSummaryCards summary={result.overall} />
-        <p className="field-hint" data-testid="applied-filters-statement">
-          {result.filtersApplied && result.filtersApplied.length > 0
-            ? `Filtering: ${result.filtersApplied.map(formatFilterRow).join("; ")}`
-            : "No filtering rows applied"}
+          with {(result.filtersApplied ?? completeFilters(filters)).length} filter(s).
         </p>
         {nestedAggregationEnabled && aggregationColumns.length > 0 ? (
           <NestedAggregationPanel
@@ -455,9 +465,9 @@ function ResultView({
           </section>
         )}
 
-      <ExceptionRuleSummary rules={result.ruleResults} />
+      <ExceptionRuleSummary rules={orderedRules} />
 
-      {result.ruleResults.map((rule) => {
+      {orderedRules.map((rule) => {
         const ruleGroupStats = result.groupStatistics?.validationRules?.[rule.ruleIndex];
         return (
           <RuleResultSection
@@ -471,7 +481,7 @@ function ResultView({
       })}
 
       <ExceptionTable
-        ruleResults={result.ruleResults}
+        ruleResults={orderedRules}
         keyColumnNames={keyColumns}
         aggregationColumnLabels={aggregationColumnLabels}
         exceptionColumns={extraColumnDisplay.exceptionTables ? exceptionColumns : []}

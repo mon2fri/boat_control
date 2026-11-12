@@ -106,7 +106,7 @@ describe("ExportControls", () => {
     vi.unstubAllGlobals();
   });
 
-  it("downloads the same selected-date commentary template used by the tracking tab", async () => {
+  it("downloads this run's commentary template, independent of New Exceptions Only", async () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:commentary");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
@@ -121,16 +121,25 @@ describe("ExportControls", () => {
       text: () => Promise.resolve(""),
     });
     vi.stubGlobal("fetch", fetchMock);
-    render(<ExportControls runId="run-1" reportName="my_run" asOfDate="2026-10-30" />);
+    render(
+      <ExportControls
+        runId="run-1"
+        reportName="my_run"
+        asOfDate="2026-10-30"
+        newExceptionsOnly
+      />,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Download commentary template" }));
     await waitFor(() =>
       expect(screen.getByText(/Saved as/)).toHaveTextContent(
-        "exception_commentary_2026-10-30.xlsx",
+        "my_run_commentary_template.xlsx",
       ),
     );
+    // Report scope: the run ID selects membership on the server. The request
+    // carries no as_of_date, filters, pagination or new-exceptions flag.
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/exception-tracking/export/?as_of_date=2026-10-30",
+      "/api/exception-tracking/export/?run_id=run-1",
       expect.objectContaining({ method: "GET" }),
     );
     expect(click).toHaveBeenCalled();

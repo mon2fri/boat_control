@@ -28,55 +28,21 @@ from apps.rules.serializers import (
     ReorderRulesSerializer,
     RuleSerializer,
 )
-from apps.rules.services import validate_rule
+from apps.rules.services import (
+    normalize_rule_draft,
+    rule_definition_payload,
+    validate_rule,
+)
 
 
 def _snapshot_to_dict(snapshot: Any) -> dict[str, Any]:
     rule = snapshot.rule
-    result: dict[str, Any] = {
+    return {
         "rule_id": rule.rule_id,
         "rule_identifier": snapshot.rule_identifier,
         "enabled": snapshot.enabled,
         "enabled_position": getattr(snapshot, "enabled_position", None),
-        "name": rule.name,
-        "description": rule.description,
-        "conditions": [
-            {
-                "column_name": condition.column_name,
-                "operator": condition.operator,
-                "filter_value": condition.filter_value,
-                "filter_values": list(condition.filter_values or (condition.filter_value,)),
-            }
-            for condition in rule.conditions
-        ],
-        "logic": {
-            "format": rule.logic.format,
-            "column_name": rule.logic.column_name,
-            "operator": rule.logic.operator,
-            "target_value": rule.logic.target_value,
-            "target_values": list(rule.logic.target_values),
-            "comparison_mode": rule.logic.comparison_mode,
-        },
-        "extra_columns": list(rule.extra_columns),
-        "hide_comparison": rule.hide_comparison,
-    }
-    if rule.condition_relation is not None:
-        result["condition_relation"] = rule.condition_relation
-    if rule.grouping is not None:
-        result["grouping"] = rule.grouping
-    if rule.grouping_tree is not None:
-        result["grouping_tree"] = _serialize_grouping_tree(rule.grouping_tree)
-    return result
-
-
-def _serialize_grouping_tree(node: Any) -> Any:
-    if node is None:
-        return None
-    if hasattr(node, "condition_id"):
-        return {"kind": "leaf", "conditionId": node.condition_id}
-    return {
-        "kind": node.kind,
-        "children": [_serialize_grouping_tree(child) for child in node.children],
+        **rule_definition_payload(rule, include_empty_target_values=True),
     }
 
 
@@ -95,7 +61,7 @@ def _validated_draft(
     validation = validate_rule(draft)
     if not validation.valid:
         return None, Response({"error": "; ".join(validation.errors)}, status=400)
-    return draft, None
+    return normalize_rule_draft(draft), None
 
 
 def _catalog_error(exc: Exception) -> Response:

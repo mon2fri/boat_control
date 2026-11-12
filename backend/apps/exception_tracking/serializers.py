@@ -28,6 +28,12 @@ class ExportQuerySerializer(serializers.Serializer):  # type: ignore[misc]
 class CommentaryTemplateImportSerializer(serializers.Serializer):  # type: ignore[misc]
     file = serializers.FileField()
     as_of_date = serializers.CharField(required=False, allow_blank=False)
+    run_id = serializers.CharField(required=False, allow_blank=False)
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        # as_of_date and run_id may be combined; the service validates that
+        # the workbook date matches both explicitly.
+        return attrs
 
     def validate_file(self, value: Any) -> Any:
         name = str(getattr(value, "name", ""))

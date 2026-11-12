@@ -1,0 +1,102 @@
+comparisonColumns:
+- kind: column_family
+  name: Test
+- id
+- region
+- score
+- sa_flag
+- cva_flag
+- system
+keyColumns:
+- kind: column
+  name: id
+- kind: column
+  name: name
+aggregationColumns:
+- kind: column
+  name: status
+- kind: column
+  name: region
+aggregationColumnLabels: {}
+filters:
+- column:
+    kind: column
+    name: system
+  operator: contains
+  filter_values:
+  - oomber
+- column:
+    kind: column
+    name: status
+  operator: equals
+  filter_values:
+  - active
+- column:
+    kind: column
+    name: status
+  operator: equals
+  filter_values:
+  - inactive
+filterGroupingTree:
+  kind: and
+  children:
+  - kind: leaf
+    conditionId: c0
+  - kind: or
+    children:
+    - kind: leaf
+      conditionId: c1
+    - kind: leaf
+      conditionId: c2
+targetColumns: []
+extraColumns:
+- kind: column
+  name: name
+- kind: column
+  name: status
+- kind: column
+  name: region
+- kind: column
+  name: id
+- kind: column
+  name: score
+- kind: column
+  name: sa_flag
+- kind: column
+  name: cva_flag
+- kind: column
+  name: system
+commentaryTemplateColumns:
+- kind: column
+  name: name
+- kind: column
+  name: status
+- kind: column
+  name: score
+extraColumnDisplay:
+  overallResultPage: true
+  overallHtmlReport: true
+  overallExcelReport: true
+  newBooksResultPage: true
+  newBooksHtmlReport: true
+  newBooksExcelReport: true
+  exceptionTables: true
+nestedAggregationEnabled: true
+comparisonSections:
+- id: cs-1
+  name: TBBBB
+  columns:
+  - kind: column
+    name: region
+  - kind: column
+    name: status
+  extraColumns: []
+- id: cs-2
+  name: asdfadf
+  columns:
+  - kind: column
+    name: name
+  - kind: column
+    name: status
+  extraColumns: []
+_version: 2

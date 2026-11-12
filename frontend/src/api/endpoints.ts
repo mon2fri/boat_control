@@ -32,6 +32,7 @@ import {
   wireSourceFileListSchema,
 } from "./wire";
 import {
+  displayOutcomeValue,
   mapColumnValue,
   mapCommentaryImportResult,
   mapExceptionTrackingList,
@@ -214,11 +215,11 @@ export function fetchDetailPage(
         keyColumns,
         column: row.column,
         file1Value: row.file_a_value === null ? null : String(row.file_a_value),
-        file2Value: row.file_b_value === null ? null : String(row.file_b_value),
+        file2Value: displayOutcomeValue(row.file_b_value),
         kind: kind === "violation" ? "exception" : kind,
         ...(row.violating_column ? { violatingColumn: row.violating_column } : {}),
         ...(row.violating_value !== undefined
-          ? { violatingValue: row.violating_value === null ? null : String(row.violating_value) }
+          ? { violatingValue: displayOutcomeValue(row.violating_value) }
           : {}),
         ...(row.extra_values
           ? {
@@ -619,20 +620,23 @@ function mapOperatorForWire(op: FilterRow["operator"]): string {
 // --- Exception tracking --------------------------------------------------
 
 /**
- * Wire contract consumed by Worker D (to be frozen by the coordinator):
+ * Wire contract (Round 4: report-run scope vs tracking-date scope):
  *
  *   GET  /api/exception-tracking/dates/
  *        -> { dates: ["2026-10-30"], default_as_of_date: "2026-10-30" }
  *   GET  /api/exception-tracking/?as_of_date=2026-10-30
  *        -> { as_of_date, exceptions: [ ...tracked exception... ] }
  *   GET  /api/exception-tracking/export/?as_of_date=2026-10-30
- *        -> XLSX attachment
- *   POST /api/exception-tracking/import/  (multipart: file, as_of_date)
- *        -> { as_of_date, updated, cleared, unchanged, total }
- *
- * The results page uses the same export endpoint with the run's persisted
- * As-of Date, so its workbook is the tracking template rather than a second
- * format.
+ *        -> XLSX attachment with ALL known exceptions for the date
+ *           (tracking-tab scope)
+ *   GET  /api/exception-tracking/export/?run_id=<runId>
+ *        -> XLSX attachment with EXACTLY the persisted exceptions captured
+ *           by that run's enabled rules (report-page scope), independent of
+ *           New Exceptions Only, screen filters, pagination or catalog state
+ *   POST /api/exception-tracking/import/  (multipart: file, as_of_date?, run_id?)
+ *        -> { as_of_date, updated, cleared, unchanged, total, scope }
+ *        Date scope accepts safe partial templates (omitted date records are
+ *        preserved); run scope requires exactly the run's membership IDs.
  */
 export function loadExceptionTrackingDates(): Promise<ExceptionTrackingDates> {
   return apiRequest("/exception-tracking/dates/", {
@@ -715,6 +719,23 @@ export function downloadExceptionCommentaryTemplate(
   return requestBinaryDownload(
     `/exception-tracking/export/${query}`,
     `exception_commentary_${asOfDate}.xlsx`,
+  );
+}
+
+/**
+ * Report-page scope: download EXACTLY the persisted exceptions captured by
+ * this run's enabled rules. Never narrows to New Exceptions Only, visible
+ * table filters, pagination, or the current rule catalog: membership comes
+ * from the run snapshot on the server. Reopening an older run keeps that
+ * run's membership even after another run updates the same date.
+ */
+export function downloadRunCommentaryTemplate(
+  runId: string,
+): Promise<BinaryDownload> {
+  const query = `?run_id=${encodeURIComponent(runId)}`;
+  return requestBinaryDownload(
+    `/exception-tracking/export/${query}`,
+    `exception_commentary_${runId}.xlsx`,
   );
 }
 

@@ -42,6 +42,8 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
         aggregation_column_labels = request.data.get("aggregation_column_labels", {})
         comparison_sections = request.data.get("comparison_sections", [])
         filters = request.data.get("filters", [])
+        filter_relation = request.data.get("filter_relation")
+        filter_grouping_tree = request.data.get("filter_grouping_tree")
         rule_ids = request.data.get("rule_ids")
 
         if not session_id:
@@ -184,6 +186,8 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
                 target_columns=target_columns,
                 key_columns=key_columns,
                 filters=filters,
+                filter_relation=filter_relation,
+                filter_grouping_tree=filter_grouping_tree,
                 rule_ids=rule_ids,
                 aggregation_columns=aggregation_columns,
                 aggregation_column_labels={

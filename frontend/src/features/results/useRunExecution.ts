@@ -4,6 +4,8 @@ import { ApiError } from "../../api/client";
 import { executeRun } from "../../api/endpoints";
 import type { RunRequest, RunResult } from "../../api/domain";
 import { useSessionExpiryDispatcher } from "../session/useSessionExpiry";
+import { validateWorkflowFilters } from "../../state/WorkflowContext";
+import { GroupingValidationError } from "../../lib/grouping";
 import {
   EXCEPTION_TRACKING_DATES_KEY,
   EXCEPTION_TRACKING_KEY,
@@ -28,6 +30,22 @@ export function useRunExecution(onSuccess: (result: RunResult) => void) {
 
   const run = useCallback(
     async (request: RunRequest) => {
+      // Block before touching the network: a broken restored expression must
+      // never degrade into a legacy AND / unrestricted run.
+      const validation = validateWorkflowFilters(
+        request.filters,
+        request.filterRelation ?? null,
+        request.filterGroupTree ?? null,
+        request.comparisonColumns,
+        request.filterGroupingRequired ?? false,
+      );
+      const groupingErrors = [
+        ...new Set([...(request.filterGroupingErrors ?? []), ...validation.errors]),
+      ];
+      if (groupingErrors.length > 0) {
+        setState({ status: "error", error: groupingErrors.join(" ") });
+        return;
+      }
       controllerRef.current?.abort();
       const controller = new AbortController();
       controllerRef.current = controller;
@@ -50,7 +68,11 @@ export function useRunExecution(onSuccess: (result: RunResult) => void) {
         if (handleSessionError(err)) return;
         setState({
           status: "error",
-          error: err instanceof ApiError ? err.message : "The run failed unexpectedly",
+          error: err instanceof ApiError
+            ? err.message
+            : err instanceof GroupingValidationError
+              ? err.errors.join(" ")
+              : "The run failed unexpectedly",
         });
       }
     },

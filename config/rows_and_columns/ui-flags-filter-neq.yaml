@@ -1,0 +1,46 @@
+comparisonColumns:
+- id
+- name
+- status
+- region
+- score
+- sa_flag
+- cva_flag
+- system
+keyColumns:
+- id
+aggregationColumns:
+- system
+aggregationColumnLabels: {}
+filters:
+- column: cva_flag
+  operator: neq
+  filter_value: 'Yes'
+  filter_values:
+  - 'Yes'
+targetColumns:
+- sa_flag
+- cva_flag
+- system
+extraColumns:
+- name
+- status
+- region
+- sa_flag
+- cva_flag
+- system
+commentaryTemplateColumns:
+- sa_flag
+- cva_flag
+- system
+extraColumnDisplay:
+  overallResultPage: true
+  overallHtmlReport: true
+  overallExcelReport: true
+  newBooksResultPage: true
+  newBooksHtmlReport: true
+  newBooksExcelReport: true
+  exceptionTables: true
+nestedAggregationEnabled: false
+comparisonSections: []
+_version: 1

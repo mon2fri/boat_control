@@ -34,7 +34,28 @@ function ControlledEditor({ initial = null }: { initial?: GroupNode | null }) {
 }
 
 describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
-  it("renders both root groups when the value already contains two root groups", () => {
+  it.each(["and", "or"] as const)("removes any %s parent without deleting its child groups", (kind) => {
+    const tree: GroupNode = { kind, children: [
+      { kind: "or", children: [{ kind: "leaf", conditionId: "c0" }, { kind: "leaf", conditionId: "c1" }] },
+      { kind: "and", children: [{ kind: "leaf", conditionId: "c2" }, { kind: "leaf", conditionId: "c3" }] },
+    ] };
+    render(<ControlledEditor initial={tree} />);
+    fireEvent.click(screen.getByRole("button", { name: "Remove Group 3" }));
+    expect(screen.queryByTestId("tree-Group 3")).not.toBeInTheDocument();
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent("OR");
+    expect(screen.getByTestId("tree-Group 2")).toHaveTextContent("AND");
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent("col_c0 equals v0");
+    expect(screen.getByTestId("tree-Group 2")).toHaveTextContent("col_c3 equals v3");
+    expect(screen.getByRole("checkbox", { name: "Group 1 (OR, 2 members)" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Group 2 (AND, 2 members)" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("These groups are not joined");
+    // A second removal affects only that selected group; the unrelated group remains.
+    fireEvent.click(screen.getByRole("button", { name: "Remove Group 1" }));
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent("col_c2 equals v2");
+    expect(screen.getByRole("checkbox", { name: "Condition 1: col_c0 equals v0" })).toBeInTheDocument();
+  });
+
+  it("renders the persisted overall OR root above its nested groups", () => {
     const tree: GroupNode = {
       kind: "or",
       children: [
@@ -55,35 +76,54 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
       ],
     };
     render(<ControlledEditor initial={tree} />);
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
-    // No sibling group was nested into the other: both top-level groups are
-    // listed as root tree nodes, without card/fieldset wrappers.
-    expect(screen.getAllByRole("list")[0]!.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(2);
-    expect(screen.getAllByRole("list")[0]!.querySelector("fieldset")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 2")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 3")[0]!).toBeInTheDocument();
+
+    // The root is rendered, not flattened into a two-group forest: both
+    // child groups sit under the overall Group 3 OR node.
+    const rootList = screen.getAllByRole("list")[0]!;
+    expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(1);
+    const rootNode = rootList.querySelector(":scope > .group-tree-node--group") as HTMLElement;
+    expect(rootNode).toHaveAttribute("data-testid", "tree-Group 3");
+    expect(within(rootNode).getByRole("button", { name: "Collapse Group 3" }).querySelector(".group-number")).toHaveTextContent("Group 3");
+    expect(within(rootNode).getByText("OR")).toBeInTheDocument();
+    expect(within(rootNode).getByTestId("tree-Group 1")).toBeInTheDocument();
+    expect(within(rootNode).getByTestId("tree-Group 2")).toBeInTheDocument();
+    expect(rootList.querySelector("fieldset")).not.toBeInTheDocument();
   });
 
-  it("keeps both groups at root after the user creates two disjoint groups", () => {
+  it("shows the overall root once two disjoint groups are created", () => {
     render(<ControlledEditor />);
 
     // Step 1: create Group 1 with c0 + c1
-    fireEvent.click(screen.getByLabelText("col_c0 equals v0"));
-    fireEvent.click(screen.getByLabelText("col_c1 equals v1"));
+    fireEvent.click(screen.getByLabelText("Condition 1: col_c0 equals v0"));
+    fireEvent.click(screen.getByLabelText("Condition 2: col_c1 equals v1"));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     // After step 1, only Group 1 should exist at root.
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
     expect(screen.queryByText("Group 2")).not.toBeInTheDocument();
 
     // Step 2: create Group 2 with c2 + c3
-    fireEvent.click(screen.getByLabelText("col_c2 equals v2"));
-    fireEvent.click(screen.getByLabelText("col_c3 equals v3"));
+    fireEvent.click(screen.getByLabelText("Condition 3: col_c2 equals v2"));
+    fireEvent.click(screen.getByLabelText("Condition 4: col_c3 equals v3"));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
-    // Both groups now coexist at root — Group 1 must NOT have been
-    // silently dropped, nested, or otherwise hidden.
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
+    // No implicit parent: both groups remain drafts until explicitly joined.
+    expect(screen.getAllByText("Group 1")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Group 2")[0]).toBeInTheDocument();
+    expect(screen.queryByText("Group 3")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("These groups are not joined");
+    const rootList = screen.getAllByRole("list")[0]!;
+    expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(2);
+    fireEvent.click(screen.getByTestId("pick-group:0"));
+    fireEvent.click(screen.getByTestId("pick-group:1"));
+    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
+    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+    expect(screen.getByText("Group 3")).toBeInTheDocument();
+    expect(screen.queryByText(/These groups are not joined/)).not.toBeInTheDocument();
+    expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(1);
   });
 
   it("splits the create-new-group checklist into Conditions and Existing groups sections", () => {
@@ -102,15 +142,15 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
 
     // Conditions section lists only the ungrouped conditions (c2, c3).
     const condSection = screen.getByTestId("picklist-conditions");
-    expect(within(condSection).getByLabelText("col_c2 equals v2")).toBeInTheDocument();
-    expect(within(condSection).getByLabelText("col_c3 equals v3")).toBeInTheDocument();
+    expect(within(condSection).getByLabelText("Condition 3: col_c2 equals v2")).toBeInTheDocument();
+    expect(within(condSection).getByLabelText("Condition 4: col_c3 equals v3")).toBeInTheDocument();
 
     // Existing groups section lists the one root group with a nesting warning.
     const groupSection = screen.getByTestId("picklist-groups");
     expect(
       within(groupSection).getByText(/Selecting a group nests it inside the new group/i),
     ).toBeInTheDocument();
-    expect(within(groupSection).getByText(/Group 1 \(AND, 2 members\)/)).toBeInTheDocument();
+    expect(within(groupSection).getByRole("checkbox", { name: "Group 1 (AND, 2 members)" })).toBeInTheDocument();
   });
 
   it("nests an existing group into a new group only when the user explicitly ticks the group checkbox", () => {
@@ -127,7 +167,7 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
 
     // Tick the existing group checkbox (now in its own section) plus c2.
     fireEvent.click(screen.getByTestId("pick-group:0"));
-    fireEvent.click(screen.getByLabelText("col_c2 equals v2"));
+    fireEvent.click(screen.getByLabelText("Condition 3: col_c2 equals v2"));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     // After nesting, exactly one root tree node remains at the top. The
@@ -147,35 +187,35 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
   it("keeps stable group identities across sequential nesting (Group 1 stays Group 1, outer picks up Group 2 / Group 3)", () => {
     // Step 1: create Group 1 (c0 + c1)
     render(<ControlledEditor />);
-    fireEvent.click(screen.getByLabelText("col_c0 equals v0"));
-    fireEvent.click(screen.getByLabelText("col_c1 equals v1"));
+    fireEvent.click(screen.getByLabelText("Condition 1: col_c0 equals v0"));
+    fireEvent.click(screen.getByLabelText("Condition 2: col_c1 equals v1"));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     // After step 1, only Group 1 exists at root.
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
     expect(screen.queryByText("Group 2")).not.toBeInTheDocument();
 
     // Step 2: nest Group 1 with c3 to produce a new outer Group 2.
     fireEvent.click(screen.getByTestId("pick-group:0"));
-    fireEvent.click(screen.getByLabelText("col_c2 equals v2"));
+    fireEvent.click(screen.getByLabelText("Condition 3: col_c2 equals v2"));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     // The picker labelled "Group 1" now refers to the ORIGINAL group (c0+c1),
     // so the picklist entry uses that name. The new outer wrapper is "Group 2".
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 2")[0]!).toBeInTheDocument();
 
     // Step 3: pick Group 2 (the outer) + c4 to create Group 3, sealing the chain.
     // The picklist is still rooted at the only top-level fieldset, which the
     // user now sees correctly as "Group 2".
     fireEvent.click(screen.getByTestId("pick-group:0"));
-    fireEvent.click(screen.getByLabelText("col_c3 equals v3"));
+    fireEvent.click(screen.getByLabelText("Condition 4: col_c3 equals v3"));
     fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
 
     // All three group identities coexist in the DOM.
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
-    expect(screen.getByText("Group 3")).toBeInTheDocument();
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 2")[0]!).toBeInTheDocument();
+    expect(screen.getAllByText("Group 3")[0]!).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Group 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Group 2" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit Group 3" })).toBeInTheDocument();
@@ -204,15 +244,15 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Group 1" }));
     const group = screen.getByTestId("tree-Group 1");
-    expect(within(group).getByRole("button", { name: /Remove col_c0 equals v0 from Group 1/ })).toBeInTheDocument();
-    expect(within(group).getByRole("button", { name: /Remove col_c1 equals v1 from Group 1/ })).toBeInTheDocument();
-    expect(within(group).getByRole("button", { name: /Remove col_c2 equals v2 from Group 1/ })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: /Remove Condition 1: col_c0 equals v0 from Group 1/ })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: /Remove Condition 2: col_c1 equals v1 from Group 1/ })).toBeInTheDocument();
+    expect(within(group).getByRole("button", { name: /Remove Condition 3: col_c2 equals v2 from Group 1/ })).toBeInTheDocument();
 
-    fireEvent.click(within(group).getByRole("button", { name: /Remove col_c0 equals v0 from Group 1/ }));
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole("button", { name: /Remove Condition 1: col_c0 equals v0 from Group 1/ }));
+    expect(screen.getAllByText("Group 1")[0]!).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit Group 1" }));
-    fireEvent.click(screen.getByRole("button", { name: /Remove col_c1 equals v1 from Group 1/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Remove Condition 2: col_c1 equals v1 from Group 1/ }));
     expect(screen.queryByText("Group 1")).not.toBeInTheDocument();
   });
 
@@ -232,22 +272,42 @@ describe("GroupingTreeEditor (per_grouping) — multi-group behaviour", () => {
     expect(screen.getByText(/col_c0 equals v0/)).toBeInTheDocument();
   });
 
-  it("creates an OR group containing only existing groups", () => {
-    render(<ControlledEditor />);
-    for (const ids of [["c0", "c1"], ["c2", "c3"]]) {
-      for (const id of ids) fireEvent.click(screen.getByLabelText(`col_${id} equals v${id.slice(1)}`));
-      fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+  it("shows an overall OR root and disables Remove group for nested groups", () => {
+    const tree: GroupNode = {
+      kind: "or",
+      children: [
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "c0" },
+            { kind: "leaf", conditionId: "c1" },
+          ],
+        },
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "c2" },
+            { kind: "leaf", conditionId: "c3" },
+          ],
+        },
+      ],
+    };
+    render(<ControlledEditor initial={tree} />);
+
+    const rootNode = screen.getByTestId("tree-Group 3");
+    expect(within(rootNode).getByRole("button", { name: "Remove Group 3" })).toBeEnabled();
+
+    for (const number of [1, 2]) {
+      const nested = screen.getByTestId(`tree-Group ${number}`);
+      expect(within(nested).getByRole("button", { name: `Remove Group ${number}` })).toBeDisabled();
+
+      const tooltip = `This group is part of group 3, please remove group 3 first to remove this group.`;
+      const hint = screen.getByTestId(`nested-remove-hint-Group ${number}`);
+      expect(hint).toHaveAttribute("title", tooltip);
+      expect(hint).toHaveAttribute("tabindex", "0");
+      hint.focus();
+      expect(hint).toHaveFocus();
+      expect(within(hint).getByRole("tooltip")).toHaveTextContent(tooltip);
     }
-
-    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
-    fireEvent.click(screen.getByTestId("pick-group:0"));
-    fireEvent.click(screen.getByTestId("pick-group:1"));
-    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
-
-    const rootList = screen.getAllByRole("list")[0]!;
-    expect(rootList.querySelectorAll(":scope > .group-tree-node--group")).toHaveLength(1);
-    expect(screen.getByText("Group 1")).toBeInTheDocument();
-    expect(screen.getByText("Group 2")).toBeInTheDocument();
-    expect(screen.getByText("Group 3")).toBeInTheDocument();
   });
 });

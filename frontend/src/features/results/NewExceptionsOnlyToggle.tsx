@@ -1,3 +1,4 @@
+import { SectionHint } from "../../components/SectionHint";
 interface Props {
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -11,25 +12,25 @@ interface Props {
  * NotCommented. Commentary templates always include all exceptions.
  */
 export function NewExceptionsOnlyToggle({ checked, onChange, disabled = false, busy = false }: Props) {
-  const helpId = "new-exceptions-only-help";
   return (
     <div className="field new-exceptions-only">
+      <div className="scope-title-row results-card-title">
       <label className="checkbox-row" htmlFor="new-exceptions-only">
         <input
           id="new-exceptions-only"
           type="checkbox"
           checked={checked}
           disabled={disabled || busy}
-          aria-describedby={helpId}
           onChange={(event) => onChange(event.target.checked)}
         />
         New Exceptions Only
       </label>
-      <span className="field-hint" id={helpId}>
+      <SectionHint label="New Exceptions Only help">
         Includes new exceptions and recurring exceptions without commentary (NotCommented);
         commented exceptions are hidden from results and HTML/Excel reports. All exceptions
         remain stored, and the commentary template still includes every exception.
-      </span>
+      </SectionHint>
+      </div>
       {busy && <span className="field-hint" role="status">Applying exception scope…</span>}
     </div>
   );

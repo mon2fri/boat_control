@@ -186,6 +186,12 @@ class TestValidateRows:
         assert violation.violating_value == "inactive"
         assert violation.comparison_value == "pending"
         assert result.rule_summaries["R001"] == {
+            "condition_clauses": [],
+            "condition_groupings": "",
+            "expectation_clauses": ["Expectation 1: status equals 'active'"],
+            "expectation_groupings": "",
+            "condition_tree": None,
+            "expectation_tree": None,
             "name": "Active Check",
             "description": "",
             "logic": "status equals 'active'",
@@ -290,6 +296,13 @@ class TestValidateRows:
             "Condition 2: owner does not equal 'Ops'"
         )
         assert summary["condition_grouping"] == "Condition 1 AND Condition 2"
+        assert summary["condition_tree"] == {
+            "kind": "and",
+            "children": [
+                {"kind": "leaf", "conditionId": "c0"},
+                {"kind": "leaf", "conditionId": "c1"},
+            ],
+        }
 
     def test_column_logic_can_compare_different_columns_in_comparison(
         self, rules_file: Path
@@ -1176,7 +1189,9 @@ def test_required_status_flags_blank_csv_values(tmp_path: Path, rules_file: Path
     "operator", ["eq", "neq", "contains", "ncontains", "gt", "lt", "gte", "lte"]
 )
 @pytest.mark.parametrize("format_name", ["value_vs_column", "column_vs_column"])
-def test_missing_required_value_is_a_violation(operator: str, format_name: str) -> None:
+def test_missing_required_value_uses_operator_null_semantics(
+    operator: str, format_name: str
+) -> None:
     from apps.rules.services import LogicClause, Rule
     from apps.runs.services import _check_rule
 
@@ -1185,12 +1200,26 @@ def test_missing_required_value_is_a_violation(operator: str, format_name: str) 
         conditions=[], condition_relation=None, grouping=None, grouping_tree=None,
         logic=LogicClause(format_name, "status", operator, "active"),
     )
-    assert _check_rule({"status": None}, rule, ["status"])[0] is True
-    assert _check_rule({}, rule, ["status"])[0] is True
+    negative = operator in {"neq", "ncontains"}
     if format_name == "column_vs_column":
-        assert _check_rule(
-            {"status": "active"}, rule, ["status"], {"active": None}
-        )[0] is True
+        # A missing comparison-side schema column is not an ordinary null cell.
+        assert _check_rule({"status": None}, rule, ["status"])[0] is True
+        # With a present comparison value, the left null follows operator
+        # semantics: negative operators pass, positive operators fail.
+        baseline = {"active": "Y"}
+        assert (
+            _check_rule({"status": None}, rule, ["status"], baseline)[0]
+            is not negative
+        )
+        assert (
+            _check_rule({"status": "active"}, rule, ["status"], {"active": None})[0]
+            is not negative
+        )
+    else:
+        # A missing cell satisfies a negative operator and violates a positive one.
+        assert _check_rule({"status": None}, rule, ["status"])[0] is not negative
+    # A missing schema column is never treated as an ordinary null cell.
+    assert _check_rule({}, rule, ["status"])[0] is True
 
 
 def test_missing_value_does_not_override_rule_condition_scope() -> None:

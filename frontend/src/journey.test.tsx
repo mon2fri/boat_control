@@ -148,6 +148,8 @@ describe("critical user journey: upload → prepare → rules → run → result
 
     // 5. Results page: click "Run now", then the report renders with the overall counts.
     await waitFor(() => expect(screen.getByRole("button", { name: "Run now" })).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Enabled rules (1)" })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Enabled rules for this run" })).toHaveTextContent("R001 — Region present");
     fireEvent.click(screen.getByRole("button", { name: "Run now" }));
 
     await waitFor(() =>
@@ -161,7 +163,7 @@ describe("critical user journey: upload → prepare → rules → run → result
       as_of_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       new_exceptions_only: true,
     });
-    expect(screen.getByText("220")).toBeInTheDocument();
+    expect(screen.getByText("Books after filters: 220")).toBeInTheDocument();
 
     const scopeToggle = screen.getByRole("checkbox", { name: "New Exceptions Only" });
     expect(scopeToggle).toBeChecked();

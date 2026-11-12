@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { Condition, GroupNode, LogicClause, LogicOperator, Rule, RuleDraft } from "../../api/domain";
 import { ColumnField } from "../../components/ColumnField";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { SectionHint } from "../../components/SectionHint";
 import { SearchableMultiSelect, type MultiSelectOption } from "../../components/SearchableMultiSelect";
 import { useFamilies } from "../settings/useSettings";
 import { valueFamilyOptions, withColumnFamilies } from "../families/familyOptions";
@@ -9,10 +10,30 @@ import { nextId } from "../../lib/id";
 import { LOGIC_OPERATORS } from "./constants";
 import { GroupingTreeEditor } from "./GroupingTreeEditor";
 import { formatGroupTreeHierarchy } from "./groupingTree";
+import { PER_GROUPING_HELP_TEXT } from "./groupingEditorSupport";
+import {
+  clearLogicOutcomeGrouping,
+  columnModeHasRetainedOutcomes,
+  formatLogicOutcomeExpression,
+  getRuleLogicClauses,
+  getRuleLogicGrouping,
+  isNumericLogicOperator as isNumericOperator,
+  logicClauseValues,
+  normalizeLogicClauseValues,
+  outcomeAsCondition,
+  outcomeLabel,
+  repairLogicOutcomeTree,
+  validateLogicOutcomes,
+  type GroupedRuleDraft,
+  type LogicOutcomeGrouping,
+} from "./logicOutcomes";
 
 interface Props {
   /** Existing rule when editing; undefined when creating. */
   rule?: Rule;
+  /** Seed a new rule without treating it as an update to the source. */
+  initialRule?: Rule;
+  confirmDiscard?: boolean;
   columns: string[];
   columnValues?: Record<string, { value: string; starred: boolean }[]>;
   saving: boolean;
@@ -33,13 +54,20 @@ interface DraftState {
    */
   conditionGrouping: string;
   groupTree: GroupNode | null;
+  /** Legacy/primary logic clause. Kept as the single-expectation representation. */
   logic: LogicClause;
+  /** Value-against-column expectations. The first clause mirrors `logic` in value mode. */
+  logicClauses: LogicClause[];
+  logicRelation: LogicOutcomeGrouping["mode"];
+  logicGroupingTree: GroupNode | null;
   extraColumns: string[];
   hideComparison: boolean;
 }
 
 function initialDraft(rule?: Rule): DraftState {
   if (rule) {
+    const clauses = getRuleLogicClauses(rule);
+    const grouping = getRuleLogicGrouping(rule);
     return {
       name: rule.name,
       description: rule.description ?? "",
@@ -48,10 +76,20 @@ function initialDraft(rule?: Rule): DraftState {
       conditionGrouping: rule.conditionGrouping ?? "",
       groupTree: rule.groupTree,
       logic: rule.logic,
+      logicClauses: clauses.length > 0 ? clauses : [rule.logic],
+      logicRelation: grouping.mode,
+      logicGroupingTree: grouping.tree,
       extraColumns: rule.extraColumns ?? [],
       hideComparison: rule.hideComparison ?? false,
     };
   }
+  const logic: LogicClause = {
+    id: nextId("logic"),
+    format: "value",
+    column: "",
+    operator: "equals",
+    target: "",
+  };
   return {
     name: "",
     description: "",
@@ -59,7 +97,10 @@ function initialDraft(rule?: Rule): DraftState {
     conditionJoin: null,
     conditionGrouping: "",
     groupTree: null,
-    logic: { id: nextId("logic"), format: "value", column: "", operator: "equals", target: "" },
+    logic,
+    logicClauses: [logic],
+    logicRelation: null,
+    logicGroupingTree: null,
     extraColumns: [],
     hideComparison: false,
   };
@@ -69,12 +110,18 @@ function newCondition(): Condition {
   return { id: nextId("cond"), column: "", operator: "equals", values: [], value: "" };
 }
 
-function conditionValues(condition: Condition): string[] {
-  return condition.values ?? (condition.value ? [condition.value] : []);
+function newLogicOutcome(): LogicClause {
+  return {
+    id: nextId("logic"),
+    format: "value",
+    column: "",
+    operator: "equals",
+    target: "",
+  };
 }
 
-function isNumericOperator(operator: LogicOperator): boolean {
-  return operator === "greater_than" || operator === "less_than";
+function conditionValues(condition: Condition): string[] {
+  return condition.values ?? (condition.value ? [condition.value] : []);
 }
 
 /**
@@ -84,19 +131,33 @@ function isNumericOperator(operator: LogicOperator): boolean {
  * logic clause in either Value-against-Column or Column-against-Column format.
  * Guards against discarding unsaved edits.
  */
-export function RuleEditor({ rule, columns, columnValues = {}, saving, error, onSave, onCancel }: Props) {
+export function RuleEditor({ rule, initialRule, confirmDiscard = true, columns, columnValues = {}, saving, error, onSave, onCancel }: Props) {
   const { data: families = [] } = useFamilies();
-  const [draft, setDraft] = useState<DraftState>(() => initialDraft(rule));
-  const [pristine] = useState<DraftState>(() => initialDraft(rule));
+  const [draft, setDraft] = useState<DraftState>(() => initialDraft(rule ?? initialRule));
+  const [pristine] = useState<DraftState>(() => initialDraft(rule ?? initialRule));
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [conditionGroupingReset, setConditionGroupingReset] = useState(0);
+  const [expectationGroupingReset, setExpectationGroupingReset] = useState(0);
+  const [confirmSingleOutcome, setConfirmSingleOutcome] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(pristine), [draft, pristine]);
   const needsJoin = draft.conditions.length > 1;
   const canGroup = draft.conditions.length >= 3;
+  const logicGrouping: LogicOutcomeGrouping = {
+    mode: draft.logicRelation,
+    tree: draft.logicGroupingTree,
+  };
+  const retainedColumnOutcomes = columnModeHasRetainedOutcomes(
+    draft.logic.format,
+    draft.logicClauses,
+  );
+  const outcomeValidation = validateLogicOutcomes(draft.logicClauses, logicGrouping);
 
   const validation = validateDraft(draft, needsJoin, Boolean(rule));
-  const logicPreview = previewLogicDescription(draft);
+  const logicPreview = draft.logic.format === "value" && draft.logicClauses.length > 1
+    ? formatLogicOutcomeExpression(draft.logicClauses, logicGrouping)
+    : previewLogicDescription(draft);
 
   function patch(next: Partial<DraftState>): void {
     setDraft((d) => ({ ...d, ...next }));
@@ -104,6 +165,78 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
 
   function updateCondition(id: string, next: Partial<Condition>): void {
     patch({ conditions: draft.conditions.map((c) => (c.id === id ? { ...c, ...next } : c)) });
+  }
+
+  function updateLogicClause(id: string, next: Partial<LogicClause>): void {
+    const clauses = draft.logicClauses.map((clause) =>
+      clause.id === id ? { ...clause, ...next, format: "value" as const } : clause,
+    );
+    const primary = clauses[0] ?? draft.logic;
+    patch({
+      logicClauses: clauses,
+      ...(draft.logic.format === "value"
+        ? { logic: { ...primary, format: "value" as const } }
+        : {}),
+    });
+  }
+
+  function addLogicOutcome(): void {
+    const clauses = [...draft.logicClauses, newLogicOutcome()];
+    patch({
+      logicClauses: clauses,
+      logic: { ...clauses[0]!, format: "value" },
+      // A newly authored multi-expectation expression requires an explicit choice.
+      logicRelation: draft.logicRelation,
+    });
+  }
+
+  function removeLogicOutcome(id: string): void {
+    const clauses = draft.logicClauses.filter((clause) => clause.id !== id);
+    if (clauses.length === 0) return;
+    patch({
+      logicClauses: clauses,
+      logic: { ...clauses[0]!, format: "value" },
+    });
+  }
+
+  function moveLogicOutcome(index: number, direction: -1 | 1): void {
+    const target = index + direction;
+    if (target < 0 || target >= draft.logicClauses.length) return;
+    const clauses = [...draft.logicClauses];
+    const [moved] = clauses.splice(index, 1);
+    clauses.splice(target, 0, moved!);
+    patch({
+      logicClauses: clauses,
+      logic: { ...clauses[0]!, format: "value" },
+    });
+  }
+
+  function useSingleOutcome(): void {
+    const clauses = draft.logicClauses.slice(0, 1);
+    patch({
+      logicClauses: clauses,
+      logic: { ...clauses[0]!, format: "value" },
+      logicRelation: null,
+      logicGroupingTree: null,
+    });
+    setConfirmSingleOutcome(false);
+  }
+
+  function selectLogicFormat(format: LogicClause["format"]): void {
+    if (format === "column") {
+      patch({
+        logic: {
+          ...draft.logic,
+          format: "column",
+          target: draft.logic.column,
+          columnComparisonMode: "comparison_vs_baseline",
+        },
+      });
+      return;
+    }
+    // Restore the retained value expectation list rather than discarding it.
+    const primary = draft.logicClauses[0] ?? draft.logic;
+    patch({ logic: { ...primary, format: "value" } });
   }
 
   function handleSubmit(event: React.FormEvent): void {
@@ -114,7 +247,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
   }
 
   function requestCancel(): void {
-    if (isDirty) setConfirmCancel(true);
+    if (isDirty && confirmDiscard) setConfirmCancel(true);
     else onCancel();
   }
 
@@ -158,7 +291,15 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
           <code className="greybox">status</code> when <code className="greybox">region</code> is <code className="greybox">HBAP</code>).
         </p>
         <p>
-          <strong>Logic</strong> clause is the actual required state.
+          <strong>Logic</strong> clause is the actual required state. When one rule has
+          multiple expectations, the expectation grouping decides whether the record
+          satisfies the required state.
+        </p>
+        <p>
+          <strong>Null and blank values:</strong> <code>equals</code> and <code>contains</code>
+          never match; <code>not equal to</code> and <code>not contains</code> do match.
+          This applies to Row Filters, Rule Conditions, and Rule Logic, including
+          multi-value clauses. Whitespace-only text is treated literally (not trimmed).
         </p>
       </details>
 
@@ -235,7 +376,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
                     placeholder={condition.column ? "Search or type values…" : "Pick a column first"}
                     disabled={!condition.column}
                     freeText
-                    hint="Multiple values: equals/contains match if ANY value matches; not equals/not contains match if NO value matches (i.e. not any)."
+                    hint="Multiple values: equals/contains match if ANY value matches; not equals/not contains match if NO value matches (i.e. not any). Null/blank never satisfies equals/contains; it satisfies not equals/not contains."
                   />
               )}
               <button
@@ -258,7 +399,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
 
         {needsJoin && (
           <div className="field">
-            <label htmlFor="cond-join">Combining above conditions with</label>
+            <label htmlFor="cond-join">Combining Conditions with</label>
             <select
               id="cond-join"
               value={draft.conditionJoin ?? ""}
@@ -281,22 +422,42 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
 
         {canGroup && draft.conditionJoin === "per_grouping" && (
           <div className="field">
-            <label>
-              Grouping
-            </label>
+            <div className="group-tree-title-row">
+              <span className="field-label">Condition groups</span>
+              <SectionHint label="Condition groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
+            </div>
             <GroupingTreeEditor
+              key={conditionGroupingReset}
               conditions={draft.conditions}
               value={draft.groupTree}
               onChange={(groupTree) => patch({ groupTree })}
               groupingMode="per_grouping"
+              showHelp={false}
+              conditionLabel={(condition) => {
+                const index = draft.conditions.findIndex(
+                  (item) => item.id === condition.id,
+                );
+                const phrase = OPERATOR_PHRASE[condition.operator] ?? condition.operator;
+                const values = conditionValues(condition).map((value) => `"${value}"`).join(" OR ");
+                return index >= 0 ? `Condition ${index + 1}: ${condition.column || "<column>"} ${phrase} ${values || "<value>"}` : condition.id;
+              }}
             />
+            <div className="dialog-actions">
+              <button
+                type="button"
+                className="btn btn--danger"
+                onClick={() => { setConditionGroupingReset((version) => version + 1); patch({ groupTree: null, conditionJoin: null }); }}
+              >
+                Remove all groups
+              </button>
+            </div>
             <p className="field-hint" data-testid="grouping-preview">
               <span className="visually-hidden">Grouping: </span>
               <code style={{ whiteSpace: "pre-wrap" }}>
                 {draft.groupTree
                   ? formatGroupTreeHierarchy(draft.groupTree, (id) => {
                       const c = draft.conditions.find((cc) => cc.id === id);
-                      return c ? `cond ${draft.conditions.indexOf(c) + 1}` : id;
+                      return c ? `condition ${draft.conditions.indexOf(c) + 1}` : id;
                     })
                   : "Add groups to define custom combining logic"}
               </code>
@@ -313,7 +474,7 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
               type="radio"
               name="logic-format"
               checked={draft.logic.format === "value"}
-              onChange={() => patch({ logic: { ...draft.logic, format: "value", target: "" } })}
+              onChange={() => selectLogicFormat("value")}
             />{" "}
             Value against column
           </label>
@@ -322,18 +483,28 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
               type="radio"
               name="logic-format"
               checked={draft.logic.format === "column"}
-              onChange={() => patch({
-                logic: {
-                  ...draft.logic,
-                  format: "column",
-                  target: draft.logic.column,
-                  columnComparisonMode: "comparison_vs_baseline",
-                },
-              })}
+              onChange={() => selectLogicFormat("column")}
             />{" "}
             Column against column
           </label>
         </div>
+
+        {retainedColumnOutcomes && (
+          <div className="alert alert--warn" role="status">
+            <p style={{ marginTop: 0 }}>
+              Column against column supports one expectation. {draft.logicClauses.length - 1} extra
+              value expectation{draft.logicClauses.length - 1 === 1 ? " is" : "s are"} retained and
+              will return if you switch back to Value against column.
+            </p>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setConfirmSingleOutcome(true)}
+            >
+              Discard extra expectations
+            </button>
+          </div>
+        )}
 
         {draft.logic.format === "column" && (
           <div className="mode-toggle" role="radiogroup" aria-label="Column comparison source">
@@ -370,31 +541,30 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
           </div>
         )}
 
-        <div className="filter-row">
-          <ColumnField
-            label={draft.logic.format === "column" ? "COLUMN in COMPARISON" : "COLUMN in COMPARISON"}
-            columns={columns}
-            value={draft.logic.column}
-            onChange={(column) => patch({
-              logic: {
-                ...draft.logic,
-                column,
-                ...(
-                  draft.logic.format === "column"
-                  && (draft.logic.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"
-                    ? { target: column }
-                    : {}
-                ),
-              },
-            })}
-          />
-          <OperatorSelect
-            label="Operator"
-            value={draft.logic.operator}
-            onChange={(operator) => patch({ logic: { ...draft.logic, operator } })}
-          />
-          {draft.logic.format === "column" ? (
-            draft.logic.columnComparisonMode === "comparison_vs_comparison" ? (
+        {draft.logic.format === "column" ? (
+          <div className="filter-row">
+            <ColumnField
+              label="COLUMN in COMPARISON"
+              columns={columns}
+              value={draft.logic.column}
+              onChange={(column) => patch({
+                logic: {
+                  ...draft.logic,
+                  column,
+                  ...(
+                    (draft.logic.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"
+                      ? { target: column }
+                      : {}
+                  ),
+                },
+              })}
+            />
+            <OperatorSelect
+              label="Operator"
+              value={draft.logic.operator}
+              onChange={(operator) => patch({ logic: { ...draft.logic, operator } })}
+            />
+            {draft.logic.columnComparisonMode === "comparison_vs_comparison" ? (
               <ColumnField
                 label="SECOND COLUMN in COMPARISON"
                 columns={columns}
@@ -405,50 +575,244 @@ export function RuleEditor({ rule, columns, columnValues = {}, saving, error, on
               <p className="field-hint">
                 Compared with the same <strong>{draft.logic.column || "selected"}</strong> column in Baseline.
               </p>
-            )
-          ) : isNumericOperator(draft.logic.operator) ? (
-            <div className="field">
-              <label htmlFor="logic-value">Value</label>
-              <input
-                id="logic-value"
-                type="number"
-                step="any"
-                value={draft.logic.target}
-                onChange={(e) => patch({ logic: { ...draft.logic, target: e.target.value, values: e.target.value ? [e.target.value] : [] } })}
-                placeholder="Enter any number"
-              />
-            </div>
-          ) : (
-            <>
-              <SearchableMultiSelect
-                label="Value"
-                options={[
-                  ...valueFamilyOptions(draft.logic.column, families),
-                  ...(columnValues[draft.logic.column] ?? []).map((v) => ({
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="logic-outcomes" role="group" aria-label="Expectations">
+              {draft.logicClauses.map((clause, index) => {
+                const multi = draft.logicClauses.length > 1;
+                const valueOptions: MultiSelectOption[] = [
+                  ...valueFamilyOptions(clause.column, families),
+                  ...(columnValues[clause.column] ?? []).map((v) => ({
                     value: v.value,
                     label: v.starred ? `${v.value} *` : v.value,
                     disabled: v.starred,
                   })),
-                ]}
-                selected={draft.logic.values ?? (draft.logic.target ? [draft.logic.target] : [])}
-                onChange={(values) => {
-                  const normalized = [...new Set(values.map((v) => v.trim()).filter((v) => v.length > 0))];
-                  patch({ logic: { ...draft.logic, values: normalized, target: normalized[0] ?? "" } });
-                }}
-                placeholder={draft.logic.column ? "Search or type values…" : "Pick a column first"}
-                disabled={!draft.logic.column}
-                freeText
-                hintTooltip
-                hint="Multiple values: equals/contains match if ANY value matches; not equals/not contains match if NO value matches (i.e. not any)."
-              />
-            </>
-          )}
-        </div>
+                ];
+                return (
+                  <div
+                    key={clause.id}
+                    className="filter-row rule-outcome-row"
+                    role="group"
+                    aria-label={`Expectation ${index + 1}`}
+                  >
+                    {multi && (
+                      <span className="condition-number" aria-hidden="true">
+                        Expectation {index + 1}
+                      </span>
+                    )}
+                    <ColumnField
+                      label={multi
+                        ? `COLUMN in COMPARISON (expectation ${index + 1})`
+                        : "COLUMN in COMPARISON"}
+                      columns={columns}
+                      value={clause.column}
+                      onChange={(column) =>
+                        updateLogicClause(clause.id, { column, values: [], target: "" })
+                      }
+                    />
+                    <OperatorSelect
+                      label="Operator"
+                      value={clause.operator}
+                      onChange={(operator) =>
+                        updateLogicClause(clause.id, { operator })
+                      }
+                    />
+                    {isNumericOperator(clause.operator) ? (
+                      <div className="field">
+                        <label htmlFor={index === 0 ? "logic-value" : `logic-value-${clause.id}`}>
+                          Value
+                        </label>
+                        <input
+                          id={index === 0 ? "logic-value" : `logic-value-${clause.id}`}
+                          type="number"
+                          step="any"
+                          value={logicClauseValues(clause)[0] ?? ""}
+                          onChange={(event) =>
+                            updateLogicClause(clause.id, {
+                              target: event.target.value,
+                              values: event.target.value ? [event.target.value] : [],
+                            })
+                          }
+                          placeholder="Enter any number"
+                        />
+                      </div>
+                    ) : (
+                      <SearchableMultiSelect
+                        label="Value"
+                        options={valueOptions}
+                        selected={logicClauseValues(clause)}
+                        onChange={(values) => {
+                          const normalized = normalizeLogicClauseValues(values);
+                          updateLogicClause(clause.id, {
+                            values: normalized,
+                            target: normalized[0] ?? "",
+                          });
+                        }}
+                        placeholder={clause.column ? "Search or type values…" : "Pick a column first"}
+                        disabled={!clause.column}
+                        freeText
+                        hintTooltip
+                        hint="Multiple values: equals/contains match if ANY value matches; not equals/not contains match if NO value matches (i.e. not any). Null/blank never satisfies equals/contains; it satisfies not equals/not contains."
+                      />
+                    )}
+                    {multi && (
+                      <div className="rule-outcome-actions">
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={index === 0}
+                          onClick={() => moveLogicOutcome(index, -1)}
+                          aria-label={`Move expectation ${index + 1} up`}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={index === draft.logicClauses.length - 1}
+                          onClick={() => moveLogicOutcome(index, 1)}
+                          aria-label={`Move expectation ${index + 1} down`}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn--danger"
+                          onClick={() => removeLogicOutcome(clause.id)}
+                          aria-label={`Remove expectation ${index + 1}`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <button type="button" className="btn" onClick={addLogicOutcome}>
+              + Add expectation
+            </button>
+
+            {draft.logicClauses.length > 1 && (
+              <>
+                <div className="field">
+                  <label htmlFor="logic-join">Combining expectations with</label>
+                  <select
+                    id="logic-join"
+                    value={draft.logicRelation ?? ""}
+                    aria-invalid={draft.logicRelation === null}
+                    onChange={(event) => {
+                      const mode = (event.target.value || null) as LogicOutcomeGrouping["mode"];
+                      patch({ logicRelation: mode });
+                    }}
+                  >
+                    <option value="">Choose…</option>
+                    <option value="and">AND — all must match</option>
+                    <option value="or">OR — any may match</option>
+                    <option value="custom">CUSTOM GROUPS — nested groups</option>
+                  </select>
+                </div>
+
+                {draft.logicRelation === "custom" && (
+                  <div className="field">
+                    <div className="group-tree-title-row">
+                      <span className="field-label">Expectation groups</span>
+                      <SectionHint label="Expectation groups help">{PER_GROUPING_HELP_TEXT}</SectionHint>
+                    </div>
+                    <GroupingTreeEditor
+                      key={expectationGroupingReset}
+                      conditions={draft.logicClauses.map(outcomeAsCondition)}
+                      value={draft.logicGroupingTree}
+                      onChange={(tree) => patch({ logicGroupingTree: tree })}
+                      groupingMode="per_grouping"
+                      showHelp={false}
+                      conditionLabel={(condition) => {
+                        const index = draft.logicClauses.findIndex(
+                          (clause) => clause.id === condition.id,
+                        );
+                        return index >= 0
+                          ? outcomeLabel(draft.logicClauses[index]!, index)
+                          : `<missing expectation ${condition.id}>`;
+                      }}
+                    />
+                    <div className="dialog-actions">
+                      <button
+                        type="button"
+                        className="btn btn--danger"
+                        onClick={() => {
+                          setExpectationGroupingReset((version) => version + 1);
+                          const cleared = clearLogicOutcomeGrouping();
+                          patch({
+                            logicRelation: cleared.mode,
+                            logicGroupingTree: cleared.tree,
+                          });
+                        }}
+                      >
+                        Remove all groups
+                      </button>
+                      {draft.logicGroupingTree
+                        && (outcomeValidation.unknownIds.length > 0
+                          || outcomeValidation.missingIds.length > 0
+                          || outcomeValidation.structuralErrors.length > 0) && (
+                        <button
+                          type="button"
+                          className="btn btn--primary"
+                          onClick={() =>
+                            patch({
+                              logicGroupingTree: repairLogicOutcomeTree(
+                                draft.logicClauses,
+                                logicGrouping,
+                              ).tree,
+                            })
+                          }
+                        >
+                          Remove stale expectation references
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              </>
+            )}
+          </>
+        )}
+
         <p className="field-hint" data-testid="rule-logic-preview">
           <span className="visually-hidden">Rule description: </span>
           <code>{logicPreview}</code>
         </p>
+        {draft.logic.format === "value"
+          && draft.logicRelation === "custom"
+          && draft.logicGroupingTree && (
+            <p className="field-hint" data-testid="logic-grouping-preview">
+              <span className="visually-hidden">Expectation grouping: </span>
+              <code style={{ whiteSpace: "pre-wrap" }}>
+                {formatGroupTreeHierarchy(draft.logicGroupingTree, (id) => {
+                  const index = draft.logicClauses.findIndex((clause) => clause.id === id);
+                  return index >= 0 ? `expectation ${index + 1}` : id;
+                })}
+              </code>
+            </p>
+          )}
       </fieldset>
+
+      <ConfirmDialog
+        title="Discard extra expectations?"
+        open={confirmSingleOutcome}
+        confirmLabel="Discard extra expectations"
+        confirmTone="danger"
+        onCancel={() => setConfirmSingleOutcome(false)}
+        onConfirm={useSingleOutcome}
+      >
+        <p>
+          Only the first expectation will remain. This removes the other expectations and their
+          grouping from this rule.
+        </p>
+      </ConfirmDialog>
 
       <fieldset>
         <legend>Extra columns to display (optional)</legend>
@@ -572,18 +936,33 @@ function validateDraft(draft: DraftState, needsJoin: boolean, isEditing: boolean
       errors.push(`Condition ${i + 1} needs a valid number.`);
     }
   }
-  if (!draft.logic.column.trim()) errors.push("Logic needs a column.");
-  const logicValues = draft.logic.values?.filter((v) => v.trim()) ?? (draft.logic.target.trim() ? [draft.logic.target.trim()] : []);
+  const clauses = draft.logicClauses.length > 0 ? draft.logicClauses : [draft.logic];
   if (draft.logic.format === "column") {
+    if (clauses.length > 1) {
+      errors.push(
+        "Column against column supports one expectation. Remove the extra expectations or switch back to Value against column.",
+      );
+    }
+    if (!draft.logic.column.trim()) errors.push("Logic needs a column.");
     if (!draft.logic.target.trim()) {
       errors.push("Logic needs a compared column.");
     }
-  } else {
+  } else if (clauses.length <= 1) {
+    const clause = clauses[0]!;
+    if (!clause.column.trim()) errors.push("Logic needs a column.");
+    const logicValues = logicClauseValues(clause).filter((value) => value.trim());
     if (logicValues.length === 0) {
       errors.push("Logic needs a value.");
-    } else if (isNumericOperator(draft.logic.operator) && !Number.isFinite(Number(logicValues[0]))) {
+    } else if (isNumericOperator(clause.operator) && !Number.isFinite(Number(logicValues[0]))) {
       errors.push("Logic needs a valid number.");
     }
+  } else {
+    errors.push(
+      ...validateLogicOutcomes(clauses, {
+        mode: draft.logicRelation,
+        tree: draft.logicGroupingTree,
+      }).errors,
+    );
   }
   return { valid: errors.length === 0, errors };
 }
@@ -599,10 +978,33 @@ function collectConditionIdsFromTree(node: GroupNode): Set<string> {
 }
 
 function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
-  const logic = draft.logic.format === "column"
-    && (draft.logic.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"
-      ? { ...draft.logic, target: draft.logic.column, columnComparisonMode: "comparison_vs_baseline" as const }
-      : draft.logic;
+  const clauses = draft.logicClauses.length > 0
+    ? draft.logicClauses.map((clause) => ({ ...clause, format: "value" as const }))
+    : [];
+  const primary = draft.logic.format === "value"
+    ? clauses[0] ?? { ...draft.logic, format: "value" as const }
+    : draft.logic;
+  const logic = primary.format === "column"
+    && (primary.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"
+      ? { ...primary, target: primary.column, columnComparisonMode: "comparison_vs_baseline" as const }
+      : primary;
+  const grouped: Partial<GroupedRuleDraft> = {};
+  if (draft.logic.format === "value" && clauses.length > 1) {
+    grouped.logicClauses = clauses;
+    if (draft.logicRelation === "custom") {
+      grouped.logicGroupTree = draft.logicGroupingTree;
+      // Retain the earlier D-only alias so pre-integration component tests and
+      // callers keep working; transport reads the canonical logicGroupTree.
+      grouped.logicGroupingTree = draft.logicGroupingTree;
+      if (draft.logicGroupingTree?.kind === "and" || draft.logicGroupingTree?.kind === "or") {
+        // Preserve the root relation alongside the executable tree so an
+        // unchanged custom rule keeps both fields it was loaded with.
+        grouped.logicRelation = draft.logicGroupingTree.kind;
+      }
+    } else if (draft.logicRelation === "and" || draft.logicRelation === "or") {
+      grouped.logicRelation = draft.logicRelation;
+    }
+  }
   return {
     ...(rule ? { index: rule.index } : {}),
     name: draft.name.trim(),
@@ -619,6 +1021,7 @@ function toDraft(draft: DraftState, rule?: Rule): RuleDraft {
     conditionGrouping: null,
     groupTree: draft.groupTree,
     logic,
+    ...grouped,
     extraColumns: draft.extraColumns,
     hideComparison: draft.hideComparison,
   };

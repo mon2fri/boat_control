@@ -5,6 +5,9 @@ import { z } from "zod";
  * them as text at the API boundary. */
 export const wireScalarSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 
+/** Compound outcomes carry one observed scalar per column, never nested JSON. */
+export const wireOutcomeValueSchema = z.union([wireScalarSchema, z.record(z.string(), wireScalarSchema)]);
+
 /**
  * Wire-format schemas for the backend. All field names are snake_case as the
  * Django serializers emit them. Domain-level types (camelCase, used inside
@@ -144,7 +147,67 @@ export const wireGroupNodeSchema: z.ZodType<WireGroupNode> = z.lazy(() =>
   ]),
 );
 
-export const wireRuleSchema = z.object({
+export const wireGroupRelationSchema = z.enum(["and", "or"]);
+
+/**
+ * Reject ambiguous rule logic. New writers send legacy `logic` for a single
+ * outcome and `logic_clauses` for multiple outcomes. Readers accept either,
+ * but never both: silently choosing one would change what the rule means.
+ */
+function addLogicRepresentationIssues(
+  value: {
+    logic?: unknown;
+    logic_clauses?: Array<{ format?: string }> | undefined;
+    logic_relation?: unknown;
+    logic_grouping_tree?: unknown;
+  },
+  ctx: z.RefinementCtx,
+): void {
+  const hasLegacy = value.logic !== undefined;
+  const hasClauses = value.logic_clauses !== undefined;
+  if (hasLegacy && hasClauses) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Rule cannot contain both legacy logic and logic_clauses.",
+      path: ["logic_clauses"],
+    });
+    return;
+  }
+  if (!hasLegacy && !hasClauses) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Rule must contain logic or logic_clauses.",
+      path: ["logic"],
+    });
+    return;
+  }
+  if (hasClauses) {
+    if (value.logic_relation === undefined && value.logic_grouping_tree === undefined
+      && (value.logic_clauses?.length ?? 0) > 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Multiple logic clauses require an AND/OR relation or grouping tree.",
+        path: ["logic_relation"],
+      });
+    }
+    if ((value.logic_clauses ?? []).some((clause) => clause.format === "column_vs_column")) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Multiple grouped outcomes support value-against-column clauses only.",
+        path: ["logic_clauses"],
+      });
+    }
+  } else if (value.logic_clauses === undefined
+    && (value.logic_relation !== undefined || value.logic_grouping_tree !== undefined)) {
+    ctx.addIssue({
+      code: "custom",
+      message: "logic_relation/logic_grouping_tree require logic_clauses.",
+      path: ["logic_relation"],
+    });
+  }
+}
+
+const wireRuleObjectSchema = z.object({
   rule_id: z.string().regex(/^R\d{3,}$/),
   rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/),
   equivalent_rule: z.boolean().optional(),
@@ -157,10 +220,15 @@ export const wireRuleSchema = z.object({
   condition_relation: z.enum(["and", "or"]).optional(),
   grouping: z.array(z.string()).optional(),
   grouping_tree: wireGroupNodeSchema.optional(),
-  logic: wireLogicSchema,
+  logic: wireLogicSchema.optional(),
+  logic_clauses: z.array(wireLogicSchema).min(1).optional(),
+  logic_relation: wireGroupRelationSchema.optional(),
+  logic_grouping_tree: wireGroupNodeSchema.optional(),
   extra_columns: z.array(z.string()).optional(),
   hide_comparison: z.boolean().optional(),
 });
+
+export const wireRuleSchema = wireRuleObjectSchema.superRefine(addLogicRepresentationIssues);
 export type WireRule = z.infer<typeof wireRuleSchema>;
 
 export const rulesListResponseSchema = z.object({
@@ -173,10 +241,10 @@ export const rulesListResponseSchema = z.object({
   has_more: z.boolean().default(false),
 });
 
-export const ruleSnapshotMutationSchema = wireRuleSchema.extend({
+export const ruleSnapshotMutationSchema = wireRuleObjectSchema.extend({
   previous_rule_id: z.string().optional(),
   resulting_rule_id: z.string().optional(),
-});
+}).superRefine(addLogicRepresentationIssues);
 
 /** Legacy mutation acknowledgements remain parseable for old saved-run/API fixtures. */
 export const ruleMutationResponseSchema = z.union([
@@ -210,10 +278,13 @@ export const ruleDraftRequestSchema = z.object({
   conditions: z.array(wireConditionSchema).optional(),
   condition_relation: z.enum(["and", "or"]).optional(),
   grouping_tree: wireGroupNodeSchema.optional(),
-  logic: wireLogicSchema,
+  logic: wireLogicSchema.optional(),
+  logic_clauses: z.array(wireLogicSchema).min(1).optional(),
+  logic_relation: wireGroupRelationSchema.optional(),
+  logic_grouping_tree: wireGroupNodeSchema.optional(),
   extra_columns: z.array(z.string()).optional(),
   hide_comparison: z.boolean().optional(),
-});
+}).superRefine(addLogicRepresentationIssues);
 export type WireRuleDraftRequest = z.infer<typeof ruleDraftRequestSchema>;
 
 // --- Group statistics -----------------------------------------------------
@@ -267,6 +338,9 @@ export const wireRunRequestSchema = z.object({
     extra_columns: z.array(z.string()).optional(),
   })).optional(),
   filters: z.array(wireFilterRowSchema).optional(),
+  // The backend serializers accept/emit explicit null for "no grouping".
+  filter_relation: wireGroupRelationSchema.nullable().optional(),
+  filter_grouping_tree: wireGroupNodeSchema.nullable().optional(),
   rule_ids: z.array(z.string()).nullable().optional(),
   exception_columns: z.array(z.string()).optional(),
   commentary_template_columns: z.array(z.string()).optional(),
@@ -313,9 +387,9 @@ export const wireDetailPageSchema = z.object({
       key_columns: z.record(z.string(), wireScalarSchema).optional(),
       column: z.string(),
       file_a_value: wireScalarSchema,
-      file_b_value: wireScalarSchema,
+      file_b_value: wireOutcomeValueSchema,
       violating_column: z.string().optional(),
-      violating_value: wireScalarSchema.optional(),
+      violating_value: wireOutcomeValueSchema.optional(),
       /** Stable tracking identity for paginated exception rows. */
       exception_id: z.string().nullable().optional(),
       rule_identifier: z.string().nullable().optional(),
@@ -355,7 +429,7 @@ export const wireViolationSchema = z.object({
   // mapper derives fallbacks from the rest of the violation record so the UI
   // is never blank for an in-flight release.
   violating_column: z.string().optional(),
-  violating_value: wireScalarSchema.optional(),
+  violating_value: wireOutcomeValueSchema.optional(),
   comparison_value: wireScalarSchema.optional(),
   extra_values: z.record(z.string(), wireScalarSchema).optional(),
   rule_logic: z.string().optional(),
@@ -382,6 +456,12 @@ export const wireValidationSchema = z.object({
       logic: z.string().optional(),
       condition: z.string().optional(),
       condition_grouping: z.string().optional(),
+      condition_clauses: z.array(z.string()).optional(),
+      expectation_clauses: z.array(z.string()).optional(),
+      condition_groupings: z.string().optional(),
+      expectation_groupings: z.string().optional(),
+      condition_tree: wireGroupNodeSchema.nullable().optional(),
+      expectation_tree: wireGroupNodeSchema.nullable().optional(),
       hide_comparison: z.boolean().optional(),
     }),
   ).optional(),
@@ -395,6 +475,11 @@ export const wireRunResultSchema = z.object({
   target_columns: z.array(z.string()).nullable(),
   key_columns: z.array(z.string()).optional(),
   filters_applied: z.array(wireFilterRowSchema),
+  // ExecutionResultSerializer and historical-run normalization emit explicit
+  // null here when the run had no grouping. Both execute and saved-run GET use
+  // this schema, so null is a valid "legacy AND / no tree" value, not absence.
+  filter_relation: wireGroupRelationSchema.nullable().optional(),
+  filter_grouping_tree: wireGroupNodeSchema.nullable().optional(),
   aggregation_columns: z.array(z.string()).optional(),
   aggregation_column_labels: z.record(z.string(), z.string()).optional(),
   group_statistics: wireGroupStatisticsBundleSchema.nullable().optional(),
@@ -442,6 +527,12 @@ const legacyValidationSchema = wireValidationSchema.extend({
     logic: z.string().optional(),
     condition: z.string().optional(),
     condition_grouping: z.string().optional(),
+      condition_clauses: z.array(z.string()).optional(),
+      expectation_clauses: z.array(z.string()).optional(),
+      condition_groupings: z.string().optional(),
+      expectation_groupings: z.string().optional(),
+      condition_tree: wireGroupNodeSchema.nullable().optional(),
+      expectation_tree: wireGroupNodeSchema.nullable().optional(),
     hide_comparison: z.boolean().optional(),
   })).optional(),
 });
@@ -611,6 +702,8 @@ export const wireSavedFilterSchema = z.object({
   id: z.string(),
   name: z.string(),
   rows: z.array(wireFilterRowSchema),
+  filter_relation: wireGroupRelationSchema.optional(),
+  filter_grouping_tree: wireGroupNodeSchema.optional(),
 });
 export type WireSavedFilter = z.infer<typeof wireSavedFilterSchema>;
 

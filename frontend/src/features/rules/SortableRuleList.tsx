@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState, useMemo } from "react";
 import type { Rule } from "../../api/domain";
-import { describeLogic } from "./useRules";
+import { getRuleLogicClauses } from "./logicOutcomes";
+import { RuleGroupingPreview } from "./RuleGroupingPreview";
 
 interface Props {
   rules: Rule[];
@@ -10,6 +11,7 @@ interface Props {
   onToggle: (ruleId: string) => void;
   onToggleAll: (ruleIds: string[], enabled: boolean) => void;
   onEdit: (rule: Rule) => void;
+  onCopy?: (rule: Rule) => void;
   onDelete: (rule: Rule) => void;
   onReorder: (ruleIds: string[]) => void;
   serverPaged?: boolean;
@@ -25,6 +27,7 @@ const PAGE_SIZE = 10;
 
 function referencedColumns(rule: Rule): string[] {
   const columns = new Set(rule.conditions.map((condition) => condition.column));
+  for (const clause of getRuleLogicClauses(rule)) columns.add(clause.column);
   columns.add(rule.logic.column);
   if (rule.logic.format === "column") columns.add(rule.logic.target);
   for (const column of rule.extraColumns ?? []) columns.add(column);
@@ -39,6 +42,7 @@ export function SortableRuleList({
   onToggle,
   onToggleAll,
   onEdit,
+  onCopy,
   onDelete,
   onReorder,
   serverPaged = false,
@@ -177,6 +181,7 @@ export function SortableRuleList({
                   ⠿
                 </span>
                 <span className="rule-order-number" aria-hidden="true">{globalIndex + 1}.</span>
+                <RuleGroupingPreview rule={rule} />
                 <label>
                   <input
                     type="checkbox"
@@ -188,8 +193,9 @@ export function SortableRuleList({
                 </label>
               </div>
               <div className="rule-actions">
-                <code className="rule-logic">{describeLogic(rule)}</code>
+                <span className="rule-list-description">{rule.description || "No description"}</span>
                 <button type="button" className="btn" onClick={() => onEdit(rule)}>Edit</button>
+                {onCopy && <button type="button" className="btn" onClick={() => onCopy(rule)}>Copy</button>}
                 <button type="button" className="btn btn--danger" onClick={() => onDelete(rule)}>Delete</button>
               </div>
             </li>

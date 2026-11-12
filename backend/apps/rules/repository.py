@@ -17,10 +17,9 @@ from django.utils import timezone
 from apps.rules.identifiers import calculate_rule_identity_details, verify_identity
 from apps.rules.models import RuleStoreState, StoredValidationRule, ValidationRuleIdentity
 from apps.rules.services import (
-    Condition,
-    LogicClause,
     Rule,
-    _parse_grouping_tree,
+    normalize_rule_draft,
+    rule_from_payload,
 )
 
 
@@ -162,42 +161,7 @@ def _register_identity_in_transaction(rule_or_draft: Any) -> ValidationRuleIdent
 
 
 def _rule_from_payload(rule_id: str, identifier: str, payload: dict[str, Any]) -> Rule:
-    conditions = []
-    for condition in payload.get("conditions", []):
-        values = condition.get("filter_values") or (
-            [condition.get("filter_value")] if condition.get("filter_value", "") != "" else []
-        )
-        conditions.append(
-            Condition(
-                condition["column_name"],
-                condition["operator"],
-                values[0] if values else "",
-                tuple(values),
-            )
-        )
-    logic_data = payload["logic"]
-    logic_values = tuple(logic_data.get("target_values", []))
-    logic = LogicClause(
-        format=logic_data["format"],
-        column_name=logic_data["column_name"],
-        operator=logic_data["operator"],
-        target_value=logic_data.get("target_value", ""),
-        target_values=logic_values,
-        comparison_mode=logic_data.get("comparison_mode", "comparison_vs_baseline"),
-    )
-    return Rule(
-        rule_id=rule_id,
-        rule_identifier=identifier,
-        name=payload.get("name", ""),
-        description=payload.get("description", ""),
-        conditions=conditions,
-        condition_relation=payload.get("condition_relation"),
-        grouping=payload.get("grouping"),
-        grouping_tree=_parse_grouping_tree(payload.get("grouping_tree")),
-        logic=logic,
-        extra_columns=tuple(payload.get("extra_columns", [])),
-        hide_comparison=bool(payload.get("hide_comparison", False)),
-    )
+    return rule_from_payload(rule_id, payload, rule_identifier=identifier)
 
 
 def materialize_catalog_rule(row: StoredValidationRule) -> RuleSnapshot:
@@ -215,7 +179,9 @@ def materialize_catalog_rule(row: StoredValidationRule) -> RuleSnapshot:
         enabled=row.enabled,
         enabled_position=row.enabled_position,
         archived_at=row.archived_at,
-        superseded_by_rule_id=row.superseded_by.rule_id if row.superseded_by_id else None,
+        superseded_by_rule_id=(
+            row.superseded_by.rule_id if row.superseded_by is not None else None
+        ),
     )
 
 
@@ -232,6 +198,7 @@ def _get_row(rule_id: str, *, lock: bool = False) -> StoredValidationRule:
 def create_catalog_rule(draft: dict[str, Any], enabled: bool = True) -> RuleSnapshot:
     with transaction.atomic():
         state = _state()
+        draft = normalize_rule_draft(draft)
         identity = _register_identity_in_transaction(draft)
         existing = (
             StoredValidationRule.objects.select_for_update().filter(identity=identity).first()
@@ -268,6 +235,7 @@ def get_catalog_rule(rule_id: str) -> RuleSnapshot:
 def update_catalog_rule(rule_id: str, draft: dict[str, Any]) -> RuleEditResult:
     with transaction.atomic():
         state = _state()
+        draft = normalize_rule_draft(draft)
         previous = _get_row(rule_id, lock=True)
         new_identity = _register_identity_in_transaction(draft)
         if previous.identity_id == new_identity.identifier:
@@ -517,6 +485,7 @@ def apply_rule_configuration(
 ) -> RuleImportResult:
     with transaction.atomic():
         state = _state()
+        drafts = [normalize_rule_draft(draft) for draft in drafts]
         identities = [_register_identity_in_transaction(draft) for draft in drafts]
         first_positions: dict[str, int] = {}
         for position, identity in enumerate(identities, start=1):

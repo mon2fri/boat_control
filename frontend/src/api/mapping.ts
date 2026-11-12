@@ -1,3 +1,4 @@
+import { compareRuleIndices } from "../lib/ruleOrder";
 /**
  * Pure mappings between backend wire formats (`wire.ts`) and the camelCase
  * domain types (`domain.ts`). Keeping these isolated means the rest of the
@@ -15,6 +16,7 @@ import type {
   FilterOperator,
   FilterRow,
   GroupNode,
+  GroupRelation,
   GroupStat,
   GroupStatRow,
   GroupStatisticsBundle,
@@ -60,6 +62,12 @@ import type {
 } from "./wire";
 import type { z } from "zod";
 import { resolveExceptionId } from "../lib/exceptionIdentity";
+import {
+  fromPersistedGroupingTree,
+  GroupingValidationError,
+  resolveGroupedExpression,
+  toPersistedGroupingTree,
+} from "../lib/grouping";
 
 type WireScalar = z.infer<typeof wireScalarSchema>;
 type MappableViolation = Omit<WireViolation, "rule_identifier"> & {
@@ -163,14 +171,107 @@ export function mapFilterRowToWire(row: FilterRow) {
   };
 }
 
-export function mapWireFilterRow(row: WireFilterRow): FilterRow {
+export function mapWireFilterRow(row: WireFilterRow, id = ""): FilterRow {
   // Backward compatibility: accept legacy filter_value (string) or new filter_values (array)
   const values = row.filter_values ?? (row.filter_value ? [row.filter_value] : []);
   return {
-    id: "", // assigned by client when used
+    id,
     column: row.column,
     operator: mapWireFilterOperator(row.operator),
     values,
+  };
+}
+
+/** True when a filter row is complete enough to send to the backend. */
+export function isCompleteFilterRow(row: FilterRow): boolean {
+  return row.column.trim().length > 0 && row.values.length > 0;
+}
+
+export interface FilterConfigurationMapping {
+  filters: FilterRow[];
+  relation: GroupRelation | null;
+  groupTree: GroupNode | null;
+  errors: string[];
+}
+
+/**
+ * Serialize the runtime filter configuration for a wire request or saved
+ * filter. The tree is validated against the *actual* row IDs and remapped to
+ * the persisted `cN` form; it is never replaced by a flat relation when it is
+ * invalid. Incomplete rows are rejected whenever grouping is configured so
+ * removing/editing a referenced row cannot silently broaden the run.
+ */
+export function mapFilterConfigurationToWire(
+  filters: FilterRow[],
+  relation: GroupRelation | null | undefined,
+  groupTree: GroupNode | null | undefined,
+  options: { label?: string; requireExplicitForMultiple?: boolean } = {},
+): {
+  rows: ReturnType<typeof mapFilterRowToWire>[];
+  relation: GroupRelation | null;
+  groupTree: GroupNode | null;
+} {
+  const label = options.label ?? "filter grouping";
+  const resolved = resolveGroupedExpression(filters, relation, groupTree, {
+    label,
+    allowLegacyAnd: !options.requireExplicitForMultiple,
+    ...(options.requireExplicitForMultiple !== undefined
+      ? { requireExplicitForMultiple: options.requireExplicitForMultiple }
+      : {}),
+  });
+  if (!resolved.valid) {
+    throw new GroupingValidationError(resolved.errors);
+  }
+  if (filters.length === 0) {
+    return { rows: [], relation: null, groupTree: null };
+  }
+
+  const hasExplicitGrouping = Boolean(groupTree || relation);
+  const incomplete = filters.filter((row) => !isCompleteFilterRow(row));
+  if (hasExplicitGrouping && incomplete.length > 0) {
+    throw new GroupingValidationError([
+      `${label} references an incomplete filter row. Fill in or remove the row and repair the grouping before running.`,
+    ]);
+  }
+
+  const rows = (hasExplicitGrouping ? filters : filters.filter(isCompleteFilterRow))
+    .map(mapFilterRowToWire);
+
+  return {
+    rows,
+    relation: hasExplicitGrouping && relation ? relation : null,
+    groupTree: groupTree
+      ? toPersistedGroupingTree(groupTree, filters)
+      : null,
+  };
+}
+
+/**
+ * Restore a persisted filter configuration, remapping persisted `cN` leaf
+ * references to the runtime row IDs assigned here. Invalid expressions keep
+ * their tree and expose errors rather than falling back to an unrestricted run.
+ */
+export function mapWireFilterConfiguration(
+  wireRows: WireFilterRow[],
+  relation?: GroupRelation | null,
+  groupTree?: WireGroupNode | null,
+  options: { idPrefix?: string; label?: string } = {},
+): FilterConfigurationMapping {
+  const idPrefix = options.idPrefix ?? "fl";
+  const filters = wireRows.map((row, index) => mapWireFilterRow(row, `${idPrefix}-${index}`));
+  const mappedTree = groupTree
+    ? fromPersistedGroupingTree(mapWireGroupNode(groupTree), filters)
+    : null;
+  const resolved = resolveGroupedExpression(filters, relation ?? null, mappedTree, {
+    label: options.label ?? "filter grouping",
+    allowLegacyAnd: true,
+  });
+  return {
+    filters,
+    // Preserve an absent relation so a legacy payload stays legacy on re-save.
+    relation: relation ?? null,
+    groupTree: mappedTree,
+    errors: resolved.errors,
   };
 }
 
@@ -240,11 +341,78 @@ export function mapWireLogic(logic: WireLogic, id: string): LogicClause {
   };
 }
 
+export interface RuleLogicConfiguration {
+  clauses: LogicClause[];
+  /** Legacy accessor retained for callers that still read `rule.logic`. */
+  legacy: LogicClause;
+  relation: GroupRelation | null;
+  groupTree: GroupNode | null;
+  errors: string[];
+  /** True when the payload used the new multi-outcome representation. */
+  multiOutcomeForm: boolean;
+}
+
+/**
+ * Read either legacy `logic` or `logic_clauses`, rejecting contradictory
+ * payloads. The returned tree is remapped from persisted `cN` references to
+ * the runtime clause IDs assigned here.
+ */
+export function mapWireRuleLogic(rule: Pick<
+  WireRule,
+  "logic" | "logic_clauses" | "logic_relation" | "logic_grouping_tree"
+>): RuleLogicConfiguration {
+  const hasLegacy = rule.logic !== undefined;
+  const hasClauses = rule.logic_clauses !== undefined;
+  if (hasLegacy && hasClauses) {
+    throw new GroupingValidationError([
+      "Rule contains both legacy logic and logic_clauses; refusing to choose one silently.",
+    ]);
+  }
+  if (!hasLegacy && !hasClauses) {
+    throw new GroupingValidationError(["Rule has no logic or logic_clauses."]);
+  }
+
+  if (hasLegacy) {
+    const legacy = mapWireLogic(rule.logic!, "l0");
+    return {
+      clauses: [legacy],
+      legacy,
+      relation: null,
+      groupTree: null,
+      errors: [],
+      multiOutcomeForm: false,
+    };
+  }
+
+  const clauses = (rule.logic_clauses ?? []).map((clause, index) =>
+    mapWireLogic(clause, `l${index}`),
+  );
+  if (clauses.length === 0) {
+    throw new GroupingValidationError(["Rule logic_clauses is empty."]);
+  }
+  const groupTree = rule.logic_grouping_tree
+    ? fromPersistedGroupingTree(mapWireGroupNode(rule.logic_grouping_tree), clauses)
+    : null;
+  const resolved = resolveGroupedExpression(clauses, rule.logic_relation ?? null, groupTree, {
+    label: "rule outcome grouping",
+    requireExplicitForMultiple: true,
+    allowLegacyAnd: false,
+  });
+  return {
+    clauses,
+    legacy: clauses[0]!,
+    relation: resolved.relation,
+    groupTree,
+    errors: resolved.errors,
+    multiOutcomeForm: true,
+  };
+}
+
 export function mapWireRule(rule: WireRule): Rule {
   // Wire shape omits empty arrays/relations; the UI model wants explicit nulls
   // and an empty array for conditions.
   const conditions = (rule.conditions ?? []).map((c, i) => mapWireCondition(c, `c${i}`));
-  const logic = mapWireLogic(rule.logic, "l0");
+  const logicConfig = mapWireRuleLogic(rule);
   // Prefer the executable tree; fall back to the legacy group-id list only
   // when the tree is absent (older persisted rules). The tree is the
   // canonical representation going forward.
@@ -265,7 +433,17 @@ export function mapWireRule(rule: WireRule): Rule {
       : rule.condition_relation ?? (conditions.length > 1 ? "and" : null),
     conditionGrouping: rule.grouping ? rule.grouping.join(" ") : null,
     groupTree,
-    logic,
+    logic: logicConfig.legacy,
+    ...(logicConfig.multiOutcomeForm
+      ? {
+          logicClauses: logicConfig.clauses,
+          logicRelation: logicConfig.relation,
+          logicGroupTree: logicConfig.groupTree,
+          ...(logicConfig.errors.length > 0
+            ? { logicGroupingErrors: logicConfig.errors }
+            : {}),
+        }
+      : {}),
     extraColumns: rule.extra_columns ?? [],
     hideComparison: rule.hide_comparison ?? false,
   };
@@ -283,6 +461,50 @@ function mapGroupNodeToWire(node: GroupNode, conditionIds: Map<string, string>):
   return { kind: node.kind, children: node.children.map((child) => mapGroupNodeToWire(child, conditionIds)) };
 }
 
+/**
+ * Serialize rule outcomes following the compatibility rule: a single outcome
+ * uses legacy `logic` (preserving canonical identity); multiple outcomes use
+ * `logic_clauses` plus an explicit relation or valid tree.
+ */
+export function mapRuleLogicToWireDraft(
+  rule: Pick<Rule, "logic" | "logicClauses" | "logicRelation" | "logicGroupTree" | "logicGroupingErrors">,
+): {
+  logic?: ReturnType<typeof mapLogicToWire>;
+  logic_clauses?: ReturnType<typeof mapLogicToWire>[];
+  logic_relation?: GroupRelation;
+  logic_grouping_tree?: WireGroupNode;
+} {
+  if (rule.logicGroupingErrors && rule.logicGroupingErrors.length > 0) {
+    throw new GroupingValidationError(rule.logicGroupingErrors);
+  }
+  const clauses = rule.logicClauses ?? [];
+  if (clauses.length <= 1) {
+    return { logic: mapLogicToWire(clauses[0] ?? rule.logic) };
+  }
+  if (clauses.some((clause) => clause.format === "column")) {
+    throw new GroupingValidationError([
+      "Multiple grouped outcomes support value-against-column clauses only.",
+    ]);
+  }
+  const resolved = resolveGroupedExpression(clauses, rule.logicRelation ?? null, rule.logicGroupTree ?? null, {
+    label: "rule outcome grouping",
+    requireExplicitForMultiple: true,
+    allowLegacyAnd: false,
+  });
+  if (!resolved.valid) {
+    throw new GroupingValidationError(resolved.errors);
+  }
+  return {
+    logic_clauses: clauses.map(mapLogicToWire),
+    ...(rule.logicRelation ? { logic_relation: rule.logicRelation } : {}),
+    ...(rule.logicGroupTree
+      ? { logic_grouping_tree: mapGroupNodeToWire(rule.logicGroupTree, new Map(
+          clauses.map((clause, index) => [clause.id, `c${index}`]),
+        )) }
+      : {}),
+  };
+}
+
 export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string }) {
   const conditionIds = new Map(rule.conditions.map((condition, index) => [condition.id, `c${index}`]));
   return {
@@ -295,7 +517,7 @@ export function mapRuleToWireDraft(rule: Omit<Rule, "index"> & { index?: string 
     // Always serialize the executable tree; never split a free-text
     // expression on whitespace (that loses grouping precedence).
     ...(rule.groupTree ? { grouping_tree: mapGroupNodeToWire(rule.groupTree, conditionIds) } : {}),
-    logic: mapLogicToWire(rule.logic),
+    ...mapRuleLogicToWireDraft(rule),
     extra_columns: rule.extraColumns ?? [],
     hide_comparison: rule.hideComparison ?? false,
   };
@@ -308,6 +530,10 @@ export function mapRunRequestToWire(request: {
   asOfDate?: string;
   comparisonColumns: string[];
   filters: FilterRow[];
+  filterRelation?: GroupRelation | null;
+  filterGroupTree?: GroupNode | null;
+  filterGroupingErrors?: string[];
+  filterGroupingRequired?: boolean;
   targetColumns: string[];
   keyColumns: string[];
   aggregationColumns: string[];
@@ -320,6 +546,20 @@ export function mapRunRequestToWire(request: {
   newExceptionsOnly?: boolean;
   extraColumnDisplay?: import("./domain").ExtraColumnDisplay;
 }): WireRunRequest {
+  if (request.filterGroupingErrors && request.filterGroupingErrors.length > 0) {
+    throw new GroupingValidationError(request.filterGroupingErrors);
+  }
+  const filterConfiguration = mapFilterConfigurationToWire(
+    request.filters,
+    request.filterRelation ?? null,
+    request.filterGroupTree ?? null,
+    {
+      label: "row filter grouping",
+      ...(request.filterGroupingRequired !== undefined
+        ? { requireExplicitForMultiple: request.filterGroupingRequired }
+        : {}),
+    },
+  );
   return {
     session_id: request.sessionId,
     ...(request.asOfDate ? { as_of_date: request.asOfDate } : {}),
@@ -343,7 +583,13 @@ export function mapRunRequestToWire(request: {
             : {}),
         }))
       : undefined,
-    filters: request.filters.filter((f) => f.column && f.values.length > 0).map(mapFilterRowToWire),
+    filters: filterConfiguration.rows,
+    ...(filterConfiguration.relation
+      ? { filter_relation: filterConfiguration.relation }
+      : {}),
+    ...(filterConfiguration.groupTree
+      ? { filter_grouping_tree: filterConfiguration.groupTree }
+      : {}),
     // Always serialize `rule_ids` as an array so the backend can distinguish
     // an explicit empty selection (zero rules) from an omitted/default-all
     // selection. Translating an empty array to `null` here would cause every
@@ -366,6 +612,16 @@ export function mapRunRequestToWire(request: {
       exception_tables: request.extraColumnDisplay.exceptionTables,
     } } : {}),
   };
+}
+
+/** Keep grouped observations readable in inline and paginated exception tables. */
+export function displayOutcomeValue(value: WireScalar | Record<string, WireScalar>): string | null {
+  if (value !== null && typeof value === "object") {
+    return Object.entries(value)
+      .map(([column, observed]) => `${column}=${observed === null ? "(null)" : observed === "" ? '(blank)' : String(observed)}`)
+      .join(", ");
+  }
+  return displayScalar(value);
 }
 
 function displayScalar(value: WireScalar): string | null {
@@ -414,7 +670,7 @@ export function mapViolation(
 ): DetailRow {
   const column = violation.violating_column ?? violation.rule_id;
   const violatingValue = violation.violating_value !== undefined
-    ? displayScalar(violation.violating_value)
+    ? displayOutcomeValue(violation.violating_value)
     : null;
   const comparisonValue = violation.comparison_value !== undefined
     ? displayScalar(violation.comparison_value)
@@ -439,7 +695,7 @@ export function mapViolation(
     kind: "exception",
     ...(violation.violating_column ? { violatingColumn: violation.violating_column } : {}),
     ...(violation.violating_value !== undefined
-      ? { violatingValue: displayScalar(violation.violating_value) }
+      ? { violatingValue: displayOutcomeValue(violation.violating_value) }
       : {}),
     ...(violation.extra_values
       ? {
@@ -477,7 +733,7 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
   };
 
   // Per-rule results.
-  const ruleResults: RuleResult[] = Object.entries(violationsByRule).map(
+  const ruleResults: RuleResult[] = Object.entries(violationsByRule).sort(([a], [b]) => compareRuleIndices(a, b)).map(
     ([ruleId, violations]) => {
       const perRuleRowCount =
         validation.violating_rows_by_rule?.[ruleId] ?? countDistinctRowsForViolations(violations);
@@ -506,6 +762,12 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
         ...(persistedSummary?.condition_grouping
           ? { conditionGroupingSummary: persistedSummary.condition_grouping }
           : {}),
+        ...(persistedSummary?.condition_clauses ? { conditionClauses: persistedSummary.condition_clauses } : {}),
+        ...(persistedSummary?.expectation_clauses ? { expectationClauses: persistedSummary.expectation_clauses } : {}),
+        ...(persistedSummary?.condition_groupings !== undefined ? { conditionGroupings: persistedSummary.condition_groupings } : {}),
+        ...(persistedSummary?.expectation_groupings !== undefined ? { expectationGroupings: persistedSummary.expectation_groupings } : {}),
+        ...(persistedSummary?.condition_tree !== undefined ? { conditionTree: persistedSummary.condition_tree } : {}),
+        ...(persistedSummary?.expectation_tree !== undefined ? { expectationTree: persistedSummary.expectation_tree } : {}),
         violationRowCount: perRuleRowCount,
         violationAttributeCount: perRuleAttributeCount,
         details: violations.map((v, i) =>
@@ -519,6 +781,13 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
         hideComparison: persistedSummary?.hide_comparison ?? false,
       };
     },
+  );
+
+  const filterConfiguration = mapWireFilterConfiguration(
+    result.filters_applied ?? [],
+    result.filter_relation,
+    result.filter_grouping_tree,
+    { idPrefix: "fl", label: "saved row filter grouping" },
   );
 
   // Flatten comparison attribute changes into detail rows.
@@ -580,7 +849,18 @@ export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocum
       ? { groupStatistics: mapGroupStatisticsBundle(result.group_statistics) }
       : {}),
     ...(result.filters_applied
-      ? { filtersApplied: result.filters_applied.map(mapWireFilterRow) }
+      ? {
+          filtersApplied: filterConfiguration.filters,
+          ...(result.filter_relation !== undefined
+            ? { filtersRelation: filterConfiguration.relation }
+            : {}),
+          ...(result.filter_grouping_tree !== undefined
+            ? { filtersGroupTree: filterConfiguration.groupTree }
+            : {}),
+          ...(filterConfiguration.errors.length > 0
+            ? { filtersGroupingErrors: filterConfiguration.errors }
+            : {}),
+        }
       : {}),
     ...(result.nested_aggregation_enabled !== undefined
       ? { nestedAggregationEnabled: result.nested_aggregation_enabled }
@@ -925,31 +1205,46 @@ export function mapFamilyToWire(family: Family): WireFamily {
 }
 
 export function mapSavedFilter(wire: WireSavedFilter): SavedFilter {
+  const configuration = mapWireFilterConfiguration(
+    wire.rows,
+    wire.filter_relation,
+    wire.filter_grouping_tree,
+    { idPrefix: "f", label: "saved filter grouping" },
+  );
   return {
     id: wire.id,
     name: wire.name,
-    rows: wire.rows.map((r, i) => {
-      // Backward compatibility: accept legacy filter_value or new filter_values
-      const values = r.filter_values ?? (r.filter_value ? [r.filter_value] : []);
-      return {
-        id: `f${i}`,
-        column: r.column,
-        operator: mapWireFilterOperator(r.operator),
-        values,
-      };
-    }),
+    rows: configuration.filters,
+    relation: configuration.relation,
+    groupTree: configuration.groupTree,
+    ...(configuration.errors.length > 0
+      ? { groupingErrors: configuration.errors }
+      : {}),
   };
 }
 
 export function mapSavedFilterToWire(filter: Omit<SavedFilter, "id"> & { id?: string }): {
   name: string;
   rows: WireFilterRow[];
+  filter_relation?: GroupRelation;
+  filter_grouping_tree?: WireGroupNode;
 } {
+  if (filter.groupingErrors && filter.groupingErrors.length > 0) {
+    throw new GroupingValidationError(filter.groupingErrors);
+  }
+  const configuration = mapFilterConfigurationToWire(
+    filter.rows,
+    filter.relation ?? null,
+    filter.groupTree ?? null,
+    { label: "saved filter grouping" },
+  );
   return {
     name: filter.name,
-    rows: filter.rows
-      .filter((r) => r.column && r.values.length > 0)
-      .map(mapFilterRowToWire),
+    rows: configuration.rows,
+    ...(configuration.relation ? { filter_relation: configuration.relation } : {}),
+    ...(configuration.groupTree
+      ? { filter_grouping_tree: configuration.groupTree }
+      : {}),
   };
 }
 

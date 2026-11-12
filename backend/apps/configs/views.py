@@ -26,7 +26,7 @@ from apps.configs.services import (
     list_configs,
     update_config,
 )
-from apps.rules.identifiers import calculate_rule_identifier
+from apps.rules.identifiers import RuleIdentityError, calculate_rule_identifier
 from apps.rules.models import StoredValidationRule
 from apps.rules.repository import (
     CatalogError,
@@ -37,7 +37,11 @@ from apps.rules.repository import (
     reinstate_catalog_rule,
 )
 from apps.rules.serializers import RuleSerializer
-from apps.rules.services import _serialize_grouping_tree, validate_rule
+from apps.rules.services import (
+    normalize_rule_draft,
+    rule_definition_payload,
+    validate_rule,
+)
 from apps.runs.template_columns import (
     TemplateColumnError,
     normalize_rows_and_columns_content,
@@ -231,41 +235,16 @@ def _enabled_rule_payload() -> list[dict[str, Any]]:
 
 
 def _rule_snapshot_payload(snapshot: Any) -> dict[str, Any]:
-    rule = snapshot.rule
-    payload: dict[str, Any] = {
+    # The shared serializer includes the executable grouping tree and the
+    # complete outcome expression (legacy ``logic`` or grouped clauses) so an
+    # export/import round trip cannot silently drop grouping.
+    return {
         "rule_identifier": snapshot.rule_identifier,
-        "name": rule.name,
-        "description": rule.description,
-        "conditions": [
-            {
-                "column_name": condition.column_name,
-                "operator": condition.operator,
-                "filter_value": condition.filter_value,
-                "filter_values": list(condition.filter_values),
-            }
-            for condition in rule.conditions
-        ],
-        "logic": {
-            "format": rule.logic.format,
-            "column_name": rule.logic.column_name,
-            "operator": rule.logic.operator,
-            "target_value": rule.logic.target_value,
-            "target_values": list(rule.logic.target_values),
-            "comparison_mode": rule.logic.comparison_mode,
-        },
-        "extra_columns": list(rule.extra_columns),
-        "hide_comparison": rule.hide_comparison,
+        **rule_definition_payload(
+            snapshot.rule,
+            include_empty_target_values=True,
+        ),
     }
-    if rule.condition_relation is not None:
-        payload["condition_relation"] = rule.condition_relation
-    if rule.grouping is not None:
-        payload["grouping"] = rule.grouping
-    if rule.grouping_tree is not None:
-        # The tree is the executable grouping expression.  Omitting it on
-        # export turns a rule such as ``c0 AND (c1 OR c2)`` into a flat AND
-        # when the config is loaded again.
-        payload["grouping_tree"] = _serialize_grouping_tree(rule.grouping_tree)
-    return payload
 
 
 def _import_rule_content(
@@ -301,25 +280,36 @@ def _import_rule_content(
     for raw_draft, draft in zip(drafts, validated, strict=True):
         validation = validate_rule(draft)
         if not validation.valid:
-            identifier = calculate_rule_identifier(draft)
-            stored = StoredValidationRule.objects.filter(identity_id=identifier).first()
-            rule_id = stored.rule_id if stored is not None else raw_draft.get("rule_id", "new")
             name = str(draft.get("name") or raw_draft.get("name") or "Unnamed rule")
             message = "; ".join(validation.errors)
+            # A draft that fails grouping validation may also be unhashable as a
+            # canonical identity. Keep the actionable validation error instead of
+            # letting identity calculation mask it during error reporting.
+            try:
+                identifier = calculate_rule_identifier(draft)
+            except RuleIdentityError:
+                identifier = "uncomputable identity"
+                stored = None
+            else:
+                stored = StoredValidationRule.objects.filter(identity_id=identifier).first()
+            rule_id = stored.rule_id if stored is not None else raw_draft.get("rule_id", "new")
             raise ValueError(f"{name}({rule_id}, {identifier}: {message})")
+    validated = [normalize_rule_draft(draft) for draft in validated]
     conflicts = configuration_conflicts(validated)
     if conflicts and not isinstance(decisions, dict):
         raise RuleConfigConflict(conflicts)
     if conflicts:
+        assert decisions is not None
         resolved: list[dict[str, Any]] = []
         by_identifier = {item["rule_identifier"]: item for item in conflicts}
+        decisions_map = decisions or {}
         for draft in validated:
             identifier = calculate_rule_identifier(draft)
             conflict = by_identifier.get(identifier)
             if conflict is None:
                 resolved.append(draft)
                 continue
-            decision = decisions.get(identifier)
+            decision = decisions_map.get(identifier)
             if decision == "remove":
                 continue
             if decision == "reinstate" or decision == "maintain_original":
@@ -348,16 +338,74 @@ def _import_rule_content(
     }
 
 
+def _validate_filter_config_content(content: Any) -> Any:
+    from apps.runs.grouped_logic import validate_filter_grouping
+
+    if not isinstance(content, dict):
+        return content
+    rows = content.get("rows", [])
+    if not isinstance(rows, list):
+        raise ValueError("Filter configuration rows must be a list.")
+    relation = content.get("filter_relation", content.get("filterRelation"))
+    tree = content.get("filter_grouping_tree", content.get("filterGroupingTree"))
+    errors = validate_filter_grouping(rows, relation, tree)
+    if errors:
+        raise ValueError(
+            "Invalid filter grouping configuration: " + "; ".join(errors)
+        )
+    return content
+
+
 class FiltersConfigListView(BaseConfigListView):
     @property
     def directory(self) -> Path:
         return get_filter_config_dir()
+
+    def post(self, request: Request) -> Response:
+        serializer = ConfigCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            content = _validate_filter_config_content(
+                serializer.validated_data["content"]
+            )
+            config = create_config(
+                self.directory,
+                serializer.validated_data["name"],
+                content,
+            )
+        except (ConfigNameError, ValueError) as exc:
+            return Response({"error": str(exc)}, status=400)
+        return Response(
+            {"name": config.name, "version": config.version},
+            status=201,
+        )
 
 
 class FiltersConfigDetailView(BaseConfigDetailView):
     @property
     def directory(self) -> Path:
         return get_filter_config_dir()
+
+    def put(self, request: Request, name: str) -> Response:
+        serializer = ConfigUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            content = _validate_filter_config_content(
+                serializer.validated_data["content"]
+            )
+            config = update_config(
+                self.directory,
+                name,
+                content,
+                serializer.validated_data["version"],
+            )
+        except ConfigNotFoundError as exc:
+            return Response({"error": str(exc)}, status=404)
+        except ConfigConflictError as exc:
+            return Response({"error": str(exc)}, status=409)
+        except (ConfigNameError, ValueError) as exc:
+            return Response({"error": str(exc)}, status=400)
+        return Response(_config_to_response(config))
 
 
 class RowsAndColumnsConfigListView(BaseConfigListView):

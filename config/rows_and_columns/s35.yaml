@@ -4,6 +4,9 @@ comparisonColumns:
 - id
 - region
 - score
+- sa_flag
+- cva_flag
+- system
 keyColumns:
 - kind: column
   name: id
@@ -15,7 +18,36 @@ aggregationColumns:
 - kind: column
   name: region
 aggregationColumnLabels: {}
-filters: []
+filters:
+- column:
+    kind: column
+    name: system
+  operator: contains
+  filter_values:
+  - oomber
+- column:
+    kind: column
+    name: status
+  operator: equals
+  filter_values:
+  - active
+- column:
+    kind: column
+    name: status
+  operator: equals
+  filter_values:
+  - inactive
+filterGroupingTree:
+  kind: and
+  children:
+  - kind: leaf
+    conditionId: c0
+  - kind: or
+    children:
+    - kind: leaf
+      conditionId: c1
+    - kind: leaf
+      conditionId: c2
 targetColumns: []
 extraColumns:
 - kind: column
@@ -28,6 +60,12 @@ extraColumns:
   name: id
 - kind: column
   name: score
+- kind: column
+  name: sa_flag
+- kind: column
+  name: cva_flag
+- kind: column
+  name: system
 commentaryTemplateColumns:
 - kind: column
   name: name
@@ -42,7 +80,7 @@ extraColumnDisplay:
   newBooksResultPage: true
   newBooksHtmlReport: true
   newBooksExcelReport: true
-  exceptionTables: false
+  exceptionTables: true
 nestedAggregationEnabled: true
 comparisonSections:
 - id: cs-1
@@ -61,4 +99,4 @@ comparisonSections:
   - kind: column
     name: status
   extraColumns: []
-_version: 7
+_version: 17

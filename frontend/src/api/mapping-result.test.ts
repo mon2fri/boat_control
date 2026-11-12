@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { mapRunDocumentToResult } from "./mapping";
 import type { WireRunDocument } from "./wire";
+import { wireRunDocumentSchema } from "./wire";
 
 type DocOverrides = Partial<
   WireRunDocument["result"]["validation"] & {
@@ -89,6 +90,23 @@ function doc(overrides: DocOverrides = {}): WireRunDocument {
 }
 
 describe("mapRunDocumentToResult", () => {
+  it("retains saved rule grouping metadata through schema parsing and mapping", () => {
+    const snapshot = {
+      name: "Saved rule", rule_identifier: "CBR1_00000000000000000000",
+      condition_clauses: ["Condition 1: status equals 'active'"],
+      expectation_clauses: ["Expectation 1: score equals '1'"],
+      condition_groupings: "", expectation_groupings: "",
+      condition_tree: { kind: "leaf" as const, conditionId: "c0" },
+      expectation_tree: { kind: "leaf" as const, conditionId: "c0" },
+    };
+    const mapped = mapRunDocumentToResult(wireRunDocumentSchema.parse(doc({ rule_summaries: { R001: snapshot } })));
+    expect(mapped.ruleResults[0]).toMatchObject({
+      conditionClauses: snapshot.condition_clauses,
+      expectationClauses: snapshot.expectation_clauses,
+      conditionTree: snapshot.condition_tree,
+      expectationTree: snapshot.expectation_tree,
+    });
+  });
   it("uses server-provided distinct counts and per-rule counts", () => {
     const result = mapRunDocumentToResult(doc());
     expect(result.overall.ruleViolationRowCount).toBe(2);

@@ -1,3 +1,5 @@
+import { GROUPING_PREVIEW_JS } from "./groupingPreviewScript";
+
 export interface RenderedHtmlExport {
   blob: Blob;
   filename: string;
@@ -22,7 +24,16 @@ export function exportRenderedHtml(
 ): RenderedHtmlExport {
   const clone = root.cloneNode(true) as HTMLElement;
   clone.querySelectorAll("[data-export-exclude]").forEach((element) => element.remove());
+  // Described-by IDs refer to a live portal; the offline renderer supplies its own.
+  clone.querySelectorAll("[data-grouping-preview]").forEach((element) => element.removeAttribute("aria-describedby"));
   normalizeReportHeader(clone, reportName);
+  // A standalone snapshot describes its exported scope, not a live server toggle.
+  const scope = root.querySelector<HTMLInputElement>("#new-exceptions-only");
+  const scopeClone = clone.querySelector<HTMLInputElement>("#new-exceptions-only");
+  if (scope && scopeClone) {
+    scopeClone.toggleAttribute("checked", scope.checked);
+    scopeClone.setAttribute("disabled", "");
+  }
 
   const css = `${collectDocumentCss()}\n${EXPORT_ONLY_CSS}`;
   const serializedResult = new XMLSerializer().serializeToString(clone);
@@ -39,7 +50,7 @@ export function exportRenderedHtml(
     `<style>${css}</style>`,
     "</head>",
     `<body><main class="app-main">${serializedResult}</main>${TOC_FAB_HTML}</body>`,
-    `<script>${EXPORT_INTERACTIVE_JS}</script>`,
+    `<script>${EXPORT_INTERACTIVE_JS}\n${GROUPING_PREVIEW_JS}</script>`,
     "</html>",
   ].join("\n");
 
@@ -646,7 +657,7 @@ function collectDocumentCss(): string {
   return chunks.join("\n");
 }
 
-function safeFilename(value: string): string {
+export function safeFilename(value: string): string {
   const cleaned = value
     .replace(/[^a-zA-Z0-9 _-]/g, "_")
     .trim()

@@ -7,42 +7,12 @@ from django.db import transaction
 
 from apps.rules.models import RuleStoreState, StoredValidationRule
 from apps.rules.repository import apply_rule_configuration, register_rule_identity
-from apps.rules.services import RulesFile, _serialize_grouping_tree, load_rules
+from apps.rules.services import RulesFile, load_rules, rule_definition_payload
 from apps.settings.services import get_rules_file
 
 
 def _payload(rule: Any) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "name": rule.name,
-        "description": rule.description,
-        "conditions": [
-            {
-                "column_name": condition.column_name,
-                "operator": condition.operator,
-                "filter_value": condition.filter_value,
-                "filter_values": list(condition.filter_values),
-            }
-            for condition in rule.conditions
-        ],
-        "logic": {
-            "format": rule.logic.format,
-            "column_name": rule.logic.column_name,
-            "operator": rule.logic.operator,
-            "target_value": rule.logic.target_value,
-            "target_values": list(rule.logic.target_values),
-            "comparison_mode": rule.logic.comparison_mode,
-        },
-        "extra_columns": list(rule.extra_columns),
-        "hide_comparison": rule.hide_comparison,
-    }
-    if rule.condition_relation is not None:
-        result["condition_relation"] = rule.condition_relation
-    if rule.grouping is not None:
-        result["grouping"] = rule.grouping
-    tree = _serialize_grouping_tree(rule.grouping_tree)
-    if tree is not None:
-        result["grouping_tree"] = tree
-    return result
+    return rule_definition_payload(rule, include_empty_target_values=True)
 
 
 class Command(BaseCommand):

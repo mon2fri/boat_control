@@ -40,10 +40,10 @@ const SETTINGS_KEY = ["settings"] as const;
 const FILTERS_KEY = ["saved-filters"] as const;
 const PRESETS_KEY = ["preset-sources"] as const;
 
-function configListKey(type: string) {
+export function configListKey(type: string) {
   return ["configs", type] as const;
 }
-function configDetailKey(type: string, name: string) {
+export function configDetailKey(type: string, name: string) {
   return ["configs", type, name] as const;
 }
 

@@ -5,6 +5,20 @@ validating records against configurable rules, retaining recent results, and exp
 
 Project planning and worker assignments are in [`planning/`](planning/).
 
+See the [rule editor and grouping-preview guide](docs/20261111_rule_editor_and_grouping_previews.md)
+for the full-width rule list, Add/Edit/Copy overlay, results previews, and offline HTML behavior.
+
+## Run with Docker on Windows
+
+With Docker Desktop running Linux containers, run from the repository root:
+
+```powershell
+docker compose up --build -d
+```
+
+Open <http://localhost:45303/>. See [Docker instructions](docker/README.md)
+for building only, changing ports, persistent data, and transferring the image.
+
 ## Start the development application
 
 Run both Django and React from one terminal:

@@ -145,6 +145,28 @@
       "filters": [],
       "rule_ids": []
     },
+    "grouped_execute_request": {
+      "session_id": "a1b2c3d4e5f6",
+      "target_columns": ["status"],
+      "key_columns": ["id"],
+      "filters": [
+        {"column": "name", "operator": "eq", "filter_values": ["alice"]},
+        {"column": "status", "operator": "eq", "filter_value": "active"},
+        {"column": "name", "operator": "contains", "filter_value": "car"}
+      ],
+      "filter_relation": "and",
+      "filter_grouping_tree": {
+        "kind": "or",
+        "children": [
+          {"kind": "and", "children": [
+            {"kind": "leaf", "conditionId": "c0"},
+            {"kind": "leaf", "conditionId": "c1"}
+          ]},
+          {"kind": "leaf", "conditionId": "c2"}
+        ]
+      },
+      "rule_ids": []
+    },
     "execute_response": {
       "run_id": "abc123def456",
       "report_name": "data_v2_vs_data_v3",
@@ -303,6 +325,31 @@
         "column_name": "tax_id",
         "operator": "neq",
         "target_value": ""
+      }
+    },
+    "rule_with_grouped_outcomes": {
+      "name": "Opposite flags",
+      "description": "Only Y/N and N/Y pass",
+      "conditions": [],
+      "logic_clauses": [
+        {"format": "value_vs_column", "column_name": "sa", "operator": "eq", "target_value": "Y"},
+        {"format": "value_vs_column", "column_name": "cva", "operator": "eq", "target_value": "N"},
+        {"format": "value_vs_column", "column_name": "sa", "operator": "eq", "target_value": "N"},
+        {"format": "value_vs_column", "column_name": "cva", "operator": "eq", "target_value": "Y"}
+      ],
+      "logic_relation": "or",
+      "logic_grouping_tree": {
+        "kind": "or",
+        "children": [
+          {"kind": "and", "children": [
+            {"kind": "leaf", "conditionId": "c0"},
+            {"kind": "leaf", "conditionId": "c1"}
+          ]},
+          {"kind": "and", "children": [
+            {"kind": "leaf", "conditionId": "c2"},
+            {"kind": "leaf", "conditionId": "c3"}
+          ]}
+        ]
       }
     },
     "error_response": {

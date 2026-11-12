@@ -74,28 +74,29 @@ describe("result components", () => {
   });
 
   it("renders all five overall counts with their values", () => {
-    render(<OverallSummaryCards summary={result.overall} />);
+    render(<OverallSummaryCards summary={{ ...result.overall, newBookCount: 2 }} />);
     const region = screen.getByLabelText("Overall result summary");
-    expect(within(region).getByText("1,200")).toBeInTheDocument();
+    expect(within(region).queryByText("1,200")).not.toBeInTheDocument();
+    expect(within(region).queryByText("Books after filters")).not.toBeInTheDocument();
     expect(within(region).getByText("Books with rule exception")).toBeInTheDocument();
     expect(within(region).getByText("Attributes changed")).toBeInTheDocument();
-    // Six metric cards (five always shown, newBooks shown only when > 0).
+    expect(within(region).getByText("New Books")).toBeInTheDocument();
     expect(region.querySelectorAll(".metric")).toHaveLength(5);
   });
 
-  it("shows the rule logic under the section title", () => {
+  it("moves rule logic from inline expressions into the hover preview", () => {
     render(<RuleResultSection result={{
       ...ruleResult,
       conditionSummary: "Condition 1: region equals 'EMEA'; Condition 2: owner equals 'Ops'",
       conditionGroupingSummary: "Condition 1 AND Condition 2",
     }} />);
     const section = screen.getByRole("region", { name: /Region present/ });
-    expect(within(section).getByText("Condition:")).toBeInTheDocument();
-    expect(within(section).getByText(/Condition 1: region equals/)).toBeInTheDocument();
-    expect(within(section).getByText("Grouping:")).toBeInTheDocument();
-    expect(within(section).getByText("Condition 1 AND Condition 2")).toBeInTheDocument();
-    expect(within(section).getByText("Expectation:")).toBeInTheDocument();
-    expect(within(section).getByText(/region must not equal/)).toBeInTheDocument();
+    expect(within(section).queryByText("Expectation:")).not.toBeInTheDocument();
+    expect(within(section).queryByText("Grouping:")).not.toBeInTheDocument();
+    fireEvent.mouseEnter(within(section).getByRole("button", { name: /Preview grouping/ }));
+    const preview = screen.getByRole("tooltip");
+    expect(within(preview).getByRole("region", { name: "Conditions" })).toBeInTheDocument();
+    expect(within(preview).getByText(/region must not equal/)).toBeInTheDocument();
     expect(within(section).getByText("3")).toBeInTheDocument();
   });
 

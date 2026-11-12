@@ -223,7 +223,17 @@ def test_export_resolves_date_from_run_metadata(
     repository.add(_record("A", TRACKING_DATE))
     monkeypatch.setattr(
         "apps.runs.persistence.load_run",
-        lambda run_id: {"run_id": run_id, "as_of_date": "2026-10-30"},
+        lambda run_id: {
+            "run_id": run_id,
+            "as_of_date": "2026-10-30",
+            "created_at": "2026-10-30T10:00:00+00:00",
+            "result": {
+                "validation": {
+                    "violations_by_rule": {"R001": [{"exception_id": "A"}]},
+                    "rule_summaries": {},
+                }
+            },
+        },
     )
 
     response = APIClient().get("/api/exception-tracking/export/?run_id=run123")
@@ -317,9 +327,12 @@ def test_import_rejects_date_mismatch_before_any_write(
     assert repository.update_calls == []
 
 
-def test_import_rejects_unknown_duplicate_and_missing_ids_atomically(
+def test_import_rejects_unknown_and_duplicate_ids_atomically(
     repository: FakeRepository,
 ) -> None:
+    # Missing IDs are tolerated as safe partial templates (omitted date
+    # records are preserved); see test_exception_tracking_run_scope.py. Only
+    # unknown and duplicate IDs fail the whole import.
     repository.add(_record("A", TRACKING_DATE))
     repository.add(_record("B", TRACKING_DATE))
 
@@ -334,16 +347,6 @@ def test_import_rejects_unknown_duplicate_and_missing_ids_atomically(
     assert response.status_code == 400
     assert response.json()["code"] == "unknown_exception_ids"
     assert response.json()["details"]["unknown_ids"] == ["X"]
-
-    missing = _template([_record("A", TRACKING_DATE)])
-    response = APIClient().post(
-        "/api/exception-tracking/import/",
-        {"file": _upload(missing)},
-        format="multipart",
-    )
-    assert response.status_code == 400
-    assert response.json()["code"] == "missing_exception_ids"
-    assert response.json()["details"]["missing_ids"] == ["B"]
 
     duplicate = load_workbook(io.BytesIO(_template([_record("A", TRACKING_DATE)])))
     duplicate["Exceptions"].append(["A", "", "", "", "", "", "", "", ""])
@@ -495,10 +498,20 @@ def test_results_and_tracking_downloads_are_identical(
 ) -> None:
     _with_details(repository)
     repository.add(_detail_record(commentary="Known"))
+    # A run whose membership equals the date's records exports the same rows
+    # as the date-wide template (rule summaries do not affect exception rows).
     run = {
         "run_id": "run-details",
         "as_of_date": TRACKING_DATE.isoformat(),
-        "result": {},
+        "created_at": "2026-10-30T10:00:00+00:00",
+        "result": {
+            "validation": {
+                "violations_by_rule": {
+                    "R001": [{"exception_id": DETAIL_EXCEPTION_ID}]
+                },
+                "rule_summaries": {},
+            }
+        },
     }
     monkeypatch.setattr(
         "apps.runs.persistence.load_run",
@@ -557,7 +570,19 @@ def test_date_scoped_columns_control_tracking_metadata_and_both_export_routes(
     )
     monkeypatch.setattr(
         "apps.runs.persistence.load_run",
-        lambda run_id: {"run_id": run_id, "as_of_date": PRIOR_DATE.isoformat()},
+        lambda run_id: {
+            "run_id": run_id,
+            "as_of_date": PRIOR_DATE.isoformat(),
+            "created_at": "2026-09-30T10:00:00+00:00",
+            "result": {
+                "validation": {
+                    # Round 4 report scope: the run's membership selects the
+                    # rows; here it covers this date's only record.
+                    "violations_by_rule": {"R001": [{"exception_id": "SEP"}]},
+                    "rule_summaries": {},
+                }
+            },
+        },
     )
 
     september_list = APIClient().get(

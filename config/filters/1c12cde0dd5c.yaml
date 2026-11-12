@@ -1,0 +1,29 @@
+id: 1c12cde0dd5c
+name: UI Flags active Bloomberg or oomber
+rows:
+- column: system
+  operator: eq
+  filter_value: Bloomberg
+  filter_values:
+  - Bloomberg
+- column: system
+  operator: eq
+  filter_value: oomber
+  filter_values:
+  - oomber
+- column: status
+  operator: eq
+  filter_value: active
+  filter_values:
+  - active
+filter_grouping_tree:
+  kind: and
+  children:
+  - kind: or
+    children:
+    - kind: leaf
+      conditionId: c0
+    - kind: leaf
+      conditionId: c1
+  - kind: leaf
+    conditionId: c2

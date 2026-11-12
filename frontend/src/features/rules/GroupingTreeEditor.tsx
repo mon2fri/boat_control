@@ -18,6 +18,8 @@ import {
   defaultGroupTree,
   findConditionId,
 } from "./groupingTree";
+import { PER_GROUPING_HELP_TEXT } from "./groupingEditorSupport";
+import { ClauseLabel } from "./ClauseLabel";
 
 interface Props {
   conditions: Condition[];
@@ -25,9 +27,28 @@ interface Props {
   onChange: (next: GroupNode | null) => void;
   /** When "per_grouping", groups are enforced to have exactly 2 members. */
   groupingMode?: "and_or" | "per_grouping";
+  /**
+   * Optional human-readable label for a clause. Filter and outcome editors
+   * pass their own wording so the same tree interaction reads naturally in
+   * both places. Defaults to the original condition wording.
+   */
+  conditionLabel?: ((condition: Condition) => string) | undefined;
+  /**
+   * Render the explanatory paragraph inside the editor. Parents that place a
+   * SectionHint next to the section title pass false so the copy is not
+   * duplicated.
+   */
+  showHelp?: boolean;
 }
 
-export function GroupingTreeEditor({ conditions, value, onChange, groupingMode = "and_or" }: Props) {
+export function GroupingTreeEditor({
+  conditions,
+  value,
+  onChange,
+  groupingMode = "and_or",
+  conditionLabel,
+  showHelp = true,
+}: Props) {
   const helpId = useId();
   if (conditions.length === 0) {
     return <p className="field-hint">Add conditions to enable grouping.</p>;
@@ -40,6 +61,8 @@ export function GroupingTreeEditor({ conditions, value, onChange, groupingMode =
         value={value}
         onChange={onChange}
         helpId={helpId}
+        showHelp={showHelp}
+        conditionLabel={conditionLabel}
       />
     );
   }
@@ -50,11 +73,13 @@ export function GroupingTreeEditor({ conditions, value, onChange, groupingMode =
     .map((c) => c.id);
 
   return (
-    <div className="group-tree" aria-describedby={helpId}>
-      <p id={helpId} className="field-hint">
-        Build the grouping structurally — precedence is set by the tree shape, not
-        by parentheses in a string.
-      </p>
+    <div className="group-tree" aria-describedby={showHelp ? helpId : undefined}>
+      {showHelp && (
+        <p id={helpId} className="field-hint">
+          Build the grouping structurally — precedence is set by the tree shape, not
+          by parentheses in a string.
+        </p>
+      )}
       <TreeNodeEditor
         node={root}
         conditions={conditions}
@@ -63,6 +88,7 @@ export function GroupingTreeEditor({ conditions, value, onChange, groupingMode =
         onRemove={null}
         availableConditionIds={new Set(conditions.map((c) => c.id))}
         groupingMode="and_or"
+        conditionLabel={conditionLabel}
       />
       {ungrouped.length > 0 && (
         <p className="field-hint" role="status">
@@ -89,19 +115,24 @@ function PerGroupingEditor({
   value,
   onChange,
   helpId,
+  showHelp,
+  conditionLabel,
 }: {
   conditions: Condition[];
   value: GroupNode | null;
   onChange: (next: GroupNode | null) => void;
   helpId: string;
+  showHelp: boolean;
+  conditionLabel?: ((condition: Condition) => string) | undefined;
 }) {
-  // More than one independent group needs a transport-only OR wrapper. Keep
-  // that wrapper state locally so an explicit OR group made only of groups is
-  // not mistaken for the wrapper and flattened out of the preview.
-  const [forestMode, setForestMode] = useState(
-    () => value?.kind === "or" && value.children.length > 1 && value.children.every((child) => child.kind !== "leaf"),
-  );
-  const rootGroups = useMemo(() => groupForest(value, forestMode), [value, forestMode]);
+  // Unjoined groups are editor-only drafts, never an implicit executable OR.
+  // External saved trees retain their explicit root, including loaded R079.
+  const [draftForest, setDraftForest] = useState<{ source: GroupNode | null; roots: GroupNode[] } | null>(null);
+  const rootGroups = useMemo<GroupNode[]>(() => {
+    if (draftForest && draftForest.source === value) return draftForest.roots;
+    return value && value.kind !== "leaf" ? [value] : [];
+  }, [value, draftForest]);
+  const memberKind = conditionLabel?.(conditions[0]!)?.match(/^(Filter|Expectation|Condition) /i)?.[1] ?? "Condition";
 
   /**
    * Stable, post-order numeric IDs for every group in the tree.
@@ -171,7 +202,7 @@ function PerGroupingEditor({
       }
     }
     return items;
-  }, [ungrouped, rootGroups, conditions, idOf]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ungrouped, rootGroups, conditions, idOf, conditionLabel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // New-group builder state
   const [newGroupKind, setNewGroupKind] = useState<"and" | "or">("and");
@@ -183,16 +214,11 @@ function PerGroupingEditor({
 
   const canCreateGroup = selectedMembers.length >= 2;
 
-  /** Emit root value, unwrapping the OR wrapper when only 1 group remains. */
+  /** Only one explicit root can be persisted. Multiple roots block save/run. */
   function emitRoot(children: GroupNode[]): void {
-    setForestMode(children.length > 1);
-    if (children.length === 0) {
-      onChange(null);
-    } else if (children.length === 1) {
-      onChange(children[0]!);
-    } else {
-      onChange({ kind: "or", children });
-    }
+    const next = children.length === 1 ? children[0]! : null;
+    setDraftForest({ source: next, roots: children });
+    onChange(next);
   }
 
   function createGroup(): void {
@@ -218,7 +244,13 @@ function PerGroupingEditor({
   }
 
   function removeGroup(index: number): void {
-    const next = rootGroups.filter((_, i) => i !== index);
+    // Remove only this grouping relationship. Nested groups become independent
+    // draft roots; direct leaf members return to the ungrouped clause picker.
+    const removed = rootGroups[index];
+    const childGroups = removed && removed.kind !== "leaf"
+      ? removed.children.filter((child) => child.kind !== "leaf")
+      : [];
+    const next = rootGroups.flatMap((group, i) => i === index ? childGroups : [group]);
     setSelectedMembers([]);
     setEditingPath(null);
     emitRoot(next);
@@ -248,18 +280,23 @@ function PerGroupingEditor({
 
   function condLabel(id: string): string {
     const c = conditions.find((cc) => cc.id === id);
-    const values = c ? (c.values ?? (c.value ? [c.value] : [])) : [];
-    return c ? `${c.column || "<column>"} ${c.operator} ${values.join(" OR ") || "<value>"}` : `<missing:${id}>`;
+    if (!c) return `<missing:${id}>`;
+    if (conditionLabel) return conditionLabel(c);
+    const values = c.values ?? (c.value ? [c.value] : []);
+    return `Condition ${conditions.indexOf(c) + 1}: ${c.column || "<column>"} ${c.operator} ${values.join(" OR ") || "<value>"}`;
   }
 
   return (
-    <div className="group-tree" aria-describedby={helpId}>
-      <p id={helpId} className="field-hint">
-        Create groups of 2 or more items. Groups can contain other groups.
-        All conditions must be in a group. The tree keeps every nested group
-        visible; edit a group to remove one of its immediate children.
-      </p>
+    <div className="group-tree" aria-describedby={showHelp ? helpId : undefined}>
+      {showHelp && (
+        <p id={helpId} className="field-hint">
+          {PER_GROUPING_HELP_TEXT}
+        </p>
+      )}
 
+      {rootGroups.length > 1 && <p className="alert alert--error" role="alert">
+        These groups are not joined. Select the existing groups and explicitly create an AND or OR parent before saving.
+      </p>}
       {rootGroups.length > 0 && (
         <ol className="group-tree-children group-tree-children--root">
           {rootGroups.map((child, i) => (
@@ -282,7 +319,7 @@ function PerGroupingEditor({
       )}
 
       {availableItems.length >= 2 && (
-        <fieldset style={{ border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "var(--space)", marginTop: "var(--space)" }}>
+        <fieldset className="group-builder">
           <legend>Create new group</legend>
           <div className="field">
             <label htmlFor="new-group-kind">Group type</label>
@@ -311,7 +348,7 @@ function PerGroupingEditor({
               */}
               {ungrouped.length > 0 && (
                 <div className="group-tree-picklist-section" data-testid="picklist-conditions">
-                  <p className="group-tree-picklist-heading">Conditions</p>
+                  <p className="group-tree-picklist-heading">{memberKind}s</p>
                   {ungrouped.map((c) => {
                     const key = `cond:${c.id}`;
                     return (
@@ -321,8 +358,9 @@ function PerGroupingEditor({
                           checked={selectedMembers.includes(key)}
                           onChange={() => toggleMember(key)}
                           data-testid={`pick-${key}`}
+                          aria-label={condLabel(c.id)}
                         />
-                        <span style={{ fontSize: "0.9rem" }}>{condLabel(c.id)}</span>
+                        <span style={{ fontSize: "0.9rem" }}><ClauseLabel label={condLabel(c.id)} /></span>
                       </label>
                     );
                   })}
@@ -348,8 +386,9 @@ function PerGroupingEditor({
                           checked={selectedMembers.includes(key)}
                           onChange={() => toggleMember(key)}
                           data-testid={`pick-${key}`}
+                          aria-label={groupFullLabel(group)}
                         />
-                        <span style={{ fontSize: "0.9rem" }}>{groupFullLabel(group)}</span>
+                        <span style={{ fontSize: "0.9rem" }}><span className="condition-number group-number">{groupTitle(group)}</span>{" "}{group.kind.toUpperCase()} · {group.kind === "leaf" ? 0 : group.children.length} members</span>
                       </label>
                     );
                   })}
@@ -409,6 +448,7 @@ function GroupTreeItem({
   onRemoveRoot,
   parentEditing = false,
   onRemoveFromParent,
+  parentTitle,
 }: {
   group: GroupNode;
   path: number[];
@@ -421,10 +461,16 @@ function GroupTreeItem({
   onRemoveRoot?: () => void;
   parentEditing?: boolean;
   onRemoveFromParent?: () => void;
+  /** Displayed title of the immediate parent group, when this group is nested. */
+  parentTitle?: string;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const nestedHintId = useId();
   if (group.kind === "leaf") return null;
   const editing = samePath(editingPath, path);
+  const nestedTooltip = parentTitle
+    ? `This group is part of ${parentTitle.toLowerCase()}, please remove ${parentTitle.toLowerCase()} first to remove this group.`
+    : null;
 
   return (
     <li className="group-tree-node group-tree-node--group" data-testid={`tree-${groupTitle(group)}`}>
@@ -437,9 +483,8 @@ function GroupTreeItem({
             onClick={() => setCollapsed((current) => !current)}
           >
             <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
-            {groupTitle(group)}
+            <span className="condition-number group-number">{groupTitle(group)}</span>
           </button>
-          <span className="group-tree-type group-tree-type--group">Group</span>
           {editing ? (
             <select
               aria-label={`${groupTitle(group)} operator`}
@@ -470,6 +515,29 @@ function GroupTreeItem({
               Remove group
             </button>
           )}
+          {nestedTooltip && (
+            <span
+              className="disabled-action-hint"
+              tabIndex={0}
+              title={nestedTooltip}
+              aria-label={nestedTooltip}
+              aria-describedby={nestedHintId}
+              data-testid={`nested-remove-hint-${groupTitle(group)}`}
+            >
+              <button
+                type="button"
+                className="btn btn--danger group-tree-remove"
+                disabled
+                aria-label={`Remove ${groupTitle(group)}`}
+                aria-describedby={nestedHintId}
+              >
+                Remove group
+              </button>
+              <span role="tooltip" id={nestedHintId}>
+                {nestedTooltip}
+              </span>
+            </span>
+          )}
           {parentEditing && onRemoveFromParent && (
             <button
               type="button"
@@ -487,8 +555,7 @@ function GroupTreeItem({
             child.kind === "leaf" ? (
               <li key={`leaf-${child.conditionId}`} className="group-tree-node group-tree-node--condition">
                 <div className="group-tree-member-row">
-                  <span className="group-tree-type group-tree-type--condition">Condition</span>
-                  <span className="group-tree-label group-tree-label--condition">{condLabel(child.conditionId)}</span>
+                  <span className="group-tree-label group-tree-label--condition"><ClauseLabel label={condLabel(child.conditionId)} /></span>
                   {editing && (
                   <button
                     type="button"
@@ -514,20 +581,13 @@ function GroupTreeItem({
                 onRemoveMember={onRemoveMember}
                 parentEditing={editing}
                 onRemoveFromParent={() => onRemoveMember(path, index)}
+                parentTitle={groupTitle(group)}
               />
             )
           ))}
         </ol>}
     </li>
   );
-}
-
-function groupForest(value: GroupNode | null, forestMode: boolean): GroupNode[] {
-  if (!value) return [];
-  if (forestMode && value.kind === "or") {
-    return value.children;
-  }
-  return [value];
 }
 
 function samePath(left: number[] | null, right: number[]): boolean {
@@ -578,16 +638,22 @@ interface NodeEditorProps {
   onRemove: (() => void) | null;
   availableConditionIds: Set<string>;
   groupingMode: "and_or" | "per_grouping";
+  conditionLabel?: ((condition: Condition) => string) | undefined;
 }
 
-function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, availableConditionIds, groupingMode }: NodeEditorProps) {
+function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, availableConditionIds, groupingMode, conditionLabel }: NodeEditorProps) {
   const label = useId();
   if (node.kind === "leaf") {
     const cond = conditions.find((c) => c.id === node.conditionId);
+    const renderedLabel = cond
+      ? (conditionLabel
+          ? conditionLabel(cond)
+          : `Condition ${conditions.indexOf(cond) + 1}: ${cond.column || "<column>"} ${cond.operator} ${(cond.values ?? (cond.value ? [cond.value] : [])).join(" OR ") || "<value>"}`)
+      : `<missing:${node.conditionId}>`;
     return (
       <div className="group-tree-leaf" role="treeitem" aria-level={depth + 1}>
         <span>
-          Condition: <strong>{cond ? `${cond.column || "<column>"} ${cond.operator} ${(cond.values ?? (cond.value ? [cond.value] : [])).join(" OR ") || "<value>"}` : `<missing:${node.conditionId}>`}</strong>
+          <ClauseLabel label={renderedLabel} />
         </span>
         {onRemove && (
           <button type="button" className="btn btn--danger" onClick={onRemove} aria-label="Remove this condition slot">
@@ -667,6 +733,7 @@ function TreeNodeEditor({ node, conditions, depth, onChange, onRemove, available
               onRemove={() => removeChild(i)}
               availableConditionIds={availableConditionIds}
               groupingMode={groupingMode}
+              conditionLabel={conditionLabel}
             />
           </li>
         ))}

@@ -17,6 +17,12 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from apps.exception_tracking.dates import parse_iso_date
+from apps.exception_tracking.rule_summary import (
+    MISSING_METADATA,
+    NO_SNAPSHOTS_MESSAGE,
+    RULE_TABLE_HEADERS,
+    build_rule_table_rows,
+)
 
 TEMPLATE_VERSION = "exception_commentary/v2"
 LEGACY_TEMPLATE_VERSION = "exception_commentary/v1"
@@ -166,6 +172,57 @@ def _detail_text(value: Any) -> str:
 _STATUS_RANK = {"New": 0, "NotCommented": 0, "Commented": 1}
 
 
+def _write_rule_summary_table(
+    sheet: Any,
+    rule_summaries: Mapping[str, Any] | None,
+    rule_snapshot_notes: Iterable[str] = (),
+) -> None:
+    """Additive enabled-rule table below the Template metadata block.
+
+    Blank row 7 separates metadata from the title on row 8 and keeps
+    parser-critical B2/B3 positions untouched; the
+    Exceptions sheet and its import validation are unaffected.
+    """
+    notes = [str(note) for note in (rule_snapshot_notes or []) if str(note).strip()]
+    sheet.cell(8, 1, "Enabled Rules").font = Font(bold=True, size=12)
+
+    row = 9
+    if notes:
+        sheet.cell(row, 1, "Snapshot Notes").font = Font(bold=True)
+        sheet.cell(row, 2, _protect_text("\n".join(notes)))
+        row += 1
+
+    header_fill = PatternFill("solid", fgColor="DCE6F1")
+    for column, header in enumerate(RULE_TABLE_HEADERS, start=1):
+        cell = sheet.cell(row, column, _protect_text(header))
+        cell.font = Font(bold=True)
+        cell.fill = header_fill
+        cell.alignment = Alignment(vertical="top", wrap_text=True)
+    sheet.row_dimensions[row].height = 30
+    row += 1
+
+    rows = build_rule_table_rows(rule_summaries)
+    if not rows:
+        rows = [(NO_SNAPSHOTS_MESSAGE, *(MISSING_METADATA,) * (len(RULE_TABLE_HEADERS) - 1))]
+    for values in rows:
+        if len(values) != len(RULE_TABLE_HEADERS):
+            values = tuple(list(values) + [""] * len(RULE_TABLE_HEADERS))[: len(RULE_TABLE_HEADERS)]
+        max_lines = 1
+        for column, value in enumerate(values, start=1):
+            text = "" if value is None else str(value)
+            cell = sheet.cell(row, column, _protect_text(text))
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            max_lines = max(max_lines, text.count("\n") + 1)
+        sheet.row_dimensions[row].height = max(30, 15 * max_lines)
+        row += 1
+
+    sheet.column_dimensions["C"].width = 32
+    sheet.column_dimensions["D"].width = 48
+    sheet.column_dimensions["E"].width = 32
+    sheet.column_dimensions["F"].width = 36
+    sheet.column_dimensions["G"].width = 60
+
+
 def _status_rank(value: object) -> int:
     return _STATUS_RANK.get(str(value), len(_STATUS_RANK))
 
@@ -177,6 +234,9 @@ def build_commentary_workbook(
     generated_at: datetime | None = None,
     detail_columns: Iterable[str] = (),
     detail_values: Mapping[str, Mapping[str, Any]] | None = None,
+    rule_summaries: Mapping[str, Any] | None = None,
+    rule_snapshot_notes: Iterable[str] = (),
+    report_name: str = "",
 ) -> bytes:
     """Build the shared EXCEPTION commentary template.
 
@@ -185,6 +245,21 @@ def build_commentary_workbook(
     ``detail_columns`` are the ordered `Extra Columns for Commentary Template`
     selection appended after the standard metadata. Their values are keyed by
     exception ID in ``detail_values`` and are never used by import validation.
+
+    ``rule_summaries`` is a keyword-only optional mapping of rule index
+    (``"R001"``) to that run's persisted validation summary mapping, exactly
+    as stored under ``result["validation"]["rule_summaries"]`` (see
+    ``apps.exception_tracking.rule_summary`` for the full contract, the
+    date-wide union policy and the missing-metadata representation). It
+    renders as a readable enabled-rule table on the Template sheet after the
+    metadata/instructions block; enabled rules with zero exceptions appear
+    because rows come from these snapshots, never from violations. ``None``
+    (for example legacy runs without snapshots) renders an explicit
+    placeholder row. ``rule_snapshot_notes`` renders optional snapshot-union
+    notes above the table header. Both inputs are additive: the Template
+    sheet name, parser metadata positions B2/B3, template version, Exceptions
+    columns and commentary rules are unchanged, so existing and new files
+    keep importing.
     """
     workbook = Workbook()
     template = workbook.active
@@ -205,8 +280,15 @@ def build_commentary_workbook(
         "for this as-of date. Do not change exception IDs. Columns after Rule Index "
         "are informational context and are ignored during upload."
     )
+    template["A6"] = "Report Name"
+    template["B6"] = _protect_text(report_name or MISSING_METADATA)
     template.column_dimensions["A"].width = 24
     template.column_dimensions["B"].width = 90
+    _write_rule_summary_table(
+        template,
+        rule_summaries,
+        rule_snapshot_notes,
+    )
 
     appended = _unique_detail_columns(detail_columns)
     headers = [*EXCEPTION_HEADERS, *appended]
@@ -232,14 +314,8 @@ def build_commentary_workbook(
         detail = values_by_id.get(exception_id) or {}
         sheet.append(
             [
-                *[
-                    _protect_text(_record_value(record, field))
-                    for field in _EXCEPTION_FIELDS
-                ],
-                *[
-                    _protect_text(_detail_text(detail.get(column)))
-                    for column in appended
-                ],
+                *[_protect_text(_record_value(record, field)) for field in _EXCEPTION_FIELDS],
+                *[_protect_text(_detail_text(detail.get(column))) for column in appended],
             ]
         )
 
@@ -295,9 +371,7 @@ def parse_commentary_workbook(
     try:
         workbook = load_workbook(io.BytesIO(content), read_only=True, data_only=False)
     except Exception as exc:  # openpyxl raises several unrelated exception types
-        raise WorkbookValidationError(
-            "The uploaded file is not a readable XLSX workbook."
-        ) from exc
+        raise WorkbookValidationError("The uploaded file is not a readable XLSX workbook.") from exc
 
     try:
         if TEMPLATE_SHEET not in workbook.sheetnames or EXCEPTIONS_SHEET not in workbook.sheetnames:

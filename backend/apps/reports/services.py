@@ -3,12 +3,17 @@ from __future__ import annotations
 import csv
 import html
 import io
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
+
+from apps.reports.rule_headers import excel_rule_headers, rule_sort_key
+from apps.runs.grouped_logic import validate_filter_grouping
+from apps.runs.report_metadata import grouping_lines
 
 _FILTER_OP_LABELS: dict[str, str] = {
     "equals": "equals",
@@ -21,18 +26,61 @@ _FILTER_OP_LABELS: dict[str, str] = {
 }
 _EXCEL_MAX_ROWS = 1_048_576
 _EXCEL_MAX_COLUMNS = 16_384
+# Round 4 enhancement 3 copy, corrected per user 2026-11-09 request.
+# Used for exported HTML + Excel empty-rule sections.
+_EMPTY_RULE_HINT = "Nil exception was captured by the rule."
+
+
+def _observed_item_text(value: Any) -> str:
+    """Render one observed CSV value inside a compound group.
+
+    The grouped-outcome contract stores a flat map of column name to observed
+    value. Excel accepts scalars only, so compound maps are rendered as text.
+    Keep the frontend's display convention for missing values so exported and
+    on-screen reports agree: ``(null)`` for JSON null and ``(blank)`` for the
+    empty string.
+    """
+    if value is None:
+        return "(null)"
+    if value == "":
+        return "(blank)"
+    return str(value)
+
+
+def _format_compound_cell(value: Mapping[Any, Any] | list[Any] | tuple[Any, ...]) -> str:
+    if isinstance(value, Mapping):
+        return ", ".join(
+            f"{key}={_observed_item_text(item)}" for key, item in value.items()
+        )
+    return ", ".join(_observed_item_text(item) for item in value)
+
+
+def _report_cell_value(value: Any) -> Any:
+    """Normalize any report cell value before openpyxl or HTML renders it.
+
+    Grouped rule violations carry an object-valued ``violating_value`` map.
+    Passing that map to openpyxl raises ``Cannot convert {...} to Excel``.
+    Scalars keep their existing concrete type (including ``None`` and ``""``)
+    so legacy scalar exports are unchanged; compound values become readable
+    text that retains every observed column/value.
+    """
+    if isinstance(value, Mapping):
+        return _format_compound_cell(value)
+    if isinstance(value, (list, tuple)):
+        return _format_compound_cell(value)
+    return value
 
 
 def _escape_html(value: Any) -> str:
     if value is None:
         return ""
-    return html.escape(str(value))
+    return html.escape(str(_report_cell_value(value)))
 
 
 def _sanitize_csv_value(value: Any) -> str:
     if value is None:
         return ""
-    str_val = str(value)
+    str_val = str(_report_cell_value(value))
     if str_val and str_val[0] in ("=", "+", "-", "@", "\t", "\r"):
         str_val = f"'{str_val}"
     return str_val
@@ -89,8 +137,76 @@ def _format_filter_row(f: dict[str, Any]) -> str:
     vals = f.get("filter_values") or []
     if not vals and f.get("filter_value"):
         vals = [f["filter_value"]]
-    quoted = " or ".join(f"'{v}'" for v in vals)
+    connector = (
+        " and "
+        if f.get("operator") in ("neq", "ncontains", "not_equals", "not_contains")
+        else " or "
+    )
+    quoted = connector.join(f"'{v}'" for v in vals)
     return f"{f.get('column', '?')} {op} {quoted}"
+
+
+def _filter_tree_text(node: Any, labels: dict[int, str]) -> str:
+    if not isinstance(node, dict):
+        return ""
+    if node.get("kind") == "leaf":
+        condition_id = str(node.get("conditionId", ""))
+        try:
+            index = int(condition_id[1:])
+        except (TypeError, ValueError):
+            return condition_id
+        return labels.get(index, condition_id)
+    children = node.get("children") or []
+    joined = f" {str(node.get('kind', 'and')).upper()} ".join(
+        _filter_tree_text(child, labels) for child in children
+    )
+    return f"({joined})"
+
+
+def _report_filter_tree(result: dict[str, Any]) -> dict[str, Any] | None:
+    filters = result.get("filters_applied") or []
+    relation = result.get("filter_relation")
+    tree = result.get("filter_grouping_tree")
+    errors = validate_filter_grouping(filters, relation, tree)
+    if errors:
+        raise ValueError("Filter grouping unavailable: " + "; ".join(errors))
+    if tree is not None:
+        return dict(tree)
+    if not filters:
+        return None
+    leaves = [{"kind": "leaf", "conditionId": f"c{i}"} for i in range(len(filters))]
+    if len(leaves) == 1:
+        return dict(leaves[0])
+    return {"kind": relation or "and", "children": leaves}
+
+
+def _format_filter_expression(result: dict[str, Any]) -> str:
+    filters = result.get("filters_applied") or []
+    if not filters:
+        return "No filtering applied"
+    labels = {i: f"Filter {i + 1}: {_format_filter_row(row)}" for i, row in enumerate(filters)}
+    try:
+        tree = _report_filter_tree(result)
+        if len(filters) == 1:
+            return _format_filter_row(filters[0])
+        return _filter_tree_text(tree, labels)
+    except ValueError as error:
+        return str(error)
+
+
+def _filter_report_headers(result: dict[str, Any]) -> tuple[str, str]:
+    filters = result.get("filters_applied") or []
+    clauses = "\n".join(
+        f"Filter {i + 1}: {_format_filter_row(row)}" for i, row in enumerate(filters)
+    )
+    try:
+        tree = _report_filter_tree(result)
+        groups = grouping_lines(tree, "Filter")
+        if tree and tree.get("kind") == "leaf":
+            groups = "Overall: Filter 1"
+        return clauses or "No filtering applied", groups or "No filter groupings"
+    except ValueError as error:
+        return clauses or "No filtering applied", str(error)
 
 
 def _format_created_at(iso_str: str | None) -> str:
@@ -160,7 +276,7 @@ def _render_group_section(title: str, stats: list[dict[str, Any]]) -> str:
 def _render_exception_rule_summary(validation: dict[str, Any]) -> str:
     violations_by_rule = validation.get("violations_by_rule") or {}
     summaries = validation.get("rule_summaries") or {}
-    rule_ids = list(dict.fromkeys([*violations_by_rule, *summaries]))
+    rule_ids = sorted(set(violations_by_rule) | set(summaries), key=rule_sort_key)
     if not rule_ids:
         return (
             "<section class='card'><h2>Exception Rule Summary</h2>"
@@ -459,6 +575,14 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         ".group-stats-row--1 { grid-template-columns:1fr; } }"
     )
     sections.append("@media (max-width:520px) { .group-stats-row { grid-template-columns:1fr; } }")
+    sections.append(
+        ".scope-title-row { display:flex; align-items:center; gap:0.4rem; } "
+        ".report-help { position:relative; border:1px solid; border-radius:50%; "
+        "cursor:help; padding:0 0.3rem; } "
+        ".report-help [role=tooltip] { display:none; position:absolute; z-index:5; "
+        "background:white; color:#222; width:22rem; padding:0.6rem; border:1px solid; } "
+        ".report-help:hover [role=tooltip], .report-help:focus [role=tooltip] { display:block; }"
+    )
     sections.append("</style>")
     sections.append("</head><body><main>")
 
@@ -469,6 +593,25 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         sections.append(f"<span class='run-time'>Ran on {_escape_html(formatted_time)}</span>")
     sections.append("</div>")
 
+    toc_ids = sorted(
+        set((result.get("validation") or {}).get("violations_by_rule") or {})
+        | set((result.get("validation") or {}).get("rule_summaries") or {}),
+        key=rule_sort_key,
+    )
+    sections.append("<nav aria-label='Result contents'><a href='#overall'>Overall result</a>")
+    for rule_id in toc_ids:
+        sections.append(f" <a href='#rule-{_escape_html(rule_id)}'>{_escape_html(rule_id)}</a>")
+    sections.append("</nav>")
+    checked = " checked" if result.get("new_exceptions_only", True) else ""
+    sections.append(
+        "<section class='card' aria-label='Exception display scope'>"
+        "<div class='scope-title-row'><h2><label>"
+        f"<input type='checkbox' disabled{checked}> New Exceptions Only</label></h2>"
+        "<span class='report-help' tabindex='0' role='img' aria-label='New Exceptions Only help'>!"
+        "<span role='tooltip'>Includes new and recurring uncommented exceptions; commented "
+        "exceptions are hidden when checked. All exceptions remain stored and commentary "
+        "templates include every exception.</span></span></div></section>"
+    )
     sections.append("<section class='card' id='overall'>")
     sections.append("<h2>Overall result</h2>")
     rows_a = comparison.get("total_rows_a", 0)
@@ -482,14 +625,11 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
         "distinct_violating_attributes", validation.get("total_violations", 0)
     )
     targets = result.get("target_columns") or []
-    filters = result.get("filters_applied") or []
-    filter_text = (
-        "; ".join(_format_filter_row(f) for f in filters) if filters else "No filtering applied"
-    )
+    filter_text = _format_filter_expression(result)
     sections.append(
         "<p class='section-logic'>"
         f"Comparison across {len(targets)} target columns."
-        f"<br>Filtering: {_escape_html(filter_text)}"
+        f"<br>Filters: {_escape_html(filter_text)}"
         "</p>"
     )
     sections.append("<div class='summary-grid'>")
@@ -638,7 +778,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
 
     violations_by_rule = validation.get("violations_by_rule") or {}
     rule_summaries = validation.get("rule_summaries") or {}
-    rule_ids = list(dict.fromkeys([*violations_by_rule, *rule_summaries]))
+    rule_ids = sorted(set(violations_by_rule) | set(rule_summaries), key=rule_sort_key)
     for rule_id in rule_ids:
         violations = violations_by_rule.get(rule_id) or []
         summary = rule_summaries.get(rule_id) or {}
@@ -730,7 +870,7 @@ def export_html(result: dict[str, Any], report_name: str, created_at: str | None
                 sections.append("</tr>")
             sections.append("</table>")
         else:
-            sections.append("<p>Nil exception detected under current rule.</p>")
+            sections.append(f"<p>{_escape_html(_EMPTY_RULE_HINT)}</p>")
         sections.append("</section>")
 
     sections.append(_render_exception_table(result, validation, key_columns))
@@ -830,12 +970,10 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     overall.append(["New Books", comparison.get("new_book_count", 0)])
     overall.append([])
     overall.append(["Filtering information"])
-    filters = result.get("filters_applied") or []
-    if filters:
-        for filter_row in filters:
-            overall.append([_excel_value(_format_filter_row(filter_row))])
-    else:
-        overall.append(["No filtering applied"])
+    filter_clauses, filter_groups = _filter_report_headers(result)
+    for label, text in [("Filters:", filter_clauses), ("Filter Groupings:", filter_groups)]:
+        overall.append([label, _excel_value(text)])
+        overall.row_dimensions[overall.max_row].height = max(30, 15 * (text.count("\n") + 1))
 
     aggregation_start_row = overall.max_row + 1
     aggregation_bottom_row = aggregation_start_row
@@ -875,7 +1013,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
     overall.cell(next_row, 3, "Rule identifier")
     summaries = validation.get("rule_summaries") or {}
     violations_by_rule = validation.get("violations_by_rule") or {}
-    rule_ids = list(dict.fromkeys([*violations_by_rule, *summaries]))
+    rule_ids = sorted(set(violations_by_rule) | set(summaries), key=rule_sort_key)
     row_counts = validation.get("violating_rows_by_rule") or {}
     for rule_id in rule_ids:
         next_row += 1
@@ -1066,17 +1204,20 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
         rule_name = summary.get("name") or sample.get("rule_name") or rule_id
         sheet = workbook.create_sheet(_safe_sheet_name(rule_id, workbook.sheetnames))
         sheet["A1"] = _excel_value(f"{rule_id} - {rule_name}")
-        sheet["A2"] = "Condition:"
-        sheet["B2"] = _excel_value(summary.get("condition", ""))
-        sheet["A3"] = "Grouping:"
-        sheet["B3"] = _excel_value(summary.get("condition_grouping", ""))
-        expectation = summary.get("logic") or sample.get("rule_logic") or ""
-        sheet["A4"] = "Expectation:"
-        sheet["B4"] = _excel_value(_humanize_rule_logic(expectation))
-        sheet["A5"] = "Rule identifier:"
-        sheet["B5"] = _excel_value(
-            summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"
+        condition_text, condition_groups, expectation_text, expectation_groups = excel_rule_headers(
+            summary, str(sample.get("rule_logic") or "")
         )
+        for row_number, (label, value) in enumerate([
+            ("Conditions:", condition_text),
+            ("Condition Groupings:", condition_groups),
+            ("Expectations:", _humanize_rule_logic(expectation_text)),
+            ("Expectation Groupings:", expectation_groups),
+            ("Rule Identifier:",
+             summary.get("rule_identifier") or sample.get("rule_identifier") or "Unavailable"),
+        ], start=2):
+            sheet.cell(row_number, 1, label)
+            sheet.cell(row_number, 2, _excel_value(value))
+            sheet.row_dimensions[row_number].height = max(30, 15 * (str(value).count("\n") + 1))
 
         extra_columns = list(
             dict.fromkeys(
@@ -1086,31 +1227,37 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
             )
         )
         hide_comparison = bool(summary.get("hide_comparison", False))
-        if len(violations) + 7 > _EXCEL_MAX_ROWS:
-            raise ValueError(f"Rule {rule_id} exceeds Excel's 1,048,576-row worksheet limit.")
-        headers = [*(key_columns or ["Row"]), *extra_columns]
-        if not hide_comparison:
-            headers.extend(["Column", "In Baseline", "In Comparison"])
-        _append_row(sheet, 7, headers)
-        row_number = 8
-        for violation in violations:
-            values = _excel_identity(
-                key_columns,
-                violation.get("key_columns") or {},
-                violation.get("row_index", ""),
-            )
-            extra_values = violation.get("extra_values") or {}
-            values.extend(extra_values.get(column, "—") for column in extra_columns)
+        if not violations:
+            # Empty enabled rule: explicit hint instead of an empty detail table.
+            # Heading (A1), Conditions/Groupings/Expectations/Identifier rows
+            # above are retained; no placeholder records or counts are added.
+            sheet.cell(8, 1, _excel_value(_EMPTY_RULE_HINT))
+        else:
+            if len(violations) + 8 > _EXCEL_MAX_ROWS:
+                raise ValueError(f"Rule {rule_id} exceeds Excel's 1,048,576-row worksheet limit.")
+            headers = [*(key_columns or ["Row"]), *extra_columns]
             if not hide_comparison:
-                values.extend(
-                    [
-                        violation.get("violating_column", rule_id),
-                        violation.get("comparison_value", ""),
-                        violation.get("violating_value", ""),
-                    ]
+                headers.extend(["Column", "In Baseline", "In Comparison"])
+            _append_row(sheet, 8, headers)
+            row_number = 9
+            for violation in violations:
+                values = _excel_identity(
+                    key_columns,
+                    violation.get("key_columns") or {},
+                    violation.get("row_index", ""),
                 )
-            _append_row(sheet, row_number, values)
-            row_number += 1
+                extra_values = violation.get("extra_values") or {}
+                values.extend(extra_values.get(column, "—") for column in extra_columns)
+                if not hide_comparison:
+                    values.extend(
+                        [
+                            violation.get("violating_column", rule_id),
+                            violation.get("comparison_value", ""),
+                            violation.get("violating_value", ""),
+                        ]
+                    )
+                _append_row(sheet, row_number, values)
+                row_number += 1
 
     agg_columns = list(result.get("aggregation_columns") or [])
     agg_labels = result.get("aggregation_column_labels") or {}
@@ -1184,6 +1331,7 @@ def _excel_identity(key_columns: list[str], values: dict[str, Any], row_index: A
 
 
 def _excel_value(value: Any) -> Any:
+    value = _report_cell_value(value)
     if isinstance(value, str):
         return _sanitize_csv_value(value)
     return value
@@ -1216,9 +1364,13 @@ def _style_excel_sheet(sheet: Any) -> None:
                     "Column",
                     "In Baseline",
                     "In Comparison",
-                    "Condition:",
-                    "Grouping:",
-                    "Expectation:",
+                    "Filters:",
+                    "Filter Groupings:",
+                    "Conditions:",
+                    "Condition Groupings:",
+                    "Expectations:",
+                    "Expectation Groupings:",
+                    "Rule Identifier:",
                 }
                 or cell.value in {"Filtering information", "Exception Rule Summary"}
                 or "aggregation:" in cell.value

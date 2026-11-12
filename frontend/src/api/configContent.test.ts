@@ -356,7 +356,7 @@ describe("rules config grouping-tree round-trip", () => {
       kind: "or",
       children: [
         {
-          kind: "and",
+          kind: "or",
           children: [
             { kind: "leaf", conditionId: "c0" },
             { kind: "leaf", conditionId: "c1" },
@@ -367,7 +367,7 @@ describe("rules config grouping-tree round-trip", () => {
     });
   });
 
-  it("assigns an AND relation when one family condition expands into several conditions", () => {
+  it("preserves any-match semantics when one family condition expands", () => {
     const { drafts } = resolveRulesConfig([
       {
         name: "Family condition",
@@ -388,7 +388,14 @@ describe("rules config grouping-tree round-trip", () => {
     ], families, ["name", "status", "score"]);
 
     expect(drafts[0]?.conditions).toHaveLength(2);
-    expect(drafts[0]?.conditionJoin).toBe("and");
+    expect(drafts[0]?.conditionJoin).toBe("per_grouping");
+    expect(drafts[0]?.groupTree).toEqual({
+      kind: "or",
+      children: [
+        { kind: "leaf", conditionId: "c0" },
+        { kind: "leaf", conditionId: "c1" },
+      ],
+    });
   });
 
   it("loads legacy grouping trees whose leaves contain old client IDs", () => {

@@ -1,12 +1,27 @@
-import { useCallback, useState } from "react";
-import { useConfigs, useCreateConfig, useDeleteConfig, useUpdateConfig } from "../settings/useSettings";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  configDetailKey,
+  configListKey,
+  useConfigs,
+  useCreateConfig,
+  useDeleteConfig,
+  useUpdateConfig,
+} from "../settings/useSettings";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
+import { ConfigLoadNotice } from "./ConfigLoadNotice";
+
+/** Minimum freeze after a save starts, so the saving state is always
+ * observable and a load cannot apply not-yet-refreshed cache. */
+const SAVE_FREEZE_MS = 2000;
 
 interface ConfigManagerProps {
   configType: "rules" | "filters" | "rows-and-columns";
   onLoad: (name: string) => void;
   currentContent: unknown;
   disabled?: boolean;
+  /** Prevent saving when the current editor configuration is incomplete/invalid. */
+  saveDisabled?: boolean;
   hasUnsavedChanges?: boolean;
   /** Some config types replace committed server state even without editor dirtiness. */
   confirmBeforeLoad?: boolean;
@@ -23,6 +38,7 @@ export function ConfigManager({
   onLoad,
   currentContent,
   disabled,
+  saveDisabled = false,
   hasUnsavedChanges,
   confirmBeforeLoad = false,
   title,
@@ -37,12 +53,63 @@ export function ConfigManager({
   const [pendingDeleteName, setPendingDeleteName] = useState<string | null>(null);
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [showSaveToConfigConfirm, setShowSaveToConfigConfirm] = useState(false);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  // Target of the in-progress save, shown as "Saving to config: xxx".
+  const [savingName, setSavingName] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  // Extra freeze beyond the mutation itself: fast saves would otherwise
+  // flash the disabled state for milliseconds, and the buttons would enable
+  // before the invalidated config cache has refetched.
+  const [cooling, setCooling] = useState(false);
+  const coolingTimer = useRef<number | null>(null);
+  const saveInFlight = useRef(false);
+  useEffect(() => () => {
+    if (coolingTimer.current !== null) window.clearTimeout(coolingTimer.current);
+  }, []);
 
   const heading = title ?? "Load config for rows and columns";
 
   const selectedVersion = selectedName
     ? configs.data?.find((c) => c.name === selectedName)?.version ?? null
     : null;
+
+  // Either save path in flight (or cooling down): block the dropdown and
+  // every action so a load cannot apply stale cached content mid-save.
+  // isPending alone is not enough — it clears the moment the mutation
+  // settles, while the invalidated config cache may still be refetching.
+  const saving = create.isPending || update.isPending || cooling;
+
+  /** Refresh the saved config's cache entries, then end the freeze. The
+   * "Saving to config: xxx" message stays up through the whole freeze and is
+   * swapped for "Saved to config: xxx" exactly when the buttons enable. */
+  async function finishSave(name: string, startedAt: number, ok: boolean): Promise<void> {
+    saveInFlight.current = false;
+    if (ok) {
+      try {
+        await Promise.all([
+          queryClient.refetchQueries({ queryKey: configDetailKey(configType, name) }),
+          queryClient.refetchQueries({ queryKey: configListKey(configType) }),
+        ]);
+      } catch {
+        // The save itself succeeded; a refresh failure just leaves the
+        // normal query error states to surface on next load. Either way the
+        // saved message below is accurate about the save.
+      }
+    }
+    const remaining = SAVE_FREEZE_MS - (Date.now() - startedAt);
+    const done = () => {
+      coolingTimer.current = null;
+      setCooling(false);
+      setSavingName(null);
+      if (ok) setSavedMessage(`Saved to config: ${name}`);
+    };
+    if (remaining <= 0) {
+      done();
+      return;
+    }
+    if (coolingTimer.current !== null) window.clearTimeout(coolingTimer.current);
+    coolingTimer.current = window.setTimeout(done, remaining);
+  }
 
   function handleLoad(name: string): void {
     if (!name) return;
@@ -55,23 +122,49 @@ export function ConfigManager({
   }
 
   function handleSaveNew(): void {
-    if (!saveName.trim()) return;
+    const name = saveName.trim();
+    if (!name || saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSavedMessage(null);
+    setSavingName(name);
+    setCooling(true);
+    const startedAt = Date.now();
     create.mutate(
-      { name: saveName.trim(), content: currentContent },
+      { name, content: currentContent },
       {
         onSuccess: () => {
           setSaveName("");
           setShowSavePrompt(false);
+          void finishSave(name, startedAt, true);
+        },
+        onError: () => {
+          void finishSave(name, startedAt, false);
         },
       },
     );
   }
 
   const handleSaveToConfig = useCallback(() => {
-    if (!selectedName || selectedVersion === null) return;
+    if (!selectedName || selectedVersion === null || saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSavedMessage(null);
+    setSavingName(selectedName);
+    setCooling(true);
+    const startedAt = Date.now();
+    const name = selectedName;
     setShowSaveToConfigConfirm(false);
-    update.mutate({ name: selectedName, content: currentContent, version: selectedVersion });
-  }, [selectedName, selectedVersion, currentContent, update]);
+    update.mutate(
+      { name, content: currentContent, version: selectedVersion },
+      {
+        onSuccess: () => {
+          void finishSave(name, startedAt, true);
+        },
+        onError: () => {
+          void finishSave(name, startedAt, false);
+        },
+      },
+    );
+  }, [selectedName, selectedVersion, currentContent, update, configType, queryClient]);
 
   return (
     <div className="card">
@@ -89,7 +182,7 @@ export function ConfigManager({
               onChange={(e) => {
                 setSelectedName(e.target.value);
               }}
-              disabled={disabled}
+              disabled={disabled || saving}
             >
               {configs.data.length === 0 ? (
                 <option value="">(new config)</option>
@@ -111,7 +204,7 @@ export function ConfigManager({
                   <button
                     type="button"
                     className="btn btn--primary"
-                    disabled={disabled}
+                    disabled={disabled || saving}
                     onClick={() => {
                       handleLoad(selectedName);
                     }}
@@ -121,7 +214,7 @@ export function ConfigManager({
                   <button
                     type="button"
                     className="btn"
-                    disabled={disabled || update.isPending}
+                    disabled={disabled || saveDisabled || saving}
                     onClick={() => setShowSaveToConfigConfirm(true)}
                   >
                     Save to config
@@ -132,7 +225,7 @@ export function ConfigManager({
               <button
                 type="button"
                 className="btn"
-                disabled={disabled}
+                disabled={disabled || saveDisabled || saving}
                 onClick={() => setShowSavePrompt(true)}
               >
                  Save to new config
@@ -142,7 +235,7 @@ export function ConfigManager({
                 <button
                   type="button"
                   className="btn btn--danger"
-                  disabled={disabled || del.isPending}
+                  disabled={disabled || del.isPending || saving}
                   onClick={() => setPendingDeleteName(selectedName)}
                 >
                   Remove
@@ -150,6 +243,14 @@ export function ConfigManager({
               )}
             </div>
           </div>
+
+          {saving && (
+            <p role="status" aria-live="polite" className="busy-row">
+              <span className="spinner" aria-hidden="true" />{" "}
+              {savingName ? `Saving to config: ${savingName}…` : "Saving config…"}
+            </p>
+          )}
+          <ConfigLoadNotice message={savedMessage} />
 
           {create.isError && (
             <p className="alert alert--error" style={{ marginTop: "var(--space)" }}>
@@ -178,6 +279,7 @@ export function ConfigManager({
         title="Save new config"
         open={showSavePrompt}
         confirmLabel="Save"
+        confirmDisabled={saving}
         onCancel={() => {
           setShowSavePrompt(false);
           setSaveName("");
@@ -200,6 +302,7 @@ export function ConfigManager({
         title="Save to config?"
         open={showSaveToConfigConfirm}
         confirmLabel="Save"
+        confirmDisabled={saving}
         onCancel={() => setShowSaveToConfigConfirm(false)}
         onConfirm={handleSaveToConfig}
       >

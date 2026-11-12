@@ -1,25 +1,55 @@
 version: 1
-next_index: 79
+next_index: 90
 rules:
-- rule_id: R056
-  name: Valid status
-  description: ''
-  logic:
-    format: value_vs_column
-    column_name: status
+- rule_id: R079
+  name: UI Flags - opposite Yes No
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions: []
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic_clauses:
+  - format: value_vs_column
+    column_name: sa_flag
     operator: eq
-    target_value: active
+    target_value: 'Yes'
+    target_values: []
     comparison_mode: comparison_vs_baseline
-  extra_columns: []
-- rule_id: R057
-  name: Low Score
-  description: ''
-  logic:
-    format: value_vs_column
-    column_name: score
-    operator: gt
-    target_value: '90'
-    target_values:
-    - '90'
+  - format: value_vs_column
+    column_name: cva_flag
+    operator: eq
+    target_value: 'No'
+    target_values: []
     comparison_mode: comparison_vs_baseline
-  extra_columns: []
+  - format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'No'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  - format: value_vs_column
+    column_name: cva_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  logic_relation: or
+  logic_grouping_tree:
+    kind: or
+    children:
+    - kind: and
+      children:
+      - kind: leaf
+        conditionId: c0
+      - kind: leaf
+        conditionId: c1
+    - kind: and
+      children:
+      - kind: leaf
+        conditionId: c2
+      - kind: leaf
+        conditionId: c3

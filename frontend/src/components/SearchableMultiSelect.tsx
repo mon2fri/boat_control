@@ -1,3 +1,4 @@
+import { FloatingListbox } from "./FloatingListbox";
 import { useCallback, useId, useMemo, useRef, useState } from "react";
 
 export interface MultiSelectOption {
@@ -56,6 +57,7 @@ export function SearchableMultiSelect({
   const baseId = useId();
   const listId = `${baseId}-list`;
   const hintId = hint ? `${baseId}-hint` : undefined;
+  const inputRef = useRef<HTMLInputElement>(null);
   const blurTimer = useRef<number | undefined>(undefined);
 
   const selectedSet = useMemo(() => new Set(selected), [selected]);
@@ -169,6 +171,7 @@ export function SearchableMultiSelect({
         aria-haspopup="listbox"
       >
         <input
+          ref={inputRef}
           id={`${baseId}-input`}
           type="text"
           role="searchbox"
@@ -198,7 +201,8 @@ export function SearchableMultiSelect({
           }}
         />
         {open && (
-          <ul id={listId} role="listbox" aria-label={label} className="combobox-list">
+          <FloatingListbox id={listId} role="listbox" aria-label={label}
+            anchorRef={inputRef} onDismiss={() => setOpen(false)}>
             <li
               role="option"
               aria-selected={allVisibleSelected}
@@ -241,7 +245,7 @@ export function SearchableMultiSelect({
                 </li>
               );
             })}
-          </ul>
+          </FloatingListbox>
         )}
       </div>
 

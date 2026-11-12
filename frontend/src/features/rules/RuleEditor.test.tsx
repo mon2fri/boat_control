@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RuleEditor } from "./RuleEditor";
-import type { RuleDraft } from "../../api/domain";
+import type { GroupNode, Rule, RuleDraft } from "../../api/domain";
 
 function renderWithQuery(node: React.ReactNode) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -143,7 +143,7 @@ describe("RuleEditor", () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByText(/Choose AND, OR, or PER GROUPING/)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Combining above conditions with"), { target: { value: "and" } });
+    fireEvent.change(screen.getByLabelText("Combining Conditions with"), { target: { value: "and" } });
     fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ conditionJoin: "and" }));
   });
@@ -155,6 +155,86 @@ describe("RuleEditor", () => {
 
     expect(within(screen.getByRole("group", { name: "Condition 1" })).getByText("Condition 1")).toBeVisible();
     expect(within(screen.getByRole("group", { name: "Condition 2" })).getByText("Condition 2")).toBeVisible();
+  });
+
+  it("removes all condition groups while keeping conditions and requiring explicit grouping", () => {
+    const condition = (id: string, column: string, value: string) => ({
+      id,
+      column,
+      operator: "equals" as const,
+      values: [value],
+      value,
+    });
+    const conditions = [
+      condition("cond_a", "a", "1"),
+      condition("cond_b", "b", "2"),
+      condition("cond_c", "c", "3"),
+    ];
+    const tree: GroupNode = {
+      kind: "or",
+      children: [
+        {
+          kind: "and",
+          children: [
+            { kind: "leaf", conditionId: "cond_a" },
+            { kind: "leaf", conditionId: "cond_b" },
+          ],
+        },
+        { kind: "leaf", conditionId: "cond_c" },
+      ],
+    };
+    const rule = {
+      index: "R020",
+      identifier: "CBR1_00000000000000000000",
+      name: "Grouped conditions",
+      description: "",
+      conditions,
+      conditionJoin: "per_grouping",
+      conditionGrouping: null,
+      groupTree: tree,
+      logic: { id: "logic", format: "value", column: "a", operator: "equals", target: "1", values: ["1"] },
+      extraColumns: [],
+      hideComparison: false,
+    } as Rule;
+    const { onSave } = setup({ rule, columns: ["a", "b", "c"] });
+    const conditionNode = screen.getByTestId("tree-Group 1");
+    expect(conditionNode.querySelector(".group-clause-label .condition-number")).toHaveTextContent("Condition 1");
+    expect(conditionNode).toHaveTextContent('a must equal "1"');
+    expect(conditionNode).toHaveTextContent('b must equal "2"');
+
+
+    expect(screen.getByTestId("grouping-preview").textContent).toContain(
+      "overall: group 1 OR condition 3",
+    );
+    expect(screen.getByTestId("grouping-preview").textContent).toContain(
+      "group 1: condition 1 AND condition 2",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove Group 2" }));
+    expect(screen.getByTestId("tree-Group 1")).toHaveTextContent('a must equal "1"');
+    expect(screen.getByRole("checkbox", { name: 'Condition 3: c must equal "3"' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("pick-group:0"));
+    fireEvent.click(screen.getByRole("checkbox", { name: 'Condition 3: c must equal "3"' }));
+    fireEvent.change(screen.getByLabelText("Group type"), { target: { value: "or" } });
+    fireEvent.click(screen.getByRole("button", { name: /\+\s*Create group/ }));
+    expect(screen.getByTestId("tree-Group 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Remove all groups" }));
+    expect(screen.getByLabelText("Combining Conditions with")).toHaveValue("");
+    expect(screen.queryByTestId("grouping-preview")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: /Condition \d/ })).toHaveLength(3);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText(/Choose AND, OR, or PER GROUPING/)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Combining Conditions with"), {
+      target: { value: "and" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save rule" }));
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0]![0]).toMatchObject({ conditionJoin: "and", groupTree: null });
   });
 
   it("selects multiple values in one condition and keeps them as OR alternatives", () => {

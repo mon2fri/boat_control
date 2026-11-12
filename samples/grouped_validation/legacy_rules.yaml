@@ -1,0 +1,15 @@
+version: 1
+next_index: 2
+rules:
+  - rule_id: R001
+    name: Legacy STATUS comparison
+    description: Legacy single-outcome column-against-column compatibility sample.
+    conditions: []
+    logic:
+      format: column_vs_column
+      column_name: STATUS
+      operator: eq
+      target_value: STATUS
+      comparison_mode: comparison_vs_baseline
+    extra_columns: []
+    hide_comparison: false

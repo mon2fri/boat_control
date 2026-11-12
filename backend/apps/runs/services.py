@@ -7,33 +7,37 @@ from typing import Any
 
 import polars as pl
 
+from apps.families.resolver import expand_filter_grouping
 from apps.rules.services import (
     GroupingBranch,
     GroupingLeaf,
     Rule,
     load_rules,
 )
+from apps.runs.grouped_logic import (
+    GroupingValidationError,
+    NormalizedOutcomes,
+    describe_outcome_clause,
+    describe_outcomes,
+    evaluate_grouping_tree,
+    evaluate_outcomes,
+    family_members,
+    is_family_reference,
+    match_condition_value,
+    normalize_rule_outcomes,
+    outcome_columns,
+    parse_grouping_tree,
+    serialize_grouping_tree,
+    validate_filter_grouping,
+)
+from apps.runs.report_metadata import grouping_lines
 from apps.runs.template_columns import validate_concrete_columns
 
 
-def _evaluate_grouping_tree(node: GroupingLeaf | GroupingBranch, cond_results: list[bool]) -> bool:
-    if isinstance(node, GroupingLeaf):
-        cid = node.condition_id
-        if not cid.startswith("c"):
-            return False
-        try:
-            idx = int(cid[1:])
-        except ValueError:
-            return False
-        if 0 <= idx < len(cond_results):
-            return cond_results[idx]
-        return False
-    if isinstance(node, GroupingBranch):
-        child_results = [_evaluate_grouping_tree(child, cond_results) for child in node.children]
-        if node.kind == "and":
-            return all(child_results)
-        return any(child_results)
-    return False
+def _evaluate_grouping_tree(
+    node: GroupingLeaf | GroupingBranch, cond_results: list[bool]
+) -> bool:
+    return evaluate_grouping_tree(node, cond_results)
 
 
 @dataclass(frozen=True)
@@ -78,6 +82,9 @@ class ValidationViolation:
     detail_values: dict[str, str] = field(default_factory=dict)
     exception_id: str | None = None
     exception_status: str | None = None
+    outcome_columns: tuple[str, ...] = ()
+    outcome_values: dict[str, Any] = field(default_factory=dict)
+    outcome_results: dict[str, bool] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -123,42 +130,123 @@ class ExecutionResult:
     as_of_date: date | None = None
     commentary_template_columns: list[str] = field(default_factory=list)
     new_exceptions_only: bool = True
+    filter_relation: str | None = None
+    filter_grouping_tree: dict[str, Any] | None = None
+
+
+def _filter_values(filter_row: dict[str, Any]) -> tuple[str, ...]:
+    values = filter_row.get("filter_values")
+    if isinstance(values, list):
+        return tuple(str(value) for value in values if str(value) != "")
+    legacy = filter_row.get("filter_value", "")
+    return (str(legacy),) if legacy != "" else ()
+
+
+def _filter_expression(filter_row: dict[str, Any]) -> pl.Expr | None:
+    """Build one literal, null/blank-aware filter predicate."""
+
+    column = str(filter_row["column"])
+    operator = str(filter_row["operator"])
+    values = _filter_values(filter_row)
+    if not values:
+        return None
+
+    text = pl.col(column).cast(pl.Utf8, strict=False)
+    blank = text.is_null() | (text == "")
+
+    if operator == "eq":
+        return ~blank & text.is_in(list(values))
+    if operator == "neq":
+        # Null and empty-string input satisfies a negative operator.
+        return blank | ~text.is_in(list(values))
+    if operator == "contains":
+        contained = pl.lit(False)
+        for value in values:
+            contained = contained | text.str.contains(value, literal=True)
+        return ~blank & contained
+    if operator == "ncontains":
+        contained = pl.lit(False)
+        for value in values:
+            contained = contained | text.str.contains(value, literal=True)
+        return blank | ~contained
+    raise ValueError(
+        f"Invalid filter operator '{operator}'. Must be one of: "
+        "eq, neq, contains, ncontains"
+    )
+
+
+def _combine_filter_expressions(
+    expressions: list[pl.Expr | None],
+    relation: str | None,
+    grouping_tree: Any,
+) -> pl.Expr | None:
+    usable = [
+        expression if expression is not None else pl.lit(True)
+        for expression in expressions
+    ]
+    if not usable:
+        return None
+
+    node = grouping_tree
+    if isinstance(node, dict) or node is None:
+        node = parse_grouping_tree(node)
+    if node is not None:
+        def _walk(current: Any) -> pl.Expr:
+            if isinstance(current, GroupingLeaf):
+                try:
+                    index = int(current.condition_id[1:])
+                except (TypeError, ValueError):
+                    return pl.lit(False)
+                if (
+                    current.condition_id.startswith("c")
+                    and 0 <= index < len(usable)
+                ):
+                    return usable[index]
+                return pl.lit(False)
+            children = [_walk(child) for child in current.children]
+            if not children:
+                return pl.lit(current.kind == "and")
+            combined = children[0]
+            for child in children[1:]:
+                combined = combined & child if current.kind == "and" else combined | child
+            return combined
+
+        return _walk(node)
+
+    if len(usable) == 1:
+        return usable[0]
+    relation = relation or "and"
+    if relation not in {"and", "or"}:
+        raise ValueError(
+            f"Invalid filter_relation '{relation}'. Must be one of: and, or"
+        )
+    combined = usable[0]
+    for expression in usable[1:]:
+        combined = combined & expression if relation == "and" else combined | expression
+    return combined
 
 
 def apply_filters(
-    df_a: pl.LazyFrame, df_b: pl.LazyFrame, filters: list[dict[str, str]]
+    df_a: pl.LazyFrame,
+    df_b: pl.LazyFrame,
+    filters: list[dict[str, Any]],
+    filter_relation: str | None = None,
+    filter_grouping_tree: Any = None,
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
-    """Apply filters to the comparison file (df_b) only.
+    """Apply the grouped overall filter expression to the comparison file.
 
-    After filtering df_b, df_a (baseline) is left unfiltered; the caller
-    should join baseline rows using the filtered comparison keys.
+    Row Filters are evaluated as one expression over ``df_b``.  ``df_a``
+    (baseline) is left unfiltered; the caller joins baseline rows using the
+    filtered comparison keys.  With no grouping fields the legacy AND
+    combination is preserved exactly.
     """
-    for f in filters:
-        col = f["column"]
-        op = f["operator"]
-        # Support both filter_value (legacy) and filter_values (new)
-        values = f.get("filter_values") or ([f["filter_value"]] if f.get("filter_value") else [])
 
-        if not values:
-            continue
-
-        if op == "eq":
-            # IN semantics: value matches any in the list (OR within row)
-            df_b = df_b.filter(pl.col(col).is_in(values))
-        elif op == "neq":
-            # NOT IN: value must not be any in the list (AND across values)
-            df_b = df_b.filter(~pl.col(col).is_in(values))
-        elif op == "contains":
-            # OR across values: match if any value is contained
-            cond_b = pl.lit(False)
-            for val in values:
-                cond_b = cond_b | pl.col(col).str.contains(val)
-            df_b = df_b.filter(cond_b)
-        elif op == "ncontains":
-            # AND across values: must not contain any of the values
-            for val in values:
-                df_b = df_b.filter(~pl.col(col).str.contains(val))
-
+    expressions = [_filter_expression(filter_row) for filter_row in filters]
+    expression = _combine_filter_expressions(
+        expressions, filter_relation, filter_grouping_tree
+    )
+    if expression is not None:
+        df_b = df_b.filter(expression)
     return df_a, df_b
 
 
@@ -321,10 +409,46 @@ def validate_rows(
         }
 
     for rule in rules:
+        try:
+            outcomes = normalize_rule_outcomes(rule)
+        except GroupingValidationError as exc:
+            raise ValueError(
+                f"Rule '{rule.rule_id}' has an invalid outcome expression: {exc}"
+            ) from exc
+        condition_tree = serialize_grouping_tree(rule.grouping_tree)
+        if condition_tree is None and len(rule.conditions) > 1:
+            leaves = [{"kind": "leaf", "conditionId": f"c{i}"} for i in range(len(rule.conditions))]
+            if rule.grouping and len(rule.grouping) == len(leaves):
+                groups: dict[str, list[dict[str, Any]]] = {}
+                for group_id, leaf in zip(rule.grouping, leaves, strict=True):
+                    groups.setdefault(group_id, []).append(leaf)
+                condition_tree = {"kind": "and", "children": [
+                    {"kind": "or", "children": members} if len(members) > 1 else members[0]
+                    for members in groups.values()
+                ]}
+            else:
+                condition_tree = {"kind": rule.condition_relation or "and", "children": leaves}
+        expectation_tree = serialize_grouping_tree(outcomes.tree)
+        if expectation_tree is None and len(outcomes.clauses) > 1:
+            expectation_tree = {"kind": outcomes.relation or "and", "children": [
+                {"kind": "leaf", "conditionId": f"c{i}"} for i in range(len(outcomes.clauses))
+            ]}
         summary = {
+            "condition_clauses": [
+                f"Condition {i}: {_describe_condition(c)}"
+                for i, c in enumerate(rule.conditions, 1)
+            ],
+            "expectation_clauses": [
+                f"Expectation {i}: {describe_outcome_clause(c)}"
+                for i, c in enumerate(outcomes.clauses, 1)
+            ],
+            "condition_groupings": grouping_lines(condition_tree, "Condition"),
+            "expectation_groupings": grouping_lines(expectation_tree, "Expectation"),
+            "condition_tree": condition_tree,
+            "expectation_tree": expectation_tree,
             "name": rule.name,
             "description": rule.description,
-            "logic": _describe_rule_logic(rule),
+            "logic": describe_outcomes(outcomes),
             "condition": _describe_rule_conditions(rule),
             "condition_grouping": _describe_condition_grouping(rule),
             "hide_comparison": rule.hide_comparison,
@@ -343,17 +467,23 @@ def validate_rows(
                 if key_columns
                 else None
             )
-            is_violation, viol_col, viol_val = _check_rule(row, rule, target_columns, baseline_row)
+            is_violation, viol_col, viol_val = _check_rule(
+                row, rule, target_columns, baseline_row, outcomes
+            )
             if is_violation:
                 if key_columns:
                     key_cols = {col: row[col] for col in key_columns if col in row}
                 else:
                     key_cols = {col: row[col] for col in df.columns[:3]}
                 agg_vals = {g: row.get(g) for g in agg_cols}
-                rule_logic_str = _describe_rule_logic(rule)
+                rule_logic_str = describe_outcomes(outcomes)
                 comparison_value = (
                     baseline_row.get(viol_col)
-                    if baseline_row is not None and viol_col in baseline_row
+                    if (
+                        not outcomes.grouped
+                        and baseline_row is not None
+                        and viol_col in baseline_row
+                    )
                     else None
                 )
                 extra_values: dict[str, Any] = {}
@@ -361,6 +491,20 @@ def validate_rows(
                     extra_values[column] = row.get(column)
                 for column in (exception_columns or []):
                     extra_values[column] = row.get(column)
+                outcome_map: dict[str, Any] = {}
+                outcome_results: dict[str, bool] = {}
+                if outcomes.grouped:
+                    evaluation = evaluate_outcomes(row, outcomes, baseline_row)
+                    for index, clause in enumerate(outcomes.clauses):
+                        outcome_map[clause.column_name] = (
+                            evaluation.clause_results[index].observed
+                        )
+                        outcome_results[clause.column_name] = (
+                            outcome_results.get(clause.column_name, True)
+                            and evaluation.clause_results[index].matched
+                        )
+                    for column, value in outcome_map.items():
+                        extra_values[column] = value
                 detail_values: dict[str, str] = {}
                 for column in commentary_template_columns or []:
                     if column in row:
@@ -377,7 +521,15 @@ def validate_rows(
                         rule_name=rule.name,
                         key_columns=key_cols,
                         details=(
-                            f"Column '{viol_col}' has value '{viol_val}' violating {rule.rule_id}"
+                            (
+                                "Grouped outcome expression failed for columns "
+                                f"'{viol_col}' violating {rule.rule_id}"
+                            )
+                            if outcomes.grouped
+                            else (
+                                f"Column '{viol_col}' has value '{viol_val}' "
+                                f"violating {rule.rule_id}"
+                            )
                         ),
                         violating_column=viol_col,
                         violating_value=viol_val,
@@ -387,6 +539,11 @@ def validate_rows(
                         grouping_values=agg_vals,
                         rule_identifier=rule.rule_identifier,
                         detail_values=detail_values,
+                        outcome_columns=(
+                            outcome_columns(outcomes) if outcomes.grouped else ()
+                        ),
+                        outcome_values=outcome_map,
+                        outcome_results=outcome_results,
                     )
                 )
                 rule_rows.add(idx)
@@ -413,29 +570,7 @@ def validate_rows(
 
 
 def _describe_rule_logic(rule: Rule) -> str:
-    logic = rule.logic
-    operator = {
-        "eq": "equals",
-        "neq": "does not equal",
-        "contains": "contains",
-        "ncontains": "does not contain",
-        "gt": "greater than",
-        "lt": "less than",
-        "gte": "greater than or equal to",
-        "lte": "less than or equal to",
-    }.get(logic.operator, logic.operator.replace("_", " "))
-    desc = f"{logic.column_name} {operator} "
-    if logic.format == "column_vs_column":
-        desc += f"column '{logic.target_value}'"
-    else:
-        values = logic.target_values if logic.target_values else (logic.target_value,)
-        if len(values) == 1:
-            desc += f"'{values[0]}'"
-        else:
-            connector = "' and '" if logic.operator in ("neq", "ncontains") else "' or '"
-            joined = connector.join(values)
-            desc += f"'{joined}'"
-    return desc
+    return describe_outcomes(normalize_rule_outcomes(rule))
 
 
 def _describe_condition(rule_condition: Any) -> str:
@@ -506,61 +641,41 @@ def _describe_condition_grouping(rule: Rule) -> str:
 
 
 def _check_rule(
-    row: dict[str, Any], rule: Rule, target_columns: list[str],
+    row: dict[str, Any],
+    rule: Rule,
+    target_columns: list[str],
     baseline_row: dict[str, Any] | None = None,
+    outcomes: NormalizedOutcomes | None = None,
 ) -> tuple[bool, str, Any]:
     """Check whether a row violates a required-state rule.
 
     Rule logic describes the state that *must* hold. A row is therefore a
-    violation when its condition scope matches but the logic evaluates false.
-    This is the frozen API-contract semantics used by the editor and exports.
+    violation when its condition scope matches but the outcome expression
+    evaluates false. Conditions decide applicability; grouped outcomes decide
+    pass/fail. Null and blank inputs follow the shared predicate semantics, so
+    a negative operator can be satisfied by a missing cell.
     """
     if rule.conditions:
         cond_results: list[bool] = []
         for cond in rule.conditions:
-            if cond.column_name not in row:
+            if (
+                not cond.column_name.startswith("family:")
+                and cond.column_name not in row
+            ):
+                # Schema-column validation happens before execution. In a
+                # direct call, a missing column cannot make the rule apply.
                 cond_results.append(False)
                 continue
-            raw = row[cond.column_name]
-            if raw is None:
-                cond_results.append(False)
-                continue
-            val = str(raw)
             values = cond.filter_values or (cond.filter_value,)
-            matches: list[bool] = []
-            for expected in values:
-                if cond.operator == "eq":
-                    matches.append(val == expected)
-                elif cond.operator == "neq":
-                    matches.append(val != expected)
-                elif cond.operator == "contains":
-                    matches.append(expected in val)
-                elif cond.operator == "ncontains":
-                    matches.append(expected not in val)
-                elif cond.operator == "gt":
-                    try:
-                        matches.append(float(val) > float(expected))
-                    except (TypeError, ValueError):
-                        matches.append(False)
-                elif cond.operator == "lt":
-                    try:
-                        matches.append(float(val) < float(expected))
-                    except (TypeError, ValueError):
-                        matches.append(False)
-                else:
-                    matches.append(False)
-            # Multi-value semantics, frozen with the contract:
-            #   eq / contains   → matches if ANY value matches (OR)
-            #   neq / ncontains → matches if NO value matches (AND of negations),
-            #                     i.e. the value is "not equal to / does not
-            #                     contain ANY of the selected values".
-            # Numeric operators (gt / lt) keep the "ANY" interpretation, which
-            # collapses to `val > min(values)` / `val < max(values)` and matches
-            # the legacy single-value behaviour.
-            if cond.operator in ("neq", "ncontains"):
-                cond_results.append(all(matches))
-            else:
-                cond_results.append(any(matches))
+            cond_results.append(
+                match_condition_value(
+                    row,
+                    cond.column_name,
+                    cond.operator,
+                    values,
+                    baseline_row,
+                )
+            )
 
         if rule.grouping_tree is not None:
             tree_result = _evaluate_grouping_tree(rule.grouping_tree, cond_results)
@@ -583,100 +698,27 @@ def _check_rule(
             if not scope_matches:
                 return (False, "", None)
 
-    logic = rule.logic
-    if logic.column_name not in row:
-        return (True, logic.column_name, None)
+    normalized = outcomes or normalize_rule_outcomes(rule)
+    evaluation = evaluate_outcomes(row, normalized, baseline_row)
+    if evaluation.passed:
+        return (False, "", None)
 
-    raw = row[logic.column_name]
-    if raw is None:
-        # Missing data cannot satisfy a required-state rule, regardless of
-        # operator. Keep the row and report the missing value as a violation.
-        return (True, logic.column_name, None)
-    val = str(raw)
+    if normalized.grouped:
+        columns = list(outcome_columns(normalized))
+        failed_columns = [
+            normalized.clauses[index].column_name
+            for index in evaluation.failed_indexes
+        ]
+        violating_column = ", ".join(dict.fromkeys(failed_columns)) or ", ".join(columns)
+        observed = {
+            clause.column_name: evaluation.clause_results[index].observed
+            for index, clause in enumerate(normalized.clauses)
+        }
+        return (True, violating_column or "Outcome group", observed)
 
-    if logic.format == "column_vs_column":
-        source = (
-            row
-            if logic.comparison_mode == "comparison_vs_comparison"
-            else baseline_row if baseline_row is not None else row
-        )
-        if logic.target_value not in source:
-            return (True, logic.column_name, raw)
-        raw_target = source[logic.target_value]
-        if raw_target is None:
-            return (True, logic.column_name, raw)
-        target = str(raw_target)
-        violating_col = logic.column_name
-    else:
-        target = logic.target_value
-        violating_col = logic.column_name
-
-    matched = False
-    if logic.format == "column_vs_column":
-        # Column vs column: single target comparison
-        if logic.operator == "eq":
-            matched = val == target
-        elif logic.operator == "neq":
-            matched = val != target
-        elif logic.operator == "contains":
-            matched = target in val
-        elif logic.operator == "ncontains":
-            matched = target not in val
-        elif logic.operator == "gt":
-            try:
-                matched = float(val) > float(target)
-            except ValueError:
-                matched = False
-        elif logic.operator == "lt":
-            try:
-                matched = float(val) < float(target)
-            except ValueError:
-                matched = False
-        elif logic.operator == "gte":
-            try:
-                matched = float(val) >= float(target)
-            except ValueError:
-                matched = False
-        elif logic.operator == "lte":
-            try:
-                matched = float(val) <= float(target)
-            except ValueError:
-                matched = False
-    else:
-        # Positive operators match any target value; negative operators match none.
-        target_values = logic.target_values if logic.target_values else (target,)
-        if logic.operator == "eq":
-            matched = val in target_values
-        elif logic.operator == "neq":
-            matched = val not in target_values
-        elif logic.operator == "contains":
-            matched = any(tv in val for tv in target_values)
-        elif logic.operator == "ncontains":
-            matched = all(tv not in val for tv in target_values)
-        elif logic.operator == "gt":
-            try:
-                matched = any(float(val) > float(tv) for tv in target_values)
-            except ValueError:
-                matched = False
-        elif logic.operator == "lt":
-            try:
-                matched = any(float(val) < float(tv) for tv in target_values)
-            except ValueError:
-                matched = False
-        elif logic.operator == "gte":
-            try:
-                matched = any(float(val) >= float(tv) for tv in target_values)
-            except ValueError:
-                matched = False
-        elif logic.operator == "lte":
-            try:
-                matched = any(float(val) <= float(tv) for tv in target_values)
-            except ValueError:
-                matched = False
-
-    if not matched:
-        return (True, violating_col, row.get(violating_col))
-    return (False, "", None)
+    failed = evaluation.clause_results[evaluation.failed_indexes[0]]
+    column = normalized.clauses[0].column_name
+    return (True, column, failed.observed)
 
 
 def _sort_group_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -814,7 +856,9 @@ def execute_comparison(
     path_b: Path,
     comparison_columns: list[str] | None = None,
     target_columns: list[str] | None = None,
-    filters: list[dict[str, str]] | None = None,
+    filters: list[dict[str, Any]] | None = None,
+    filter_relation: str | None = None,
+    filter_grouping_tree: Any = None,
     rule_ids: list[str] | None = None,
     key_columns: list[str] | None = None,
     aggregation_columns: list[str] | None = None,
@@ -853,9 +897,38 @@ def execute_comparison(
 
     valid_filter_cols = set(comparison_columns)
 
-    for f in filters:
-        if f["column"] not in valid_filter_cols:
-            raise ValueError(f"Filter column '{f['column']}' not found in data")
+    try:
+        filters, filter_relation, filter_grouping_tree = expand_filter_grouping(
+            filters,
+            filter_relation,
+            filter_grouping_tree,
+            valid_filter_cols,
+        )
+    except ValueError as exc:
+        raise ValueError(f"Invalid row filter grouping: {exc}") from exc
+
+    filter_tree_errors = validate_filter_grouping(
+        filters, filter_relation, filter_grouping_tree
+    )
+    if filter_tree_errors:
+        raise ValueError(
+            "Invalid row filter grouping: " + "; ".join(filter_tree_errors)
+        )
+    parsed_filter_tree = parse_grouping_tree(filter_grouping_tree)
+
+    for index, filter_row in enumerate(filters, start=1):
+        column = filter_row.get("column")
+        if not isinstance(column, str) or not column:
+            raise ValueError(f"Filter {index} requires a column.")
+        if column not in valid_filter_cols:
+            raise ValueError(f"Filter column '{column}' not found in data")
+        operator = filter_row.get("operator")
+        if operator not in {"eq", "neq", "contains", "ncontains"}:
+            raise ValueError(
+                f"Invalid filter operator at filter {index}: '{operator}'."
+            )
+        if not _filter_values(filter_row):
+            raise ValueError(f"Filter {index} requires at least one value.")
 
     effective_targets: list[str]
     if target_columns:
@@ -901,23 +974,61 @@ def execute_comparison(
     }
 
     for rule in rules:
-        if rule.logic.column_name not in valid_filter_cols:
+        try:
+            outcomes = normalize_rule_outcomes(rule)
+        except GroupingValidationError as exc:
             raise ValueError(
-                f"Rule '{rule.rule_id}' references unknown column '{rule.logic.column_name}'"
-            )
-        needed_columns.add(rule.logic.column_name)
-        if (
-            rule.logic.format == "column_vs_column"
-            and rule.logic.target_value not in valid_filter_cols
-        ):
-            raise ValueError(
-                f"Rule '{rule.rule_id}' references unknown target "
-                f"column '{rule.logic.target_value}'"
-            )
-        if rule.logic.format == "column_vs_column":
-            needed_columns.add(rule.logic.target_value)
+                f"Rule '{rule.rule_id}' has an invalid outcome expression: {exc}"
+            ) from exc
+        for clause in outcomes.clauses:
+            if is_family_reference(clause.column_name):
+                members = family_members(clause.column_name, valid_filter_cols)
+                if not members:
+                    raise ValueError(
+                        f"Rule '{rule.rule_id}' references column family "
+                        f"'{clause.column_name}' with no available members."
+                    )
+                needed_columns.update(members)
+            elif clause.column_name not in valid_filter_cols:
+                raise ValueError(
+                    f"Rule '{rule.rule_id}' references unknown outcome "
+                    f"column '{clause.column_name}'"
+                )
+            else:
+                needed_columns.add(clause.column_name)
+            if clause.format == "column_vs_column":
+                if is_family_reference(clause.target_value):
+                    target_members = family_members(
+                        clause.target_value, valid_filter_cols
+                    )
+                    if not target_members:
+                        raise ValueError(
+                            f"Rule '{rule.rule_id}' references column family "
+                            f"'{clause.target_value}' with no available members."
+                        )
+                    needed_columns.update(target_members)
+                elif clause.target_value not in valid_filter_cols:
+                    raise ValueError(
+                        f"Rule '{rule.rule_id}' references unknown target "
+                        f"column '{clause.target_value}'"
+                    )
+                else:
+                    needed_columns.add(clause.target_value)
         for cond in rule.conditions:
-            if cond.column_name in valid_filter_cols:
+            if is_family_reference(cond.column_name):
+                members = family_members(cond.column_name, valid_filter_cols)
+                if not members:
+                    raise ValueError(
+                        f"Rule '{rule.rule_id}' references column family "
+                        f"'{cond.column_name}' with no available members."
+                    )
+                needed_columns.update(members)
+            elif cond.column_name not in valid_filter_cols:
+                raise ValueError(
+                    f"Rule '{rule.rule_id}' references unknown condition "
+                    f"column '{cond.column_name}'"
+                )
+            else:
                 needed_columns.add(cond.column_name)
         invalid_extras = [
             column for column in rule.extra_columns if column not in valid_filter_cols
@@ -944,7 +1055,13 @@ def execute_comparison(
     df_b_lazy = pl.scan_csv(path_b, infer_schema=False).select(pl.col(needed_b))
 
     # Phase 2: filter only the comparison file (df_b)
-    _, df_b_lazy = apply_filters(df_a_lazy, df_b_lazy, filters)
+    _, df_b_lazy = apply_filters(
+        df_a_lazy,
+        df_b_lazy,
+        filters,
+        filter_relation=filter_relation,
+        filter_grouping_tree=parsed_filter_tree,
+    )
 
     df_b_final = df_b_lazy.collect()
 
@@ -1050,4 +1167,6 @@ def execute_comparison(
         as_of_date=as_of_date,
         commentary_template_columns=template_columns,
         new_exceptions_only=new_exceptions_only,
+        filter_relation=filter_relation,
+        filter_grouping_tree=serialize_grouping_tree(parsed_filter_tree),
     )

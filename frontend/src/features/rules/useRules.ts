@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createRule, deleteRule, loadRulesPage, reorderRules, setRulesEnabled, updateRule } from "../../api/endpoints";
-import type { Rule, RuleDraft } from "../../api/domain";
+import type { LogicClause, Rule, RuleDraft } from "../../api/domain";
+import { resolveGroupedExpression } from "../../lib/grouping";
+import { formatGroupTreeHierarchy } from "./groupingTree";
 
 const RULES_KEY = ["rules"] as const;
 
@@ -128,13 +130,14 @@ const OPERATOR_PHRASE: Record<string, string> = {
   less_than: "must be less than",
 };
 
-/**
- * Human-readable one-line summary of a rule's logic clause in required-state
- * language ("status must equal active"). This is the wording surfaced in the
- * rule list and result sections so users can read intent at a glance.
- */
-export function describeLogic(rule: Rule): string {
-  const { logic } = rule;
+/** Normalised outcome clauses: legacy single outcome or the grouped list. */
+export function ruleLogicClauses(rule: Pick<Rule, "logic" | "logicClauses">): LogicClause[] {
+  return rule.logicClauses && rule.logicClauses.length > 0
+    ? rule.logicClauses
+    : [rule.logic];
+}
+
+function describeLogicClause(logic: LogicClause): string {
   const phrase = OPERATOR_PHRASE[logic.operator] ?? logic.operator.replace(/_/g, " ");
   const rhs = logic.format === "column"
     ? (logic.columnComparisonMode ?? "comparison_vs_baseline") === "comparison_vs_baseline"
@@ -142,4 +145,52 @@ export function describeLogic(rule: Rule): string {
       : `column [${logic.target}] in Comparison`
     : `"${logic.target}"`;
   return `${logic.column} ${phrase} ${rhs}`;
+}
+
+/**
+ * Validate grouped rule outcomes without mutating them. Used by the editor and
+ * by callers that need an actionable repair state for a restored rule.
+ */
+export function validateRuleLogicConfiguration(
+  rule: Pick<Rule, "logic" | "logicClauses" | "logicRelation" | "logicGroupTree">,
+): { valid: boolean; errors: string[] } {
+  const clauses = ruleLogicClauses(rule);
+  if (clauses.length <= 1) {
+    return { valid: true, errors: [] };
+  }
+  const resolved = resolveGroupedExpression(
+    clauses,
+    rule.logicRelation ?? null,
+    rule.logicGroupTree ?? null,
+    {
+      label: "Rule outcome grouping",
+      requireExplicitForMultiple: true,
+      allowLegacyAnd: false,
+    },
+  );
+  const errors = [...resolved.errors];
+  if (clauses.some((clause) => clause.format === "column")) {
+    errors.push("Multiple grouped outcomes support value-against-column clauses only.");
+  }
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Human-readable summary of a rule's outcome clause(s) in required-state
+ * language ("status must equal active"). A single legacy outcome renders
+ * exactly as before; multiple outcomes include their full grouping expression.
+ */
+export function describeLogic(rule: Rule): string {
+  const clauses = ruleLogicClauses(rule);
+  if (clauses.length <= 1) {
+    return describeLogicClause(clauses[0] ?? rule.logic);
+  }
+  if (rule.logicGroupTree) {
+    return formatGroupTreeHierarchy(rule.logicGroupTree, (id) => {
+      const index = clauses.findIndex((clause) => clause.id === id);
+      return index >= 0 ? `outcome ${index + 1} (${describeLogicClause(clauses[index]!)})` : id;
+    });
+  }
+  const relation = rule.logicRelation === "or" ? "OR" : "AND";
+  return clauses.map((clause) => describeLogicClause(clause)).join(` ${relation} `);
 }

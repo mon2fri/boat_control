@@ -1,0 +1,29 @@
+items:
+- rule_identifier: CBR1_0Z100ERCHKBF4R1AGQ5T
+  name: Valid status
+  description: ''
+  conditions: []
+  extra_columns: []
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: status
+    operator: eq
+    target_value: active
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+- rule_identifier: CBR1_1FX1EVJ3Z8M6QRNGGZVR
+  name: Low Score
+  description: ''
+  conditions: []
+  extra_columns: []
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: score
+    operator: gt
+    target_value: '90'
+    target_values:
+    - '90'
+    comparison_mode: comparison_vs_baseline
+_version: 1

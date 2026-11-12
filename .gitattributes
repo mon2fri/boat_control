@@ -1,0 +1,3 @@
+# Generated frontend bundles include whitespace-bearing template literals.
+# Keep normal whitespace checks for source while avoiding false positives in dist.
+frontend/dist/** whitespace=-blank-at-eol
