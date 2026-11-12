@@ -222,6 +222,7 @@ class InMemoryLineageResolver:
         target_identifier: str,
         *,
         lineage_id: str | None = None,
+        limit: int = 25,
     ) -> LineageResolution:
         if target_identifier in self._ambiguous:
             raise AmbiguousLineageError(
@@ -234,16 +235,30 @@ class InMemoryLineageResolver:
                 self._conflicts[target_identifier],
                 target_identifier=target_identifier,
             )
-        chain = tuple(self._edges.get(target_identifier, ()))
-        if lineage_id:
-            filtered = tuple(edge for edge in chain if edge.lineage_id in ("", lineage_id))
-            if len(filtered) != len(chain):
-                chain = filtered
-        lineage = chain[0].lineage_id if chain else ""
+        # Transitive nearest-first walk with cycle guard, mirroring the agreed
+        # Worker A behavior of returning a bounded ordered predecessor chain.
+        chain: list[PredecessorEdge] = []
+        seen: set[str] = {target_identifier}
+        frontier: list[str] = [target_identifier]
+        while frontier and len(chain) < limit:
+            current = frontier.pop(0)
+            for edge in self._edges.get(current, ()):
+                if lineage_id and edge.lineage_id not in ("", lineage_id):
+                    continue
+                if edge.source_identifier in seen:
+                    continue
+                seen.add(edge.source_identifier)
+                chain.append(edge)
+                frontier.append(edge.source_identifier)
+        lineage = ""
+        for edge in chain:
+            if edge.lineage_id:
+                lineage = edge.lineage_id
+                break
         return LineageResolution(
             target_identifier=target_identifier,
             lineage_id=lineage,
-            chain=chain,
+            chain=tuple(chain),
         )
 
     def describe_revision(

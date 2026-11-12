@@ -1279,6 +1279,9 @@ class ExceptionTrackingRepository:
                 f"{best_date.isoformat()} remain contradictory; review required."
             )
             return None, True
+        # Provenance names the nearest (target-side) edge event: the recorded
+        # revision that created the target, which is also the token binding
+        # later acceptance to this revision. Source fields pin the text origin.
         return (
             _CrossRevisionCarry(
                 commentary=best_occurrence.commentary,
@@ -1286,7 +1289,7 @@ class ExceptionTrackingRepository:
                 source_exception_id=best_occurrence.exception_id,
                 source_as_of_date=best_occurrence.as_of_date,
                 source_rule_identifier=best_edge.source_identifier,
-                event_id=best_edge.event_id,
+                event_id=edges[0].event_id,
             ),
             True,
         )
