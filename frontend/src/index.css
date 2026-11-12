@@ -2903,6 +2903,12 @@ dl.card dd {
   border-color: var(--rag-amber);
 }
 
+.status-badge--recertification-required {
+  color: var(--white);
+  background: var(--rag-purple, #7c3aed);
+  border-color: var(--rag-purple, #7c3aed);
+}
+
 .table-scroll {
   overflow-x: auto;
   max-width: 100%;

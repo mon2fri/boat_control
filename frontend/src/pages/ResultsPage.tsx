@@ -324,9 +324,9 @@ function ResultView({
         )}
         {newExceptionsOnly && result.overall.ruleViolationRowCount === 0 && (
           <p className="alert alert--info" role="status">
-            No New or NotCommented exceptions are visible for this As-of Date. Uncheck
-            New Exceptions Only to display Commented exceptions. All exceptions remain stored,
-            and the commentary template still includes them.
+            No New, NotCommented, or pending-recertification exceptions are visible for this
+            As-of Date. Uncheck New Exceptions Only to display Commented exceptions. All
+            exceptions remain stored, and the commentary template still includes them.
           </p>
         )}
         <p className="field-hint">

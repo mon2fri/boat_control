@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RuleResult } from "../../api/domain";
 import { resolveExceptionId } from "../../lib/exceptionIdentity";
+import { RecertificationBadge } from "./RecertificationBadge";
 
 interface ExceptionRow {
   exceptionId: string | null;
@@ -9,6 +10,13 @@ interface ExceptionRow {
   keyColumns: Record<string, string | null>;
   aggregationValues: Record<string, string | null>;
   extraValues: Record<string, string | null>;
+  /** Pending review state carried from the persisted violation, when present. */
+  exceptionStatus?: "RecertificationRequired";
+  recertificationReason?: string;
+  carriedFromExceptionId?: string;
+  carriedFromAsOfDate?: string;
+  carriedFromRuleIdentifier?: string;
+  ruleEvolutionEventId?: string;
 }
 
 interface Props {
@@ -65,6 +73,16 @@ function buildExceptionRows(
         keyColumns: keyValues,
         aggregationValues: aggValues,
         extraValues,
+        ...(detail.exceptionStatus === "RecertificationRequired"
+          ? { exceptionStatus: "RecertificationRequired" as const }
+          : {}),
+        ...(detail.recertificationReason ? { recertificationReason: detail.recertificationReason } : {}),
+        ...(detail.carriedFromExceptionId ? { carriedFromExceptionId: detail.carriedFromExceptionId } : {}),
+        ...(detail.carriedFromAsOfDate ? { carriedFromAsOfDate: detail.carriedFromAsOfDate } : {}),
+        ...(detail.carriedFromRuleIdentifier
+          ? { carriedFromRuleIdentifier: detail.carriedFromRuleIdentifier }
+          : {}),
+        ...(detail.ruleEvolutionEventId ? { ruleEvolutionEventId: detail.ruleEvolutionEventId } : {}),
       });
     }
   }
@@ -452,6 +470,18 @@ export function ExceptionTable({
                   >
                     <div role="cell" className="exception-detail-id">
                       <code>{row.exceptionId ?? "—"}</code>
+                      {row.exceptionStatus === "RecertificationRequired" && (
+                        <>
+                          <br />
+                          <RecertificationBadge
+                            reason={row.recertificationReason}
+                            carriedFromExceptionId={row.carriedFromExceptionId}
+                            carriedFromAsOfDate={row.carriedFromAsOfDate}
+                            carriedFromRuleIdentifier={row.carriedFromRuleIdentifier}
+                            ruleEvolutionEventId={row.ruleEvolutionEventId}
+                          />
+                        </>
+                      )}
                     </div>
                     {keyColumnNames.map((kc) => (
                       <div key={`key_${kc}`} role="cell">

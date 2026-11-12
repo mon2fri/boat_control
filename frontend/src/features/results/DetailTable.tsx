@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DetailRow } from "../../api/domain";
+import { RecertificationBadge } from "./RecertificationBadge";
 
 interface ColumnFilter {
   key: string;
@@ -303,6 +304,18 @@ export function DetailTable({
                 {showExceptionId && (
                   <div role="cell" className="exception-detail-id">
                     <code>{row.exceptionId ?? "—"}</code>
+                    {row.exceptionStatus === "RecertificationRequired" && (
+                      <>
+                        <br />
+                        <RecertificationBadge
+                          reason={row.recertificationReason}
+                          carriedFromExceptionId={row.carriedFromExceptionId}
+                          carriedFromAsOfDate={row.carriedFromAsOfDate}
+                          carriedFromRuleIdentifier={row.carriedFromRuleIdentifier}
+                          ruleEvolutionEventId={row.ruleEvolutionEventId}
+                        />
+                      </>
+                    )}
                   </div>
                 )}
                 {keyColumnNames.length > 0 ? (

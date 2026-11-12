@@ -167,7 +167,7 @@ describe("critical user journey: upload → prepare → rules → run → result
 
     const scopeToggle = screen.getByRole("checkbox", { name: "New Exceptions Only" });
     expect(scopeToggle).toBeChecked();
-    expect(screen.getByText(/No New or NotCommented exceptions/)).toBeInTheDocument();
+    expect(screen.getByText(/No New, NotCommented, or pending-recertification exceptions/)).toBeInTheDocument();
     fireEvent.click(scopeToggle);
     await waitFor(() => {
       const calls = vi.mocked(fetch).mock.calls.filter(([url]) =>
@@ -179,7 +179,7 @@ describe("critical user journey: upload → prepare → rules → run → result
       String(url).includes("/runs/execute/"),
     )).toHaveLength(1);
     await waitFor(() =>
-      expect(screen.queryByText(/No New or NotCommented exceptions/)).not.toBeInTheDocument(),
+      expect(screen.queryByText(/No New, NotCommented, or pending-recertification exceptions/)).not.toBeInTheDocument(),
     );
     expect(screen.getByText("baseline_vs_candidate")).toBeInTheDocument();
     expect(document.querySelector(".result-content.results-layer-content")).toBeInTheDocument();
