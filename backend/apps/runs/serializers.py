@@ -89,6 +89,16 @@ class ValidationViolationSerializer(serializers.Serializer):  # type: ignore[mis
     )
     exception_id = serializers.CharField(required=False, allow_null=True)
     exception_status = serializers.CharField(required=False, allow_null=True)
+    # Additive rule-evolution provenance attached at read time from the
+    # authoritative tracking store (see tracking_context.refresh_result_dict).
+    recertification_required = serializers.BooleanField(required=False, default=False)
+    recertification_reason = serializers.CharField(required=False, allow_blank=True, default="")
+    carried_from_exception_id = serializers.CharField(required=False, allow_blank=True, default="")
+    carried_from_as_of_date = serializers.CharField(required=False, allow_blank=True, default="")
+    carried_from_rule_identifier = serializers.CharField(required=False, allow_blank=True, default="")
+    rule_evolution_event_id = serializers.CharField(required=False, allow_blank=True, default="")
+    recertified_at = serializers.CharField(required=False, allow_null=True, default=None)
+    revision_token = serializers.CharField(required=False, allow_blank=True, default="")
     outcome_columns = serializers.ListField(
         child=serializers.CharField(), required=False, default=list
     )
@@ -131,3 +141,8 @@ class ExecutionResultSerializer(serializers.Serializer):  # type: ignore[misc]
         child=serializers.CharField(), required=False, default=list
     )
     new_exceptions_only = serializers.BooleanField(required=False, default=True)
+    lineage_context = serializers.DictField(
+        child=serializers.CharField(allow_blank=True),
+        required=False,
+        default=dict,
+    )
