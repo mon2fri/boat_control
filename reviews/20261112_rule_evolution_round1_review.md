@@ -36,7 +36,7 @@ blocking the legacy same-identity fallback. For an unchanged rule the
 eligible commentary lives under the target's OWN identifier in an earlier
 date table, so it was dropped (`commentary = ""`).
 
-## Fix (integration commit `7346f51`, backend only)
+## Fix (integration commits `7346f51`, `20f4fde`, backend only)
 
 1. **Unchanged-rule head rule**: when edges yield no candidate AND the target
    identifier never appears as a source in its own chain, return
@@ -46,7 +46,13 @@ date table, so it was dropped (`commentary = ""`).
    `_latest_predecessor_occurrence` now read ONLY the single latest date
    table strictly earlier than the target (never same-date, never older
    dates), for both the same-ID and cross-revision scenarios.
-3. B's `test_same_date_source_is_eligible` encoded the old `<=` rule; rewritten
+3. **Pending propagates** (user correction to the first fix, which copied
+   text only): same-ID carry now copies text AND pending state — Commented
+   rows land Commented with no recertification; still-pending rows land
+   RecertificationRequired with reason, hop-by-hop provenance, and the
+   originating event token; cleared-but-pending rows carry the mark without
+   text; blank rows carry nothing.
+4. B's `test_same_date_source_is_eligible` encoded the old `<=` rule; rewritten
    as `test_same_date_source_is_not_eligible` per the directive.
 
 Reload semantics (documented intent, tested): capture-time INSERT is the
@@ -57,16 +63,18 @@ later date picks them up only if captured afterwards.
 
 ## Verification
 
-- New `tests/backend/test_rule_evolution_round1.py` (5 tests): reported
+- New `tests/backend/test_rule_evolution_round1.py` (6 tests): reported
   chronology (upload before capture carries as Commented, no recertification),
-  revert shape still blocked, late-upload reload semantics incl.
-  `refresh_result_dict`, target-edit/clear preservation, scope filtering +
-  unrelated books. All pass.
+  same-revision pending preservation with hop-by-hop provenance, revert shape
+  still blocked, late-upload reload semantics incl. `refresh_result_dict`,
+  target-edit/clear preservation (incl. cleared-pending mark without
+  resurrection), scope filtering + unrelated books. All pass.
 - Evidence-copy reproduction through the REAL service (`lineage_resolver=None`
-  auto-probe): Nov-1 Mia/Quinn now carry "KZ updated" as Commented;
-  Harry/Iris correctly stay new; no warnings. (Original preview DB shows the
-  pre-fix state and was never mutated.)
-- Full backend + integration: **878 passed, 5 failed** (only the known
+  auto-probe): Nov-1 Mia/Quinn now carry "KZ updated" as Commented; Oct-31
+  V2 seed row carries forward as RecertificationRequired with the originating
+  event token; Harry/Iris correctly stay new; no warnings. (Original preview
+  DB shows the pre-fix state and was never mutated.)
+- Full backend + integration: **879 passed, 5 failed** (only the known
   pre-existing `test_runs.py` base failures). Frontend: **734 passed,
   0 failed**; `tsc`/`eslint`/`diff-check`/`ruff` clean for touched files
   (one intentional SIM118 `.keys()` for `sqlite3.Row` retained).
