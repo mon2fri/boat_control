@@ -57,6 +57,14 @@ def _flatten_rows(result: dict[str, Any], section: str) -> list[dict[str, Any]]:
                     "rule_id": v.get("rule_id", rule_id),
                     "rule_name": v.get("rule_name"),
                     "rule_identifier": v.get("rule_identifier"),
+                    "exception_id": v.get("exception_id"),
+                    "exception_status": v.get("exception_status"),
+                    "recertification_required": v.get("recertification_required", False),
+                    "recertification_reason": v.get("recertification_reason", ""),
+                    "carried_from_exception_id": v.get("carried_from_exception_id", ""),
+                    "carried_from_as_of_date": v.get("carried_from_as_of_date", ""),
+                    "rule_evolution_event_id": v.get("rule_evolution_event_id", ""),
+                    "revision_token": v.get("revision_token", ""),
                 }
             )
     return rows

@@ -4,6 +4,7 @@ import json
 import tempfile
 import threading
 import uuid
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -116,6 +117,7 @@ def save_run(
     file_b_path: Path | None = None,
     as_of_date: date | None = None,
     created_at: datetime | None = None,
+    lineage_context: Mapping[str, Any] | None = None,
 ) -> RunMetadata:
     expired_upload_paths: list[Path] = []
     with _runs_lock:
@@ -187,6 +189,9 @@ def save_run(
                 "group_statistics": result.group_statistics,
                 "commentary_template_columns": result.commentary_template_columns,
                 "new_exceptions_only": result.new_exceptions_only,
+                # Target lineage/revision context for cross-revision commentary
+                # carry. Additive: older snapshots load without this key.
+                "lineage_context": dict(lineage_context or {}),
             },
         }
 
@@ -309,6 +314,8 @@ def load_run(run_id: str) -> dict[str, Any] | None:
                         result["commentary_template_columns"] = []
                     if "new_exceptions_only" not in result:
                         result["new_exceptions_only"] = True
+                    if "lineage_context" not in result:
+                        result["lineage_context"] = {}
                     validation = result.get("validation") or {}
                     if isinstance(validation, dict):
                         for violations in (validation.get("violations_by_rule") or {}).values():

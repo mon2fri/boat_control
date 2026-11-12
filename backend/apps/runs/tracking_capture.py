@@ -65,6 +65,7 @@ class Exposure:
     key_columns: tuple[tuple[str, str], ...]
     rule_index: str
     detail_values: dict[str, str]
+    lineage_id: str | None = None
 
 
 def _utc_timestamp(value: datetime | None) -> datetime:
@@ -177,11 +178,83 @@ def _supports_template_columns(function: object) -> str | None:
     return None
 
 
+def _normalize_lineage_context(
+    lineage_context: Mapping[str, object] | None,
+) -> dict[str, str | None]:
+    """Normalize per-rule lineage context keyed by run-local rule index.
+
+    Values are either a lineage-ID string or a mapping containing
+    ``lineage_id`` (as persisted in run snapshots). Missing entries mean the
+    capture had no lineage context for that rule.
+    """
+
+    if lineage_context is None:
+        return {}
+    if not isinstance(lineage_context, Mapping):
+        raise ExceptionCaptureError(
+            "lineage_context must map run-local rule IDs to lineage IDs."
+        )
+    normalized: dict[str, str | None] = {}
+    for rule_id, value in lineage_context.items():
+        lineage_id: str | None = None
+        if isinstance(value, Mapping):
+            raw = value.get("lineage_id")
+            if raw is not None and not isinstance(raw, str):
+                raise ExceptionCaptureError(
+                    f"lineage_context for rule {rule_id} must carry a text lineage_id."
+                )
+            lineage_id = raw
+        elif isinstance(value, str):
+            lineage_id = value
+        elif value is not None:
+            raise ExceptionCaptureError(
+                f"lineage_context for rule {rule_id} must be a lineage ID or mapping."
+            )
+        normalized[str(rule_id)] = lineage_id.strip() if lineage_id else None
+    return normalized
+
+
+def _auto_lineage_context(
+    identifiers: Sequence[str],
+) -> dict[str, str | None]:
+    """Best-effort target lineage context from Worker A's agreed service.
+
+    Returns an empty mapping when Worker A's revision-describe service is not
+    integrated yet; the capture then proceeds without lineage disambiguation
+    and the repository degrades to same-identity carry. This hook is filled in
+    once Worker A's prerequisite commit lands.
+    """
+
+    try:
+        from apps.exception_tracking.lineage import get_lineage_resolver
+    except ImportError:  # pragma: no cover - defensive boundary
+        return {}
+    try:
+        resolver = get_lineage_resolver()
+    except Exception:  # pragma: no cover - defensive boundary
+        return {}
+    if resolver is None:
+        return {}
+    describe = getattr(resolver, "describe_revision", None)
+    if not callable(describe):
+        return {}
+    context: dict[str, str | None] = {}
+    for identifier in dict.fromkeys(identifiers):
+        try:
+            descriptor = describe(identifier)
+        except Exception:  # one bad identifier must not fail the capture
+            continue
+        lineage_id = getattr(descriptor, "lineage_id", None) if descriptor else None
+        context[identifier] = lineage_id if isinstance(lineage_id, str) and lineage_id.strip() else None
+    return context
+
+
 def build_occurrences(
     result: ExecutionResult,
     *,
     captured_at: datetime | None = None,
     template_columns: Sequence[str] | None = None,
+    lineage_context: Mapping[str, object] | None = None,
 ) -> list[OccurrencePayload]:
     """Convert every violation into one deduplicated occurrence payload.
 
@@ -209,6 +282,7 @@ def build_occurrences(
         if template_columns is not None
         else result.commentary_template_columns
     )
+    lineage_by_rule = _normalize_lineage_context(lineage_context)
     unique: dict[IdentityKey, Exposure] = {}
 
     for rule_id, violations in result.validation.violations_by_rule.items():
@@ -226,6 +300,7 @@ def build_occurrences(
                     key_columns=pairs,
                     rule_index=rule_id,
                     detail_values=detail_values,
+                    lineage_id=lineage_by_rule.get(rule_id),
                 )
 
     return [
@@ -235,9 +310,53 @@ def build_occurrences(
             "exception_timestamp": timestamp,
             "exception_rule_index": exposure.rule_index,
             "exception_extra_values": exposure.detail_values,
+            **(
+                {"lineage_id": exposure.lineage_id}
+                if exposure.lineage_id is not None
+                else {}
+            ),
         }
         for _, exposure in sorted(unique.items())
     ]
+
+
+def _supports_lineage_resolver(function: object) -> str | None:
+    try:
+        signature = inspect.signature(function)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    parameters = signature.parameters
+    if "lineage_resolver" in parameters:
+        return "lineage_resolver"
+    for name, parameter in parameters.items():
+        if name == "kwargs" and parameter.kind is inspect.Parameter.VAR_KEYWORD:
+            return "lineage_resolver"
+    return None
+
+
+def resolve_run_lineage_context(
+    result: ExecutionResult,
+) -> dict[str, str]:
+    """Resolve target lineage context for one run, keyed by run-local rule ID.
+
+    Best-effort: rules whose lineage cannot be resolved are omitted and the
+    capture proceeds without lineage disambiguation. Returns ``{}`` until
+    Worker A's revision-describe prerequisite lands.
+    """
+
+    identifiers: dict[str, str] = {}
+    for rule_id, violations in result.validation.violations_by_rule.items():
+        first = violations[0].rule_identifier if violations else None
+        try:
+            identifiers[str(rule_id)] = _rule_identifier(result, str(rule_id), first)
+        except ExceptionCaptureError:
+            continue
+    auto = _auto_lineage_context(list(dict.fromkeys(identifiers.values())))
+    return {
+        rule_id: lineage_id
+        for rule_id, identifier in identifiers.items()
+        if (lineage_id := auto.get(identifier)) is not None
+    }
 
 
 def _load_store() -> CaptureStore:
@@ -304,6 +423,8 @@ def capture_run_exceptions(
     db_path: Path | None = None,
     store: CaptureStore | None = None,
     template_columns: Sequence[str] | None = None,
+    lineage_context: Mapping[str, object] | None = None,
+    lineage_resolver: object | None = None,
 ) -> object:
     """Capture a completed run's exceptions before the run is persisted.
 
@@ -317,6 +438,14 @@ def capture_run_exceptions(
     ordered union and each occurrence's ``exception_extra_values``; a non-empty
     selection fails closed when the integrated A store does not expose that
     capture contract.
+
+    ``lineage_context`` maps run-local rule IDs to lineage IDs (or mappings
+    carrying ``lineage_id``) and is threaded into each occurrence so the
+    tracking store can disambiguate predecessor chains. When omitted, a
+    best-effort auto-resolution runs against Worker A's agreed service (empty
+    until Worker A's prerequisite lands). ``lineage_resolver`` injects the
+    agreed lineage service (a stub only in focused tests) and is forwarded to
+    the tracking store; ``None`` probes the agreed service.
     """
 
     if isinstance(as_of_date, datetime) or not isinstance(as_of_date, date):
@@ -328,10 +457,29 @@ def capture_run_exceptions(
         if template_columns is not None
         else result.commentary_template_columns
     )
+    normalized_context = _normalize_lineage_context(lineage_context)
+    if lineage_context is None:
+        identifiers = [
+            _rule_identifier(result, rule_id, violations[0].rule_identifier if violations else None)
+            for rule_id, violations in result.validation.violations_by_rule.items()
+            if violations
+        ]
+        auto = _auto_lineage_context(identifiers)
+        if auto:
+            by_identifier = dict(auto)
+            for rule_id, violations in result.validation.violations_by_rule.items():
+                if not violations or rule_id in normalized_context:
+                    continue
+                identifier = _rule_identifier(
+                    result, rule_id, violations[0].rule_identifier
+                )
+                if identifier in by_identifier:
+                    normalized_context[rule_id] = by_identifier[identifier]
     occurrences = build_occurrences(
         result,
         captured_at=timestamp,
         template_columns=selected_columns,
+        lineage_context=normalized_context,
     )
     resolved_path = db_path if db_path is not None else resolve_tracking_db_path()
     resolved_store = store or _load_store()
@@ -350,6 +498,16 @@ def capture_run_exceptions(
         extra_kwargs: dict[str, object] = {}
     else:
         extra_kwargs = {template_parameter: selected_columns}
+
+    lineage_parameter = _supports_lineage_resolver(resolved_store.capture_exceptions)
+    if lineage_parameter is not None:
+        extra_kwargs[lineage_parameter] = lineage_resolver
+    elif lineage_resolver is not None:
+        raise ExceptionTrackingDependencyError(
+            "The tracking store does not accept the lineage_resolver contract "
+            "required for cross-revision commentary carry. The run was not "
+            "saved; integrate the tracking store's rule-evolution commit first."
+        )
 
     try:
         return resolved_store.capture_exceptions(
