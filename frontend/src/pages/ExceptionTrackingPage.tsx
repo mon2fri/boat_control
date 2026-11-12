@@ -276,10 +276,45 @@ export function ExceptionTrackingPage() {
             idMessages.push(`${label}: ${values.map(String).join(", ")}`);
           }
         }
+        // Worker D (frozen Round-2): an invalid Commentary Recertify value
+        // rejects the whole file atomically with code
+        // `invalid_recertification_selection`; `details.invalid_rows[]`
+        // names each affected row for correction and retry.
+        const invalidRows = ids?.["invalid_rows"];
+        const rowMessages: string[] = [];
+        const primitiveText = (value: unknown): string | null => {
+          if (typeof value === "string") return value;
+          if (typeof value === "number" || typeof value === "boolean") return String(value);
+          return null;
+        };
+        if (Array.isArray(invalidRows)) {
+          for (const entry of invalidRows) {
+            if (!entry || typeof entry !== "object") continue;
+            const record = entry as Record<string, unknown>;
+            const parts: string[] = [];
+            const row = primitiveText(record["row"]);
+            if (row !== null) parts.push(`row ${row}`);
+            const exceptionId = primitiveText(record["exception_id"]);
+            if (exceptionId !== null) parts.push(exceptionId);
+            const value = primitiveText(record["value"]);
+            if (value !== null) parts.push(`value ${JSON.stringify(value)}`);
+            if (parts.length > 0) rowMessages.push(parts.join(" "));
+          }
+        }
+        const MAX_LISTED_ROWS = 5;
+        const listedRows = rowMessages.slice(0, MAX_LISTED_ROWS).join("; ");
+        const remainingRows = rowMessages.length > MAX_LISTED_ROWS
+          ? `; and ${rowMessages.length - MAX_LISTED_ROWS} more`
+          : "";
+        const extras: string[] = [];
+        if (idMessages.length > 0) extras.push(idMessages.join("; "));
+        if (rowMessages.length > 0) {
+          extras.push(`Invalid Commentary Recertify values: ${listedRows}${remainingRows}`);
+        }
         setNotice({
           tone: "error",
           text: `The commentary template was rejected: ${error.message}${
-            idMessages.length > 0 ? ` (${idMessages.join("; ")})` : ""
+            extras.length > 0 ? ` (${extras.join("; ")})` : ""
           }`,
         });
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -437,15 +472,18 @@ export function ExceptionTrackingPage() {
         )}
         <p className="field-hint">
           Unknown, duplicate or mismatched exception IDs are rejected as a whole; no partial
-          commentary updates are applied. Downloaded templates no longer carry the six
-          provenance columns — pending recertification shows via Exception Status instead.
-          Use the <strong>Commentary Recertify</strong> column to act on carried commentary:
-          Keep Current ignores the sheet text and retains the stored commentary; Updated
-          stores the sheet text (an empty cell deliberately clears it, while unchanged text
-          counts as acceptance); a blank cell preserves the stored commentary. For ordinary
-          commented rows, a nonempty cell accepts the text and an empty cell preserves it.
-          Invalid dropdown values are rejected for that row only; nothing is partially applied.
-          Uploading commentary text never recertifies carried commentary — use{" "}
+          commentary updates are applied. Downloaded templates end the metadata columns with{" "}
+          <strong>Commentary Recertify</strong> (blank default; Keep Current/Updated dropdown)
+          — the six provenance columns are removed, and pending recertification shows via
+          Exception Status instead. For pending rows, Keep Current accepts the stored
+          commentary as-is (clearing pending: Commented when text is present, otherwise Not
+          Commented/New); Updated stores the sheet text and clears pending (an empty cell
+          deliberately clears it to Not Commented, while unchanged text counts as acceptance
+          to Commented); a blank cell preserves everything. For ordinary commented rows, a
+          nonempty cell accepts the text (even from a stale template) and an empty cell
+          preserves it. An invalid Commentary Recertify value rejects the whole file; the
+          error names each affected row (row number, exception ID, value). Uploading
+          commentary text never recertifies carried commentary — use{" "}
           <strong>Recertify selected</strong> below to accept it, including unchanged text.
         </p>
       </div>

@@ -250,10 +250,11 @@ describe("ExceptionTrackingPage recertification", () => {
     installFetch();
     renderPage();
     await screen.findByRole("row", { name: new RegExp(`${V2}_id_7`) });
-    expect(screen.getByText(/Commentary Recertify/)).toBeInTheDocument();
-    expect(screen.getByText(/Keep Current ignores the sheet text/)).toBeInTheDocument();
+    expect(screen.getByText("Commentary Recertify", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText(/Keep Current accepts the stored/)).toBeInTheDocument();
     expect(screen.getByText(/unchanged text\s*counts as acceptance/)).toBeInTheDocument();
-    expect(screen.getByText(/Invalid dropdown values are rejected for that row only/)).toBeInTheDocument();
-    expect(screen.getByText(/pending recertification shows via Exception Status/)).toBeInTheDocument();
+    expect(screen.getByText(/rejects the whole file/)).toBeInTheDocument();
+    expect(screen.getByText(/names each affected row/)).toBeInTheDocument();
+    expect(screen.getByText(/pending recertification shows via/)).toBeInTheDocument();
   });
 });

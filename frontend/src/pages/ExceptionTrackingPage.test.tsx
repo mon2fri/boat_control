@@ -242,8 +242,37 @@ describe("ExceptionTrackingPage", () => {
     expect(screen.queryByText(/Updated \d+ exceptions/)).not.toBeInTheDocument();
   });
 
-  it("rejects a non-XLSX selection before calling the backend", async () => {
-    const fetchMock = installFetch();
+  it("names each affected row for invalid Commentary Recertify values", async () => {
+    installFetch({
+      importResponse: () =>
+        Promise.resolve(json({
+          code: "invalid_recertification_selection",
+          error: "Invalid Commentary Recertify selection.",
+          details: {
+            invalid_rows: [
+              { row: 5, exception_id: "CBR1_00000000000000000000_id_42", value: "Bogus" },
+              { row: 9, exception_id: "CBR1_11111111111111111111_id_7", value: "" },
+            ],
+          },
+        }, 400)),
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Upload completed commentary template (.xlsx)"), {
+      target: { files: [new File(["xlsx"], "commentary.xlsx")] },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /Invalid Commentary Recertify values: row 5 CBR1_00000000000000000000_id_42 value "Bogus"; row 9 CBR1_11111111111111111111_id_7 value ""/,
+      ),
+    );
+    // The whole file is rejected: no success summary is shown.
+    expect(screen.queryByText(/Updated \d+ exceptions/)).not.toBeInTheDocument();
+  });
+
+  it("rejects a non-XLSX selection before calling the backend", async () => {    const fetchMock = installFetch();
     renderPage();
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
     const before = fetchMock.mock.calls.length;
