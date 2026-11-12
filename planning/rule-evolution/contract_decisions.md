@@ -5,11 +5,13 @@ to all affected workers promptly.
 
 BASE_COMMIT: `4b7c5bf72df3e65b55d118d7e9647173ed0b73f3`
 
-## Status: PARTIAL FREEZE — A frozen 2026-11-12; B/C pending
+## Status: PARTIAL FREEZE — A+B frozen 2026-11-12; C pending
 
 A delivered (`feat/rule-evolution-worker-a`, 6 commits `3bc6c09`…`854cdda`
-on base `4b7c5bf`, checkout clean). B/C still active. A-side interfaces below
-are FROZEN; B/C must build against them. B/C portions remain provisional.
+on base `4b7c5bf`, checkout clean). B delivered
+(`feat/rule-evolution-worker-b`, 6 commits `8f90f9f`…`2472a82` on base
+`4b7c5bf`, checkout clean, all B-owned paths). C still active. A+B interfaces
+below are FROZEN; C must build against them.
 
 The defaults below come from `shared_contract.md` and the requirements doc.
 They are NOT yet agreed interfaces. Workers A/B must each send an interface
@@ -72,10 +74,11 @@ integrator will then freeze the actual field names/tokens/endpoints here.
 
 - [x] A: service signature + history endpoint shape + rule-save JSON sketches
   — DELIVERED and FROZEN (see below).
-- [ ] B: tracking/recertify JSON placement + acceptance/upload semantics sketches
+- [x] B: tracking/recertify JSON placement + acceptance/upload semantics
+  sketches — DELIVERED and FROZEN (see below).
 - [ ] C: acknowledgement of A/B payloads, wire/domain mapping plan
-- [ ] Integrator freeze of: acceptance endpoints, status transitions,
-  provenance location (B/C portions)
+- [ ] Integrator freeze of: C wire/domain acknowledgement only (all wire
+  contracts now frozen)
 
 ## FROZEN — A interfaces (Worker A delivery 2026-11-12)
 
@@ -153,3 +156,93 @@ integrator will then freeze the actual field names/tokens/endpoints here.
   mechanical adaptation; recorded here as an explicit reassignment. If
   integration review finds issues, the integrator will repair them as
   integration-only fixes rather than rewriting A's branch.
+
+## FROZEN — B interfaces (Worker B delivery 2026-11-12)
+
+Source: `docs/20261112_rule_evolution_tracking_contract.md` on
+`feat/rule-evolution-worker-b`. No competing field names; C builds against
+exactly these.
+
+### Tracking list rows (backward compatible)
+
+`GET /api/exception-tracking/?as_of_date=...` rows gain optional fields
+(existing fields unchanged; legacy rows return defaults):
+
+- `status: "RecertificationRequired"` (exactly one new status value;
+  `New` / `NotCommented` / `Commented` behavior unchanged).
+- `recertification_required: true`,
+  `recertification_reason: "Recertification due to rule change"` (exact
+  label lives ONLY here, never inside `exception_commentary`, so uploads
+  cannot accidentally certify it), `carried_from_exception_id`,
+  `carried_from_as_of_date`, `carried_from_rule_identifier`,
+  `rule_evolution_event_id`, `recertified_at: null`.
+- `revision_token`: `""` for never-carried rows, else the
+  `rule_evolution_event_id` that created the target revision. This token is
+  the concurrency guard for acceptance.
+- `available_filters.status` includes `RecertificationRequired`;
+  `filter_status` and status sorting accept it; pending rows sort with `New`.
+- Pending rows keep inherited text verbatim in `exception_commentary` yet
+  stay reviewable under New Exceptions Only across results, run detail,
+  tracking counts, HTML/Excel reports, workbook exports, filters, sorting,
+  recapture. Pending NEVER collapses into Commented via a text check.
+
+### Explicit acceptance (only path that clears pending)
+
+- `POST /api/exception-tracking/recertify/` with `{as_of_date,
+  exception_ids, revision_tokens}` (`revision_tokens` echoes each row's
+  token; missing entries default to `""`). Unchanged-text acceptance
+  supported.
+- Success `200`: `{as_of_date, accepted[], already_accepted[], total,
+  exceptions[]}`. Repeats are retry-safe no-ops (`already_accepted`).
+- Errors, all atomic (nothing written): `404 unknown_exception_ids`
+  (`details.unknown_ids`); `409 stale_revision_token`
+  (`details.stale_ids`); `400 blank_commentary_not_certified`
+  (`details.blank_ids` — blank is never certified); `400
+  invalid_recertification_request` (empty selection); `400
+  invalid_as_of_date`.
+- Nothing else certifies: download, rerun, export, upload (even unchanged
+  text), or text edits only edit text. Clearing pending text keeps the row
+  pending and reviewable.
+
+### Workbook (XLSX)
+
+- Exceptions sheet appends six informational columns after standard
+  metadata, before user detail columns: `Recertification Reason | Carried
+  From Exception ID | Carried From As-of Date | Carried From Rule Identifier
+  | Rule Evolution Event ID | Recertified At`.
+- Template Version (B2) / As-of Date (B3) positions, import ID matching,
+  extra-column order, formula protection unchanged. Old workbooks without
+  the new columns keep importing. Import IGNORES the provenance columns.
+
+### Reports
+
+- HTML exception table + Excel `Exception Table` sheet append a
+  `Recertification` column (exact reason for pending rows; blank otherwise).
+  Membership and counts unchanged: pending rows are part of New Exceptions
+  Only, not an additional population.
+
+### B→A consumption + inheritable edges
+
+- B adapts to frozen `get_predecessor_chain` / `resolve_revision_context`
+  by duck-typed adapter (matched by class name so the B-only checkout stays
+  importable). `LineageNotFound` → legacy same-identity carry;
+  `LineageAmbiguous` / `LineageCycle` → warn in
+  `RecordingSummary.carry_warnings`, carry nothing, never guess.
+- Inheritable change types: `executable_revision`, `legacy_backfill` with
+  `commentary_policy == "carry_forward_recertification"`.
+- Ambiguity surfacing is log + `carry_warnings` only; a C-visible review
+  affordance is C/integrator work (tracked as a known limitation).
+
+### Prerequisite log (A→B, arranged 2026-11-12)
+
+- Worker B requested A's evolution service to run the real-service
+  integration check. APPROVED prerequisite: A commits `3bc6c09` (models +
+  migration, required dependency) then `337a7e6` (evolution service),
+  cherry-picked by B itself into `feat/rule-evolution-worker-b` in that
+  order. No uncommitted files pulled.
+- INHERITED-COMMIT WARNING for integration: when cherry-picking into
+  `feat/rule-evolution-integration` later, apply A's full sequence first
+  (A commits), then B's commits EXCLUDING any re-application of `3bc6c09` /
+  `337a7e6` content — if B's follow-up work commits the cherry-picks as
+  separate commits, skip those hashes at integration time and keep A's
+  originals. Exact hashes recorded here: `3bc6c09`, `337a7e6`.
