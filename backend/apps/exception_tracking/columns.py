@@ -38,6 +38,12 @@ RESERVED_EXTRA_COLUMN_NAMES: tuple[str, ...] = (
     "Exception Last Seen As-of Date",
     "Exception First Seen Timestamp",
     "Exception Last Seen Timestamp",
+    "Recertification Reason",
+    "Carried From Exception ID",
+    "Carried From As-of Date",
+    "Carried From Rule Identifier",
+    "Rule Evolution Event ID",
+    "Recertified At",
 )
 _RESERVED_KEYS = frozenset(normalize_column_key(name) for name in RESERVED_EXTRA_COLUMN_NAMES)
 

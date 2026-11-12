@@ -20,7 +20,7 @@ from apps.exception_tracking.api_services import (
     import_commentary,
     list_exceptions,
 )
-from apps.exception_tracking.workbook import EXCEPTION_HEADERS, build_commentary_workbook
+from apps.exception_tracking.workbook import STANDARD_EXCEPTION_HEADERS, build_commentary_workbook
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test.utils import override_settings
 from openpyxl import load_workbook
@@ -173,7 +173,7 @@ def test_real_store_export_uses_standard_columns_without_detail_metadata(
     workbook = load_workbook(io.BytesIO(template))
     sheet = workbook["Exceptions"]
 
-    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert [cell.value for cell in sheet[1]] == list(STANDARD_EXCEPTION_HEADERS)
     assert sheet["A2"].value == list_exceptions(FIRST_DATE, repository)[0]["exception_id"]
     assert sheet["B2"].value == "Commented"
     assert sheet["C2"].value == "Known"
@@ -246,22 +246,22 @@ def test_real_store_date_scoped_template_columns_and_later_historical_union(
     september = load_workbook(io.BytesIO(export_commentary(SECOND_DATE, repository)))
     august_sheet = august["Exceptions"]
     september_sheet = september["Exceptions"]
-    assert [cell.value for cell in august_sheet[1]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in august_sheet[1]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "REGION",
         "SEGMENT",
         "PORTFOLIO",
     ]
-    assert [cell.value for cell in august_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in august_sheet[2]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "EMEA",
         "Retail",
         None,
     ]
     assert [cell.value for cell in september_sheet[1]] == [
-        *EXCEPTION_HEADERS,
+        *STANDARD_EXCEPTION_HEADERS,
         "SEGMENT",
         "PORTFOLIO",
     ]
-    assert [cell.value for cell in september_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in september_sheet[2]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "Wholesale",
         "Growth",
     ]

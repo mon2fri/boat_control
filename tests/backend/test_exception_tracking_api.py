@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from apps.exception_tracking import api_services
 from apps.exception_tracking.dates import default_as_of_date
-from apps.exception_tracking.workbook import EXCEPTION_HEADERS, build_commentary_workbook
+from apps.exception_tracking.workbook import STANDARD_EXCEPTION_HEADERS, build_commentary_workbook
 from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import load_workbook
 from rest_framework.test import APIClient
@@ -456,7 +456,7 @@ def test_export_appends_only_selected_detail_columns_in_order(
     assert response.status_code == 200
     sheet = load_workbook(io.BytesIO(response.content))["Exceptions"]
     headers = [cell.value for cell in sheet[1]]
-    assert headers == [*EXCEPTION_HEADERS, "score", "Region"]
+    assert headers == [*STANDARD_EXCEPTION_HEADERS, "score", "Region"]
     assert [cell.value for cell in sheet[2]][:10] == [
         DETAIL_EXCEPTION_ID,
         "Commented",
@@ -469,7 +469,8 @@ def test_export_appends_only_selected_detail_columns_in_order(
         "2026-10-30",
         "2026-10-30",
     ]
-    assert [cell.value for cell in sheet[2]][10:] == ["10", "EMEA"]
+    assert [cell.value for cell in sheet[2]][10:16] == [None] * 6
+    assert [cell.value for cell in sheet[2]][16:] == ["10", "EMEA"]
 
 
 def test_export_includes_all_rows_uncommented_first_and_prefilled(
@@ -543,7 +544,7 @@ def test_export_with_empty_selection_has_only_standard_columns(
 
     assert response.status_code == 200
     sheet = load_workbook(io.BytesIO(response.content))["Exceptions"]
-    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert [cell.value for cell in sheet[1]] == list(STANDARD_EXCEPTION_HEADERS)
 
 
 def test_date_scoped_columns_control_tracking_metadata_and_both_export_routes(
@@ -621,12 +622,12 @@ def test_date_scoped_columns_control_tracking_metadata_and_both_export_routes(
         == 200
     )
     august_sheet = load_workbook(io.BytesIO(august_export.content))["Exceptions"]
-    assert [cell.value for cell in august_sheet[1]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in august_sheet[1]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "REGION",
         "SEGMENT",
         "PORTFOLIO",
     ]
-    assert [cell.value for cell in august_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in august_sheet[2]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "APAC",
         "Retail",
         None,
@@ -634,10 +635,10 @@ def test_date_scoped_columns_control_tracking_metadata_and_both_export_routes(
 
     september_sheet = load_workbook(io.BytesIO(september_export.content))["Exceptions"]
     run_sheet = load_workbook(io.BytesIO(run_export.content))["Exceptions"]
-    expected_headers = [*EXCEPTION_HEADERS, "SEGMENT", "PORTFOLIO"]
+    expected_headers = [*STANDARD_EXCEPTION_HEADERS, "SEGMENT", "PORTFOLIO"]
     assert [cell.value for cell in september_sheet[1]] == expected_headers
     assert [cell.value for cell in run_sheet[1]] == expected_headers
-    assert [cell.value for cell in september_sheet[2]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in september_sheet[2]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "Wholesale",
         "Growth",
     ]
@@ -662,7 +663,7 @@ def test_latest_explicit_empty_selection_does_not_add_earlier_columns(
 
     assert response.status_code == 200
     sheet = load_workbook(io.BytesIO(response.content))["Exceptions"]
-    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert [cell.value for cell in sheet[1]] == list(STANDARD_EXCEPTION_HEADERS)
 
 
 def test_legacy_repository_union_remains_a_compatibility_fallback() -> None:

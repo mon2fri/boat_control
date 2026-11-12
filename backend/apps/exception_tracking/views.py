@@ -15,6 +15,7 @@ from apps.exception_tracking.serializers import (
     AsOfDateQuerySerializer,
     CommentaryTemplateImportSerializer,
     ExportQuerySerializer,
+    RecertifyRequestSerializer,
 )
 from apps.exception_tracking.table import (
     TableQueryError,
@@ -172,6 +173,23 @@ class CommentaryTemplateImportView(APIView):  # type: ignore[misc]
                     code="invalid_workbook",
                 )
             )
+        except Exception as exc:  # pragma: no cover - defensive boundary
+            return _unexpected_response(exc)
+        return Response(result)
+
+
+class RecertifyView(APIView):  # type: ignore[misc]
+    def post(self, request: Request) -> Response:
+        serializer = RecertifyRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            result = api_services.recertify_commentaries(
+                as_of_date=serializer.validated_data.get("as_of_date"),
+                exception_ids=serializer.validated_data.get("exception_ids"),
+                revision_tokens=serializer.validated_data.get("revision_tokens"),
+            )
+        except api_services.TrackingAPIError as exc:
+            return _error_response(exc)
         except Exception as exc:  # pragma: no cover - defensive boundary
             return _unexpected_response(exc)
         return Response(result)

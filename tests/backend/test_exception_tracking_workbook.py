@@ -9,6 +9,8 @@ from apps.exception_tracking.workbook import (
     EXCEPTION_HEADERS,
     LEGACY_EXCEPTION_HEADERS,
     LEGACY_TEMPLATE_VERSION,
+    RECERT_HEADERS,
+    STANDARD_EXCEPTION_HEADERS,
     TEMPLATE_VERSION,
     VISIBLE_COLUMN_COUNT,
     WorkbookValidationError,
@@ -91,12 +93,12 @@ def test_builds_optimized_metadata_headers_visibility_and_commentary() -> None:
     assert template["B4"].value == "2026-11-03T12:00:00+00:00"
 
     sheet = workbook["Exceptions"]
-    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert [cell.value for cell in sheet[1]] == list(STANDARD_EXCEPTION_HEADERS)
     assert sheet["A2"].value == "CBR1_RULE_ID_1"
     assert sheet["B2"].value == "Commented"
     assert sheet["C2"].value == "Known upstream defect"
     assert sheet["D2"].value == "R001"
-    for index in range(1, len(EXCEPTION_HEADERS) + 1):
+    for index in range(1, len(STANDARD_EXCEPTION_HEADERS) + 1):
         column = sheet.cell(1, index).column_letter
         expected_hidden = VISIBLE_COLUMN_COUNT < index <= len(EXCEPTION_HEADERS)
         assert bool(sheet.column_dimensions[column].hidden) is expected_hidden
@@ -194,8 +196,11 @@ def test_trailing_standard_metadata_and_data_columns_are_informational() -> None
     def change_informational(workbook: Any) -> None:
         workbook["Exceptions"]["E2"] = "Changed rule identifier"
         workbook["Exceptions"]["J2"] = None
-        workbook["Exceptions"]["K1"] = "Region"
-        workbook["Exceptions"]["K2"] = "EMEA"
+        # First user detail column now follows the provenance block.
+        workbook["Exceptions"]["Q1"] = "Region"
+        workbook["Exceptions"]["Q2"] = "EMEA"
+        # Provenance cells are informational: edits here never change the import.
+        workbook["Exceptions"]["K2"] = "tampered reason"
 
     content = _mutated_workbook(change_informational)
     parsed = parse_commentary_workbook(content)
@@ -223,16 +228,16 @@ def test_appends_only_selected_detail_columns_in_order() -> None:
     sheet = workbook["Exceptions"]
 
     assert [cell.value for cell in sheet[1]] == [
-        *EXCEPTION_HEADERS,
+        *STANDARD_EXCEPTION_HEADERS,
         "score",
         "Region",
     ]
-    assert [cell.value for cell in sheet[2]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in sheet[2]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "10",
         "EMEA",
     ]
-    assert sheet.column_dimensions["K"].hidden is False
-    assert sheet.column_dimensions["L"].hidden is False
+    assert sheet.column_dimensions["Q"].hidden is False
+    assert sheet.column_dimensions["R"].hidden is False
 
 
 def test_later_selected_detail_column_is_blank_when_record_has_no_value() -> None:
@@ -245,12 +250,12 @@ def test_later_selected_detail_column_is_blank_when_record_has_no_value() -> Non
     )
 
     sheet = load_workbook(io.BytesIO(content))["Exceptions"]
-    assert [cell.value for cell in sheet[1]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in sheet[1]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "REGION",
         "SEGMENT",
         "PORTFOLIO",
     ]
-    assert [cell.value for cell in sheet[2]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in sheet[2]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "APAC",
         "Retail",
         None,
@@ -260,7 +265,7 @@ def test_later_selected_detail_column_is_blank_when_record_has_no_value() -> Non
 def test_empty_selection_adds_no_data_columns() -> None:
     content = _workbook_bytes([_record()])
     sheet = load_workbook(io.BytesIO(content))["Exceptions"]
-    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert [cell.value for cell in sheet[1]] == list(STANDARD_EXCEPTION_HEADERS)
 
 
 def test_detail_values_are_formula_protected_as_literal_text() -> None:
@@ -272,7 +277,7 @@ def test_detail_values_are_formula_protected_as_literal_text() -> None:
         detail_values={record["exception_id"]: {"Region": "=HYPERLINK(\"x\")"}},
     )
     workbook = load_workbook(io.BytesIO(content))
-    assert workbook["Exceptions"]["K2"].value == "'=HYPERLINK(\"x\")"
+    assert workbook["Exceptions"]["Q2"].value == "'=HYPERLINK(\"x\")"
 
 
 def test_detail_column_header_is_formula_protected_as_literal_text() -> None:
@@ -284,7 +289,7 @@ def test_detail_column_header_is_formula_protected_as_literal_text() -> None:
         detail_values={record["exception_id"]: {"=HYPERLINK(\"x\")": "value"}},
     )
     workbook = load_workbook(io.BytesIO(content))
-    assert workbook["Exceptions"]["K1"].value == "'=HYPERLINK(\"x\")"
+    assert workbook["Exceptions"]["Q1"].value == "'=HYPERLINK(\"x\")"
 
 
 def test_accepts_excel_date_cell_for_as_of_date() -> None:

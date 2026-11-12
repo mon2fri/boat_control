@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 from apps.exception_tracking import api_services
-from apps.exception_tracking.workbook import EXCEPTION_HEADERS, build_commentary_workbook
+from apps.exception_tracking.workbook import STANDARD_EXCEPTION_HEADERS, build_commentary_workbook
 from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import load_workbook
 from rest_framework.test import APIClient
@@ -274,7 +274,7 @@ def test_empty_run_yields_empty_valid_template(
     response = APIClient().get("/api/exception-tracking/export/?run_id=run-empty")
     assert response.status_code == 200
     assert _exception_ids(response.content) == []
-    assert _template_headers(response.content) == list(EXCEPTION_HEADERS)
+    assert _template_headers(response.content) == list(STANDARD_EXCEPTION_HEADERS)
     assert load_workbook(io.BytesIO(response.content))["Template"]["B3"].value == (
         TRACKING_DATE.isoformat()
     )

@@ -18,7 +18,9 @@ from apps.exception_tracking.workbook import (
 
 logger = logging.getLogger(__name__)
 
-STATUSES = frozenset({"New", "Commented", "NotCommented"})
+STATUSES = frozenset({"New", "Commented", "NotCommented", "RecertificationRequired"})
+
+RECERTIFICATION_REASON_LABEL = "Recertification due to rule change"
 
 _RECORD_FIELDS = (
     "exception_id",
@@ -73,6 +75,30 @@ def _wire_temporal(value: Any, field_name: str) -> str:
     )
 
 
+def _wire_date(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return str(value.isoformat())
+    if isinstance(value, date):
+        return str(value.isoformat())
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _wire_flag(value: Any) -> bool:
+    if value is True:
+        return True
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str) and value.strip().lower() in {"1", "true"}:
+        return True
+    return False
+
+
 def record_to_dict(record: Any) -> dict[str, Any]:
     """Convert a Worker A record into the frozen wire shape."""
     result: dict[str, Any] = {
@@ -88,12 +114,19 @@ def record_to_dict(record: Any) -> dict[str, Any]:
     ):
         result[field_name] = _wire_temporal(_field(record, field_name), field_name)
 
+    pending = _wire_flag(_field(record, "recertification_required"))
     status = _field(record, "status")
+    if pending:
+        # Pending recertification wins over commentary text: inherited text
+        # must not collapse into Commented and hide the item from review.
+        status = "RecertificationRequired"
     if status is None:
         commentary = str(_field(record, "exception_commentary") or "")
         occurrence_date = _field(record, "exception_as_of_date")
         first_seen_date = _field(record, "exception_first_seen_as_of_date")
-        if commentary.strip():
+        if pending:
+            status = "RecertificationRequired"
+        elif commentary.strip():
             status = "Commented"
         elif str(occurrence_date) == str(first_seen_date):
             status = "New"
@@ -107,6 +140,22 @@ def record_to_dict(record: Any) -> dict[str, Any]:
             details={"status": status},
         )
     result["status"] = str(status)
+    result["recertification_required"] = pending
+    result["recertification_reason"] = str(_field(record, "recertification_reason") or "")
+    result["carried_from_exception_id"] = str(_field(record, "carried_from_exception_id") or "")
+    result["carried_from_as_of_date"] = _wire_date(
+        _field(record, "carried_from_as_of_date")
+    )
+    result["carried_from_rule_identifier"] = str(
+        _field(record, "carried_from_rule_identifier") or ""
+    )
+    result["rule_evolution_event_id"] = str(_field(record, "rule_evolution_event_id") or "")
+    result["recertified_at"] = _wire_date(_field(record, "recertified_at"))
+    result["revision_token"] = str(
+        _field(record, "revision_token")
+        or _field(record, "rule_evolution_event_id")
+        or ""
+    )
     rule_index = _record_rule_index(record)
     detail_values = _record_detail_values(record)
     result["rule_index"] = rule_index
@@ -910,3 +959,84 @@ def import_commentary(
     else:
         result["scope"] = "date"
     return result
+
+
+def recertify_commentaries(
+    *,
+    as_of_date: str | None = None,
+    exception_ids: Iterable[str] | None = None,
+    revision_tokens: Mapping[str, str] | None = None,
+    repository: Any | None = None,
+) -> dict[str, Any]:
+    """Explicitly accept carried commentary for one as-of date.
+
+    Acceptance — including acceptance of unchanged carried text — happens only
+    here. Uploading an unchanged template, downloading, rerunning, exporting,
+    or importing never certifies inherited text implicitly, and blank text is
+    never certified. Unknown IDs, out-of-date revision tokens, and blank
+    commentary reject the whole call atomically; repeating an accepted batch
+    is a retry-safe no-op.
+    """
+
+    from apps.exception_tracking.errors import (
+        BlankCommentaryCertificationError,
+        StaleRevisionTokenError,
+        UnknownExceptionError,
+    )
+
+    if not as_of_date:
+        raise TrackingAPIError(
+            "An as-of date is required for recertification.",
+            code="invalid_as_of_date",
+        )
+    try:
+        parsed_date = parse_iso_date(as_of_date)
+    except ValueError as exc:
+        raise TrackingAPIError(str(exc), code="invalid_as_of_date") from exc
+    selected = [str(exception_id) for exception_id in (exception_ids or []) if str(exception_id).strip()]
+    if not selected:
+        raise TrackingAPIError(
+            "No exception IDs were provided for recertification.",
+            code="invalid_recertification_request",
+        )
+    tokens = dict(revision_tokens or {})
+    approvals = {exception_id: str(tokens.get(exception_id, "")) for exception_id in selected}
+
+    repo = repository or get_repository()
+    try:
+        summary = repo.recertify_exceptions(parsed_date, approvals)
+    except UnknownExceptionError as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="unknown_exception_ids",
+            status_code=404,
+            details={"unknown_ids": list(exc.unknown_ids)},
+        ) from exc
+    except StaleRevisionTokenError as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="stale_revision_token",
+            status_code=409,
+            details={"stale_ids": list(exc.exception_ids)},
+        ) from exc
+    except BlankCommentaryCertificationError as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="blank_commentary_not_certified",
+            details={"blank_ids": list(exc.exception_ids)},
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="tracking_update_failed",
+            status_code=400,
+        ) from exc
+
+    records = list_exceptions(parsed_date, repo)
+    return {
+        "as_of_date": summary.as_of_date.isoformat(),
+        "accepted": list(summary.accepted),
+        "already_accepted": list(summary.already_accepted),
+        "total": summary.total,
+        "exceptions": records,
+    }

@@ -67,6 +67,33 @@ _EXCEPTION_FIELDS: tuple[str, ...] = (
     "exception_last_seen_as_of_date",
 )
 
+#: Additive recertification/provenance columns appended after the standard
+#: metadata (and before user detail columns). They are informational only:
+#: import validation ignores everything past the required prefix, so uploads
+#: never certify inherited text implicitly by touching these cells.
+RECERT_HEADERS: tuple[str, ...] = (
+    "Recertification Reason",
+    "Carried From Exception ID",
+    "Carried From As-of Date",
+    "Carried From Rule Identifier",
+    "Rule Evolution Event ID",
+    "Recertified At",
+)
+_RECERT_FIELDS: tuple[str, ...] = (
+    "recertification_reason",
+    "carried_from_exception_id",
+    "carried_from_as_of_date",
+    "carried_from_rule_identifier",
+    "rule_evolution_event_id",
+    "recertified_at",
+)
+
+# Full standard Exceptions-sheet header row: identity/status metadata followed
+# by the additive recertification/provenance block. User detail columns append
+# after these. Import validation only requires the leading visible prefix, so
+# older workbooks without the provenance block keep importing.
+STANDARD_EXCEPTION_HEADERS: tuple[str, ...] = (*EXCEPTION_HEADERS, *RECERT_HEADERS)
+
 MAX_TEMPLATE_BYTES = 10 * 1024 * 1024
 MAX_TEMPLATE_ROWS = 100_000
 MAX_COMMENTARY_LENGTH = 32_767
@@ -145,7 +172,7 @@ def _header_key(value: object) -> str:
 
 
 def _unique_detail_columns(columns: Iterable[str]) -> tuple[str, ...]:
-    used = {_header_key(header) for header in EXCEPTION_HEADERS}
+    used = {_header_key(header) for header in (*EXCEPTION_HEADERS, *RECERT_HEADERS)}
     result: list[str] = []
     for raw in columns:
         name = str(raw).strip()
@@ -169,7 +196,7 @@ def _detail_text(value: Any) -> str:
     return str(value)
 
 
-_STATUS_RANK = {"New": 0, "NotCommented": 0, "Commented": 1}
+_STATUS_RANK = {"New": 0, "NotCommented": 0, "RecertificationRequired": 0, "Commented": 1}
 
 
 def _write_rule_summary_table(
@@ -291,11 +318,12 @@ def build_commentary_workbook(
     )
 
     appended = _unique_detail_columns(detail_columns)
-    headers = [*EXCEPTION_HEADERS, *appended]
+    headers = [*EXCEPTION_HEADERS, *RECERT_HEADERS, *appended]
     sheet = workbook.create_sheet(EXCEPTIONS_SHEET)
     sheet.append(
         [
             *EXCEPTION_HEADERS,
+            *[_protect_text(column) for column in RECERT_HEADERS],
             *[_protect_text(column) for column in appended],
         ]
     )
@@ -315,11 +343,16 @@ def build_commentary_workbook(
         sheet.append(
             [
                 *[_protect_text(_record_value(record, field)) for field in _EXCEPTION_FIELDS],
+                *[_protect_text(_record_value(record, field)) for field in _RECERT_FIELDS],
                 *[_protect_text(_detail_text(detail.get(column))) for column in appended],
             ]
         )
 
-    widths = (52, 18, 52, 16, 34, 42, 26, 22, 28, 28, *([24] * len(appended)))
+    widths = (
+        52, 18, 52, 16, 34, 42, 26, 22, 28, 28,
+        30, 52, 22, 34, 30, 24,
+        *([24] * len(appended)),
+    )
     for index, width in enumerate(widths, start=1):
         column = get_column_letter(index)
         sheet.column_dimensions[column].width = width
