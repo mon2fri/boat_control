@@ -20,13 +20,16 @@ from apps.exception_tracking.columns import (
     validate_extra_columns,
 )
 from apps.exception_tracking.domain import (
+    RECERTIFICATION_REASON,
     ExceptionOccurrence,
     ExceptionRecord,
     ExceptionStatus,
+    RecertificationSummary,
     RecordingSummary,
     status_for,
 )
 from apps.exception_tracking.errors import (
+    BlankCommentaryCertificationError,
     ExceptionIdentityCollisionError,
     ExceptionTrackingError,
     InvalidAsOfDateError,
@@ -36,6 +39,7 @@ from apps.exception_tracking.errors import (
     InvalidRuleIdentifierError,
     MissingKeyValueError,
     SchemaMismatchError,
+    StaleRevisionTokenError,
     UnknownExceptionError,
 )
 from apps.exception_tracking.identity import (
@@ -62,6 +66,7 @@ from apps.exception_tracking.repository import (
     list_exception_history,
     list_exceptions,
     migrate_schema,
+    recertify_exceptions,
     record_exceptions,
     resolve_database_path,
     update_commentaries,
@@ -70,7 +75,9 @@ from apps.exception_tracking.store import capture_exceptions
 
 __all__ = [
     "DEFAULT_DATABASE_RELATIVE_PATH",
+    "RECERTIFICATION_REASON",
     "RESERVED_EXTRA_COLUMN_NAMES",
+    "BlankCommentaryCertificationError",
     "ExceptionIdentity",
     "ExceptionIdentityCollisionError",
     "ExceptionOccurrence",
@@ -84,8 +91,10 @@ __all__ = [
     "InvalidKeyColumnsError",
     "InvalidRuleIdentifierError",
     "MissingKeyValueError",
+    "RecertificationSummary",
     "RecordingSummary",
     "SchemaMismatchError",
+    "StaleRevisionTokenError",
     "UnknownExceptionError",
     "build_exception_id",
     "build_exception_identity",
@@ -107,6 +116,7 @@ __all__ = [
     "normalize_column_key",
     "normalize_extra_value",
     "parse_as_of_date",
+    "recertify_exceptions",
     "record_exceptions",
     "resolve_database_path",
     "serialize_column_selection",
