@@ -100,6 +100,9 @@ export interface LogicClause {
 export interface Rule {
   index: string;
   identifier?: string | null;
+  /** Business-rule lineage + executable revision (Worker A, frozen). */
+  lineageId?: string | null;
+  revisionNumber?: number | null;
   equivalentRuleId?: string;
   enabled?: boolean;
   enabledPosition?: number | null;
@@ -222,6 +225,15 @@ export interface DetailRow {
   rowKey: string;
   /** Stable exception identity supplied by the backend, when available. */
   exceptionId?: string;
+  /** Backend-authoritative review status for exception rows, when supplied. */
+  exceptionStatus?: ExceptionStatus;
+  /** Structured recertification marker + provenance, when supplied. */
+  recertificationReason?: string;
+  carriedFromExceptionId?: string;
+  carriedFromAsOfDate?: string;
+  carriedFromRuleIdentifier?: string;
+  ruleEvolutionEventId?: string;
+  recertifiedAt?: string;
   keyColumns: Record<string, string | null>;
   column: string;
   file1Value: string | null;
@@ -310,7 +322,17 @@ export interface RunSummary {
 }
 
 /** User-visible exception tracking status, as derived by the backend. */
-export type ExceptionStatus = "New" | "Commented" | "NotCommented";
+export type ExceptionStatus = "New" | "Commented" | "NotCommented" | "RecertificationRequired";
+
+/**
+ * Exact marker text for carried commentary awaiting review. Stored as
+ * structured recertification state, never folded into commentary text, and
+ * rendered as a badge separate from the commentary column.
+ */
+export const RECERTIFICATION_LABEL = "Recertification due to rule change";
+
+/** Rule-evolution save decision for an extensive edit (Worker A contract). */
+export type SaveDecision = "modify_current" | "save_as_new";
 
 /**
  * One exception occurrence for a selected As-of Date. `keyColumns` is the
@@ -333,6 +355,26 @@ export interface TrackedException {
   /** Values for the configured Extra Columns for Commentary Template. */
   detailValues: Record<string, string>;
   status: ExceptionStatus;
+  /**
+   * True while carried commentary still awaits explicit recertification.
+   * Nonblank text never implies acceptance: pending items stay visible under
+   * New Exceptions Only until the user recertifies them.
+   */
+  recertificationRequired: boolean;
+  /** Structured marker text; rendered as a badge, never merged into commentary. */
+  recertificationReason: string | null;
+  /** Provenance: source exception/date/identifier and the evolution event. */
+  carriedFromExceptionId?: string;
+  carriedFromAsOfDate?: string;
+  carriedFromRuleIdentifier?: string;
+  ruleEvolutionEventId?: string;
+  recertifiedAt?: string;
+  /**
+   * Frozen concurrency guard for acceptance (Worker B): `""` for
+   * never-carried rows, else the creating `rule_evolution_event_id`. Echoed
+   * back as `revision_tokens` on recertify; missing entries default to `""`.
+   */
+  revisionToken?: string;
 }
 
 export interface ExceptionTrackingColumn {
@@ -349,6 +391,8 @@ export interface ExceptionTrackingResult {
   exceptions: TrackedException[];
   /** Ordered additional data columns returned by the complete-dataset API. */
   detailColumns: string[];
+  /** Ambiguity warnings: predecessor ambiguity carried nothing (Worker B). */
+  carryWarnings: string[];
   total: number;
   unfilteredTotal: number;
   offset: number;
@@ -372,6 +416,57 @@ export interface CommentaryImportResult {
   clearedCount: number;
   unchangedCount: number;
   message: string | null;
+  carryWarnings: string[];
+}
+
+/** One row selected for explicit recertification, with its frozen token. */
+export interface RecertifySelection {
+  exceptionId: string;
+  /** `""` for never-carried rows; the server defaults missing entries to `""`. */
+  revisionToken: string;
+}
+
+export interface RecertifyResult {
+  asOfDate: string | null;
+  accepted: string[];
+  alreadyAccepted: string[];
+  total: number;
+  exceptions: TrackedException[];
+  message: string | null;
+}
+
+/**
+ * One persisted rule-evolution history event, rendered from the
+ * configuration database — never reconstructed from the mutable catalog.
+ * `beforePayload`/`afterPayload` are complete authored snapshots; the UI
+ * renders recognised clause lists and falls back to raw JSON for the rest.
+ */
+export interface RuleHistoryEvent {
+  eventId: string;
+  lineageId: string;
+  revisionNumber: number;
+  previousEventId?: string | null;
+  sourceCatalogRuleId?: string | null;
+  targetCatalogRuleId?: string | null;
+  sourceIdentifier?: string | null;
+  targetIdentifier?: string | null;
+  changeType: string;
+  saveDecision?: string | null;
+  beforePayload?: unknown;
+  afterPayload?: unknown;
+  changeSummary: string[];
+  commentaryPolicy?: string | null;
+  source?: string | null;
+  createdAt: string;
+  changedBy?: string | null;
+}
+
+/** Frozen history response for one rule: lineage context plus its events. */
+export interface RuleHistory {
+  ruleId: string;
+  lineageId: string;
+  revisionNumber: number;
+  events: RuleHistoryEvent[];
 }
 
 /** Draft used to create or update a rule (server may assign `index`). */

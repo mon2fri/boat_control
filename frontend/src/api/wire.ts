@@ -210,7 +210,9 @@ function addLogicRepresentationIssues(
 const wireRuleObjectSchema = z.object({
   rule_id: z.string().regex(/^R\d{3,}$/),
   rule_identifier: z.string().regex(/^CBR1_[0-9A-Z]{20}$/),
-  equivalent_rule: z.boolean().optional(),
+  /** Business-rule lineage + executable revision (Worker A, frozen). */
+  lineage_id: z.string().optional(),
+  revision_number: z.number().int().nonnegative().optional(),  equivalent_rule: z.boolean().optional(),
   equivalent_rule_id: z.string().optional(),
   enabled: z.boolean(),
   enabled_position: z.number().int().positive().nullable().optional(),
@@ -241,9 +243,24 @@ export const rulesListResponseSchema = z.object({
   has_more: z.boolean().default(false),
 });
 
+/** Save-decision control sent alongside an extensive-edit retry. */
+export const wireSaveDecisionSchema = z.enum(["modify_current", "save_as_new"]);
+export type WireSaveDecision = z.infer<typeof wireSaveDecisionSchema>;
+
 export const ruleSnapshotMutationSchema = wireRuleObjectSchema.extend({
   previous_rule_id: z.string().optional(),
   resulting_rule_id: z.string().optional(),
+  /**
+   * Explicit saved-as-new outcome (Worker A contract, provisional). When
+   * true, the client preserves the source selection and adds the new rule
+   * instead of replacing the source's selected ID.
+   */
+  saved_as_new: z.boolean().optional(),
+  new_rule_id: z.string().optional(),
+  save_decision: wireSaveDecisionSchema.optional(),
+  /** Frozen modify-current outcome context (Worker A). */
+  lineage_id: z.string().optional(),
+  evolution_event_id: z.string().optional(),
 }).superRefine(addLogicRepresentationIssues);
 
 /** Legacy mutation acknowledgements remain parseable for old saved-run/API fixtures. */
@@ -284,8 +301,108 @@ export const ruleDraftRequestSchema = z.object({
   logic_grouping_tree: wireGroupNodeSchema.optional(),
   extra_columns: z.array(z.string()).optional(),
   hide_comparison: z.boolean().optional(),
+  /**
+   * Rule-evolution save decision (Worker A contract, frozen). Never part of
+   * the executable payload or canonical identity: it is a top-level control
+   * that only accompanies an extensive-edit retry after a 409 decision prompt.
+   */
+  save_decision: z.enum(["modify_current", "save_as_new"]).optional(),
+  /**
+   * Frozen concurrency token: the canonical identifier the edit started
+   * from. The retry sends it back verbatim so the server can detect that the
+   * source changed meanwhile (409 `rule_save_stale`).
+   */
+  source_identifier: z.string().optional(),
 }).superRefine(addLogicRepresentationIssues);
 export type WireRuleDraftRequest = z.infer<typeof ruleDraftRequestSchema>;
+
+/**
+ * Provisional 409 body for an extensive edit saved without a decision
+ * (Worker A contract, `rule_save_decision_required`). Lenient: unknown future
+ * fields must not break the client; the dialog renders what it recognises.
+ */
+export const ruleSaveDecisionRequiredSchema = z.object({
+  code: z.literal("rule_save_decision_required"),
+  message: z.string(),
+  original_rule_id: z.string(),
+  original_identifier: z.string(),
+  proposed_identifier: z.string(),
+  extreme_changes: z.array(z.string()).default([]),
+}).catchall(z.unknown());
+export type WireRuleSaveDecisionRequired = z.infer<typeof ruleSaveDecisionRequiredSchema>;
+
+/**
+ * Frozen 409 body when the source changed between the decision prompt and
+ * the retry (Worker A `rule_save_stale`). The client must never apply an old
+ * confirmation to new content: collapse the prompt and surface the current
+ * identifier instead.
+ */
+export const ruleSaveStaleSchema = z.object({
+  code: z.literal("rule_save_stale"),
+  original_rule_id: z.string(),
+  original_identifier: z.string(),
+  current_identifier: z.string(),
+  lineage_id: z.string(),
+  revision_number: z.number().int().nonnegative(),
+  message: z.string().optional(),
+}).catchall(z.unknown());
+export type WireRuleSaveStale = z.infer<typeof ruleSaveStaleSchema>;
+
+/**
+ * Frozen 409 body when the proposed identity already belongs to another
+ * lineage (Worker A `rule_identity_reuse_conflict`). The client must not
+ * merge lineages: keep the draft and require explicit handling.
+ */
+export const ruleIdentityReuseConflictSchema = z.object({
+  code: z.literal("rule_identity_reuse_conflict"),
+  original_rule_id: z.string(),
+  original_identifier: z.string(),
+  proposed_identifier: z.string(),
+  existing_rule_id: z.string(),
+  existing_lineage_id: z.string(),
+  message: z.string().optional(),
+}).catchall(z.unknown());
+export type WireRuleIdentityReuseConflict = z.infer<typeof ruleIdentityReuseConflictSchema>;
+
+/**
+ * One persisted rule-evolution history event (Worker A contract, frozen
+ * endpoint `GET /api/rules/<id>/history/`). `before_payload`/`after_payload`
+ * are complete authored snapshots whose exact shape may grow; the client
+ * parses them leniently and never lets an unknown payload break rendering.
+ */
+export const wireRuleHistoryEventSchema = z.object({
+  event_id: z.string(),
+  lineage_id: z.string(),
+  revision_number: z.number().int().nonnegative(),
+  previous_event_id: z.string().nullable().optional(),
+  source_catalog_rule_id: z.string().nullable().optional(),
+  target_catalog_rule_id: z.string().nullable().optional(),
+  source_identifier: z.string().nullable().optional(),
+  target_identifier: z.string().nullable().optional(),
+  change_type: z.string(),
+  save_decision: z.string().nullable().optional(),
+  before_payload: z.unknown().optional(),
+  after_payload: z.unknown().optional(),
+  change_summary: z.array(z.string()).default([]),
+  commentary_policy: z.string().nullable().optional(),
+  source: z.string().nullable().optional(),
+  created_at: z.string(),
+  changed_by: z.string().nullable().optional(),
+}).catchall(z.unknown());
+export type WireRuleHistoryEvent = z.infer<typeof wireRuleHistoryEventSchema>;
+
+/**
+ * Frozen history response (Worker A `GET /api/rules/<id>/history/`).
+ * Events carry before/after payloads, change summaries, save decisions and
+ * commentary policy from the configuration database.
+ */
+export const ruleHistoryResponseSchema = z.object({
+  rule_id: z.string(),
+  lineage_id: z.string(),
+  revision_number: z.number().int().nonnegative(),
+  events: z.array(wireRuleHistoryEventSchema),
+}).catchall(z.unknown());
+export type WireRuleHistoryResponse = z.infer<typeof ruleHistoryResponseSchema>;
 
 // --- Group statistics -----------------------------------------------------
 
@@ -393,6 +510,15 @@ export const wireDetailPageSchema = z.object({
       /** Stable tracking identity for paginated exception rows. */
       exception_id: z.string().nullable().optional(),
       rule_identifier: z.string().nullable().optional(),
+      /** Backend-authoritative status + recertification provenance (Worker B, optional). */
+      exception_status: z.string().nullable().optional(),
+      recertification_required: z.boolean().optional(),
+      recertification_reason: z.string().nullable().optional(),
+      carried_from_exception_id: z.string().nullable().optional(),
+      carried_from_as_of_date: z.string().nullable().optional(),
+      carried_from_rule_identifier: z.string().nullable().optional(),
+      rule_evolution_event_id: z.string().nullable().optional(),
+      recertified_at: z.string().nullable().optional(),
       extra_values: z.record(z.string(), wireScalarSchema).optional(),
       grouping_values: z.record(z.string(), wireScalarSchema).optional(),
     }),
@@ -425,6 +551,24 @@ export const wireViolationSchema = z.object({
   details: z.string(),
   /** Stable tracking identity; preferred over any frontend-derived fallback. */
   exception_id: z.string().optional(),
+  /**
+   * Backend-authoritative display scope status (Worker B contract). Optional
+   * because older backends omit it; the mapper keeps unknown values visible
+   * rather than hiding rows whose status cannot be determined.
+   */
+  exception_status: z.string().nullable().optional(),
+  /**
+   * Recertification provenance (Worker B contract, provisional location).
+   * Optional so old runs/documents still parse; the mapper retains whatever
+   * the backend supplies through to the rendered report.
+   */
+  recertification_required: z.boolean().optional(),
+  recertification_reason: z.string().nullable().optional(),
+  carried_from_exception_id: z.string().nullable().optional(),
+  carried_from_as_of_date: z.string().nullable().optional(),
+  carried_from_rule_identifier: z.string().nullable().optional(),
+  rule_evolution_event_id: z.string().nullable().optional(),
+  recertified_at: z.string().nullable().optional(),
   // Server-provided explicit fields. Older backend responses omit them; the
   // mapper derives fallbacks from the rest of the violation record so the UI
   // is never blank for an in-flight release.
@@ -588,11 +732,12 @@ export type WireExportRequest = z.infer<typeof wireExportRequestSchema>;
 export const wireExceptionStatusSchema = z.preprocess((value) => {
   if (typeof value !== "string") return value;
   return value.replace(/[\s_-]/g, "").toLowerCase();
-}, z.enum(["new", "commented", "notcommented"]).transform((value) => {
+}, z.enum(["new", "commented", "notcommented", "recertificationrequired"]).transform((value) => {
   const canonical = {
     new: "New",
     commented: "Commented",
     notcommented: "NotCommented",
+    recertificationrequired: "RecertificationRequired",
   } as const;
   return canonical[value];
 }));
@@ -625,6 +770,25 @@ export const wireTrackedExceptionSchema = z.object({
   extra_values: z.record(z.string(), wireScalarSchema).optional(),
   /** Backend-derived status; required once B ships it, optional for fixtures. */
   status: wireExceptionStatusSchema.optional(),
+  /**
+   * Recertification state + provenance (Worker B contract, provisional).
+   * All optional so old tracking rows/fixtures still parse. The marker text
+   * itself is never folded into `exception_commentary`: it lives in
+   * `recertification_reason` and renders as a separate badge.
+   */
+  recertification_required: z.boolean().optional(),
+  recertification_reason: z.string().nullable().optional(),
+  carried_from_exception_id: z.string().nullable().optional(),
+  carried_from_as_of_date: z.string().nullable().optional(),
+  carried_from_rule_identifier: z.string().nullable().optional(),
+  rule_evolution_event_id: z.string().nullable().optional(),
+  recertified_at: z.string().nullable().optional(),
+  /**
+   * Frozen concurrency guard for acceptance (Worker B): `""` for
+   * never-carried rows, else the `rule_evolution_event_id` that created the
+   * target revision. Echoed back as `revision_tokens` on recertify.
+   */
+  revision_token: z.string().optional(),
 });
 export type WireTrackedException = z.infer<typeof wireTrackedExceptionSchema>;
 
@@ -655,6 +819,12 @@ export const wireExceptionTrackingListSchema = z.union([
     detail_columns: z.array(z.string()).optional(),
     commentary_template_columns: z.array(z.string()).optional(),
     available_columns: z.array(z.string()).optional(),
+    /**
+     * Ambiguity surfacing (Worker B, log + carry_warnings only): predecessor
+     * ambiguity carries nothing and warns here instead of guessing. Rendered
+     * as a review banner when present; absence means nothing to review.
+     */
+    carry_warnings: z.array(z.string()).optional(),
   }),
 ]);
 export type WireExceptionTrackingList = z.infer<typeof wireExceptionTrackingListSchema>;
@@ -678,8 +848,48 @@ export const wireCommentaryImportResponseSchema = z.object({
   unchanged: z.number().int().nonnegative().optional(),
   imported: z.number().int().nonnegative().optional(),
   message: z.string().optional(),
+  /** Ambiguity warnings survive the import round trip when present. */
+  carry_warnings: z.array(z.string()).optional(),
 });
 export type WireCommentaryImportResponse = z.infer<typeof wireCommentaryImportResponseSchema>;
+
+/**
+ * Frozen explicit-recertification response (Worker B:
+ * `POST /api/exception-tracking/recertify/`). Only this endpoint clears
+ * pending state; download, rerun, export, upload, or text edits never do.
+ * Repeats are retry-safe no-ops reported via `already_accepted`.
+ */
+export const wireRecertifyResponseSchema = z.object({
+  as_of_date: z.string().optional(),
+  accepted: z.array(z.string()).default([]),
+  already_accepted: z.array(z.string()).default([]),
+  total: z.number().int().nonnegative(),
+  exceptions: z.array(wireTrackedExceptionSchema).default([]),
+  message: z.string().optional(),
+}).catchall(z.unknown());
+export type WireRecertifyResponse = z.infer<typeof wireRecertifyResponseSchema>;
+
+/**
+ * Frozen recertify error codes (Worker B, all atomic — nothing written).
+ * `details` carries the affected IDs where applicable; the client surfaces
+ * them instead of a bare status so the user can correct the selection.
+ */
+export const wireRecertifyErrorSchema = z.object({
+  code: z.enum([
+    "unknown_exception_ids",
+    "stale_revision_token",
+    "blank_commentary_not_certified",
+    "invalid_recertification_request",
+    "invalid_as_of_date",
+  ]),
+  message: z.string().optional(),
+  details: z.object({
+    unknown_ids: z.array(z.string()).optional(),
+    stale_ids: z.array(z.string()).optional(),
+    blank_ids: z.array(z.string()).optional(),
+  }).catchall(z.unknown()).optional(),
+}).catchall(z.unknown());
+export type WireRecertifyError = z.infer<typeof wireRecertifyErrorSchema>;
 
 // --- Settings, saved filters, presets ----------------------------------
 

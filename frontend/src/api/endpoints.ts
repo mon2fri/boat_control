@@ -1,4 +1,4 @@
-import { apiRequest } from "./client";
+import { apiRequest, ApiError } from "./client";
 import {
   inspectResponseSchema,
   parseTargetsResponseSchema,
@@ -15,6 +15,8 @@ import {
   wireExceptionTrackingDatesSchema,
   wireExceptionTrackingListSchema,
   wireCommentaryImportResponseSchema,
+  wireRecertifyErrorSchema,
+  wireRecertifyResponseSchema,
   wireFamilyListSchema,
   wireFamilySchema,
   wirePresetListSchema,
@@ -23,9 +25,13 @@ import {
   wireRunMetadataSchema,
   wireRunRequestSchema,
   wireRuleSchema,
+  ruleHistoryResponseSchema,
   enablementResponseSchema,
   ruleImportResponseSchema,
   ruleSnapshotMutationSchema,
+  ruleSaveDecisionRequiredSchema,
+  ruleSaveStaleSchema,
+  ruleIdentityReuseConflictSchema,
   wireSavedFilterListSchema,
   wireSavedFilterSchema,
   wireSettingsSchema,
@@ -38,6 +44,8 @@ import {
   mapExceptionTrackingList,
   mapFamily,
   mapPresetSource,
+  mapRecertifyResult,
+  mapRuleHistory,
   mapRunDocumentToResult,
   mapRunMetadata,
   mapRunRequestToWire,
@@ -50,6 +58,7 @@ import {
   mapTrackingDates,
   mapUploadToHeader,
   mapWireRule,
+  normalizeReviewStatus,
 } from "./mapping";
 import type {
   AppSettings,
@@ -58,13 +67,17 @@ import type {
   ExceptionTrackingDates,
   ExceptionTrackingResult,
   Family,
+  RecertifyResult,
+  RecertifySelection,
   Rule as DomainRule,
+  RuleHistory,
   FilterRow,
   HeaderReport,
   PrepareResult,
   PresetSource,
   RunResult,
   RunSummary,
+  SaveDecision,
   SavedFilter,
   SourceFile,
 } from "./domain";
@@ -209,9 +222,32 @@ export function fetchDetailPage(
             keyColumns,
           )
         : undefined;
+      const reviewStatus = kind === "violation"
+        ? normalizeReviewStatus(row.exception_status)
+        : undefined;
+      const reviewRequired = kind === "violation" && row.recertification_required === true;
       return {
         rowKey: row.row_key,
         ...(exceptionId ? { exceptionId } : {}),
+        ...(reviewStatus || reviewRequired
+          ? { exceptionStatus: reviewRequired ? "RecertificationRequired" : reviewStatus! }
+          : {}),
+        ...(typeof row.recertification_reason === "string" && row.recertification_reason
+          ? { recertificationReason: row.recertification_reason }
+          : {}),
+        ...(typeof row.carried_from_exception_id === "string"
+          ? { carriedFromExceptionId: row.carried_from_exception_id }
+          : {}),
+        ...(typeof row.carried_from_as_of_date === "string"
+          ? { carriedFromAsOfDate: row.carried_from_as_of_date }
+          : {}),
+        ...(typeof row.carried_from_rule_identifier === "string"
+          ? { carriedFromRuleIdentifier: row.carried_from_rule_identifier }
+          : {}),
+        ...(typeof row.rule_evolution_event_id === "string"
+          ? { ruleEvolutionEventId: row.rule_evolution_event_id }
+          : {}),
+        ...(typeof row.recertified_at === "string" ? { recertifiedAt: row.recertified_at } : {}),
         keyColumns,
         column: row.column,
         file1Value: row.file_a_value === null ? null : String(row.file_a_value),
@@ -367,8 +403,21 @@ export function createRule(
 export function updateRule(
   index: string,
   draft: Omit<DomainRule, "index"> & { index?: string },
-): Promise<DomainRule & { previousRuleId?: string; resultingRuleId?: string }> {
-  const body = ruleDraftRequestSchema.parse(mapRuleToWireDraft(draft));
+  options: { saveDecision?: SaveDecision; sourceIdentifier?: string } = {},
+): Promise<DomainRule & {
+  previousRuleId?: string;
+  resultingRuleId?: string;
+  savedAsNew?: boolean;
+  newRuleId?: string;
+  saveDecision?: SaveDecision;
+  lineageId?: string | null;
+  evolutionEventId?: string;
+}> {
+  const body = ruleDraftRequestSchema.parse({
+    ...mapRuleToWireDraft(draft),
+    ...(options.saveDecision ? { save_decision: options.saveDecision } : {}),
+    ...(options.sourceIdentifier !== undefined ? { source_identifier: options.sourceIdentifier } : {}),
+  });
   return apiRequest(`/rules/${encodeURIComponent(index)}/`, {
     method: "PUT",
     body,
@@ -377,7 +426,173 @@ export function updateRule(
     ...mapWireRule(r),
     ...(r.previous_rule_id ? { previousRuleId: r.previous_rule_id } : {}),
     ...(r.resulting_rule_id ? { resultingRuleId: r.resulting_rule_id } : {}),
+    ...(r.saved_as_new !== undefined ? { savedAsNew: r.saved_as_new } : {}),
+    ...(r.new_rule_id ? { newRuleId: r.new_rule_id } : {}),
+    ...(r.save_decision ? { saveDecision: r.save_decision } : {}),
+    ...(r.lineage_id ? { lineageId: r.lineage_id } : {}),
+    ...(r.evolution_event_id ? { evolutionEventId: r.evolution_event_id } : {}),
   }));
+}
+
+/**
+ * Structured 409 raised when an extensive edit is saved without a decision.
+ * The editor stays open with the draft intact; the caller renders the
+ * Modify current / Save as new / Back to editing choice and retries with the
+ * selected decision plus the `source_identifier` concurrency token.
+ */
+export class RuleSaveDecisionRequiredError extends Error {
+  readonly originalRuleId: string;
+  readonly originalIdentifier: string;
+  readonly proposedIdentifier: string;
+  readonly extremeChanges: string[];
+  readonly serverMessage: string;
+
+  constructor(detail: {
+    message: string;
+    original_rule_id: string;
+    original_identifier: string;
+    proposed_identifier: string;
+    extreme_changes?: string[];
+  }) {
+    super(detail.message);
+    this.name = "RuleSaveDecisionRequiredError";
+    this.originalRuleId = detail.original_rule_id;
+    this.originalIdentifier = detail.original_identifier;
+    this.proposedIdentifier = detail.proposed_identifier;
+    this.extremeChanges = detail.extreme_changes ?? [];
+    this.serverMessage = detail.message;
+  }
+}
+
+/** Extract a decision-required 409 from an ApiError's detail, if present. */
+export function asRuleSaveDecisionRequired(error: unknown): RuleSaveDecisionRequiredError | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const parsed = ruleSaveDecisionRequiredSchema.safeParse(error.detail);
+  if (!parsed.success) return null;
+  return new RuleSaveDecisionRequiredError({
+    message: parsed.data.message,
+    original_rule_id: parsed.data.original_rule_id,
+    original_identifier: parsed.data.original_identifier,
+    proposed_identifier: parsed.data.proposed_identifier,
+    extreme_changes: parsed.data.extreme_changes,
+  });
+}
+
+/**
+ * Frozen stale-source failure (Worker A `rule_save_stale`): the catalog
+ * changed between the decision prompt and the retry. Never apply the old
+ * confirmation to new content — surface this so the user reloads and decides
+ * again against the current identifier.
+ */
+export class RuleSaveStaleError extends Error {
+  readonly originalRuleId: string;
+  readonly originalIdentifier: string;
+  readonly currentIdentifier: string;
+  readonly lineageId: string;
+  readonly revisionNumber: number;
+
+  constructor(detail: {
+    original_rule_id: string;
+    original_identifier: string;
+    current_identifier: string;
+    lineage_id: string;
+    revision_number: number;
+    message?: string;
+  }) {
+    super(
+      detail.message ??
+        `The rule changed since this edit began (now ${detail.current_identifier}, ` +
+          `revision ${detail.revision_number}). Reload the rule and decide again; ` +
+          `the unsaved draft was kept.`,
+    );
+    this.name = "RuleSaveStaleError";
+    this.originalRuleId = detail.original_rule_id;
+    this.originalIdentifier = detail.original_identifier;
+    this.currentIdentifier = detail.current_identifier;
+    this.lineageId = detail.lineage_id;
+    this.revisionNumber = detail.revision_number;
+  }
+}
+
+/** Extract a stale-source 409 from an ApiError's detail, if present. */
+export function asRuleSaveStale(error: unknown): RuleSaveStaleError | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const parsed = ruleSaveStaleSchema.safeParse(error.detail);
+  if (!parsed.success) return null;
+  return new RuleSaveStaleError({
+    original_rule_id: parsed.data.original_rule_id,
+    original_identifier: parsed.data.original_identifier,
+    current_identifier: parsed.data.current_identifier,
+    lineage_id: parsed.data.lineage_id,
+    revision_number: parsed.data.revision_number,
+    ...(parsed.data.message !== undefined ? { message: parsed.data.message } : {}),
+  });
+}
+
+/**
+ * Frozen equivalent-identity failure (Worker A
+ * `rule_identity_reuse_conflict`): the proposed identity already belongs to
+ * another lineage. The client must not merge lineages — keep the draft and
+ * require explicit handling.
+ */
+export class RuleIdentityReuseConflictError extends Error {
+  readonly originalRuleId: string;
+  readonly originalIdentifier: string;
+  readonly proposedIdentifier: string;
+  readonly existingRuleId: string;
+  readonly existingLineageId: string;
+
+  constructor(detail: {
+    original_rule_id: string;
+    original_identifier: string;
+    proposed_identifier: string;
+    existing_rule_id: string;
+    existing_lineage_id: string;
+    message?: string;
+  }) {
+    super(
+      detail.message ??
+        `The edited definition already exists as ${detail.existing_rule_id} in another ` +
+          `lineage. It was not merged and no commentary was moved; revise the draft ` +
+          `or resolve the conflict explicitly.`,
+    );
+    this.name = "RuleIdentityReuseConflictError";
+    this.originalRuleId = detail.original_rule_id;
+    this.originalIdentifier = detail.original_identifier;
+    this.proposedIdentifier = detail.proposed_identifier;
+    this.existingRuleId = detail.existing_rule_id;
+    this.existingLineageId = detail.existing_lineage_id;
+  }
+}
+
+/** Extract an identity-reuse 409 from an ApiError's detail, if present. */
+export function asRuleIdentityReuseConflict(error: unknown): RuleIdentityReuseConflictError | null {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const parsed = ruleIdentityReuseConflictSchema.safeParse(error.detail);
+  if (!parsed.success) return null;
+  return new RuleIdentityReuseConflictError({
+    original_rule_id: parsed.data.original_rule_id,
+    original_identifier: parsed.data.original_identifier,
+    proposed_identifier: parsed.data.proposed_identifier,
+    existing_rule_id: parsed.data.existing_rule_id,
+    existing_lineage_id: parsed.data.existing_lineage_id,
+    ...(parsed.data.message !== undefined ? { message: parsed.data.message } : {}),
+  });
+}
+
+export interface RuleHistoryQuery {
+  ruleId: string;
+}
+
+/**
+ * Load persisted rule-evolution history from the configuration database
+ * (Worker A, frozen `GET /api/rules/<id>/history/`). Never reconstructed
+ * from the mutable catalog: old snapshots survive archive/deletion.
+ */
+export function loadRuleHistory(ruleId: string): Promise<RuleHistory> {
+  return apiRequest(`/rules/${encodeURIComponent(ruleId)}/history/`, {
+    schema: ruleHistoryResponseSchema,
+  }).then(mapRuleHistory);
 }
 
 export function deleteRule(index: string): Promise<DomainRule> {
@@ -751,6 +966,72 @@ export function importExceptionCommentary(
     formData,
     schema: wireCommentaryImportResponseSchema,
   }).then(mapCommentaryImportResult);
+}
+
+/**
+ * Explicit recertification of carried commentary (Worker B, frozen
+ * `POST /api/exception-tracking/recertify/`). Each selected row echoes its
+ * `revision_token` (`""` for never-carried rows); unchanged-text acceptance
+ * is supported. Uploading an unchanged XLSX template never recertifies —
+ * only this endpoint clears pending state. All failures are atomic.
+ */
+export function recertifyExceptions(
+  asOfDate: string,
+  selections: RecertifySelection[],
+): Promise<RecertifyResult> {
+  return apiRequest("/exception-tracking/recertify/", {
+    method: "POST",
+    body: {
+      as_of_date: asOfDate,
+      exception_ids: selections.map((selection) => selection.exceptionId),
+      revision_tokens: selections.map((selection) => selection.revisionToken),
+    },
+    schema: wireRecertifyResponseSchema,
+  }).then(mapRecertifyResult);
+}
+
+/**
+ * Frozen recertify failure (Worker B): 404 `unknown_exception_ids`, 409
+ * `stale_revision_token`, 400 `blank_commentary_not_certified` /
+ * `invalid_recertification_request` / `invalid_as_of_date`. The affected IDs
+ * ride in `details` so the UI can name them; nothing was written.
+ */
+export class RecertifyError extends Error {
+  readonly code: string;
+  readonly ids: string[];
+
+  constructor(code: string, message: string, ids: string[]) {
+    super(message);
+    this.name = "RecertifyError";
+    this.code = code;
+    this.ids = ids;
+  }
+}
+
+/** Extract a frozen recertify failure from an ApiError, if present. */
+export function asRecertifyError(error: unknown): RecertifyError | null {
+  if (!(error instanceof ApiError)) return null;
+  const parsed = wireRecertifyErrorSchema.safeParse(error.detail);
+  if (!parsed.success) return null;
+  const details = parsed.data.details ?? {};
+  const ids = [
+    ...(details.unknown_ids ?? []),
+    ...(details.stale_ids ?? []),
+    ...(details.blank_ids ?? []),
+  ];
+  const fallback: Record<string, string> = {
+    unknown_exception_ids: "Unknown exception IDs; nothing was accepted.",
+    stale_revision_token: "Revision tokens changed; reload the list and reselect.",
+    blank_commentary_not_certified: "Blank commentary cannot be certified.",
+    invalid_recertification_request: "The recertification request was invalid.",
+    invalid_as_of_date: "The As-of Date was invalid.",
+  };
+  const suffix = ids.length > 0 ? ` (${ids.join(", ")})` : "";
+  return new RecertifyError(
+    parsed.data.code,
+    `${parsed.data.message ?? fallback[parsed.data.code] ?? "Recertification failed."}${suffix}`,
+    ids,
+  );
 }
 
 // --- Settings, saved filters, presets ----------------------------------
