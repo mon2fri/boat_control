@@ -1283,12 +1283,18 @@ class ExceptionTrackingRepository:
             # No predecessor revision carries eligible commentary. Same-identity
             # text is still allowed when the target identifier was never
             # revised away from: every earlier same-ID occurrence was recorded
-            # while this revision was current, so carrying it needs no
-            # recertification. But when the target identifier appears as a
-            # source in its own chain (a revert/round trip), same-ID text may
-            # predate an intervening revision and must not copy silently.
+            # while this revision was current. Commented rows carry their text
+            # as ordinary commentary (no recertification); rows still pending
+            # recertification carry the text together with the pending mark,
+            # reason, and provenance. Blank rows carry nothing. But when the
+            # target identifier appears as a source in its own chain (a
+            # revert/round trip), same-ID text may predate an intervening
+            # revision and must not copy silently.
             if identity.exception_rule_identifier in seen_sources:
                 return None, True
+            pending = self._same_identity_pending(connection, identity, as_of_date)
+            if pending is not None:
+                return pending, False
             return None, False
         best_date = max(item[0] for item in candidates)
         contenders = [item for item in candidates if item[0] == best_date]
@@ -1322,6 +1328,49 @@ class ExceptionTrackingRepository:
                 event_id=edges[0].event_id,
             ),
             True,
+        )
+
+    def _same_identity_pending(
+        self,
+        connection: sqlite3.Connection,
+        identity: ExceptionIdentity,
+        as_of_date: date,
+    ) -> _CrossRevisionCarry | None:
+        """Carry a still-pending mark across an unchanged rule.
+
+        When the immediate previous occurrence of the same exception is still
+        awaiting recertification, the new occurrence inherits the text together
+        with the pending mark, reason, and provenance (hop by hop: the source
+        is the previous date's row, whose own provenance stays traceable, and
+        the event token still binds acceptance to the revision that created
+        it). Ordinary commented rows need no marker and are handled by the
+        legacy same-identity text copy; blank rows carry nothing.
+        """
+        earlier = [
+            (table_date, table)
+            for table_date, table in _date_tables(connection)
+            if table_date < as_of_date
+        ]
+        if not earlier:
+            return None
+        table_date, table = max(earlier)
+        row = connection.execute(
+            f"SELECT exception_commentary, recertification_required, "
+            f"recertification_reason, carried_from_exception_id, "
+            f"carried_from_as_of_date, carried_from_rule_identifier, "
+            f"rule_evolution_event_id FROM {quote_identifier(table)} "
+            "WHERE exception_id = ?",
+            (identity.exception_id,),
+        ).fetchone()
+        if row is None or not _pending_flag(row):
+            return None
+        return _CrossRevisionCarry(
+            commentary=_commentary_text(row),
+            reason=_optional_text(row, "recertification_reason", ""),
+            source_exception_id=identity.exception_id,
+            source_as_of_date=table_date,
+            source_rule_identifier=identity.exception_rule_identifier,
+            event_id=_optional_text(row, "rule_evolution_event_id", ""),
         )
 
     def _latest_predecessor_occurrence(

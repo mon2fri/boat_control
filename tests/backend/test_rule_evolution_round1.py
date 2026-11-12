@@ -39,6 +39,7 @@ from apps.runs.tracking_context import (
     refresh_result_dict,
 )
 
+OCT_30 = date(2026, 10, 30)
 OCT_31 = date(2026, 10, 31)
 NOV_1 = date(2026, 11, 1)
 
@@ -252,13 +253,36 @@ def test_same_id_carry_preserves_target_edits_and_clears(tmp_path: Path) -> None
     assert cleared.exception_commentary == ""
     assert cleared.status != "Commented"
 
+    # A cleared-but-still-pending row carries the pending mark without text:
+    # the new row stays reviewable and no older text is resurrected.
+    repo3 = ExceptionTrackingRepository(tmp_path / "tracking3.db")
+    repo3.record_exceptions(
+        OCT_30, [_occurrence(RD, OCT_30, commentary="v1 note")],
+    )
+    revision = InMemoryLineageResolver([_edge(RD, RE, "event-rev5", 5)])
+    repo3.record_exceptions(
+        OCT_31, [_occurrence(RE, OCT_31)], lineage_resolver=revision
+    )
+    pending = repo3.get_exception(OCT_31, f"{RE}_xxxx")
+    assert pending is not None
+    assert pending.status == "RecertificationRequired"
+    assert update_commentaries(repo3.database_path, OCT_31, {f"{RE}_xxxx": ""}) == 1
+    repo3.record_exceptions(
+        NOV_1, [_occurrence(RE, NOV_1)], lineage_resolver=resolver
+    )
+    carried_clear = repo3.get_exception(NOV_1, f"{RE}_xxxx")
+    assert carried_clear is not None
+    assert carried_clear.exception_commentary == ""
+    assert carried_clear.status == "RecertificationRequired"
 
-def test_same_revision_carry_needs_no_recertification(tmp_path: Path) -> None:
-    """Same-revision carry lands Commented directly, even from a pending row.
 
-    Oct-20 carries V1 text as pending (cross-revision: recertification
-    required). The Nov-1 capture is the SAME revision, so its carry applies
-    the text as ordinary commentary with no recertification marker.
+def test_same_revision_carry_preserves_pending_mark(tmp_path: Path) -> None:
+    """A still-pending row carries text and mark together across dates.
+
+    Oct-31 carries V1 text as pending (cross-revision: recertification
+    required). The Nov-1 capture is the SAME revision, so it inherits both
+    the text and the pending mark with hop-by-hop provenance instead of
+    quietly accepting it.
     """
 
     db_path = tmp_path / "tracking.db"
@@ -281,11 +305,14 @@ def test_same_revision_carry_needs_no_recertification(tmp_path: Path) -> None:
     target = repo.get_exception(NOV_1, f"{RE}_xxxx")
     assert target is not None
     assert target.exception_commentary == "v1 note"
-    assert target.status == "Commented"
-    assert target.recertification_required is False
-    assert target.recertification_reason == ""
-    assert target.rule_evolution_event_id == ""
-    assert target.carried_from_exception_id == ""
+    assert target.status == "RecertificationRequired"
+    assert target.recertification_required is True
+    assert target.recertification_reason == "Recertification due to rule change"
+    assert target.carried_from_exception_id == f"{RE}_xxxx"
+    assert target.carried_from_as_of_date == OCT_31
+    assert target.carried_from_rule_identifier == RE
+    assert target.rule_evolution_event_id == "event-rev5"
+    assert target.revision_token == "event-rev5"
 
 
 def test_commented_pair_scope_filtering_and_unrelated_books(tmp_path: Path) -> None:

@@ -26,7 +26,14 @@ carries (mid-day revision reruns start uncommented for new IDs).
 Same-ID safety rule (unchanged-rule fix): when edges exist but yield no
 candidate, the same-ID fallback runs only if the target identifier never
 appears as a source in its own predecessor chain. A revert/round-trip shape
-(target revised away from before) keeps blocking silent copies.
+(target revised away from before) keeps blocking silent copies. Only blank
+("New"-family) rows carry nothing: Commented rows carry their text as
+ordinary commentary with no recertification; still-pending rows carry the
+text together with the pending mark, reason, and hop-by-hop provenance
+(source = the previous date's row; the event token still binds acceptance
+to the revision that created it). A cleared-but-still-pending row carries
+the mark without text: the new row stays reviewable and no older text is
+resurrected.
 
 Reload semantics (documented intent): capture-time INSERT is the single carry
 point. Same-date recapture preserves stored commentary (empty is
