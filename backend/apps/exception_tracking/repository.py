@@ -1217,15 +1217,29 @@ class ExceptionTrackingRepository:
             return None, False
         from apps.exception_tracking.lineage import fetch_predecessor_links
 
-        links, warning = fetch_predecessor_links(
-            resolver,
-            identity.exception_rule_identifier,
-            lineage_id=lineage_id or None,
-        )
+        try:
+            links, warning = fetch_predecessor_links(
+                resolver,
+                identity.exception_rule_identifier,
+                lineage_id=lineage_id or None,
+            )
+        except Exception as exc:
+            # An auxiliary enrichment lookup must never fail a run capture:
+            # degrade to legacy same-identity behavior loudly instead.
+            degraded = (
+                f"No cross-revision commentary was carried for "
+                f"'{identity.exception_id}': lineage lookup failed ({exc}); "
+                f"continuing with same-identity carry only."
+            )
+            warnings.append(degraded)
+            logger.warning("%s", degraded)
+            return None, False
         if warning is not None:
             warnings.append(warning)
             logger.warning("%s", warning)
-            return None, False
+            # Ambiguous or cyclic lineage: refuse to guess entirely, including
+            # same-identity text that a reused identifier might silently copy.
+            return None, True
         edges = [
             link
             for link in links
