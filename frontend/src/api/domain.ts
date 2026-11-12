@@ -422,7 +422,7 @@ export interface CommentaryImportResult {
 /** One row selected for explicit recertification, with its frozen token. */
 export interface RecertifySelection {
   exceptionId: string;
-  /** `""` for never-carried rows; the server defaults missing entries to `""`. */
+  /** `""` for never-carried rows; the server defaults missing entries to `""`. Sent as a keyed map. */
   revisionToken: string;
 }
 

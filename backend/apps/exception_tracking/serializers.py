@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from apps.exception_tracking.workbook import MAX_TEMPLATE_BYTES
 
+
 class AsOfDateQuerySerializer(serializers.Serializer):  # type: ignore[misc]
     as_of_date = serializers.CharField(required=False, allow_blank=False)
 

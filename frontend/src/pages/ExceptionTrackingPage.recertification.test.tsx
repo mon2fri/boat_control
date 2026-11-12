@@ -158,7 +158,7 @@ describe("ExceptionTrackingPage recertification", () => {
     expect(recertifyCall?.body).toEqual({
       as_of_date: AS_OF,
       exception_ids: [`${V2}_id_7`],
-      revision_tokens: ["evt-1"],
+      revision_tokens: { [`${V2}_id_7`]: "evt-1" },
     });
     await waitFor(() => expect(screen.getByText(/Recertified 1 exception/)).toBeInTheDocument());
   });

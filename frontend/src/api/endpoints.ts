@@ -971,7 +971,8 @@ export function importExceptionCommentary(
 /**
  * Explicit recertification of carried commentary (Worker B, frozen
  * `POST /api/exception-tracking/recertify/`). Each selected row echoes its
- * `revision_token` (`""` for never-carried rows); unchanged-text acceptance
+ * `revision_token` (`""` for never-carried rows) as a keyed map
+ * `{exception_id: token}` (frozen B `DictField`); unchanged-text acceptance
  * is supported. Uploading an unchanged XLSX template never recertifies —
  * only this endpoint clears pending state. All failures are atomic.
  */
@@ -984,7 +985,9 @@ export function recertifyExceptions(
     body: {
       as_of_date: asOfDate,
       exception_ids: selections.map((selection) => selection.exceptionId),
-      revision_tokens: selections.map((selection) => selection.revisionToken),
+      revision_tokens: Object.fromEntries(
+        selections.map((selection) => [selection.exceptionId, selection.revisionToken]),
+      ),
     },
     schema: wireRecertifyResponseSchema,
   }).then(mapRecertifyResult);

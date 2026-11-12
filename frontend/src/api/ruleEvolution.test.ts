@@ -487,7 +487,7 @@ describe("rule-evolution endpoints", () => {
       expect(calls[0]?.body).toEqual({
         as_of_date: "2026-10-30",
         exception_ids: ["A", "B"],
-        revision_tokens: ["evt-1", ""],
+        revision_tokens: { A: "evt-1", B: "" },
       });
     } finally {
       vi.unstubAllGlobals();

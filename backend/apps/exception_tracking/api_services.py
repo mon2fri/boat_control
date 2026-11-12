@@ -94,9 +94,7 @@ def _wire_flag(value: Any) -> bool:
         return True
     if isinstance(value, int) and value in (0, 1):
         return bool(value)
-    if isinstance(value, str) and value.strip().lower() in {"1", "true"}:
-        return True
-    return False
+    return isinstance(value, str) and value.strip().lower() in {"1", "true"}
 
 
 def record_to_dict(record: Any) -> dict[str, Any]:
@@ -993,7 +991,9 @@ def recertify_commentaries(
         parsed_date = parse_iso_date(as_of_date)
     except ValueError as exc:
         raise TrackingAPIError(str(exc), code="invalid_as_of_date") from exc
-    selected = [str(exception_id) for exception_id in (exception_ids or []) if str(exception_id).strip()]
+    selected = [
+        str(exception_id) for exception_id in (exception_ids or []) if str(exception_id).strip()
+    ]
     if not selected:
         raise TrackingAPIError(
             "No exception IDs were provided for recertification.",

@@ -299,12 +299,10 @@ def _pending_flag(row: sqlite3.Row) -> bool:
         return False
     if isinstance(value, bool):
         return value
-    if isinstance(value, int):
-        if value in (0, 1):
-            return bool(value)
-    elif isinstance(value, str):
-        if value.strip() in ("0", "1", "", "false", "true"):
-            return value.strip() in ("1", "true")
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    elif isinstance(value, str) and value.strip() in ("0", "1", "", "false", "true"):
+        return value.strip() in ("1", "true")
     raise ExceptionTrackingError(
         "Stored recertification_required is not a 0/1 flag; the tracking database "
         "is corrupt."
