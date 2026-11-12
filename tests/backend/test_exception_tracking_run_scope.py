@@ -16,6 +16,7 @@ from typing import Any
 
 import pytest
 from apps.exception_tracking import api_services
+from apps.exception_tracking.domain import CommentaryUploadDecision
 from apps.exception_tracking.workbook import STANDARD_EXCEPTION_HEADERS, build_commentary_workbook
 from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import load_workbook
@@ -110,11 +111,24 @@ class FakeRepository:
         return []
 
     def update_commentaries(self, as_of_date: date, updates: dict[str, str]) -> int:
-        self.update_calls.append((as_of_date, dict(updates)))
+        raise AssertionError("legacy update_commentaries is not used by Round-2 upload")
+
+    def apply_commentary_upload(
+        self, as_of_date: date, decisions: dict[str, CommentaryUploadDecision]
+    ) -> int:
+        self.update_calls.append((as_of_date, dict(decisions)))
         for record in self.tables.get(as_of_date, []):
-            if record["exception_id"] in updates:
-                record["exception_commentary"] = updates[record["exception_id"]]
-        return len(updates)
+            decision = decisions.get(record["exception_id"])
+            if decision is None:
+                continue
+            if decision.commentary is not None:
+                record["exception_commentary"] = decision.commentary
+            text = record["exception_commentary"]
+            if text.strip():
+                record["status"] = "Commented"
+            else:
+                record["status"] = "New"
+        return len(decisions)
 
 
 @pytest.fixture
@@ -401,7 +415,9 @@ def test_subset_template_import_preserves_unrelated_commentary(
     by_id = {item["exception_id"]: item for item in payload["exceptions"]}
     assert by_id["A"]["exception_commentary"] == "reviewed A"
     assert by_id["B"]["exception_commentary"] == "keep B"
-    assert repository.update_calls == [(TRACKING_DATE, {"A": "reviewed A"})]
+    assert repository.update_calls == [
+        (TRACKING_DATE, {"A": CommentaryUploadDecision(commentary="reviewed A")})
+    ]
 
     # A full date-wide upload still works after the partial one.
     full = build_commentary_workbook(

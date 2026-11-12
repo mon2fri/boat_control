@@ -849,6 +849,7 @@ def test_workbook_round_trip_never_certifies_implicitly(
 ) -> None:
     import apps.exception_tracking.api_services as api_services
     from apps.exception_tracking.workbook import (
+        RECERTIFY_COLUMN,
         STANDARD_EXCEPTION_HEADERS,
         build_commentary_workbook,
         parse_commentary_workbook,
@@ -861,17 +862,23 @@ def test_workbook_round_trip_never_certifies_implicitly(
 
     sheet = load_workbook(io.BytesIO(content))["Exceptions"]
     headers = [cell.value for cell in sheet[1]]
-    assert "Recertification Reason" in headers
-    reason_column = headers.index("Recertification Reason") + 1
-    event_column = headers.index("Rule Evolution Event ID") + 1
-    assert sheet.cell(2, reason_column).value == "Recertification due to rule change"
-    assert sheet.cell(2, event_column).value == "event-oct15-revision"
+    assert headers == list(STANDARD_EXCEPTION_HEADERS)
+    # Round-2: provenance columns are gone from the template; pending review
+    # shows through Exception Status, and the review column defaults blank.
+    assert "Recertification Reason" not in headers
+    assert RECERTIFY_COLUMN in headers
+    status_column = headers.index("Exception Status") + 1
+    recertify_column = headers.index(RECERTIFY_COLUMN) + 1
+    assert sheet.cell(2, status_column).value == "RecertificationRequired"
+    assert sheet.cell(2, recertify_column).value in (None, "")
     # The commentary cell carries raw text only.
     assert sheet.cell(2, 3).value == "September review note"
 
-    # Uploading the unchanged template edits nothing and certifies nothing.
+    # Uploading the unchanged template edits nothing and certifies nothing:
+    # a blank review choice preserves the row, including its pending mark.
     parsed = parse_commentary_workbook(content)
     assert parsed.commentaries[target_id] == "September review note"
+    assert parsed.recertifications == {}
     result = api_services.import_commentary(content, repository=api_repo)
     assert result["updated"] == 0
     assert result["unchanged"] == 1
@@ -879,25 +886,40 @@ def test_workbook_round_trip_never_certifies_implicitly(
     assert pending is not None
     assert pending.status == "RecertificationRequired"
 
-    # Editing the text via upload also leaves the pending flag intact.
-    edited = bytearray(content)
-    assert edited  # placeholder to keep the original bytes referenced
+    # Editing the text via upload with a blank review choice is ignored: the
+    # stored text and the pending flag are both preserved.
     workbook = load_workbook(io.BytesIO(content))
     workbook["Exceptions"]["C2"] = "reviewer rewording"
     buffer = io.BytesIO()
     workbook.save(buffer)
     result = api_services.import_commentary(buffer.getvalue(), repository=api_repo)
-    assert result["updated"] == 1
+    assert result["updated"] == 0
+    assert result["unchanged"] == 1
     edited_row = api_repo.get_exception(OCT_30, target_id)
     assert edited_row is not None
-    assert edited_row.exception_commentary == "reviewer rewording"
+    assert edited_row.exception_commentary == "September review note"
     assert edited_row.status == "RecertificationRequired"
 
-    # Only explicit acceptance clears the flag.
+    # An explicit Updated choice stores the new text and clears the flag.
+    workbook = load_workbook(io.BytesIO(content))
+    sheet = workbook["Exceptions"]
+    sheet.cell(2, 3).value = "reviewer rewording"
+    sheet.cell(2, recertify_column).value = "Updated"
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    result = api_services.import_commentary(buffer.getvalue(), repository=api_repo)
+    assert result["updated"] == 1
+    accepted_row = api_repo.get_exception(OCT_30, target_id)
+    assert accepted_row is not None
+    assert accepted_row.exception_commentary == "reviewer rewording"
+    assert accepted_row.status == "Commented"
+
+    # Only explicit acceptance clears the flag; the recertify endpoint path
+    # is covered by the endpoint tests above.
     summary = api_repo.recertify_exceptions(
         OCT_30, {target_id: "event-oct15-revision"}
     )
-    assert summary.accepted == (target_id,)
+    assert summary.already_accepted == (target_id,)
 
 
 # ------------------------------------------------------- capture threading

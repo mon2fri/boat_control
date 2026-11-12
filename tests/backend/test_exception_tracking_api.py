@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from apps.exception_tracking import api_services
 from apps.exception_tracking.dates import default_as_of_date
+from apps.exception_tracking.domain import CommentaryUploadDecision
 from apps.exception_tracking.workbook import STANDARD_EXCEPTION_HEADERS, build_commentary_workbook
 from django.core.files.uploadedfile import SimpleUploadedFile
 from openpyxl import load_workbook
@@ -28,10 +29,13 @@ def _record(
     status: str | None = None,
     rule_index: str = "R001",
     detail_values: dict[str, str] | None = None,
+    recertification_required: bool = False,
 ) -> dict[str, Any]:
     first = first_seen or as_of_date
     if status is None:
-        if commentary.strip():
+        if recertification_required:
+            status = "RecertificationRequired"
+        elif commentary.strip():
             status = "Commented"
         elif first == as_of_date:
             status = "New"
@@ -49,6 +53,15 @@ def _record(
         "exception_first_seen_timestamp": datetime(2026, 9, 30, 9, 0, tzinfo=UTC),
         "exception_last_seen_timestamp": datetime(2026, 10, 30, 8, 15, tzinfo=UTC),
         "status": status,
+        "recertification_required": recertification_required,
+        "recertification_reason": (
+            "Recertification due to rule change" if recertification_required else ""
+        ),
+        "carried_from_exception_id": "",
+        "carried_from_as_of_date": "",
+        "carried_from_rule_identifier": "",
+        "rule_evolution_event_id": "event-1" if recertification_required else "",
+        "recertified_at": "",
         "rule_index": rule_index,
         "exception_rule_index": rule_index,
         "detail_values": dict(detail_values or {}),
@@ -84,20 +97,39 @@ class FakeRepository:
         return list(self.detail_columns)
 
     def update_commentaries(self, as_of_date: date, updates: dict[str, str]) -> int:
-        self.update_calls.append((as_of_date, dict(updates)))
+        raise AssertionError("legacy update_commentaries is not used by Round-2 upload")
+
+    def apply_commentary_upload(
+        self, as_of_date: date, decisions: dict[str, CommentaryUploadDecision]
+    ) -> int:
+        self.update_calls.append((as_of_date, dict(decisions)))
         if self.fail_update:
             raise ValueError("simulated write failure")
+        changed = 0
         for record in self.tables.get(as_of_date, []):
-            if record["exception_id"] not in updates:
+            decision = decisions.get(record["exception_id"])
+            if decision is None:
                 continue
-            record["exception_commentary"] = updates[record["exception_id"]]
-            if record["exception_commentary"].strip():
+            if (
+                decision.commentary is not None
+                and decision.commentary != record["exception_commentary"]
+            ):
+                record["exception_commentary"] = decision.commentary
+                changed += 1
+            if decision.clear_recertification and record.get("recertification_required"):
+                record["recertification_required"] = False
+                record["recertified_at"] = "2026-10-30T12:00:00+00:00"
+                changed += 1
+            text = record["exception_commentary"]
+            if record.get("recertification_required"):
+                record["status"] = "RecertificationRequired"
+            elif text.strip():
                 record["status"] = "Commented"
             elif record["exception_first_seen_as_of_date"] == as_of_date:
                 record["status"] = "New"
             else:
                 record["status"] = "NotCommented"
-        return len(updates)
+        return changed
 
 
 @pytest.fixture
@@ -267,7 +299,10 @@ def test_export_rejects_both_date_and_run_id(repository: FakeRepository) -> None
     assert response.status_code == 400
 
 
-def test_import_updates_and_clears_commentary(repository: FakeRepository) -> None:
+def test_import_preserves_accepted_comment_on_blank_ordinary_upload(
+    repository: FakeRepository,
+) -> None:
+    # Round-2: a blank ordinary upload never clears an accepted comment.
     repository.add(_record("A", TRACKING_DATE, commentary="old", first_seen=PRIOR_DATE))
     repository.add(_record("B", TRACKING_DATE, commentary="keep", first_seen=PRIOR_DATE))
     content = _template(
@@ -286,11 +321,11 @@ def test_import_updates_and_clears_commentary(repository: FakeRepository) -> Non
     assert response.status_code == 200
     payload = response.json()
     assert payload["updated"] == 0
-    assert payload["cleared"] == 1
-    assert payload["unchanged"] == 1
-    assert repository.update_calls == [(TRACKING_DATE, {"A": ""})]
-    assert payload["exceptions"][0]["exception_commentary"] == ""
-    assert payload["exceptions"][0]["status"] == "NotCommented"
+    assert payload["cleared"] == 0
+    assert payload["unchanged"] == 2
+    assert repository.update_calls == []
+    assert repository.tables[TRACKING_DATE][0]["exception_commentary"] == "old"
+    assert payload["exceptions"][0]["status"] == "Commented"
 
 
 def test_import_writes_new_commentary(repository: FakeRepository) -> None:
@@ -469,8 +504,8 @@ def test_export_appends_only_selected_detail_columns_in_order(
         "2026-10-30",
         "2026-10-30",
     ]
-    assert [cell.value for cell in sheet[2]][10:16] == [None] * 6
-    assert [cell.value for cell in sheet[2]][16:] == ["10", "EMEA"]
+    assert [cell.value for cell in sheet[2]][10:11] == [None]
+    assert [cell.value for cell in sheet[2]][11:] == ["10", "EMEA"]
 
 
 def test_export_includes_all_rows_uncommented_first_and_prefilled(
@@ -687,8 +722,8 @@ def test_import_ignores_edited_and_cleared_detail_values(
     workbook = load_workbook(io.BytesIO(export.content))
     sheet = workbook["Exceptions"]
     sheet["C2"] = "After"
-    sheet["K2"] = "Edited detail"
-    sheet["L2"] = "=1+1"
+    sheet["L2"] = "Edited detail"
+    sheet["M2"] = "=1+1"
     buffer = io.BytesIO()
     workbook.save(buffer)
 
@@ -742,7 +777,7 @@ def test_unknown_id_with_detail_columns_fails_without_partial_update(
     workbook = load_workbook(io.BytesIO(export.content))
     workbook["Exceptions"]["A2"] = "UNKNOWN_ID"
     workbook["Exceptions"]["C2"] = "Changed"
-    workbook["Exceptions"]["K2"] = "Edited detail"
+    workbook["Exceptions"]["L2"] = "Edited detail"
     buffer = io.BytesIO()
     workbook.save(buffer)
 

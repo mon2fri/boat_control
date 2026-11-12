@@ -87,7 +87,9 @@ def test_real_store_round_trip_prefill_and_carry_forward(tmp_path: Path) -> None
     assert result["exceptions"][0]["status"] == "Commented"
 
 
-def test_real_store_blank_commentary_clears_selected_date_only(tmp_path: Path) -> None:
+def test_real_store_blank_ordinary_upload_preserves_selected_date_only(tmp_path: Path) -> None:
+    # Round-2: a blank ordinary upload preserves accepted commentary instead
+    # of clearing it; other dates are untouched either way.
     repository = repository_module.ExceptionTrackingRepository(tmp_path / "tracking.db")
     repository.record_exceptions(FIRST_DATE, [_occurrence(commentary="Known")])
     repository.record_exceptions(SECOND_DATE, [_occurrence(commentary="Known")])
@@ -100,8 +102,10 @@ def test_real_store_blank_commentary_clears_selected_date_only(tmp_path: Path) -
         cleared, requested_as_of_date="2026-10-30", repository=repository
     )
 
-    assert result["cleared"] == 1
-    assert result["exceptions"][0]["status"] == "NotCommented"
+    assert result["cleared"] == 0
+    assert result["unchanged"] == 1
+    assert result["exceptions"][0]["exception_commentary"] == "Known"
+    assert result["exceptions"][0]["status"] == "Commented"
     assert list_exceptions(FIRST_DATE, repository)[0]["exception_commentary"] == "Known"
 
 
