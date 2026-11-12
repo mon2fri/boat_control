@@ -1176,20 +1176,25 @@ class ExceptionTrackingRepository:
         exception_id: str,
         as_of_date: date,
     ) -> str:
+        # Same-identity carry consults ONLY the immediate previous as-of date:
+        # if the same exception was spotted there, its commentary moves to the
+        # new date, verbatim (including a cleared blank, which never resurrects
+        # older text). Older dates are never scanned.
         earlier = [
             (table_date, table)
             for table_date, table in _date_tables(connection)
             if table_date < as_of_date
         ]
-        earlier.sort(reverse=True)
-        for _, table in earlier:
-            row = connection.execute(
-                f"SELECT exception_commentary FROM {quote_identifier(table)} "
-                "WHERE exception_id = ?",
-                (exception_id,),
-            ).fetchone()
-            if row is not None:
-                return _commentary_text(row)
+        if not earlier:
+            return ""
+        _, table = max(earlier)
+        row = connection.execute(
+            f"SELECT exception_commentary FROM {quote_identifier(table)} "
+            "WHERE exception_id = ?",
+            (exception_id,),
+        ).fetchone()
+        if row is not None:
+            return _commentary_text(row)
         return ""
 
     def _cross_revision_attempt(
@@ -1275,7 +1280,16 @@ class ExceptionTrackingRepository:
                 continue
             candidates.append((occurrence.as_of_date, distance, edge, occurrence))
         if not candidates:
-            return None, True
+            # No predecessor revision carries eligible commentary. Same-identity
+            # text is still allowed when the target identifier was never
+            # revised away from: every earlier same-ID occurrence was recorded
+            # while this revision was current, so carrying it needs no
+            # recertification. But when the target identifier appears as a
+            # source in its own chain (a revert/round trip), same-ID text may
+            # predate an intervening revision and must not copy silently.
+            if identity.exception_rule_identifier in seen_sources:
+                return None, True
+            return None, False
         best_date = max(item[0] for item in candidates)
         contenders = [item for item in candidates if item[0] == best_date]
         contenders.sort(key=lambda item: item[1])
@@ -1317,58 +1331,49 @@ class ExceptionTrackingRepository:
         target_key_map: Mapping[str, str],
         as_of_date: date,
     ) -> _PredecessorOccurrence | None:
-        """Return the latest eligible occurrence of one predecessor identity.
+        """Return the eligible occurrence of one predecessor identity.
 
-        Only occurrences on or before the target as-of date are eligible;
-        future commentary is never carried. Key schemas must match exactly
-        (same column names and values through the lossless representation);
-        changed key schemas are skipped without implicit mapping. A direct
-        literal-ID lookup runs first; a row scan covers key-order changes.
+        Only the immediate previous as-of date is consulted: older dates are
+        never scanned. Future commentary is never carried. Key schemas must
+        match exactly (same column names and values through the lossless
+        representation); changed key schemas are skipped without implicit
+        mapping. A direct literal-ID lookup runs first; a row scan covers
+        key-order changes.
         """
 
-        tables = [
+        earlier = [
             (table_date, table)
             for table_date, table in _date_tables(connection)
-            if table_date <= as_of_date
+            if table_date < as_of_date
         ]
-        tables.sort(reverse=True)
-        latest: _PredecessorOccurrence | None = None
-        for _, table in tables:
-            quoted = quote_identifier(table)
-            rows = connection.execute(
-                f"SELECT exception_id, key_columns, exception_commentary, "
-                f"exception_as_of_date FROM {quoted} "
-                "WHERE exception_rule_identifier = ?",
-                (source_identifier,),
-            ).fetchall()
-            for row in rows:
-                try:
-                    pairs = deserialize_key_columns(_text(row, "key_columns"))
-                except ExceptionTrackingError:
-                    continue
-                if dict(pairs) != dict(target_key_map):
-                    continue
-                stored_date = parse_as_of_date(_text(row, "exception_as_of_date"))
-                if stored_date > as_of_date:
-                    continue
-                commentary = _commentary_text(row)
-                if latest is None or stored_date > latest.as_of_date:
-                    latest = _PredecessorOccurrence(
-                        exception_id=_text(row, "exception_id"),
-                        as_of_date=stored_date,
-                        commentary=commentary,
-                        had_nonblank_history=bool(commentary.strip()),
-                    )
-                elif latest is not None and commentary.strip():
-                    latest = _PredecessorOccurrence(
-                        exception_id=latest.exception_id,
-                        as_of_date=latest.as_of_date,
-                        commentary=latest.commentary,
-                        had_nonblank_history=True,
-                    )
-            if latest is not None and latest.commentary.strip():
-                break
-        return latest
+        if not earlier:
+            return None
+        _, table = max(earlier)
+        quoted = quote_identifier(table)
+        rows = connection.execute(
+            f"SELECT exception_id, key_columns, exception_commentary, "
+            f"exception_as_of_date FROM {quoted} "
+            "WHERE exception_rule_identifier = ?",
+            (source_identifier,),
+        ).fetchall()
+        for row in rows:
+            try:
+                pairs = deserialize_key_columns(_text(row, "key_columns"))
+            except ExceptionTrackingError:
+                continue
+            if dict(pairs) != dict(target_key_map):
+                continue
+            stored_date = parse_as_of_date(_text(row, "exception_as_of_date"))
+            if stored_date > as_of_date:
+                continue
+            commentary = _commentary_text(row)
+            return _PredecessorOccurrence(
+                exception_id=_text(row, "exception_id"),
+                as_of_date=stored_date,
+                commentary=commentary,
+                had_nonblank_history=bool(commentary.strip()),
+            )
+        return None
 
     def recertify_exceptions(
         self,

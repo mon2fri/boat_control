@@ -5,7 +5,36 @@ to all affected workers promptly.
 
 BASE_COMMIT: `4b7c5bf72df3e65b55d118d7e9647173ed0b73f3`
 
-## Status: PARTIAL FREEZE — A+B frozen 2026-11-12; C pending
+## Status: PARTIAL FREEZE — A+B frozen 2026-11-12; C pending.
+## Round-1 amendment (user directive, 2026-11-12): immediate-previous scope.
+
+Carry-forward consults ONLY the immediate previous as-of date (the single
+latest date table strictly earlier than the target), for both scenarios:
+
+1. As-of date movement (same exception, same identifier): the same-ID lookup
+   reads only the immediate previous table. Older dates are never scanned;
+   same-date rows are never eligible.
+2. Rule evolution (changed identifier): each predecessor edge resolves its
+   candidate only in the immediate previous table. No tombstone resurrection
+   is possible across a gap because gaps are not searched.
+
+Consequences (documented intent): a commented date followed by an uncommented
+(or row-less) immediate previous date does not propagate further; each
+carried date seeds the next one day-by-day. Same-date predecessor text never
+carries (mid-day revision reruns start uncommented for new IDs).
+
+Same-ID safety rule (unchanged-rule fix): when edges exist but yield no
+candidate, the same-ID fallback runs only if the target identifier never
+appears as a source in its own predecessor chain. A revert/round-trip shape
+(target revised away from before) keeps blocking silent copies.
+
+Reload semantics (documented intent): capture-time INSERT is the single carry
+point. Same-date recapture preserves stored commentary (empty is
+indistinguishable from intentionally cleared), and reads/reloads never
+synthesize commentary. Commentary uploaded after a date was captured is
+visible on its own date only; later dates pick it up only if captured
+afterwards. Saved-run documents persist capture-time statuses; the live
+tracking store is authoritative on reload via `refresh_result_dict`.
 
 A delivered (`feat/rule-evolution-worker-a`, 6 commits `3bc6c09`…`854cdda`
 on base `4b7c5bf`, checkout clean). B delivered

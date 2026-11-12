@@ -212,10 +212,15 @@ def test_never_commented_intermediate_revision_falls_through(
     assert carried.rule_evolution_event_id == "event-oct25-revision"
 
 
-def test_same_date_source_is_eligible(
+def test_same_date_source_is_not_eligible(
     db_path: Path, resolver: InMemoryLineageResolver
 ) -> None:
-    """A same-date predecessor occurrence carries (eligible is <= target date)."""
+    """Only the immediate previous as-of date carries (Round-1 directive).
+
+    A predecessor occurrence on the target's own date is not eligible: carry
+    consults a single strictly-earlier date table, never the write target
+    itself and never older dates beyond the immediate previous one.
+    """
 
     repo = ExceptionTrackingRepository(db_path)
     repo.record_exceptions(
@@ -224,10 +229,10 @@ def test_same_date_source_is_eligible(
     repo.record_exceptions(
         SEPT_30, [_occurrence(V2, SEPT_30)], lineage_resolver=resolver
     )
-    carried = repo.get_exception(SEPT_30, f"{V2}_xxxx")
-    assert carried is not None
-    assert carried.exception_commentary == "same-day note"
-    assert carried.status == "RecertificationRequired"
+    target = repo.get_exception(SEPT_30, f"{V2}_xxxx")
+    assert target is not None
+    assert target.exception_commentary == ""
+    assert target.status == "New"
 
 
 # ------------------------------------------------------- tombstones/clears
