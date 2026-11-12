@@ -233,16 +233,24 @@ exactly these.
 - Ambiguity surfacing is log + `carry_warnings` only; a C-visible review
   affordance is C/integrator work (tracked as a known limitation).
 
-### Prerequisite log (A→B, arranged 2026-11-12)
+### Prerequisite log (A→B, COMPLETED 2026-11-12)
 
 - Worker B requested A's evolution service to run the real-service
   integration check. APPROVED prerequisite: A commits `3bc6c09` (models +
   migration, required dependency) then `337a7e6` (evolution service),
   cherry-picked by B itself into `feat/rule-evolution-worker-b` in that
-  order. No uncommitted files pulled.
+  order. No uncommitted files pulled. COMPLETED as B commits `51c03ac`
+  (← `3bc6c09`) and `665cd65` (← `337a7e6`), both clean `-x`
+  cherry-picks, plus B follow-ups `5dd6135` (loud-degrade divergence fix,
+  no wire changes), `fd6b747` (real-service carry test, PASS), `130f836`
+  (delivery addendum). B HEAD `130f836`, checkout clean.
+- Real-service result: Sept-30 v1 commentary → Oct-30 v2 carry with NO
+  Oct-15 run through the REAL `get_predecessor_chain`: PASS (verbatim text,
+  exact reason label outside text, full provenance, both exception IDs
+  intact).
 - INHERITED-COMMIT WARNING for integration: when cherry-picking into
-  `feat/rule-evolution-integration` later, apply A's full sequence first
-  (A commits), then B's commits EXCLUDING any re-application of `3bc6c09` /
-  `337a7e6` content — if B's follow-up work commits the cherry-picks as
-  separate commits, skip those hashes at integration time and keep A's
-  originals. Exact hashes recorded here: `3bc6c09`, `337a7e6`.
+  `feat/rule-evolution-integration`, apply A's full sequence first
+  (`3bc6c09`, `337a7e6`, `fd8a8a0`, `99191ff`, `8639e13`, `854cdda`), then
+  B's commits in order EXCLUDING `51c03ac` and `665cd65` (already present
+  via A) — i.e. pick `8f90f9f`, `89b5f81`, `c64453c`, `5142a1d`,
+  `0d950ce`, `2472a82`, `5dd6135`, `fd6b747`, `130f836`.
