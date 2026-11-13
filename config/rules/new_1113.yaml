@@ -1,0 +1,22 @@
+items:
+- rule_identifier: CBR1_09ZGBK98QSKPZHQE39AS
+  name: More than 90
+  description: ''
+  conditions:
+  - column_name: system
+    operator: contains
+    filter_value: oomber
+    filter_values:
+    - oomber
+  extra_columns: []
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: score
+    operator: gt
+    target_value: '90'
+    target_values:
+    - '90'
+    comparison_mode: comparison_vs_baseline
+  lineage_id: 686f2893a1154f2a892d3b96f9d9928f
+_version: 2

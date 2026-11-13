@@ -1,87 +1,16 @@
 items:
-- rule_identifier: CBR1_1FB1N7BHJ3WTCD3BB1KW
-  name: UI Flags - opposite Yes No
-  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
-  conditions: []
-  extra_columns:
-  - sa_flag
-  - cva_flag
-  - system
-  - status
-  - region
-  hide_comparison: false
-  logic_clauses:
-  - format: value_vs_column
-    column_name: sa_flag
-    operator: eq
-    target_value: 'Yes'
-    target_values: []
-    comparison_mode: comparison_vs_baseline
-  - format: value_vs_column
-    column_name: cva_flag
-    operator: eq
-    target_value: 'No'
-    target_values: []
-    comparison_mode: comparison_vs_baseline
-  - format: value_vs_column
-    column_name: sa_flag
-    operator: eq
-    target_value: 'No'
-    target_values: []
-    comparison_mode: comparison_vs_baseline
-  - format: value_vs_column
-    column_name: cva_flag
-    operator: eq
-    target_value: 'Yes'
-    target_values: []
-    comparison_mode: comparison_vs_baseline
-  logic_relation: or
-  logic_grouping_tree:
-    kind: or
-    children:
-    - kind: and
-      children:
-      - kind: leaf
-        conditionId: c0
-      - kind: leaf
-        conditionId: c1
-    - kind: and
-      children:
-      - kind: leaf
-        conditionId: c2
-      - kind: leaf
-        conditionId: c3
-- rule_identifier: CBR1_1F5M13ZKV8YXB7N48F5N
-  name: Catch-All Rule by ID
+- rule_identifier: CBR1_0W8RRC1KFR747SSFA4QG
+  name: More than 90
   description: ''
-  conditions: []
-  extra_columns: []
-  hide_comparison: false
-  logic:
-    format: value_vs_column
-    column_name: id
-    operator: lt
-    target_value: '0'
-    target_values:
-    - '0'
-    comparison_mode: comparison_vs_baseline
-- rule_identifier: CBR1_0Z100ERCHKBF4R1AGQ5T
-  name: Valid status
-  description: ''
-  conditions: []
-  extra_columns: []
-  hide_comparison: false
-  logic:
-    format: value_vs_column
-    column_name: status
+  conditions:
+  - column_name: region
     operator: eq
-    target_value: active
-    target_values: []
-    comparison_mode: comparison_vs_baseline
-- rule_identifier: CBR1_1FX1EVJ3Z8M6QRNGGZVR
-  name: Low Score
-  description: ''
-  conditions: []
+    filter_value: East
+    filter_values:
+    - East
+    - North
+    - South
+    - West
   extra_columns: []
   hide_comparison: false
   logic:
@@ -92,18 +21,5 @@ items:
     target_values:
     - '90'
     comparison_mode: comparison_vs_baseline
-- rule_identifier: CBR1_0A25HEMX1J3Z1C7Y8F2R
-  name: Zero Capture
-  description: ''
-  conditions: []
-  extra_columns: []
-  hide_comparison: false
-  logic:
-    format: value_vs_column
-    column_name: id
-    operator: lt
-    target_value: '999999'
-    target_values:
-    - '999999'
-    comparison_mode: comparison_vs_baseline
-_version: 1
+  lineage_id: 686f2893a1154f2a892d3b96f9d9928f
+_version: 2

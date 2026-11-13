@@ -18,36 +18,7 @@ aggregationColumns:
 - kind: column
   name: region
 aggregationColumnLabels: {}
-filters:
-- column:
-    kind: column
-    name: system
-  operator: contains
-  filter_values:
-  - oomber
-- column:
-    kind: column
-    name: status
-  operator: equals
-  filter_values:
-  - active
-- column:
-    kind: column
-    name: status
-  operator: equals
-  filter_values:
-  - inactive
-filterGroupingTree:
-  kind: and
-  children:
-  - kind: leaf
-    conditionId: c0
-  - kind: or
-    children:
-    - kind: leaf
-      conditionId: c1
-    - kind: leaf
-      conditionId: c2
+filters: []
 targetColumns: []
 extraColumns:
 - kind: column
@@ -99,4 +70,4 @@ comparisonSections:
   - kind: column
     name: status
   extraColumns: []
-_version: 17
+_version: 18
