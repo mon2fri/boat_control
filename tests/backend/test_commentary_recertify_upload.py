@@ -372,16 +372,16 @@ def test_extra_columns_and_formula_protection_intact(
          "September review note", "Commented", "unchanged"),
         ("September review note", "Keep Current", "",
          "September review note", "Commented", "unchanged"),
-        ("", "Keep Current", "", "", "New", "unchanged"),
-        ("", "Keep Current", "edited in sheet", "", "New", "unchanged"),
+        ("", "Keep Current", "", "", "NotCommented", "unchanged"),
+        ("", "Keep Current", "edited in sheet", "", "NotCommented", "unchanged"),
         # Updated stores the supplied text (empty clears deliberately).
         ("September review note", "Updated", "accepted text",
          "accepted text", "Commented", "updated"),
         ("September review note", "Updated", "September review note",
          "September review note", "Commented", "unchanged"),
-        ("September review note", "Updated", "", "", "New", "cleared"),
+        ("September review note", "Updated", "", "", "NotCommented", "cleared"),
         ("", "Updated", "new text", "new text", "Commented", "updated"),
-        ("", "Updated", "", "", "New", "unchanged"),
+        ("", "Updated", "", "", "NotCommented", "unchanged"),
         # Blank preserves text, status, and the pending mark.
         ("September review note", None, "September review note",
          "September review note", "RecertificationRequired", "unchanged"),
@@ -574,7 +574,7 @@ def test_pending_updated_empty_clears_while_ordinary_empty_preserves(
 
     pending = _row(repo, pending_id)
     assert pending.exception_commentary == ""
-    assert pending.status == "New"
+    assert pending.status == "NotCommented"
     ordinary = _row(repo, ordinary_id)
     assert ordinary.exception_commentary == "accepted"
     assert ordinary.status == "Commented"

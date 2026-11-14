@@ -163,9 +163,11 @@ def test_cross_date_carry_without_edit_date_run(
     assert carried.rule_evolution_event_id == "event-oct15-revision"
     assert carried.revision_token == "event-oct15-revision"
     assert carried.recertified_at is None
-    # Each occurrence keeps its own ID, date, and historical metadata.
+    # Each occurrence keeps its own ID, date, and historical metadata; the
+    # carried row inherits the predecessor continuity origin (Sept 30), so a
+    # deliberate clear reads Not Commented instead of New.
     assert carried.exception_as_of_date == OCT_30
-    assert carried.exception_first_seen_as_of_date == OCT_30
+    assert carried.exception_first_seen_as_of_date == SEPT_30
 
 
 def test_multi_hop_chain_uses_nearest_edge_with_history(
