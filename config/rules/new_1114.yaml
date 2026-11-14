@@ -1,0 +1,77 @@
+items:
+- rule_identifier: CBR1_1FB1N7BHJ3WTCD3BB1KW
+  name: UI Flags - opposite Yes No
+  description: 'Root CSV UI validation: Yes/No, empty and ACDS.'
+  conditions: []
+  extra_columns:
+  - sa_flag
+  - cva_flag
+  - system
+  - status
+  - region
+  hide_comparison: false
+  logic_clauses:
+  - format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  - format: value_vs_column
+    column_name: cva_flag
+    operator: eq
+    target_value: 'No'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  - format: value_vs_column
+    column_name: sa_flag
+    operator: eq
+    target_value: 'No'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  - format: value_vs_column
+    column_name: cva_flag
+    operator: eq
+    target_value: 'Yes'
+    target_values: []
+    comparison_mode: comparison_vs_baseline
+  logic_relation: or
+  logic_grouping_tree:
+    kind: or
+    children:
+    - kind: and
+      children:
+      - kind: leaf
+        conditionId: c0
+      - kind: leaf
+        conditionId: c1
+    - kind: and
+      children:
+      - kind: leaf
+        conditionId: c2
+      - kind: leaf
+        conditionId: c3
+  lineage_id: 83f09e7216304f96a83d1bbe913b61d4
+- rule_identifier: CBR1_05ZPX9ZE5RP8BTMX121Q
+  name: More than 90
+  description: ''
+  conditions:
+  - column_name: system
+    operator: contains
+    filter_value: Moodys
+    filter_values:
+    - Moodys
+    - ABCD
+    - Bloomberg
+  extra_columns: []
+  hide_comparison: false
+  logic:
+    format: value_vs_column
+    column_name: score
+    operator: gt
+    target_value: '90'
+    target_values:
+    - '90'
+    comparison_mode: comparison_vs_baseline
+  lineage_id: 686f2893a1154f2a892d3b96f9d9928f
+_version: 2
