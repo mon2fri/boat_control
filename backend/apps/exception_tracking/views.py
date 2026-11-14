@@ -78,7 +78,7 @@ class ExceptionListView(APIView):  # type: ignore[misc]
                 serializer.validated_data.get("as_of_date")
             )
             repository = api_services.get_repository()
-            records = api_services.list_exceptions(as_of_date, repository)
+            records = api_services.list_current_exceptions(as_of_date, repository)
             detail_columns = api_services.list_template_detail_columns(
                 repository, as_of_date
             )

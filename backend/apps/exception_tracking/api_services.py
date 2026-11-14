@@ -251,6 +251,33 @@ def list_exceptions(
     return [record_to_dict(record) for record in records]
 
 
+def list_current_exceptions(
+    as_of_date: date, repository: Any | None = None
+) -> list[dict[str, Any]]:
+    """Return the current-view wire records for one as-of date.
+
+    Same-date predecessors superseded by a recorded ``modify_current``
+    successor for the same book are hidden so a revised rule does not
+    present the same book twice. Run-scoped exports, commentary import,
+    recertification, saved-run refresh, and per-ID history keep the full
+    store. Repositories that predate the current-view method fall back to
+    the full listing.
+    """
+
+    repo = repository or get_repository()
+    method = getattr(repo, "list_current_exceptions", None)
+    try:
+        records = (
+            method(as_of_date) if callable(method) else repo.list_exceptions(as_of_date)
+        )
+    except (OSError, ValueError) as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="tracking_database_unavailable",
+        ) from exc
+    return [record_to_dict(record) for record in records]
+
+
 def resolve_as_of_date(value: str | None, repository: Any | None = None) -> date:
     if value is None:
         return default_as_of_date()
@@ -745,7 +772,7 @@ def export_commentary(
     rule_snapshot_notes: Iterable[str] = (),
 ) -> bytes:
     repo = repository or get_repository()
-    records = list_exceptions(as_of_date, repo)
+    records = list_current_exceptions(as_of_date, repo)
     effective_summaries = rule_summaries
     effective_notes = list(rule_snapshot_notes)
     if effective_summaries is None and not effective_notes:
