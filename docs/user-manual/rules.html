@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Set up checks and run the report | Boat Control</title>
+  <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to instructions</a>
+  <aside>
+    <p class="brand">Boat Control</p>
+    <nav aria-label="Manual chapters">
+      <ul>
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="upload.html">Upload files</a></li>
+        <li><a href="filters-columns.html">Rows and columns</a></li>
+        <li><a href="saved-choices.html">Saved choices</a></li>
+        <li><a href="rules.html" aria-current="page">Checks and running</a></li>
+        <li><a href="results.html">Read and download</a></li>
+        <li><a href="families.html">Reusable lists</a></li>
+        <li><a href="exception-tracking.html">Exception tracking</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main id="main">
+    <h1>Set up checks and run the report</h1>
+    <p class="intro">A rule says what should be true. When a row the rule applies to fails the check, it appears as an exception.</p>
+
+<h2>Add or edit a rule</h2>
+<ol>
+  <li>Open <strong>Validation rules</strong> on <strong>2. Compare and validate</strong>. Click <strong>+ Add rule</strong> to create one, or open an existing rule for editing.</li>
+  <li>Give the check a name people can understand, such as <em>Open accounts must be marked active</em>. Add a description if it helps explain what to review.</li>
+  <li>Use <strong>Conditions (optional)</strong> to limit who gets checked. For example, add a condition where <em>Account Status</em> equals <em>Open</em>. Leave this area empty to check every row included in the report that the rule can check.</li>
+  <li>Under <strong>Logic (required)</strong>, say what must be true. Choose <strong>Value against column</strong> to check a column against an entry, such as <em>Status must equal Active</em>. Choose <strong>Column against column</strong> to check against another column or against the starting file, using the choices shown.</li>
+  <li>If several expectations appear, decide whether all must be true or any one can be true. Use the grouping options to combine choices when you need a mix, and read the preview before saving.</li>
+  <li>Under <strong>Extra columns to display</strong>, add details reviewers need for this check. Leave <strong>Hide comparison columns</strong> clear if people need to see the values being checked.</li>
+  <li>Click <strong>Save rule</strong>.</li>
+</ol>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/rule-editor.png" aria-label="A rule showing which rows it applies to and what those rows must satisfy.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/rule-editor.png</code></div>
+      </object>
+      <figcaption>A rule showing which rows it applies to and what those rows must satisfy.</figcaption>
+    </figure>
+<h2>Run your checks</h2>
+<ol>
+  <li>Under <strong>Select rules for this run</strong>, tick the rules you want. Check for selections on other pages if the list spans several pages.</li>
+  <li>Click <strong>Run comparison and validation</strong>. On <strong>3. Results</strong>, check the selected rules and click <strong>Run now</strong>.</li>
+  <li>Wait for the results. If the app asks you to confirm that all rows should be checked, confirm only if that is the report you want.</li>
+</ol>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/run-report.png" aria-label="The Results screen before running the comparison, with the selected checks and Run now button.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/run-report.png</code></div>
+      </object>
+      <figcaption>The Results screen before running the comparison, with the selected checks and Run now button.</figcaption>
+    </figure>
+    <nav class="chapter-links" aria-label="Previous and next chapters"><a href="saved-choices.html">← Save and reuse your choices</a><a href="results.html">Read and download the report →</a></nav>
+  </main>
+</body>
+</html>

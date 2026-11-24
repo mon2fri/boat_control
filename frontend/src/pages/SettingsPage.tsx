@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppSettings } from "../api/domain";
 import { useSaveSettings, useSettings } from "../features/settings/useSettings";
+import { RecentTrackingPathInput } from "../features/settings/RecentTrackingPathInput";
 import { chooseExceptionTrackingDbPath } from "../features/settings/pathPicker";
 import { isAbsoluteHostPath } from "../lib/hostPath";
+
+const RECENT_TRACKING_PATHS = "boat-control-recent-tracking-paths";
+const MAX_RECENT_PATHS = 10;
+
+function readRecentTrackingPaths(): string[] {
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(RECENT_TRACKING_PATHS) ?? "[]");
+    if (Array.isArray(stored)) {
+      return [...new Set(stored.filter((path): path is string => typeof path === "string" && Boolean(path.trim())))]
+        .slice(0, MAX_RECENT_PATHS);
+    }
+  } catch {
+    // The field stays editable when browser storage is unavailable or invalid.
+  }
+  return [];
+}
 
 interface DraftSettings {
   applicationName: string;
@@ -61,6 +78,7 @@ export function SettingsPage() {
   const [submitted, setSubmitted] = useState(false);
   const [pickerNotice, setPickerNotice] = useState<{ tone: "info" | "error"; text: string } | null>(null);
   const [picking, setPicking] = useState(false);
+  const [recentTrackingPaths, setRecentTrackingPaths] = useState(readRecentTrackingPaths);
 
   useEffect(() => {
     if (!settings.data || lastSyncedRef.current === settings.data) return;
@@ -103,7 +121,8 @@ export function SettingsPage() {
   function handleSubmit(event: React.FormEvent): void {
     event.preventDefault();
     setSubmitted(true);
-    if (!draft || errors.length > 0) return;
+    if (!draft || !settings.data || errors.length > 0) return;
+    const previousPath = settings.data.exceptionTrackingPath;
     save.mutate({
       applicationName: draft.applicationName.trim(),
       defaultRemotePath: draft.defaultRemotePath.trim(),
@@ -114,6 +133,18 @@ export function SettingsPage() {
       fullSetConfirmationRows: Number(draft.fullSetConfirmationRows),
       runHistoryPath: draft.runHistoryPath.trim(),
       exceptionTrackingPath: draft.exceptionTrackingPath.trim(),
+    }, {
+      onSuccess: ({ exceptionTrackingPath: path }) => {
+        if (!path || path === previousPath) return;
+        const knownPaths = [...new Set([...readRecentTrackingPaths(), ...recentTrackingPaths])];
+        const next = [path, ...knownPaths.filter((entry) => entry !== path)].slice(0, MAX_RECENT_PATHS);
+        setRecentTrackingPaths(next);
+        try {
+          localStorage.setItem(RECENT_TRACKING_PATHS, JSON.stringify(next));
+        } catch {
+          // Suggestions remain available while this page is open.
+        }
+      },
     });
   }
 
@@ -200,12 +231,11 @@ export function SettingsPage() {
         <div className="field">
           <label htmlFor="exception-tracking-db-path">Exception tracking database path</label>
           <div className="path-picker-row">
-            <input
+            <RecentTrackingPathInput
               id="exception-tracking-db-path"
               value={draft.exceptionTrackingPath}
-              onChange={(event) => patch({ exceptionTrackingPath: event.target.value })}
-              placeholder="/absolute/path/to/exception_tracking.db"
-              spellCheck={false}
+              paths={recentTrackingPaths}
+              onChange={(path) => patch({ exceptionTrackingPath: path })}
             />
             <button
               type="button"

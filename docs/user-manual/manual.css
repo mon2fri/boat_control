@@ -1,0 +1,80 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, sans-serif;
+  color: #172b38;
+  background: #fff;
+  line-height: 1.6;
+}
+
+body {
+  display: grid;
+  grid-template-columns: minmax(13rem, 17rem) minmax(0, 56rem);
+  margin: 0 auto;
+  max-width: 73rem;
+}
+
+aside {
+  background: #f2f6f8;
+  padding: 2rem 1.25rem;
+}
+
+.brand {
+  font-size: 1.2rem;
+  font-weight: 750;
+  margin: 0 0 1rem;
+}
+
+aside ul { list-style: none; padding: 0; margin: 0; }
+aside a { display: block; padding: .4rem .65rem; border-radius: .4rem; }
+aside a[aria-current="page"] { background: #d8e9ef; color: #172b38; font-weight: 700; }
+
+main { padding: 2rem clamp(1rem, 5vw, 4rem) 3rem; }
+h1, h2 { line-height: 1.2; text-wrap: balance; }
+h1 { font-size: clamp(2rem, 5vw, 3rem); margin: 0; }
+h2 { margin-top: 2rem; }
+.intro { font-size: 1.2rem; color: #3b5261; }
+a { color: #075974; text-underline-offset: .17em; }
+a:focus-visible { outline: 3px solid #a24c09; outline-offset: 3px; }
+main li + li { margin-top: .6rem; }
+.contents a, dt { font-weight: 700; }
+.contents p { margin: 0; }
+dd { margin: 0 0 .8rem; }
+
+figure { margin: 1.3rem 0; break-inside: avoid; }
+.screenshot { display: block; width: 100%; max-width: 100%; }
+.placeholder {
+  display: grid;
+  align-content: center;
+  min-height: 8rem;
+  padding: .75rem;
+  border: 2px dashed #8ca6b6;
+  border-radius: .6rem;
+  background: #f4f8fa;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+figcaption { margin-top: .4rem; color: #3b5261; }
+
+.chapter-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #cbd9df;
+}
+.skip { position: absolute; top: -5rem; background: #fff; padding: .5rem; }
+.skip:focus { top: .5rem; left: .5rem; }
+
+@media (max-width: 42rem) {
+  body { display: block; }
+  aside { padding: 1rem; }
+  aside ul { display: flex; flex-wrap: wrap; }
+}
+
+@media print {
+  body { display: block; }
+  aside, .skip, .chapter-links { display: none; }
+  main { padding: 0; }
+}

@@ -2558,9 +2558,30 @@ dl.card dd {
   min-width: 12rem;
 }
 
-.path-picker-row input {
+.tracking-path-input {
+  position: relative;
   flex: 1 1 24rem;
   min-width: 0;
+}
+
+.tracking-path-input input {
+  width: 100%;
+}
+
+.tracking-path-input .combobox-list {
+  top: 100%;
+  max-height: 16rem;
+}
+
+.tracking-path-input .combobox-option {
+  height: auto;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tracking-path-input .combobox-option:hover {
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
 }
 
 .as-of-date-selector {

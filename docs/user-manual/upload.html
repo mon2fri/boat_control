@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload your files | Boat Control</title>
+  <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to instructions</a>
+  <aside>
+    <p class="brand">Boat Control</p>
+    <nav aria-label="Manual chapters">
+      <ul>
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="upload.html" aria-current="page">Upload files</a></li>
+        <li><a href="filters-columns.html">Rows and columns</a></li>
+        <li><a href="saved-choices.html">Saved choices</a></li>
+        <li><a href="rules.html">Checks and running</a></li>
+        <li><a href="results.html">Read and download</a></li>
+        <li><a href="families.html">Reusable lists</a></li>
+        <li><a href="exception-tracking.html">Exception tracking</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main id="main">
+    <h1>Upload your files</h1>
+    <p class="intro">Choose a starting file and the file you want to check against it.</p>
+
+<h2>Pick the date and the two files</h2>
+<ol>
+  <li>Open <strong>1. Upload</strong>.</li>
+  <li>Under <strong>Exception tracking date</strong>, set <strong>As-of Date</strong> to the date your report is for. Check the date even if one is already filled in. You will use it again when looking up flagged items.</li>
+  <li>Under <strong>Source type</strong>, choose <strong>Local upload</strong> to use files on your computer. The files should end in <strong>.csv</strong>.</li>
+  <li>In <strong>Baseline</strong>, choose the starting file, usually the older one. In <strong>Comparison</strong>, choose the file you are checking, usually the newer one.</li>
+  <li>Click <strong>Inspect headers</strong> and wait for the app to show the column names. Check the two names under <strong>Loaded files</strong>. Use <strong>Replace files</strong> if you picked the wrong one.</li>
+</ol>
+<p>If your team has already set up a shared file location in Boat Control, choose <strong>Remote source</strong>, pick the location, and choose both files from the lists.</p>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/upload-files.png" aria-label="The upload page with the report date and both files selected.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/upload-files.png</code></div>
+      </object>
+      <figcaption>The upload page with the report date and both files selected.</figcaption>
+    </figure>
+<h2>Tell Boat Control how to match rows</h2>
+<ol>
+  <li>Under <strong>Select columns to include</strong>, keep the columns you will need for matching, filtering, checking, or showing in the report.</li>
+  <li>Under <strong>Key columns (record identity)</strong>, choose the column that identifies the same item in both files. For example, use <em>Account Number</em> if each number appears only once per file. If a number repeats across branches, you might need both <em>Branch</em> and <em>Account Number</em>.</li>
+  <li>Click <strong>Validate key columns</strong> if shown. If the app reports a problem, check your choices and try again.</li>
+  <li>Click <strong>Continue to compare &amp; validate</strong>.</li>
+</ol>
+<p>If you already have a saved setup, you can use <strong>Load config for rows and columns</strong> after the column names appear. Review the choices it fills in before continuing.</p>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/match-rows.png" aria-label="The column list and the selections that identify matching rows.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/match-rows.png</code></div>
+      </object>
+      <figcaption>The column list and the selections that identify matching rows.</figcaption>
+    </figure>
+    <nav class="chapter-links" aria-label="Previous and next chapters"><a href="index.html">← Boat Control user manual</a><a href="filters-columns.html">Choose rows and columns →</a></nav>
+  </main>
+</body>
+</html>

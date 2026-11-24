@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Track flagged items and add explanations | Boat Control</title>
+  <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to instructions</a>
+  <aside>
+    <p class="brand">Boat Control</p>
+    <nav aria-label="Manual chapters">
+      <ul>
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="upload.html">Upload files</a></li>
+        <li><a href="filters-columns.html">Rows and columns</a></li>
+        <li><a href="saved-choices.html">Saved choices</a></li>
+        <li><a href="rules.html">Checks and running</a></li>
+        <li><a href="results.html">Read and download</a></li>
+        <li><a href="families.html">Reusable lists</a></li>
+        <li><a href="exception-tracking.html" aria-current="page">Exception tracking</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main id="main">
+    <h1>Track flagged items and add explanations</h1>
+    <p class="intro">Exception Tracking shows what was flagged for a reporting date and which items still need an explanation.</p>
+
+<h2>Find the items for a date</h2>
+<ol>
+  <li>Open <strong>Exception Tracking</strong> and choose the same <strong>As-of Date</strong> you used for the report.</li>
+  <li>If the date is missing from the short list, choose <strong>Other date…</strong> and look in the calendar. Dates with a green dot have tracking data.</li>
+  <li>Use <strong>Columns</strong> above the table to show more details. Use the column headings to sort or filter the list. <strong>Filtered total</strong> counts the items that match your table filters. <strong>All rows</strong> is the total for the date.</li>
+  <li>Use <strong>Refresh dates and list</strong> if you have just run a report and its date is missing. Use <strong>Refresh list</strong> to check for updated explanations.</li>
+</ol>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/exception-tracking.png" aria-label="The date picker, the column chooser, and the status shown beside each item.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/exception-tracking.png</code></div>
+      </object>
+      <figcaption>The date picker, the column chooser, and the status shown beside each item.</figcaption>
+    </figure>
+<h2>Read the exception labels</h2>
+<dl>
+  <dt>New</dt><dd>This is the first recorded date for the item, and it has no explanation.</dd>
+  <dt>Commented</dt><dd>The item has an explanation. Read it in the <strong>Commentary</strong> column.</dd>
+  <dt>NotCommented</dt><dd>The item was seen before and still has no explanation for the selected date.</dd>
+</dl>
+<p><strong>Exception ID</strong> identifies the flagged item. <strong>Rule Index</strong> tells you which check flagged it. When sharing a question about an item, give its date and Exception ID.</p>
+<h2 id="commentary">Download, fill in, and return the Excel sheet</h2>
+<ol>
+  <li>Click <strong>Download commentary template</strong> in <strong>Exception Tracking</strong> for the whole selected date. To work on the items from one report, use the same button on that report’s <strong>Results</strong> page.</li>
+  <li>Open the downloaded file in Excel. Check the date on the <strong>Template</strong> sheet. Go to the <strong>Exceptions</strong> sheet and type your explanations in <strong>Commentary</strong>.</li>
+  <li>Edit only <strong>Commentary</strong>. Keep existing text you still need. Leaving a cell empty clears the saved explanation for that item on that date. Keep the original sheet names, rows, and IDs, and save the file as <strong>.xlsx</strong>.</li>
+  <li>Return to <strong>Exception Tracking</strong> and select the date shown in the Excel file. Under <strong>Upload completed commentary template (.xlsx)</strong>, choose your saved file.</li>
+  <li>Wait for confirmation, then check the list for your explanations and the <strong>Commented</strong> label. If the app reports a problem, read its message and check the date and file. If you need a fresh copy, download one for the same date or report and transfer just your commentary using the Exception IDs.</li>
+</ol>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/commentary-template.png" aria-label="The Exceptions sheet with the Commentary column ready for typing.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/commentary-template.png</code></div>
+      </object>
+      <figcaption>The Exceptions sheet with the Commentary column ready for typing.</figcaption>
+    </figure><figure>
+      <object class="screenshot" type="image/png" data="screenshots/commentary-upload.png" aria-label="The date and file picker used to return a completed commentary sheet.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/commentary-upload.png</code></div>
+      </object>
+      <figcaption>The date and file picker used to return a completed commentary sheet.</figcaption>
+    </figure>
+    <nav class="chapter-links" aria-label="Previous and next chapters"><a href="families.html">← Make reusable lists</a><a href="index.html">Back to the start ↑</a></nav>
+  </main>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Read and download the report | Boat Control</title>
+  <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to instructions</a>
+  <aside>
+    <p class="brand">Boat Control</p>
+    <nav aria-label="Manual chapters">
+      <ul>
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="upload.html">Upload files</a></li>
+        <li><a href="filters-columns.html">Rows and columns</a></li>
+        <li><a href="saved-choices.html">Saved choices</a></li>
+        <li><a href="rules.html">Checks and running</a></li>
+        <li><a href="results.html" aria-current="page">Read and download</a></li>
+        <li><a href="families.html">Reusable lists</a></li>
+        <li><a href="exception-tracking.html">Exception tracking</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main id="main">
+    <h1>Read and download the report</h1>
+    <p class="intro">Start with the totals. Then open the part of the report that explains the number you want to check.</p>
+
+<h2>Read the report from top to bottom</h2>
+<ol>
+  <li>Check the file names and <strong>As-of Date</strong> so you know which comparison you are reading.</li>
+  <li>In <strong>Overall result</strong>, read the totals and the list of filters used. This tells you whether you are looking at all rows or a smaller selection.</li>
+  <li>Open <strong>New Books</strong> to see items present in the comparison file that were absent from the starting file. These are new records. Check <strong>Attribute changes</strong>, or the named comparison sections, to see changes on matching rows. <strong>In Baseline</strong> shows the starting value and <strong>In Comparison</strong> shows the value in the file you checked.</li>
+  <li>Use <strong>Exception Rule Summary</strong> to see the counts by check. Open a rule’s section to see why rows were flagged. Use the combined <strong>Exception Table</strong> to review items across checks.</li>
+  <li>Use the table filters to narrow a long list. If a row seems to be missing, clear the table filters and check <strong>New Exceptions Only</strong>. When ticked, it shows new and returning items that still need an explanation. Untick it to also see items that already have one.</li>
+</ol>
+<p>Use the <strong>Exception ID</strong> to find the same flagged item in the report, the tracking list, and the Excel sheet for explanations.</p>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/read-results.png" aria-label="The totals, applied filters, and a detail table showing the starting and comparison values.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/read-results.png</code></div>
+      </object>
+      <figcaption>The totals, applied filters, and a detail table showing the starting and comparison values.</figcaption>
+    </figure>
+<h2>Download a copy</h2>
+<ol>
+  <li>To rename the report, double-click its name, type the new name, and press Enter.</li>
+  <li>Set <strong>New Exceptions Only</strong> for the items you want to include in the report copy.</li>
+  <li>Click <strong>Export HTML</strong> to save a report you can open in a browser. Click <strong>Export Excel</strong> to save an Excel report.</li>
+  <li>To collect explanations, click <strong>Download commentary template</strong>. It covers items from this report, including those that already have explanations. Follow the <a href="exception-tracking.html#commentary">steps for filling in and returning the sheet</a>.</li>
+  <li>Find the downloaded file in your browser’s downloads list or in the folder where you chose to save it.</li>
+</ol>
+<p>To reopen a saved report later, use <strong>History</strong>. For an older report without an <strong>As-of Date</strong>, the commentary button is unavailable.</p>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/download-report.png" aria-label="The three download buttons beside the report.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/download-report.png</code></div>
+      </object>
+      <figcaption>The three download buttons beside the report.</figcaption>
+    </figure>
+    <nav class="chapter-links" aria-label="Previous and next chapters"><a href="rules.html">← Set up checks and run the report</a><a href="families.html">Make reusable lists →</a></nav>
+  </main>
+</body>
+</html>

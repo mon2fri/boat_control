@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choose rows and columns | Boat Control</title>
+  <link rel="stylesheet" href="manual.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to instructions</a>
+  <aside>
+    <p class="brand">Boat Control</p>
+    <nav aria-label="Manual chapters">
+      <ul>
+        <li><a href="index.html">Start here</a></li>
+        <li><a href="upload.html">Upload files</a></li>
+        <li><a href="filters-columns.html" aria-current="page">Rows and columns</a></li>
+        <li><a href="saved-choices.html">Saved choices</a></li>
+        <li><a href="rules.html">Checks and running</a></li>
+        <li><a href="results.html">Read and download</a></li>
+        <li><a href="families.html">Reusable lists</a></li>
+        <li><a href="exception-tracking.html">Exception tracking</a></li>
+      </ul>
+    </nav>
+  </aside>
+  <main id="main">
+    <h1>Choose rows and columns</h1>
+    <p class="intro">Open 2. Compare and validate. Start by deciding which rows belong in this report.</p>
+
+<h2>Choose which rows to include</h2>
+<ol>
+  <li>Open <strong>Row filters</strong> and click <strong>+ Add filter</strong>. To include all rows, leave the list empty.</li>
+  <li>Choose a <strong>Column</strong>, how to check it, and a <strong>Value</strong>. For example, choose <em>Region</em>, <em>equals</em>, and <em>Singapore</em> to include Singapore rows.</li>
+  <li>To add another choice, click <strong>+ Add filter</strong> again. Under <strong>Combining Filters with</strong>, choose <strong>AND — all must match</strong> if every line must be true, or <strong>OR — any may match</strong> if one matching line is enough.</li>
+  <li>For a mix, choose <strong>CUSTOM GROUPS — nested groups</strong>. Put related lines together and choose whether all or any must match at each level. For example, require <em>Status is Open</em> and put <em>Region is Singapore</em> and <em>Region is Malaysia</em> in a group where either can match. Read the preview before continuing.</li>
+</ol>
+<p>When you pick several entries on one line, <strong>equals</strong> and <strong>contains</strong> accept a match with any of them. The negative choices exclude rows matching any of the picked entries. An empty cell passes the negative checks.</p>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/row-filters.png" aria-label="The row filter area with a column, a choice, an entry, and the preview.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/row-filters.png</code></div>
+      </object>
+      <figcaption>The row filter area with a column, a choice, an entry, and the preview.</figcaption>
+    </figure>
+<h2>Choose what to compare and what to show</h2>
+<ul>
+  <li><strong>Track Changing Columns</strong> controls which columns to check for changes. Leave it empty to use all the columns selected during upload.</li>
+  <li><strong>Attribute Comparing Sections</strong> lets you break the changes into named parts. Click <strong>Add section</strong>, enter a name such as <em>Status changes</em>, choose the columns, and add the section. Without sections, changes appear together.</li>
+  <li><strong>Extra Columns</strong> adds context, such as <em>Owner</em>. These choices are available in the combined <strong>Exception Table</strong>. Use <strong>Display Extra Columns In</strong> to choose other places to show them.</li>
+  <li><strong>Extra Columns for Commentary Template</strong> chooses what to include beside the explanations in the Excel sheet. Pick these separately. For example, add <em>Owner</em> so reviewers can see who should explain each item.</li>
+</ul>
+<p>To show counts by a column such as <em>Region</em>, go back to <strong>1. Upload</strong> and use <strong>Select aggregation columns</strong>. If you want a breakdown such as branches within regions, put Region first and turn on <strong>Enable nested aggregation</strong>.</p>
+<figure>
+      <object class="screenshot" type="image/png" data="screenshots/report-columns.png" aria-label="The areas for choosing what to compare, what to display, and what to send to reviewers.">
+        <div class="placeholder">Screenshot to add<br><code>screenshots/report-columns.png</code></div>
+      </object>
+      <figcaption>The areas for choosing what to compare, what to display, and what to send to reviewers.</figcaption>
+    </figure>
+    <nav class="chapter-links" aria-label="Previous and next chapters"><a href="upload.html">← Upload your files</a><a href="saved-choices.html">Save and reuse your choices →</a></nav>
+  </main>
+</body>
+</html>

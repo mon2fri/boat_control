@@ -29,7 +29,10 @@ function jsonResponse(body: unknown, status = 200) {
   return { ok: status >= 200 && status < 300, status, text: () => Promise.resolve(JSON.stringify(body)) };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  localStorage.removeItem("boat-control-recent-tracking-paths");
+  vi.restoreAllMocks();
+});
 
 describe("SettingsPage", () => {
   it("renders a loading state while the settings are loading", () => {
@@ -153,6 +156,48 @@ describe("SettingsPage", () => {
       (fetchMock.mock.calls[1]![1] as RequestInit).body as string,
     ) as Record<string, unknown>;
     expect(body.exception_tracking_path).toBe("/srv/boat/exception_tracking.db");
+    vi.unstubAllGlobals();
+  });
+
+  it("recalls up to ten unique saved paths and accepts typing or selection", async () => {
+    const storageKey = "boat-control-recent-tracking-paths";
+    const remembered = Array.from({ length: 10 }, (_, index) => `/srv/boat/${index}.db`);
+    localStorage.setItem(storageKey, JSON.stringify([...remembered, remembered[0]]));
+    const newPath = "/srv/boat/new.db";
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse(okSettings))
+      .mockResolvedValueOnce(jsonResponse({ ...okSettings, exception_tracking_path: newPath }))
+      .mockResolvedValueOnce(jsonResponse({ ...okSettings, exception_tracking_path: remembered[1] })));
+
+    withQuery(<SettingsPage />);
+    const input = await screen.findByRole("combobox", { name: "Exception tracking database path" });
+    fireEvent.click(input);
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(remembered);
+    expect(input).toHaveValue(okSettings.exception_tracking_path);
+
+    fireEvent.change(input, { target: { value: newPath } });
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual([newPath, ...remembered.slice(0, 9)]);
+    });
+
+    fireEvent.click(input);
+    fireEvent.click(screen.getByRole("option", { name: remembered[2]! }));
+    expect(input).toHaveValue(remembered[2]);
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    fireEvent.click(input);
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input).toHaveValue(remembered[1]);
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem(storageKey)!)).toEqual([
+        remembered[1], newPath, remembered[0], ...remembered.slice(2, 9),
+      ]);
+    });
     vi.unstubAllGlobals();
   });
 
