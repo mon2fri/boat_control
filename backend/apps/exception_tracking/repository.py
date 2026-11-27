@@ -11,11 +11,14 @@ module owns transactions, history maintenance, and commentary precedence.
 from __future__ import annotations
 
 import importlib
+import logging
 import sqlite3
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager, suppress
+from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
 
 from apps.exception_tracking.columns import (
     deserialize_column_selection,
@@ -29,15 +32,20 @@ from apps.exception_tracking.columns import (
     validate_selected_values,
 )
 from apps.exception_tracking.domain import (
+    RECERTIFICATION_REASON,
+    CommentaryUploadDecision,
     ExceptionOccurrence,
     ExceptionRecord,
+    RecertificationSummary,
     RecordingSummary,
     status_for,
 )
 from apps.exception_tracking.errors import (
+    BlankCommentaryCertificationError,
     ExceptionTrackingError,
     InvalidDatabasePathError,
     SchemaMismatchError,
+    StaleRevisionTokenError,
     UnknownExceptionError,
 )
 from apps.exception_tracking.identity import (
@@ -56,6 +64,8 @@ from apps.exception_tracking.identity import (
 )
 
 DEFAULT_DATABASE_RELATIVE_PATH = Path("data") / "exception_tracking.db"
+
+logger = logging.getLogger(__name__)
 
 LEGACY_COLUMNS: tuple[str, ...] = (
     "exception_id",
@@ -76,7 +86,17 @@ CONTEXT_COLUMNS: tuple[str, ...] = (
     "exception_rule_index_captured_at",
 )
 
-REQUIRED_COLUMNS: tuple[str, ...] = (*LEGACY_COLUMNS, *CONTEXT_COLUMNS)
+RECERT_COLUMNS: tuple[str, ...] = (
+    "recertification_required",
+    "recertification_reason",
+    "carried_from_exception_id",
+    "carried_from_as_of_date",
+    "carried_from_rule_identifier",
+    "rule_evolution_event_id",
+    "recertified_at",
+)
+
+REQUIRED_COLUMNS: tuple[str, ...] = (*LEGACY_COLUMNS, *CONTEXT_COLUMNS, *RECERT_COLUMNS)
 
 EXTRA_COLUMNS_TABLE = "exception_tracking_extra_columns"
 DATE_COLUMNS_TABLE = "exception_tracking_date_selections"
@@ -95,7 +115,14 @@ CREATE TABLE {table} (
     exception_last_seen_timestamp DATETIME NOT NULL,
     exception_rule_index TEXT NOT NULL DEFAULT '',
     exception_extra_values TEXT NOT NULL DEFAULT '{{}}',
-    exception_rule_index_captured_at TEXT NOT NULL DEFAULT ''
+    exception_rule_index_captured_at TEXT NOT NULL DEFAULT '',
+    recertification_required INTEGER NOT NULL DEFAULT 0,
+    recertification_reason TEXT NOT NULL DEFAULT '',
+    carried_from_exception_id TEXT NOT NULL DEFAULT '',
+    carried_from_as_of_date TEXT NOT NULL DEFAULT '',
+    carried_from_rule_identifier TEXT NOT NULL DEFAULT '',
+    rule_evolution_event_id TEXT NOT NULL DEFAULT '',
+    recertified_at TEXT NOT NULL DEFAULT ''
 )
 """
 
@@ -119,6 +146,16 @@ _CONTEXT_COLUMN_SQL: dict[str, str] = {
     "exception_rule_index": "TEXT NOT NULL DEFAULT ''",
     "exception_extra_values": "TEXT NOT NULL DEFAULT '{}'",
     "exception_rule_index_captured_at": "TEXT NOT NULL DEFAULT ''",
+}
+
+_RECERT_COLUMN_SQL: dict[str, str] = {
+    "recertification_required": "INTEGER NOT NULL DEFAULT 0",
+    "recertification_reason": "TEXT NOT NULL DEFAULT ''",
+    "carried_from_exception_id": "TEXT NOT NULL DEFAULT ''",
+    "carried_from_as_of_date": "TEXT NOT NULL DEFAULT ''",
+    "carried_from_rule_identifier": "TEXT NOT NULL DEFAULT ''",
+    "rule_evolution_event_id": "TEXT NOT NULL DEFAULT ''",
+    "recertified_at": "TEXT NOT NULL DEFAULT ''",
 }
 
 _SQLITE_TIMEOUT_SECONDS = 30
@@ -163,6 +200,78 @@ def resolve_database_path(database_path: str | Path | None = None) -> Path:
     """
 
     return _resolve_database_path(database_path)
+
+
+def _default_lineage_resolver() -> Any | None:
+    """Probe Worker A's frozen evolution service; ``None`` when unavailable."""
+
+    try:
+        from apps.exception_tracking.lineage import get_lineage_service
+    except ImportError:  # pragma: no cover - defensive boundary
+        return None
+    try:
+        return get_lineage_service()
+    except Exception:  # pragma: no cover - defensive boundary
+        return None
+
+
+@dataclass(frozen=True)
+class _CrossRevisionCarry:
+    """Commentary inherited across a recorded rule revision."""
+
+    commentary: str
+    reason: str
+    source_exception_id: str
+    source_as_of_date: date
+    source_rule_identifier: str
+    event_id: str
+    first_seen: date | None = None
+    """Continuity origin inherited from the predecessor occurrence.
+
+    ``None`` keeps the legacy target-date first-seen. A recorded
+    predecessor date keeps a cleared (Updated+empty) successor from
+    looking brand new: it reads Not Commented instead of New, while
+    pending display still wins through the recertification flag.
+    """
+
+
+@dataclass(frozen=True)
+class _PredecessorOccurrence:
+    """Latest eligible occurrence of one predecessor exception identity."""
+
+    exception_id: str
+    as_of_date: date
+    commentary: str
+    had_nonblank_history: bool
+    first_seen: date | None = None
+    """Continuity origin of the predecessor occurrence itself.
+
+    ``None`` falls back to :attr:`as_of_date` (legacy tables predate the
+    first-seen column or carry an unreadable value).
+    """
+
+
+@dataclass(frozen=True)
+class _SameIdentityPrevious:
+    """The head revision's own latest state on the immediate previous date."""
+
+    exception_id: str
+    as_of_date: date
+    commentary: str
+    pending: bool
+    reason: str
+    event_id: str
+    first_seen: date | None
+    has_history: bool
+    """Whether this row participated in revision flow or acceptance.
+
+    Nonempty carried-from provenance or a recorded acceptance time marks a
+    row that must never be silently overridden by older predecessor text
+    (deliberate clears, target edits, accepted carries). A pristine empty
+    row (no text, no pending mark, no provenance) still falls through to
+    cross-revision carry so a never-carried predecessor text is not lost
+    after a degraded capture.
+    """
 
 
 def _chunks(values: Sequence[str], size: int = _ID_CHUNK_SIZE) -> Iterator[Sequence[str]]:
@@ -216,6 +325,56 @@ def _commentary_text(row: sqlite3.Row) -> str:
             "Stored exception_commentary is not text; the tracking database is corrupt."
         )
     return value
+
+
+def _pending_flag(row: sqlite3.Row) -> bool:
+    """Read the additive recertification flag from new or legacy tables."""
+
+    if "recertification_required" not in row.keys():
+        return False
+    value = row["recertification_required"]
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    elif isinstance(value, str) and value.strip() in ("0", "1", "", "false", "true"):
+        return value.strip() in ("1", "true")
+    raise ExceptionTrackingError(
+        "Stored recertification_required is not a 0/1 flag; the tracking database "
+        "is corrupt."
+    )
+
+
+def _recert_text(row: sqlite3.Row, column: str) -> str:
+    return _optional_text(row, column, "")
+
+
+def _recert_date(row: sqlite3.Row, column: str) -> date | None:
+    text = _optional_text(row, column, "")
+    if not text:
+        return None
+    return parse_as_of_date(text)
+
+
+def _recert_timestamp(row: sqlite3.Row, column: str) -> datetime | None:
+    text = _optional_text(row, column, "")
+    if not text:
+        return None
+    return parse_utc_timestamp(text)
+
+
+def _optional_first_seen(row: sqlite3.Row, fallback: date) -> date:
+    """Read a stored first-seen date, falling back to the occurrence date."""
+
+    text = _optional_text(row, "exception_first_seen_as_of_date", "")
+    if not text:
+        return fallback
+    try:
+        return parse_as_of_date(text)
+    except Exception:
+        return fallback
 
 
 def _same_key_columns(left: str, right: str) -> bool:
@@ -278,7 +437,8 @@ def _validate_date_table(
     missing_base = [column for column in LEGACY_COLUMNS if column not in present]
     unknown = sorted(present - set(REQUIRED_COLUMNS))
     missing_context = [column for column in CONTEXT_COLUMNS if column not in present]
-    if missing_base or unknown or (require_current and missing_context):
+    missing_recert = [column for column in RECERT_COLUMNS if column not in present]
+    if missing_base or unknown or (require_current and (missing_context or missing_recert)):
         details: list[str] = []
         if missing_base:
             details.append(f"missing required columns: {', '.join(missing_base)}")
@@ -286,11 +446,18 @@ def _validate_date_table(
             details.append(f"unexpected columns: {', '.join(unknown)}")
         if require_current and missing_context:
             details.append(f"missing context columns: {', '.join(missing_context)}")
+        if require_current and missing_recert:
+            details.append(f"missing recertification columns: {', '.join(missing_recert)}")
         raise _schema_error(name, details)
 
 
 def _migrate_date_table(connection: sqlite3.Connection, name: str) -> None:
-    """Add template-optimization context columns to a legacy date table."""
+    """Add template-optimization context and recertification columns to a legacy table.
+
+    Additive only: existing commentary, history metadata, and statuses are
+    preserved. Freshly added recertification columns default to "not pending",
+    so migration never re-marks accepted or ordinary commentary.
+    """
 
     present = _table_columns(connection, name)
     missing_base = [column for column in LEGACY_COLUMNS if column not in present]
@@ -309,6 +476,12 @@ def _migrate_date_table(connection: sqlite3.Connection, name: str) -> None:
             connection.execute(
                 f"ALTER TABLE {quoted} ADD COLUMN "
                 f"{quote_identifier(column)} {_CONTEXT_COLUMN_SQL[column]}"
+            )
+    for column in RECERT_COLUMNS:
+        if column not in present:
+            connection.execute(
+                f"ALTER TABLE {quoted} ADD COLUMN "
+                f"{quote_identifier(column)} {_RECERT_COLUMN_SQL[column]}"
             )
     _validate_date_table(connection, name, require_current=True)
 
@@ -403,6 +576,7 @@ def _row_to_record(row: sqlite3.Row, table_date: date) -> ExceptionRecord:
     first_seen_date = parse_as_of_date(_text(row, "exception_first_seen_as_of_date"))
     last_seen_date = parse_as_of_date(_text(row, "exception_last_seen_as_of_date"))
     commentary = _commentary_text(row)
+    pending = _pending_flag(row)
     return ExceptionRecord(
         exception_id=_text(row, "exception_id"),
         exception_rule_identifier=_text(row, "exception_rule_identifier"),
@@ -424,8 +598,97 @@ def _row_to_record(row: sqlite3.Row, table_date: date) -> ExceptionRecord:
             commentary,
             as_of_date=stored_date,
             first_seen_as_of_date=first_seen_date,
+            recertification_required=pending,
         ),
+        recertification_required=pending,
+        recertification_reason=_recert_text(row, "recertification_reason"),
+        carried_from_exception_id=_recert_text(row, "carried_from_exception_id"),
+        carried_from_as_of_date=_recert_date(row, "carried_from_as_of_date"),
+        carried_from_rule_identifier=_recert_text(row, "carried_from_rule_identifier"),
+        rule_evolution_event_id=_recert_text(row, "rule_evolution_event_id"),
+        recertified_at=_recert_timestamp(row, "recertified_at"),
     )
+
+
+def _superseded_predecessor_ids(
+    records: Sequence[ExceptionRecord],
+    resolver: Any,
+) -> set[str]:
+    """Return stored IDs hidden from the current view by a same-date successor.
+
+    A predecessor row is superseded only when the SAME date table holds a
+    successor row for the SAME book (lossless key equality) whose recorded
+    ``modify_current`` revision chain contains the predecessor identifier.
+    ``save_as_new`` roots yield no chain, copies start new lineages,
+    unrelated identifiers never appear in the chain, and different books
+    never share keys — all of those stay separate. Ambiguous, cyclic, or
+    failed lineage lookups refuse to guess and hide nothing. Historical
+    occurrences, original IDs, commentary, and provenance stay in the store;
+    only the current-view membership changes.
+    """
+
+    from apps.exception_tracking.lineage import fetch_predecessor_links
+
+    identifiers = {record.exception_rule_identifier for record in records}
+    if len(identifiers) < 2:
+        return set()
+    ancestors: dict[str, set[str]] = {}
+    for identifier in identifiers:
+        try:
+            links, warning = fetch_predecessor_links(resolver, identifier)
+        except Exception as exc:
+            logger.warning(
+                "Supersession check skipped for '%s': lineage lookup failed (%s).",
+                identifier,
+                exc,
+            )
+            ancestors[identifier] = set()
+            continue
+        if warning is not None:
+            logger.warning("%s", warning)
+            ancestors[identifier] = set()
+            continue
+        ancestors[identifier] = {
+            link.source_identifier for link in links if link.source_identifier
+        }
+
+    book_of: dict[str, tuple[tuple[str, str], ...]] = {}
+    for record in records:
+        try:
+            pairs = record.key_column_pairs
+        except ExceptionTrackingError:
+            continue
+        try:
+            book_of[record.exception_id] = tuple(
+                sorted((str(name), str(value)) for name, value in pairs)
+            )
+        except Exception:
+            continue
+    by_book: dict[tuple[tuple[str, str], ...], list[ExceptionRecord]] = {}
+    for record in records:
+        key = book_of.get(record.exception_id)
+        if key is None:
+            continue
+        by_book.setdefault(key, []).append(record)
+
+    hidden: set[str] = set()
+    for same_book in by_book.values():
+        book_identifiers = {record.exception_rule_identifier for record in same_book}
+        if len(book_identifiers) < 2:
+            continue
+        for predecessor in same_book:
+            for successor in same_book:
+                if (
+                    successor.exception_rule_identifier
+                    == predecessor.exception_rule_identifier
+                ):
+                    continue
+                if predecessor.exception_rule_identifier in ancestors.get(
+                    successor.exception_rule_identifier, set()
+                ):
+                    hidden.add(predecessor.exception_id)
+                    break
+    return hidden
 
 
 class ExceptionTrackingRepository:
@@ -621,6 +884,40 @@ class ExceptionTrackingRepository:
             ).fetchall()
             return [_row_to_record(row, parsed_date) for row in rows]
 
+    def list_current_exceptions(
+        self,
+        as_of_date: date | str,
+        *,
+        lineage_resolver: Any | None = None,
+    ) -> list[ExceptionRecord]:
+        """Return one date's current exceptions for display and date export.
+
+        Same-date predecessors superseded by a recorded ``modify_current``
+        successor for the same book are hidden here so a revised rule does
+        not present the same book twice. The full history stays in the store:
+        :meth:`list_exceptions` still returns every stored occurrence,
+        :meth:`list_exception_history` still returns every occurrence of an
+        ID, and commentary import/recertification keep addressing stored IDs
+        directly. ``lineage_resolver`` is Worker A's agreed lineage service;
+        ``None`` (the default) probes it and degrades to the full listing
+        when unavailable.
+        """
+
+        records = self.list_exceptions(as_of_date)
+        if len({record.exception_rule_identifier for record in records}) < 2:
+            return records
+        resolver = (
+            lineage_resolver
+            if lineage_resolver is not None
+            else _default_lineage_resolver()
+        )
+        if resolver is None:
+            return records
+        hidden = _superseded_predecessor_ids(records, resolver)
+        if not hidden:
+            return records
+        return [record for record in records if record.exception_id not in hidden]
+
     def get_exception(
         self, as_of_date: date | str, exception_id: str
     ) -> ExceptionRecord | None:
@@ -743,12 +1040,202 @@ class ExceptionTrackingRepository:
                 changed += 1
             return changed
 
+    def apply_commentary_upload(
+        self, as_of_date: date | str, decisions: Mapping[str, CommentaryUploadDecision]
+    ) -> int:
+        """Atomically apply Round-2 commentary-upload decisions for one date.
+
+        Each decision carries replacement text (``None`` keeps the stored
+        value, ``""`` clears it) plus an explicit pending-recertification
+        clear. Unknown IDs reject the whole call with
+        :class:`UnknownExceptionError`; no partial update is committed.
+        Clearing a pending mark records the acceptance time in
+        ``recertified_at`` for audit. Returns the number of rows whose stored
+        commentary or pending flag changed.
+        """
+
+        parsed_date = parse_as_of_date(as_of_date)
+        if not isinstance(decisions, Mapping):
+            raise ExceptionTrackingError(
+                "Commentary upload decisions must map exception IDs to decisions."
+            )
+        if not decisions:
+            return 0
+
+        normalized: dict[str, CommentaryUploadDecision] = {}
+        for exception_id, decision in decisions.items():
+            if not isinstance(exception_id, str) or not exception_id:
+                raise ExceptionTrackingError(
+                    "Commentary upload keys must be non-empty exception IDs."
+                )
+            if not isinstance(decision, CommentaryUploadDecision):
+                raise ExceptionTrackingError(
+                    f"Commentary upload decision for exception '{exception_id}' "
+                    "must be a CommentaryUploadDecision."
+                )
+            if decision.commentary is not None and not isinstance(
+                decision.commentary, str
+            ):
+                raise ExceptionTrackingError(
+                    f"Commentary for exception '{exception_id}' must be text; use an "
+                    "empty string to clear it."
+                )
+            normalized[exception_id] = decision
+
+        if not self._path.exists():
+            raise UnknownExceptionError(
+                f"No exception tracking data exists for {parsed_date.isoformat()}; "
+                f"unknown exception IDs: {', '.join(sorted(normalized))}.",
+                unknown_ids=list(normalized),
+            )
+
+        with self._write_connection() as connection:
+            table = table_name_for_date(parsed_date)
+            if not _table_exists(connection, table):
+                raise UnknownExceptionError(
+                    f"No exception tracking table exists for "
+                    f"{parsed_date.isoformat()}; unknown exception IDs: "
+                    f"{', '.join(sorted(normalized))}.",
+                    unknown_ids=list(normalized),
+                )
+            _validate_date_table(connection, table)
+
+            quoted = quote_identifier(table)
+            existing: dict[str, sqlite3.Row] = {}
+            for chunk in _chunks(list(normalized)):
+                rows = connection.execute(
+                    f"SELECT * FROM {quoted} "
+                    f"WHERE exception_id IN ({_placeholders(len(chunk))})",
+                    tuple(chunk),
+                ).fetchall()
+                for row in rows:
+                    existing[_text(row, "exception_id")] = row
+
+            unknown = [exception_id for exception_id in normalized if exception_id not in existing]
+            if unknown:
+                raise UnknownExceptionError(
+                    f"The commentary upload contains exception IDs that are not "
+                    f"present on {parsed_date.isoformat()}: {', '.join(sorted(unknown))}. "
+                    "No commentary was changed.",
+                    unknown_ids=unknown,
+                )
+
+            now = utc_now().isoformat()
+            changed = 0
+            for exception_id, decision in normalized.items():
+                row = existing[exception_id]
+                stored_commentary = _commentary_text(row)
+                new_commentary = (
+                    stored_commentary
+                    if decision.commentary is None
+                    else decision.commentary
+                )
+                pending = _pending_flag(row)
+                clear_pending = bool(decision.clear_recertification and pending)
+                if new_commentary == stored_commentary and not clear_pending:
+                    continue
+                if clear_pending:
+                    if not new_commentary.strip():
+                        # A deliberate clear of carried commentary must read
+                        # Not Commented, never New: rows born before the
+                        # first-seen continuity fix carry the target date, so
+                        # backfill the continuity origin from the recorded
+                        # carried-from provenance. Genuinely first-time rows
+                        # (no provenance, no predecessor occurrence) keep
+                        # their target date and still read New.
+                        origin = self._provenance_origin(
+                            connection, _recert_text(row, "carried_from_exception_id")
+                        )
+                        stored_first = _optional_first_seen(row, parsed_date)
+                        if (
+                            origin is not None
+                            and origin[0] < parsed_date
+                            and stored_first >= parsed_date
+                        ):
+                            connection.execute(
+                                f"UPDATE {quoted} SET exception_commentary = ?, "
+                                "recertification_required = 0, recertified_at = ?, "
+                                "exception_first_seen_as_of_date = ?, "
+                                "exception_first_seen_timestamp = ? "
+                                "WHERE exception_id = ?",
+                                (
+                                    new_commentary,
+                                    now,
+                                    origin[0].isoformat(),
+                                    origin[1],
+                                    exception_id,
+                                ),
+                            )
+                        else:
+                            connection.execute(
+                                f"UPDATE {quoted} SET exception_commentary = ?, "
+                                "recertification_required = 0, recertified_at = ? "
+                                "WHERE exception_id = ?",
+                                (new_commentary, now, exception_id),
+                            )
+                    else:
+                        connection.execute(
+                            f"UPDATE {quoted} SET exception_commentary = ?, "
+                            "recertification_required = 0, recertified_at = ? "
+                            "WHERE exception_id = ?",
+                            (new_commentary, now, exception_id),
+                        )
+                else:
+                    connection.execute(
+                        f"UPDATE {quoted} SET exception_commentary = ? "
+                        "WHERE exception_id = ?",
+                        (new_commentary, exception_id),
+                    )
+                changed += 1
+            return changed
+
+    @staticmethod
+    def _provenance_origin(
+        connection: sqlite3.Connection, predecessor_id: str
+    ) -> tuple[date, str] | None:
+        """Return the continuity origin recorded for one predecessor ID.
+
+        Scans that ID's stored occurrences for the earliest first-seen date
+        (and its timestamp). ``None`` when the predecessor has no stored
+        occurrence (purged or unknown): callers then keep the target date so
+        genuinely first-time rows still read New. Corrupt or unreadable rows
+        are skipped, never fatal.
+        """
+
+        if not predecessor_id:
+            return None
+        earliest: tuple[date, str] | None = None
+        for _, table in _date_tables(connection):
+            try:
+                _validate_date_table(connection, table)
+                row = connection.execute(
+                    f"SELECT exception_first_seen_as_of_date, "
+                    f"exception_first_seen_timestamp "
+                    f"FROM {quote_identifier(table)} WHERE exception_id = ?",
+                    (predecessor_id,),
+                ).fetchone()
+            except Exception:
+                continue
+            if row is None:
+                continue
+            try:
+                first = parse_as_of_date(
+                    _text(row, "exception_first_seen_as_of_date")
+                )
+            except Exception:
+                continue
+            stamp = _optional_text(row, "exception_first_seen_timestamp", "")
+            if earliest is None or first < earliest[0]:
+                earliest = (first, stamp)
+        return earliest
+
     def record_exceptions(
         self,
         as_of_date: date | str,
         occurrences: Iterable[ExceptionOccurrence],
         *,
         extra_columns: Sequence[str] | None = None,
+        lineage_resolver: Any | None = None,
     ) -> RecordingSummary:
         """Upsert one run's occurrences for an as-of date in one transaction.
 
@@ -758,10 +1245,23 @@ class ExceptionTrackingRepository:
         ``extra_columns`` is the ordered Extra Columns for Commentary Template
         selection; ``None`` preserves an existing date selection or infers one
         from supplied values for legacy callers.
+
+        ``lineage_resolver`` is Worker A's agreed lineage service. ``None``
+        (the default) probes the agreed service and falls back to legacy
+        same-identity carry when it is unavailable. Cross-revision carry
+        applies to newly inserted rows only; existing target commentary and
+        acceptance are never overwritten, and resolver failures are recorded
+        in ``RecordingSummary.carry_warnings`` instead of failing the capture.
         """
 
         parsed_date = parse_as_of_date(as_of_date)
         captured_at = utc_now()
+        resolver = (
+            lineage_resolver
+            if lineage_resolver is not None
+            else _default_lineage_resolver()
+        )
+        carry_warnings: list[str] = []
         explicit_columns = (
             None if extra_columns is None else validate_extra_columns(extra_columns)
         )
@@ -783,6 +1283,7 @@ class ExceptionTrackingRepository:
             )
             commentary = normalize_commentary(occurrence.exception_commentary)
             rule_index = _normalize_rule_index(occurrence.exception_rule_index)
+            lineage_id = _normalize_lineage_id(occurrence.lineage_id)
             raw_values = occurrence.exception_extra_values or {}
             values = (
                 validate_selected_values(raw_values, explicit_columns)
@@ -798,6 +1299,7 @@ class ExceptionTrackingRepository:
                     commentary=commentary,
                     rule_index=rule_index,
                     extra_values=values,
+                    lineage_id=lineage_id,
                 )
                 continue
 
@@ -828,6 +1330,11 @@ class ExceptionTrackingRepository:
                 extra_values=_merge_batch_extra_values(
                     previous.extra_values,
                     values,
+                    exception_id=identity.exception_id,
+                ),
+                lineage_id=_merge_batch_lineage_id(
+                    previous.lineage_id,
+                    lineage_id,
                     exception_id=identity.exception_id,
                 ),
             )
@@ -918,10 +1425,74 @@ class ExceptionTrackingRepository:
                     continue
 
                 commentary = item.commentary
+                carry: _CrossRevisionCarry | None = None
+                predecessor_seen: date | None = None
                 if commentary is None:
-                    commentary = self._carry_commentary(
-                        connection, exception_id, parsed_date
+                    same = self._same_identity_previous(
+                        connection, item.identity, parsed_date
                     )
+                    carry, has_revision_edges, predecessor_seen = (
+                        self._cross_revision_attempt(
+                            connection,
+                            item.identity,
+                            parsed_date,
+                            lineage_id=item.lineage_id,
+                            resolver=resolver,
+                            warnings=carry_warnings,
+                        )
+                    )
+                    if (
+                        same is not None
+                        and (
+                            same.commentary.strip()
+                            or same.pending
+                            or same.has_history
+                        )
+                    ):
+                        # The head revision's own latest state wins over older
+                        # lineage history: a deliberately cleared or edited
+                        # target is never overwritten by predecessor text, and
+                        # recurrence never resurrects it. A still-pending row
+                        # keeps text and mark together (hop-by-hop provenance).
+                        commentary = same.commentary
+                        if same.pending:
+                            carry = _CrossRevisionCarry(
+                                commentary=same.commentary,
+                                reason=same.reason,
+                                source_exception_id=same.exception_id,
+                                source_as_of_date=same.as_of_date,
+                                source_rule_identifier=(
+                                    item.identity.exception_rule_identifier
+                                ),
+                                event_id=same.event_id,
+                                first_seen=same.first_seen or same.as_of_date,
+                            )
+                            predecessor_seen = None
+                        else:
+                            carry = None
+                            predecessor_seen = same.first_seen or same.as_of_date
+                    elif carry is not None:
+                        commentary = carry.commentary
+                    elif not has_revision_edges:
+                        commentary = self._carry_commentary(
+                            connection, exception_id, parsed_date
+                        )
+                    else:
+                        commentary = ""
+                # A recorded predecessor occurrence keeps the new row from
+                # looking brand new. Without eligible commentary the new row
+                # points first-seen at the predecessor date (Not Commented);
+                # a pending carry inherits the predecessor continuity origin
+                # as well, so deliberately clearing it (Updated+empty) reads
+                # Not Commented instead of New. Pending display still wins
+                # through the recertification flag. Genuinely first-time
+                # rows (no predecessor, no carry) keep the target date (New).
+                if carry is not None and carry.first_seen is not None:
+                    first_seen_date = min(carry.first_seen, parsed_date)
+                elif carry is not None or predecessor_seen is None:
+                    first_seen_date = parsed_date
+                else:
+                    first_seen_date = predecessor_seen
                 connection.execute(
                     f"INSERT INTO {quoted} ("
                     "exception_id, exception_rule_identifier, key_columns, "
@@ -929,8 +1500,12 @@ class ExceptionTrackingRepository:
                     "exception_first_seen_as_of_date, exception_last_seen_as_of_date, "
                     "exception_first_seen_timestamp, exception_last_seen_timestamp, "
                     "exception_rule_index, exception_extra_values, "
-                    "exception_rule_index_captured_at"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "exception_rule_index_captured_at, "
+                    "recertification_required, recertification_reason, "
+                    "carried_from_exception_id, carried_from_as_of_date, "
+                    "carried_from_rule_identifier, rule_evolution_event_id, "
+                    "recertified_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         exception_id,
                         item.identity.exception_rule_identifier,
@@ -938,13 +1513,20 @@ class ExceptionTrackingRepository:
                         item.timestamp.isoformat(),
                         commentary,
                         parsed_date.isoformat(),
-                        parsed_date.isoformat(),
+                        first_seen_date.isoformat(),
                         parsed_date.isoformat(),
                         item.timestamp.isoformat(),
                         item.timestamp.isoformat(),
                         item.rule_index or "",
                         serialize_extra_values(item.extra_values, effective_columns),
                         captured_at.isoformat() if item.rule_index is not None else "",
+                        1 if carry is not None else 0,
+                        carry.reason if carry is not None else "",
+                        carry.source_exception_id if carry is not None else "",
+                        carry.source_as_of_date.isoformat() if carry is not None else "",
+                        carry.source_rule_identifier if carry is not None else "",
+                        carry.event_id if carry is not None else "",
+                        "",
                     ),
                 )
                 inserted += 1
@@ -958,6 +1540,7 @@ class ExceptionTrackingRepository:
                 updated=updated,
                 exception_ids=tuple(sorted(prepared)),
                 extra_columns=effective_columns,
+                carry_warnings=tuple(carry_warnings),
             )
 
     def _assert_no_identity_conflicts(
@@ -997,21 +1580,424 @@ class ExceptionTrackingRepository:
         exception_id: str,
         as_of_date: date,
     ) -> str:
+        # Same-identity carry consults ONLY the immediate previous as-of date:
+        # if the same exception was spotted there, its commentary moves to the
+        # new date, verbatim (including a cleared blank, which never resurrects
+        # older text). Older dates are never scanned.
         earlier = [
             (table_date, table)
             for table_date, table in _date_tables(connection)
             if table_date < as_of_date
         ]
-        earlier.sort(reverse=True)
-        for _, table in earlier:
-            row = connection.execute(
-                f"SELECT exception_commentary FROM {quote_identifier(table)} "
-                "WHERE exception_id = ?",
-                (exception_id,),
-            ).fetchone()
-            if row is not None:
-                return _commentary_text(row)
+        if not earlier:
+            return ""
+        _, table = max(earlier)
+        row = connection.execute(
+            f"SELECT exception_commentary FROM {quote_identifier(table)} "
+            "WHERE exception_id = ?",
+            (exception_id,),
+        ).fetchone()
+        if row is not None:
+            return _commentary_text(row)
         return ""
+
+    def _cross_revision_attempt(
+        self,
+        connection: sqlite3.Connection,
+        identity: ExceptionIdentity,
+        as_of_date: date,
+        *,
+        lineage_id: str | None,
+        resolver: Any | None,
+        warnings: list[str],
+    ) -> tuple[_CrossRevisionCarry | None, bool, date | None]:
+        """Attempt commentary inheritance across a recorded rule revision.
+
+        Returns ``(carry, has_revision_edges, predecessor_seen)``.
+        ``has_revision_edges`` tells the caller whether legacy same-identity
+        carry is still allowed: when Worker A records executable-revision
+        edges for the target, same-ID text must not be copied silently (it
+        would bypass recertification, including for canonical-equivalent
+        target reuse after a revert). ``predecessor_seen`` is the as-of date
+        of a recorded predecessor occurrence when one exists: the new row
+        then keeps Not Commented continuity instead of looking brand new,
+        without copying any text or requiring recertification.
+        """
+
+        if resolver is None:
+            return None, False, None
+        from apps.exception_tracking.lineage import fetch_predecessor_links
+
+        try:
+            links, warning = fetch_predecessor_links(
+                resolver,
+                identity.exception_rule_identifier,
+                lineage_id=lineage_id or None,
+            )
+        except Exception as exc:
+            # An auxiliary enrichment lookup must never fail a run capture:
+            # degrade to legacy same-identity behavior loudly instead.
+            degraded = (
+                f"No cross-revision commentary was carried for "
+                f"'{identity.exception_id}': lineage lookup failed ({exc}); "
+                f"continuing with same-identity carry only."
+            )
+            warnings.append(degraded)
+            logger.warning("%s", degraded)
+            return None, False, None
+        if warning is not None:
+            warnings.append(warning)
+            logger.warning("%s", warning)
+            # Ambiguous or cyclic lineage: refuse to guess entirely, including
+            # same-identity text that a reused identifier might silently copy.
+            return None, True, None
+        edges = [
+            link
+            for link in links
+            if link.relationship == "revision"
+            and link.source_identifier
+            and link.source_identifier != link.target_identifier
+        ]
+        if not edges:
+            return None, False, None
+        target_map = dict(identity.key_columns)
+        candidates: list[tuple[date, int, Any, _PredecessorOccurrence]] = []
+        seen_sources: set[str] = set()
+        predecessor_seen: date | None = None
+        for distance, edge in enumerate(edges):
+            if edge.source_identifier in seen_sources:
+                repeated = (
+                    f"No cross-revision commentary was carried for "
+                    f"'{identity.exception_id}': recorded predecessor "
+                    f"'{edge.source_identifier}' repeats in the revision chain; "
+                    f"refusing to guess."
+                )
+                warnings.append(repeated)
+                logger.warning("%s", repeated)
+                return None, True, None
+            seen_sources.add(edge.source_identifier)
+            occurrence = self._latest_predecessor_occurrence(
+                connection, edge.source_identifier, target_map, as_of_date
+            )
+            if occurrence is None:
+                continue
+            if predecessor_seen is None or occurrence.as_of_date > predecessor_seen:
+                predecessor_seen = occurrence.as_of_date
+            if not occurrence.commentary.strip():
+                if occurrence.had_nonblank_history:
+                    # An explicitly cleared latest source stays cleared: never
+                    # resurrect older text, and never look past the tombstone.
+                    return None, True, None
+                continue
+            candidates.append((occurrence.as_of_date, distance, edge, occurrence))
+        if not candidates:
+            # No predecessor revision carries eligible commentary. Same-identity
+            # text is still allowed when the target identifier was never
+            # revised away from: every earlier same-ID occurrence was recorded
+            # while this revision was current. Commented rows carry their text
+            # as ordinary commentary (no recertification); rows still pending
+            # recertification carry the text together with the pending mark,
+            # reason, and provenance. Blank rows carry nothing. But when the
+            # target identifier appears as a source in its own chain (a
+            # revert/round trip), same-ID text may predate an intervening
+            # revision and must not copy silently.
+            if identity.exception_rule_identifier in seen_sources:
+                return None, True, predecessor_seen
+            pending = self._same_identity_pending(connection, identity, as_of_date)
+            if pending is not None:
+                return pending, False, None
+            return None, False, predecessor_seen
+        best_date = max(item[0] for item in candidates)
+        contenders = [item for item in candidates if item[0] == best_date]
+        contenders.sort(key=lambda item: item[1])
+        best_edge = contenders[0][2]
+        best_occurrence = contenders[0][3]
+        tied = {
+            item[2].source_identifier
+            for item in contenders
+            if item[1] == contenders[0][1]
+        }
+        if len(tied) > 1:
+            contradictory = (
+                f"No cross-revision commentary was carried for "
+                f"'{identity.exception_id}': predecessor candidates on "
+                f"{best_date.isoformat()} remain contradictory; review required."
+            )
+            warnings.append(contradictory)
+            logger.warning("%s", contradictory)
+            return None, True, None
+        # Provenance names the nearest (target-side) edge event: the recorded
+        # revision that created the target, which is also the token binding
+        # later acceptance to this revision. Source fields pin the text origin.
+        return (
+            _CrossRevisionCarry(
+                commentary=best_occurrence.commentary,
+                reason=RECERTIFICATION_REASON,
+                source_exception_id=best_occurrence.exception_id,
+                source_as_of_date=best_occurrence.as_of_date,
+                source_rule_identifier=best_edge.source_identifier,
+                event_id=edges[0].event_id,
+                first_seen=best_occurrence.first_seen or best_occurrence.as_of_date,
+            ),
+            True,
+            None,
+        )
+
+    def _same_identity_pending(
+        self,
+        connection: sqlite3.Connection,
+        identity: ExceptionIdentity,
+        as_of_date: date,
+    ) -> _CrossRevisionCarry | None:
+        """Carry a still-pending mark across an unchanged rule.
+
+        When the immediate previous occurrence of the same exception is still
+        awaiting recertification, the new occurrence inherits the text together
+        with the pending mark, reason, and provenance (hop by hop: the source
+        is the previous date's row, whose own provenance stays traceable, and
+        the event token still binds acceptance to the revision that created
+        it). Ordinary commented rows need no marker and are handled by the
+        legacy same-identity text copy; blank rows carry nothing.
+        """
+        same = self._same_identity_previous(connection, identity, as_of_date)
+        if same is None or not same.pending:
+            return None
+        return _CrossRevisionCarry(
+            commentary=same.commentary,
+            reason=same.reason,
+            source_exception_id=same.exception_id,
+            source_as_of_date=same.as_of_date,
+            source_rule_identifier=identity.exception_rule_identifier,
+            event_id=same.event_id,
+            first_seen=same.first_seen or same.as_of_date,
+        )
+
+    def _same_identity_previous(
+        self,
+        connection: sqlite3.Connection,
+        identity: ExceptionIdentity,
+        as_of_date: date,
+    ) -> _SameIdentityPrevious | None:
+        """Read the same exception ID on the immediate previous as-of date."""
+
+        earlier = [
+            (table_date, table)
+            for table_date, table in _date_tables(connection)
+            if table_date < as_of_date
+        ]
+        if not earlier:
+            return None
+        table_date, table = max(earlier)
+        # Earlier tables may still be legacy (migration is lazy per write
+        # target): missing recertification columns read as not-pending with
+        # no provenance, never as corrupt.
+        present = _table_columns(connection, table)
+        if "exception_id" not in present or "exception_commentary" not in present:
+            return None
+
+        if present.issuperset(RECERT_COLUMNS):
+            row = connection.execute(
+                f"SELECT exception_commentary, recertification_required, "
+                f"recertification_reason, carried_from_exception_id, "
+                f"carried_from_as_of_date, carried_from_rule_identifier, "
+                f"rule_evolution_event_id, recertified_at, "
+                f"exception_first_seen_as_of_date "
+                f"FROM {quote_identifier(table)} WHERE exception_id = ?",
+                (identity.exception_id,),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                f"SELECT exception_commentary, exception_first_seen_as_of_date "
+                f"FROM {quote_identifier(table)} WHERE exception_id = ?",
+                (identity.exception_id,),
+            ).fetchone()
+        if row is None:
+            return None
+
+        def _maybe(column: str) -> str:
+            return _optional_text(row, column, "") if column in present else ""
+
+        pending = _pending_flag(row) if "recertification_required" in present else False
+        return _SameIdentityPrevious(
+            exception_id=identity.exception_id,
+            as_of_date=table_date,
+            commentary=_commentary_text(row),
+            pending=pending,
+            reason=_maybe("recertification_reason"),
+            event_id=_maybe("rule_evolution_event_id"),
+            first_seen=_optional_first_seen(row, table_date),
+            has_history=any(
+                _maybe(column).strip()
+                for column in (
+                    "carried_from_exception_id",
+                    "carried_from_as_of_date",
+                    "carried_from_rule_identifier",
+                    "rule_evolution_event_id",
+                    "recertified_at",
+                )
+            ),
+        )
+
+    def _latest_predecessor_occurrence(
+        self,
+        connection: sqlite3.Connection,
+        source_identifier: str,
+        target_key_map: Mapping[str, str],
+        as_of_date: date,
+    ) -> _PredecessorOccurrence | None:
+        """Return the eligible occurrence of one predecessor identity.
+
+        Only the immediate previous as-of date is consulted: older dates are
+        never scanned. Future commentary is never carried. Key schemas must
+        match exactly (same column names and values through the lossless
+        representation); changed key schemas are skipped without implicit
+        mapping. A direct literal-ID lookup runs first; a row scan covers
+        key-order changes.
+        """
+
+        earlier = [
+            (table_date, table)
+            for table_date, table in _date_tables(connection)
+            if table_date < as_of_date
+        ]
+        if not earlier:
+            return None
+        _, table = max(earlier)
+        quoted = quote_identifier(table)
+        rows = connection.execute(
+            f"SELECT exception_id, key_columns, exception_commentary, "
+            f"exception_as_of_date, exception_first_seen_as_of_date "
+            f"FROM {quoted} "
+            "WHERE exception_rule_identifier = ?",
+            (source_identifier,),
+        ).fetchall()
+        for row in rows:
+            try:
+                pairs = deserialize_key_columns(_text(row, "key_columns"))
+            except ExceptionTrackingError:
+                continue
+            if dict(pairs) != dict(target_key_map):
+                continue
+            stored_date = parse_as_of_date(_text(row, "exception_as_of_date"))
+            if stored_date > as_of_date:
+                continue
+            commentary = _commentary_text(row)
+            return _PredecessorOccurrence(
+                exception_id=_text(row, "exception_id"),
+                as_of_date=stored_date,
+                commentary=commentary,
+                had_nonblank_history=bool(commentary.strip()),
+                first_seen=_optional_first_seen(row, stored_date),
+            )
+        return None
+
+    def recertify_exceptions(
+        self,
+        as_of_date: date | str,
+        approvals: Mapping[str, str],
+    ) -> RecertificationSummary:
+        """Atomically accept carried commentary for one as-of date.
+
+        ``approvals`` maps exception IDs to the server-issued revision token
+        returned by the list endpoint (the ``rule_evolution_event_id`` for
+        carried rows, ``""`` otherwise). Unknown IDs, token mismatches, and
+        blank commentary reject the whole call; no partial acceptance is
+        committed. Repeating an accepted batch is a retry-safe no-op. Uploads
+        of unchanged text never certify implicitly: only this call clears the
+        pending flag, and blank text is never certified.
+        """
+
+        parsed_date = parse_as_of_date(as_of_date)
+        if not isinstance(approvals, Mapping):
+            raise ExceptionTrackingError(
+                "Recertification approvals must map exception IDs to revision tokens."
+            )
+        normalized: dict[str, str] = {}
+        for exception_id, token in approvals.items():
+            if not isinstance(exception_id, str) or not exception_id:
+                raise ExceptionTrackingError(
+                    "Recertification keys must be non-empty exception IDs."
+                )
+            if token is None:
+                token = ""
+            if not isinstance(token, str):
+                raise ExceptionTrackingError(
+                    f"Revision token for exception '{exception_id}' must be text."
+                )
+            normalized[exception_id] = token
+        if not normalized:
+            raise ExceptionTrackingError(
+                "No exception IDs were provided for recertification."
+            )
+
+        accepted: list[str] = []
+        already_accepted: list[str] = []
+        with self._write_connection() as connection:
+            table = _ensure_date_table(connection, parsed_date)
+            quoted = quote_identifier(table)
+            stored: dict[str, sqlite3.Row] = {}
+            for chunk in _chunks(list(normalized)):
+                rows = connection.execute(
+                    f"SELECT * FROM {quoted} WHERE exception_id IN "
+                    f"({_placeholders(len(chunk))})",
+                    tuple(chunk),
+                ).fetchall()
+                for row in rows:
+                    stored[_text(row, "exception_id")] = row
+            unknown = [
+                exception_id
+                for exception_id in normalized
+                if exception_id not in stored
+            ]
+            if unknown:
+                raise UnknownExceptionError(
+                    f"The recertification request contains exception IDs that are "
+                    f"not present on {parsed_date.isoformat()}: "
+                    f"{', '.join(sorted(unknown))}. No commentary was certified.",
+                    unknown_ids=unknown,
+                )
+            stale = [
+                exception_id
+                for exception_id, token in normalized.items()
+                if _recert_text(stored[exception_id], "rule_evolution_event_id")
+                != token
+            ]
+            if stale:
+                raise StaleRevisionTokenError(
+                    f"The recertification request carries out-of-date revision "
+                    f"tokens for: {', '.join(sorted(stale))}. Reload the exception "
+                    f"list and retry; no commentary was certified.",
+                    exception_ids=stale,
+                )
+            blank = [
+                exception_id
+                for exception_id in normalized
+                if _pending_flag(stored[exception_id])
+                and not _commentary_text(stored[exception_id]).strip()
+            ]
+            if blank:
+                raise BlankCommentaryCertificationError(
+                    f"Blank commentary cannot be certified for: "
+                    f"{', '.join(sorted(blank))}. Enter commentary text first; no "
+                    f"commentary was certified.",
+                    exception_ids=blank,
+                )
+            recertified_at = utc_now().isoformat()
+            for exception_id in normalized:
+                if not _pending_flag(stored[exception_id]):
+                    already_accepted.append(exception_id)
+                    continue
+                connection.execute(
+                    f"UPDATE {quoted} SET recertification_required = 0, "
+                    "recertified_at = ? WHERE exception_id = ?",
+                    (recertified_at, exception_id),
+                )
+                accepted.append(exception_id)
+        return RecertificationSummary(
+            as_of_date=parsed_date,
+            accepted=tuple(sorted(accepted)),
+            already_accepted=tuple(sorted(already_accepted)),
+        )
 
     def _recompute_history_metadata(
         self,
@@ -1024,11 +2010,13 @@ class ExceptionTrackingRepository:
 
         occurrences: dict[str, list[tuple[date, datetime]]] = {}
         locations: dict[str, list[str]] = {}
+        stored_first_seen: dict[str, date] = {}
         for _, table in tables:
             quoted = quote_identifier(table)
             for chunk in _chunks(exception_ids):
                 rows = connection.execute(
-                    f"SELECT exception_id, exception_as_of_date, exception_timestamp "
+                    f"SELECT exception_id, exception_as_of_date, exception_timestamp, "
+                    f"exception_first_seen_as_of_date "
                     f"FROM {quoted} WHERE exception_id IN "
                     f"({_placeholders(len(chunk))})",
                     tuple(chunk),
@@ -1039,9 +2027,28 @@ class ExceptionTrackingRepository:
                     timestamp = parse_utc_timestamp(_text(row, "exception_timestamp"))
                     occurrences.setdefault(exception_id, []).append((row_date, timestamp))
                     locations.setdefault(exception_id, []).append(table)
+                    # Legacy tables predate the first-seen column; a corrupt or
+                    # unreadable value must never fail a capture, so keep the
+                    # computed minimum in that case.
+                    if "exception_first_seen_as_of_date" in row.keys():
+                        with suppress(Exception):
+                            stored = parse_as_of_date(
+                                _text(row, "exception_first_seen_as_of_date")
+                            )
+                            if (
+                                exception_id not in stored_first_seen
+                                or stored < stored_first_seen[exception_id]
+                            ):
+                                stored_first_seen[exception_id] = stored
 
         for exception_id, items in occurrences.items():
+            # A cross-revision continuity backfill may already record an
+            # earlier first-seen date than any same-ID row; never move it
+            # forward again.
             first_date = min(item[0] for item in items)
+            stored = stored_first_seen.get(exception_id)
+            if stored is not None and stored < first_date:
+                first_date = stored
             last_date = max(item[0] for item in items)
             first_timestamp = min(item[1] for item in items)
             last_timestamp = max(item[1] for item in items)
@@ -1063,7 +2070,7 @@ class ExceptionTrackingRepository:
 
 
 class _PreparedOccurrence:
-    __slots__ = ("identity", "timestamp", "commentary", "rule_index", "extra_values")
+    __slots__ = ("identity", "timestamp", "commentary", "rule_index", "extra_values", "lineage_id")
 
     def __init__(
         self,
@@ -1073,12 +2080,14 @@ class _PreparedOccurrence:
         commentary: str | None,
         rule_index: str | None,
         extra_values: dict[str, str],
+        lineage_id: str | None = None,
     ) -> None:
         self.identity = identity
         self.timestamp = timestamp
         self.commentary = commentary
         self.rule_index = rule_index
         self.extra_values = extra_values
+        self.lineage_id = lineage_id
 
 
 def _normalize_rule_index(value: str | None) -> str | None:
@@ -1095,6 +2104,40 @@ def _normalize_rule_index(value: str | None) -> str | None:
         )
     text = value.strip()
     return text or None
+
+
+def _normalize_lineage_id(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ExceptionTrackingError(
+            "lineage_id must be text when supplied."
+        )
+    if "\x00" in value:
+        raise ExceptionTrackingError(
+            "lineage_id contains a NUL character, which cannot be stored safely."
+        )
+    text = value.strip()
+    return text or None
+
+
+def _merge_batch_lineage_id(
+    previous: str | None,
+    incoming: str | None,
+    *,
+    exception_id: str,
+) -> str | None:
+    if previous is None:
+        return incoming
+    if incoming is None:
+        return previous
+    if previous == incoming:
+        return previous
+    raise ExceptionTrackingError(
+        f"Conflicting lineage_id values ('{previous}' and '{incoming}') were "
+        f"supplied for exception '{exception_id}' in one capture. Supply one "
+        "lineage per exception; nothing was stored."
+    )
 
 
 def _merge_batch_rule_index(
@@ -1201,6 +2244,17 @@ def list_exceptions(
     return ExceptionTrackingRepository(database_path).list_exceptions(as_of_date)
 
 
+def list_current_exceptions(
+    database_path: str | Path,
+    as_of_date: date | str,
+    *,
+    lineage_resolver: Any | None = None,
+) -> list[ExceptionRecord]:
+    return ExceptionTrackingRepository(database_path).list_current_exceptions(
+        as_of_date, lineage_resolver=lineage_resolver
+    )
+
+
 def get_exception(
     database_path: str | Path, as_of_date: date | str, exception_id: str
 ) -> ExceptionRecord | None:
@@ -1227,13 +2281,37 @@ def update_commentaries(
     )
 
 
+def apply_commentary_upload(
+    database_path: str | Path,
+    as_of_date: date | str,
+    decisions: Mapping[str, CommentaryUploadDecision],
+) -> int:
+    return ExceptionTrackingRepository(database_path).apply_commentary_upload(
+        as_of_date, decisions
+    )
+
+
+def recertify_exceptions(
+    database_path: str | Path,
+    as_of_date: date | str,
+    approvals: Mapping[str, str],
+) -> RecertificationSummary:
+    return ExceptionTrackingRepository(database_path).recertify_exceptions(
+        as_of_date, approvals
+    )
+
+
 def record_exceptions(
     database_path: str | Path,
     as_of_date: date | str,
     occurrences: Iterable[ExceptionOccurrence],
     *,
     extra_columns: Sequence[str] | None = None,
+    lineage_resolver: Any | None = None,
 ) -> RecordingSummary:
     return ExceptionTrackingRepository(database_path).record_exceptions(
-        as_of_date, occurrences, extra_columns=extra_columns
+        as_of_date,
+        occurrences,
+        extra_columns=extra_columns,
+        lineage_resolver=lineage_resolver,
     )

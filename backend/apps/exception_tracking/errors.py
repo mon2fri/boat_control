@@ -62,6 +62,22 @@ class UnknownExceptionError(ExceptionTrackingError):
         self.unknown_ids = tuple(sorted(unknown_ids))
 
 
+class StaleRevisionTokenError(ExceptionTrackingError):
+    """A recertification request carried an out-of-date revision token."""
+
+    def __init__(self, message: str, *, exception_ids: list[str]) -> None:
+        super().__init__(message)
+        self.exception_ids = tuple(sorted(exception_ids))
+
+
+class BlankCommentaryCertificationError(ExceptionTrackingError):
+    """A recertification request tried to certify blank commentary as reviewed."""
+
+    def __init__(self, message: str, *, exception_ids: list[str]) -> None:
+        super().__init__(message)
+        self.exception_ids = tuple(sorted(exception_ids))
+
+
 class SchemaMismatchError(ExceptionTrackingError):
     """An existing date table is missing one or more required columns."""
 

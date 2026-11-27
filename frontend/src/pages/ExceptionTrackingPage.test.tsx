@@ -132,7 +132,10 @@ describe("ExceptionTrackingPage", () => {
       expect(screen.getByRole("table")).toBeInTheDocument(),
     );
     const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((cell) =>
+    // Leading column is the recertification-selection checkbox, then the data columns.
+    const headerCells = within(table).getAllByRole("columnheader");
+    expect(headerCells[0]?.querySelector("input[type='checkbox']")).not.toBeNull();
+    expect(headerCells.slice(1).map((cell) =>
       cell.querySelector("span")?.textContent?.trim(),
     )).toEqual([
       "Exception ID",
@@ -149,7 +152,7 @@ describe("ExceptionTrackingPage", () => {
     expect(within(table).queryByRole("columnheader", { name: "Key Columns" })).not.toBeInTheDocument();
     expect(within(table).queryByRole("columnheader", { name: "region" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText(/Columns \(4 of 11 visible\)/));
+    fireEvent.click(screen.getByText(/Columns \(4 of 16 visible\)/));
     fireEvent.click(screen.getByRole("checkbox", { name: "Key Columns" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "region" }));
     expect(within(table).getByText("Key Columns")).toBeInTheDocument();
@@ -236,11 +239,40 @@ describe("ExceptionTrackingPage", () => {
         /rejected: Unknown exception ID: MISSING_ID/,
       ),
     );
-    expect(screen.queryByText(/Updated/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Updated \d+ exceptions/)).not.toBeInTheDocument();
   });
 
-  it("rejects a non-XLSX selection before calling the backend", async () => {
-    const fetchMock = installFetch();
+  it("names each affected row for invalid Commentary Recertify values", async () => {
+    installFetch({
+      importResponse: () =>
+        Promise.resolve(json({
+          code: "invalid_recertification_selection",
+          error: "Invalid Commentary Recertify selection.",
+          details: {
+            invalid_rows: [
+              { row: 5, exception_id: "CBR1_00000000000000000000_id_42", value: "Bogus" },
+              { row: 9, exception_id: "CBR1_11111111111111111111_id_7", value: "" },
+            ],
+          },
+        }, 400)),
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText("Upload completed commentary template (.xlsx)"), {
+      target: { files: [new File(["xlsx"], "commentary.xlsx")] },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        /Invalid Commentary Recertify values: row 5 CBR1_00000000000000000000_id_42 value "Bogus"; row 9 CBR1_11111111111111111111_id_7 value ""/,
+      ),
+    );
+    // The whole file is rejected: no success summary is shown.
+    expect(screen.queryByText(/Updated \d+ exceptions/)).not.toBeInTheDocument();
+  });
+
+  it("rejects a non-XLSX selection before calling the backend", async () => {    const fetchMock = installFetch();
     renderPage();
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
     const before = fetchMock.mock.calls.length;
@@ -349,7 +381,8 @@ describe("ExceptionTrackingPage", () => {
     });
 
     // Filtering is also server-side over all 120 rows before paging.
-    const idHeader = screen.getAllByRole("columnheader")[0]!;
+    // Column header [0] is the recertification-selection checkbox column.
+    const idHeader = screen.getAllByRole("columnheader")[1]!;
     fireEvent.click(within(idHeader).getByText("Filter"));
     fireEvent.click(screen.getByRole("checkbox", {
       name: `CBR1_00000000000000000000_119`,
@@ -364,13 +397,15 @@ describe("ExceptionTrackingPage", () => {
     installFetch();
     renderPage();
     await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument());
-    fireEvent.click(screen.getByText(/Columns \(4 of 11 visible\)/));
+    fireEvent.click(screen.getByText(/Columns \(4 of 16 visible\)/));
     fireEvent.click(screen.getByRole("checkbox", { name: "Exception Rule Identifier" }));
-    fireEvent.click(screen.getByText(/Columns \(5 of 11 visible\)/));
+    fireEvent.click(screen.getByText(/Columns \(5 of 16 visible\)/));
     fireEvent.click(screen.getByRole("button", { name: "Show default columns" }));
-    expect(screen.getAllByRole("columnheader").map((cell) =>
+    const restored = screen.getAllByRole("columnheader").map((cell) =>
       cell.querySelector("span")?.textContent?.trim(),
-    )).toEqual([
+    );
+    // Leading selection checkbox column carries no labelled header text.
+    expect(restored.slice(1)).toEqual([
       "Exception ID", "Exception Status", "Commentary", "Rule Index",
     ]);
   });

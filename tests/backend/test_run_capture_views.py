@@ -91,6 +91,7 @@ def patch_capture(
         *,
         captured_at: datetime | None = None,
         template_columns: list[str] | None = None,
+        lineage_context: dict[str, Any] | None = None,
     ) -> object:
         capture_calls.append(
             {
@@ -98,6 +99,7 @@ def patch_capture(
                 "as_of_date": as_of_date,
                 "captured_at": captured_at,
                 "template_columns": template_columns,
+                "lineage_context": lineage_context,
             }
         )
         return {"captured": result.validation.total_violations}

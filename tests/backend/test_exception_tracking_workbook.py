@@ -9,6 +9,10 @@ from apps.exception_tracking.workbook import (
     EXCEPTION_HEADERS,
     LEGACY_EXCEPTION_HEADERS,
     LEGACY_TEMPLATE_VERSION,
+    RECERT_HEADERS,
+    RECERTIFY_COLUMN,
+    RECERTIFY_OPTIONS,
+    STANDARD_EXCEPTION_HEADERS,
     TEMPLATE_VERSION,
     VISIBLE_COLUMN_COUNT,
     WorkbookValidationError,
@@ -16,6 +20,7 @@ from apps.exception_tracking.workbook import (
     parse_commentary_workbook,
 )
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 
 
 def _record(
@@ -91,12 +96,20 @@ def test_builds_optimized_metadata_headers_visibility_and_commentary() -> None:
     assert template["B4"].value == "2026-11-03T12:00:00+00:00"
 
     sheet = workbook["Exceptions"]
-    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert [cell.value for cell in sheet[1]] == list(STANDARD_EXCEPTION_HEADERS)
+    assert RECERTIFY_COLUMN in STANDARD_EXCEPTION_HEADERS
+    assert RECERTIFY_OPTIONS == ("Keep Current", "Updated")
+    # No provenance columns are visible in the downloaded template.
+    for removed in RECERT_HEADERS:
+        assert removed not in [cell.value for cell in sheet[1]]
+    assert "Exception Status" in [cell.value for cell in sheet[1]]
     assert sheet["A2"].value == "CBR1_RULE_ID_1"
     assert sheet["B2"].value == "Commented"
     assert sheet["C2"].value == "Known upstream defect"
     assert sheet["D2"].value == "R001"
-    for index in range(1, len(EXCEPTION_HEADERS) + 1):
+    # The review choice defaults to blank, even for commented rows.
+    assert sheet.cell(2, len(STANDARD_EXCEPTION_HEADERS)).value in (None, "")
+    for index in range(1, len(STANDARD_EXCEPTION_HEADERS) + 1):
         column = sheet.cell(1, index).column_letter
         expected_hidden = VISIBLE_COLUMN_COUNT < index <= len(EXCEPTION_HEADERS)
         assert bool(sheet.column_dimensions[column].hidden) is expected_hidden
@@ -194,14 +207,19 @@ def test_trailing_standard_metadata_and_data_columns_are_informational() -> None
     def change_informational(workbook: Any) -> None:
         workbook["Exceptions"]["E2"] = "Changed rule identifier"
         workbook["Exceptions"]["J2"] = None
-        workbook["Exceptions"]["K1"] = "Region"
-        workbook["Exceptions"]["K2"] = "EMEA"
+        # First user detail column now follows the review column.
+        workbook["Exceptions"]["L1"] = "Region"
+        workbook["Exceptions"]["L2"] = "EMEA"
+        # A valid review choice is recorded separately and never changes the
+        # parsed commentary text.
+        workbook["Exceptions"]["K2"] = "Keep Current"
 
     content = _mutated_workbook(change_informational)
     parsed = parse_commentary_workbook(content)
 
     assert parsed.as_of_date == date(2026, 10, 30)
     assert parsed.commentaries == {"CBR1_RULE_ID_1": ""}
+    assert parsed.recertifications == {"CBR1_RULE_ID_1": "Keep Current"}
     assert parsed.row_count == 1
 
 
@@ -223,16 +241,16 @@ def test_appends_only_selected_detail_columns_in_order() -> None:
     sheet = workbook["Exceptions"]
 
     assert [cell.value for cell in sheet[1]] == [
-        *EXCEPTION_HEADERS,
+        *STANDARD_EXCEPTION_HEADERS,
         "score",
         "Region",
     ]
-    assert [cell.value for cell in sheet[2]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in sheet[2]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "10",
         "EMEA",
     ]
-    assert sheet.column_dimensions["K"].hidden is False
     assert sheet.column_dimensions["L"].hidden is False
+    assert sheet.column_dimensions["M"].hidden is False
 
 
 def test_later_selected_detail_column_is_blank_when_record_has_no_value() -> None:
@@ -245,12 +263,12 @@ def test_later_selected_detail_column_is_blank_when_record_has_no_value() -> Non
     )
 
     sheet = load_workbook(io.BytesIO(content))["Exceptions"]
-    assert [cell.value for cell in sheet[1]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in sheet[1]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "REGION",
         "SEGMENT",
         "PORTFOLIO",
     ]
-    assert [cell.value for cell in sheet[2]][len(EXCEPTION_HEADERS) :] == [
+    assert [cell.value for cell in sheet[2]][len(STANDARD_EXCEPTION_HEADERS) :] == [
         "APAC",
         "Retail",
         None,
@@ -260,7 +278,7 @@ def test_later_selected_detail_column_is_blank_when_record_has_no_value() -> Non
 def test_empty_selection_adds_no_data_columns() -> None:
     content = _workbook_bytes([_record()])
     sheet = load_workbook(io.BytesIO(content))["Exceptions"]
-    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert [cell.value for cell in sheet[1]] == list(STANDARD_EXCEPTION_HEADERS)
 
 
 def test_detail_values_are_formula_protected_as_literal_text() -> None:
@@ -272,7 +290,7 @@ def test_detail_values_are_formula_protected_as_literal_text() -> None:
         detail_values={record["exception_id"]: {"Region": "=HYPERLINK(\"x\")"}},
     )
     workbook = load_workbook(io.BytesIO(content))
-    assert workbook["Exceptions"]["K2"].value == "'=HYPERLINK(\"x\")"
+    assert workbook["Exceptions"]["L2"].value == "'=HYPERLINK(\"x\")"
 
 
 def test_detail_column_header_is_formula_protected_as_literal_text() -> None:
@@ -284,7 +302,7 @@ def test_detail_column_header_is_formula_protected_as_literal_text() -> None:
         detail_values={record["exception_id"]: {"=HYPERLINK(\"x\")": "value"}},
     )
     workbook = load_workbook(io.BytesIO(content))
-    assert workbook["Exceptions"]["K1"].value == "'=HYPERLINK(\"x\")"
+    assert workbook["Exceptions"]["L1"].value == "'=HYPERLINK(\"x\")"
 
 
 def test_accepts_excel_date_cell_for_as_of_date() -> None:
@@ -360,3 +378,127 @@ def test_source_status_exports_separately_from_exception_status() -> None:
     headers = [cell.value for cell in sheet[1]]
     assert sheet.cell(2, headers.index("Exception Status") + 1).value == "New"
     assert sheet.cell(2, headers.index("status") + 1).value == "inactive"
+
+
+def test_recertify_dropdown_offers_only_keep_current_and_updated() -> None:
+    content = _workbook_bytes([_record("A"), _record("B")])
+    sheet = load_workbook(io.BytesIO(content))["Exceptions"]
+    headers = [cell.value for cell in sheet[1]]
+    column = get_column_letter(headers.index(RECERTIFY_COLUMN) + 1)
+
+    validations = list(sheet.data_validations.dataValidation)
+    assert len(validations) == 1
+    validation = validations[0]
+    assert validation.type == "list"
+    assert validation.formula1 == '"Keep Current,Updated"'
+    assert validation.allow_blank is True
+    assert str(validation.sqref) == f"{column}2:{column}3"
+
+
+def test_recertify_column_defaults_to_blank() -> None:
+    content = _workbook_bytes(
+        [
+            _record("A", commentary="note", status="Commented"),
+            _record("B", status="RecertificationRequired"),
+        ]
+    )
+    parsed = parse_commentary_workbook(content)
+    assert parsed.recertifications == {}
+
+
+def test_invalid_recertify_values_fail_before_any_write() -> None:
+    def set_invalid(workbook: Any) -> None:
+        workbook["Exceptions"]["K2"] = "Approved"
+        workbook["Exceptions"]["K3"] = "keep current"
+
+    rows = [_record("A"), _record("B")]
+    content = build_commentary_workbook(rows, date(2026, 10, 30))
+    workbook = load_workbook(io.BytesIO(content))
+    set_invalid(workbook)
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    with pytest.raises(WorkbookValidationError) as error:
+        parse_commentary_workbook(buffer.getvalue())
+
+    assert error.value.code == "invalid_recertification_selection"
+    rows_detail = error.value.details["invalid_rows"]
+    assert [(item["row"], item["exception_id"]) for item in rows_detail] == [
+        (2, "A"),
+        (3, "B"),
+    ]
+
+
+def test_formula_in_recertify_column_is_rejected() -> None:
+    def add_formula(workbook: Any) -> None:
+        workbook["Exceptions"]["K2"] = "=SUM(A1:A2)"
+
+    content = _mutated_workbook(add_formula)
+    with pytest.raises(WorkbookValidationError) as error:
+        parse_commentary_workbook(content)
+    assert error.value.code == "invalid_recertification_selection"
+
+
+def test_recertify_choice_is_trimmed_before_validation() -> None:
+    def pad_choice(workbook: Any) -> None:
+        workbook["Exceptions"]["K2"] = "  Updated  "
+
+    content = _mutated_workbook(pad_choice)
+    parsed = parse_commentary_workbook(content)
+    assert parsed.recertifications == {"CBR1_RULE_ID_1": "Updated"}
+
+
+def test_legacy_v1_template_has_no_recertify_choices() -> None:
+    parsed = parse_commentary_workbook(_legacy_workbook("legacy commentary"))
+    assert parsed.recertifications == {}
+
+
+def test_pre_round2_template_with_provenance_columns_still_imports() -> None:
+    workbook = Workbook()
+    template = workbook.active
+    template.title = "Template"
+    template["B2"] = TEMPLATE_VERSION
+    template["B3"] = "2026-10-30"
+    sheet = workbook.create_sheet("Exceptions")
+    sheet.append([*EXCEPTION_HEADERS, *RECERT_HEADERS])
+    sheet.append(
+        [
+            "CBR1_RULE_ID_1",
+            "Commented",
+            "legacy commentary",
+            "R001",
+            "CBR1_RULE",
+            '{"id":"ID"}',
+            "2026-10-30T08:15:00+00:00",
+            "2026-10-30",
+            "2026-09-30",
+            "2026-10-30",
+            "a reason",
+            "old-id",
+            "2026-09-30",
+            "CBR1_OLD",
+            "event-1",
+            "2026-10-01T00:00:00+00:00",
+        ]
+    )
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    parsed = parse_commentary_workbook(buffer.getvalue())
+    assert parsed.commentaries == {"CBR1_RULE_ID_1": "legacy commentary"}
+    assert parsed.recertifications == {}
+
+
+def test_detail_column_matching_recertify_header_is_deduplicated() -> None:
+    record = _record(commentary="Reviewed")
+    content = build_commentary_workbook(
+        [record],
+        date(2026, 10, 30),
+        detail_columns=["Commentary Recertify", "Region"],
+        detail_values={record["exception_id"]: {"Region": "EMEA"}},
+    )
+    sheet = load_workbook(io.BytesIO(content))["Exceptions"]
+    assert [cell.value for cell in sheet[1]] == [
+        *STANDARD_EXCEPTION_HEADERS,
+        "Region",
+    ]

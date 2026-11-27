@@ -13,6 +13,7 @@ interface Props {
   onEdit: (rule: Rule) => void;
   onCopy?: (rule: Rule) => void;
   onDelete: (rule: Rule) => void;
+  onHistory?: (rule: Rule) => void;
   onReorder: (ruleIds: string[]) => void;
   serverPaged?: boolean;
 }
@@ -44,6 +45,7 @@ export function SortableRuleList({
   onEdit,
   onCopy,
   onDelete,
+  onHistory,
   onReorder,
   serverPaged = false,
 }: Props) {
@@ -196,6 +198,7 @@ export function SortableRuleList({
                 <span className="rule-list-description">{rule.description || "No description"}</span>
                 <button type="button" className="btn" onClick={() => onEdit(rule)}>Edit</button>
                 {onCopy && <button type="button" className="btn" onClick={() => onCopy(rule)}>Copy</button>}
+                {onHistory && <button type="button" className="btn" onClick={() => onHistory(rule)}>History</button>}
                 <button type="button" className="btn btn--danger" onClick={() => onDelete(rule)}>Delete</button>
               </div>
             </li>

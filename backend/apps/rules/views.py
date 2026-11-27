@@ -12,8 +12,11 @@ from apps.rules.repository import (
     CatalogCorruptionError,
     CatalogError,
     IdentityCollisionError,
+    IdentityReuseConflict,
     InvalidCursorError,
+    SaveDecisionRequired,
     StaleCursorError,
+    StaleRevisionError,
     archive_catalog_rule,
     create_catalog_rule,
     get_catalog_rule,
@@ -37,13 +40,20 @@ from apps.rules.services import (
 
 def _snapshot_to_dict(snapshot: Any) -> dict[str, Any]:
     rule = snapshot.rule
-    return {
+    payload = {
         "rule_id": rule.rule_id,
         "rule_identifier": snapshot.rule_identifier,
         "enabled": snapshot.enabled,
         "enabled_position": getattr(snapshot, "enabled_position", None),
         **rule_definition_payload(rule, include_empty_target_values=True),
     }
+    # Optional lineage/revision metadata: additive, so old fixtures and
+    # documents without these keys remain readable.
+    if getattr(snapshot, "lineage_id", None) is not None:
+        payload["lineage_id"] = snapshot.lineage_id
+    if getattr(snapshot, "evolution_revision", None) is not None:
+        payload["revision_number"] = snapshot.evolution_revision
+    return payload
 
 
 def _validated_draft(
@@ -67,6 +77,9 @@ def _validated_draft(
 def _catalog_error(exc: Exception) -> Response:
     if isinstance(exc, (StaleCursorError, InvalidCursorError)):
         return Response({"error": str(exc), "code": type(exc).__name__}, status=409)
+    if isinstance(exc, (SaveDecisionRequired, StaleRevisionError, IdentityReuseConflict)):
+        details = getattr(exc, "details", None) or {}
+        return Response({**details, "error": str(exc)}, status=409)
     if isinstance(exc, CatalogError):
         return Response({"error": str(exc)}, status=400)
     return Response({"error": str(exc)}, status=500)
@@ -116,19 +129,52 @@ class RuleDetailView(APIView):  # type: ignore[misc]
             return Response({"error": str(exc)}, status=404)
 
     def put(self, request: Request, rule_id: str) -> Response:
+        # Save controls live at the top level only: they must never leak
+        # into the authored payload, hash inputs, or canonical identity.
+        raw_decision = request.data.get("save_decision")
+        source_identifier = request.data.get("source_identifier")
+        if raw_decision is not None and raw_decision not in ("modify_current", "save_as_new"):
+            return Response(
+                {
+                    "error": "save_decision must be 'modify_current' or 'save_as_new'.",
+                    "code": "rule_save_decision_invalid",
+                },
+                status=400,
+            )
         draft, error = _validated_draft(request.data, allow_blank_name=False)
         if error:
             return error
         assert draft is not None
         try:
-            result = update_catalog_rule(rule_id, draft)
-            return Response(
-                {
-                    **_snapshot_to_dict(result.rule),
-                    "previous_rule_id": result.previous_rule_id,
-                    "resulting_rule_id": result.rule.rule.rule_id,
-                }
+            result = update_catalog_rule(
+                rule_id,
+                draft,
+                save_decision=raw_decision,
+                source_identifier=source_identifier,
+                require_confirmation=True,
+                source="ui_edit",
             )
+            response = _snapshot_to_dict(result.rule)
+            response["previous_rule_id"] = result.previous_rule_id
+            response["resulting_rule_id"] = result.rule.rule.rule_id
+            response["save_decision"] = result.save_decision
+            if result.lineage_id is not None:
+                response["lineage_id"] = result.lineage_id
+            if result.evolution_event_id is not None:
+                response["evolution_event_id"] = result.evolution_event_id
+            if result.saved_as_new:
+                response["saved_as_new"] = True
+                if result.equivalent_rule_id is not None:
+                    response["equivalent_rule"] = True
+                    response["equivalent_rule_id"] = result.equivalent_rule_id
+                return Response(response, status=201)
+            return Response(response)
+        except SaveDecisionRequired as exc:
+            return Response(exc.details, status=409)
+        except StaleRevisionError as exc:
+            return Response(exc.details, status=409)
+        except IdentityReuseConflict as exc:
+            return Response(exc.details, status=409)
         except CatalogError as exc:
             return _catalog_error(exc)
 
@@ -137,6 +183,40 @@ class RuleDetailView(APIView):  # type: ignore[misc]
             return Response(_snapshot_to_dict(archive_catalog_rule(rule_id)))
         except CatalogError as exc:
             return Response({"error": str(exc)}, status=404)
+
+
+class RuleHistoryView(APIView):  # type: ignore[misc]
+    """Read-only revision history for one rule's business lineage."""
+
+    def get(self, request: Request, rule_id: str) -> Response:
+        from apps.rules import evolution as rule_evolution
+
+        try:
+            snapshot = get_catalog_rule(rule_id)
+        except CatalogError as exc:
+            return Response({"error": str(exc)}, status=404)
+        lineage_id = snapshot.lineage_id
+        if lineage_id is None:
+            return Response(
+                {
+                    "rule_id": rule_id,
+                    "lineage_id": None,
+                    "revision_number": snapshot.evolution_revision,
+                    "events": [],
+                }
+            )
+        events = [
+            rule_evolution.event_to_dict(event)
+            for event in rule_evolution.lineage_events(lineage_id)
+        ]
+        return Response(
+            {
+                "rule_id": rule_id,
+                "lineage_id": lineage_id,
+                "revision_number": snapshot.evolution_revision,
+                "events": events,
+            }
+        )
 
 
 class EnablementView(APIView):  # type: ignore[misc]
@@ -191,5 +271,7 @@ class ReplaceRulesView(APIView):  # type: ignore[misc]
                     **result,
                 }
             )
+        except IdentityReuseConflict as exc:
+            return Response({**exc.details, "error": str(exc)}, status=409)
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)

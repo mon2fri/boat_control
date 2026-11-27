@@ -15,7 +15,7 @@ from apps.exception_tracking.rule_summary import (
     normalize_rule_summaries,
 )
 from apps.exception_tracking.workbook import (
-    EXCEPTION_HEADERS,
+    STANDARD_EXCEPTION_HEADERS,
     TEMPLATE_VERSION,
     build_commentary_workbook,
     parse_commentary_workbook,
@@ -106,7 +106,7 @@ def test_headers_match_contract_and_sheet_names_preserved() -> None:
     assert template.cell(8, 1).value == "Enabled Rules"
     assert [template.cell(9, column).value for column in range(1, 8)] == list(RULE_TABLE_HEADERS)
     sheet = workbook["Exceptions"]
-    assert [cell.value for cell in sheet[1]] == list(EXCEPTION_HEADERS)
+    assert [cell.value for cell in sheet[1]] == list(STANDARD_EXCEPTION_HEADERS)
 
 
 def test_grouped_rule_cells_match_excel_report_semantics() -> None:

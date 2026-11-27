@@ -13,7 +13,11 @@ from apps.runs.as_of_date import AsOfDateError, resolve_as_of_date
 from apps.runs.persistence import save_run
 from apps.runs.services import execute_comparison
 from apps.runs.template_columns import TemplateColumnError, validate_concrete_columns
-from apps.runs.tracking_capture import ExceptionCaptureError, capture_run_exceptions
+from apps.runs.tracking_capture import (
+    ExceptionCaptureError,
+    capture_run_exceptions,
+    resolve_run_lineage_context,
+)
 from apps.runs.tracking_context import (
     enrich_execution_result,
     parse_new_exceptions_only,
@@ -223,11 +227,16 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
         # idempotent in the tracking store.
         captured_at = datetime.now(UTC)
         try:
+            # Thread target lineage/revision context into capture and the
+            # persisted run snapshot so cross-revision commentary carry can
+            # resolve predecessor chains without guessing.
+            lineage_context = resolve_run_lineage_context(result)
             capture_run_exceptions(
                 result,
                 as_of_date,
                 captured_at=captured_at,
                 template_columns=commentary_template_columns,
+                lineage_context=lineage_context,
             )
             result = enrich_execution_result(result, as_of_date)
         except ExceptionCaptureError as exc:
@@ -250,6 +259,7 @@ class ExecuteComparisonView(APIView):  # type: ignore[misc]
             file_b_path=path_b,
             as_of_date=as_of_date,
             created_at=captured_at,
+            lineage_context=lineage_context,
         )
 
         from apps.runs.persistence import load_run

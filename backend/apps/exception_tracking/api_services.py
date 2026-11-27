@@ -9,6 +9,8 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from apps.exception_tracking.dates import default_as_of_date, parse_iso_date
+from apps.exception_tracking.domain import CommentaryUploadDecision
+from apps.exception_tracking.errors import UnknownExceptionError
 from apps.exception_tracking.workbook import (
     ParsedCommentaryTemplate,
     WorkbookValidationError,
@@ -18,7 +20,9 @@ from apps.exception_tracking.workbook import (
 
 logger = logging.getLogger(__name__)
 
-STATUSES = frozenset({"New", "Commented", "NotCommented"})
+STATUSES = frozenset({"New", "Commented", "NotCommented", "RecertificationRequired"})
+
+RECERTIFICATION_REASON_LABEL = "Recertification due to rule change"
 
 _RECORD_FIELDS = (
     "exception_id",
@@ -73,6 +77,28 @@ def _wire_temporal(value: Any, field_name: str) -> str:
     )
 
 
+def _wire_date(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return str(value.isoformat())
+    if isinstance(value, date):
+        return str(value.isoformat())
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _wire_flag(value: Any) -> bool:
+    if value is True:
+        return True
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    return isinstance(value, str) and value.strip().lower() in {"1", "true"}
+
+
 def record_to_dict(record: Any) -> dict[str, Any]:
     """Convert a Worker A record into the frozen wire shape."""
     result: dict[str, Any] = {
@@ -88,12 +114,19 @@ def record_to_dict(record: Any) -> dict[str, Any]:
     ):
         result[field_name] = _wire_temporal(_field(record, field_name), field_name)
 
+    pending = _wire_flag(_field(record, "recertification_required"))
     status = _field(record, "status")
+    if pending:
+        # Pending recertification wins over commentary text: inherited text
+        # must not collapse into Commented and hide the item from review.
+        status = "RecertificationRequired"
     if status is None:
         commentary = str(_field(record, "exception_commentary") or "")
         occurrence_date = _field(record, "exception_as_of_date")
         first_seen_date = _field(record, "exception_first_seen_as_of_date")
-        if commentary.strip():
+        if pending:
+            status = "RecertificationRequired"
+        elif commentary.strip():
             status = "Commented"
         elif str(occurrence_date) == str(first_seen_date):
             status = "New"
@@ -107,6 +140,22 @@ def record_to_dict(record: Any) -> dict[str, Any]:
             details={"status": status},
         )
     result["status"] = str(status)
+    result["recertification_required"] = pending
+    result["recertification_reason"] = str(_field(record, "recertification_reason") or "")
+    result["carried_from_exception_id"] = str(_field(record, "carried_from_exception_id") or "")
+    result["carried_from_as_of_date"] = _wire_date(
+        _field(record, "carried_from_as_of_date")
+    )
+    result["carried_from_rule_identifier"] = str(
+        _field(record, "carried_from_rule_identifier") or ""
+    )
+    result["rule_evolution_event_id"] = str(_field(record, "rule_evolution_event_id") or "")
+    result["recertified_at"] = _wire_date(_field(record, "recertified_at"))
+    result["revision_token"] = str(
+        _field(record, "revision_token")
+        or _field(record, "rule_evolution_event_id")
+        or ""
+    )
     rule_index = _record_rule_index(record)
     detail_values = _record_detail_values(record)
     result["rule_index"] = rule_index
@@ -194,6 +243,33 @@ def list_exceptions(
     repo = repository or get_repository()
     try:
         records = repo.list_exceptions(as_of_date)
+    except (OSError, ValueError) as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="tracking_database_unavailable",
+        ) from exc
+    return [record_to_dict(record) for record in records]
+
+
+def list_current_exceptions(
+    as_of_date: date, repository: Any | None = None
+) -> list[dict[str, Any]]:
+    """Return the current-view wire records for one as-of date.
+
+    Same-date predecessors superseded by a recorded ``modify_current``
+    successor for the same book are hidden so a revised rule does not
+    present the same book twice. Run-scoped exports, commentary import,
+    recertification, saved-run refresh, and per-ID history keep the full
+    store. Repositories that predate the current-view method fall back to
+    the full listing.
+    """
+
+    repo = repository or get_repository()
+    method = getattr(repo, "list_current_exceptions", None)
+    try:
+        records = (
+            method(as_of_date) if callable(method) else repo.list_exceptions(as_of_date)
+        )
     except (OSError, ValueError) as exc:
         raise TrackingAPIError(
             str(exc),
@@ -696,7 +772,7 @@ def export_commentary(
     rule_snapshot_notes: Iterable[str] = (),
 ) -> bytes:
     repo = repository or get_repository()
-    records = list_exceptions(as_of_date, repo)
+    records = list_current_exceptions(as_of_date, repo)
     effective_summaries = rule_summaries
     effective_notes = list(rule_snapshot_notes)
     if effective_summaries is None and not effective_notes:
@@ -805,6 +881,65 @@ def _commentary(record: Mapping[str, Any]) -> str:
     return str(record.get("exception_commentary") or "")
 
 
+def _is_pending(record: Mapping[str, Any]) -> bool:
+    """Whether a wire record is awaiting recertification.
+
+    Pending wins over commentary text everywhere: inherited text must not
+    collapse into ``Commented``. The flag check covers real wire rows; the
+    status check covers contract fakes that only carry the frozen status.
+    """
+
+    if record.get("recertification_required") is True:
+        return True
+    return str(record.get("status")) == "RecertificationRequired"
+
+
+def _decide_upload(
+    record: Mapping[str, Any],
+    supplied: str,
+    action: str,
+) -> CommentaryUploadDecision | None:
+    """Decide one row's upload outcome from CURRENT database state.
+
+    ``supplied`` is the trimmed spreadsheet text; ``action`` is the validated
+    ``Commentary Recertify`` choice (``""`` when the column is blank or the
+    template predates it). ``None`` means "preserve the row untouched".
+    """
+
+    before = _commentary(record)
+    pending = _is_pending(record)
+    if pending:
+        if action == "Keep Current":
+            # Ignore the spreadsheet text; keep the stored value and accept
+            # it for the current revision (nonempty DB text reads Commented
+            # afterwards, empty DB text reads Not Commented).
+            return CommentaryUploadDecision(
+                commentary=None, clear_recertification=True
+            )
+        if action == "Updated":
+            # Deliberate replacement: empty input clears the stored
+            # commentary, nonempty input stores the supplied text. Either
+            # way the pending mark is cleared; unchanged text still counts
+            # as explicit acceptance.
+            return CommentaryUploadDecision(
+                commentary=supplied, clear_recertification=True
+            )
+        # Blank: ignore spreadsheet commentary changes and preserve the
+        # current text, status, and pending mark.
+        return None
+    # Ordinary (nonpending) rows: the recertification choice, when present,
+    # never overrides these rules. Nonempty input is accepted as the new
+    # value (even on stale templates); empty input preserves the stored
+    # accepted text and status rather than clearing it.
+    if supplied == "":
+        return None
+    if supplied == before:
+        return None
+    return CommentaryUploadDecision(
+        commentary=supplied, clear_recertification=False
+    )
+
+
 def import_commentary(
     content: bytes,
     *,
@@ -814,8 +949,21 @@ def import_commentary(
 ) -> dict[str, Any]:
     """Validate and atomically apply a commentary template.
 
-    All identity validation happens before the single repository update call.
-    Worker A owns transaction/rollback inside ``update_commentaries``.
+    Round-2 upload semantics (decided from CURRENT database state per row):
+
+    - Pending rows need an explicit ``Commentary Recertify`` choice.
+      ``Keep Current`` keeps the stored text and accepts it; ``Updated``
+      stores the supplied text (empty input deliberately clears it) and
+      accepts it. A blank choice preserves the row, including its pending
+      mark.
+    - Ordinary rows ignore the recertification column. Nonempty input is
+      accepted as the new value; empty (or whitespace-only) input preserves
+      the stored text and status and never clears an accepted comment.
+    - The ``Commentary Recertify`` column is validated for every row before
+      any database write; only blank, ``Keep Current`` and ``Updated`` are
+      accepted. All identity validation happens before the single repository
+      update call. Worker A owns transaction/rollback inside
+      ``apply_commentary_upload``.
 
     Date scope (no ``run_id``) accepts safe partial templates: only the IDs
     present in the workbook are updated and omitted date records keep their
@@ -864,7 +1012,7 @@ def import_commentary(
     existing = list_exceptions(parsed.as_of_date, repo)
     _validate_ids(parsed, existing, expected_ids=expected_ids, run_id=run_id)
 
-    updates: dict[str, str] = {}
+    decisions: dict[str, CommentaryUploadDecision] = {}
     updated = 0
     cleared = 0
     unchanged = 0
@@ -874,20 +1022,46 @@ def import_commentary(
             # Safe partial: omitted date records are preserved, never cleared.
             unchanged += 1
             continue
-        before = _commentary(record)
-        after = parsed.commentaries[exception_id]
-        if after == before:
+        # Trim the spreadsheet input before processing: whitespace-only is
+        # empty, while internal whitespace and line breaks are preserved.
+        # Exception IDs and book keys are never normalized.
+        supplied = parsed.commentaries[exception_id].strip()
+        action = parsed.recertifications.get(exception_id, "")
+        decision = _decide_upload(record, supplied, action)
+        if decision is None:
             unchanged += 1
             continue
-        updates[exception_id] = after
-        if after.strip():
+        new_text = (
+            _commentary(record)
+            if decision.commentary is None
+            else decision.commentary
+        )
+        before = _commentary(record)
+        if new_text == before and not (
+            decision.clear_recertification and _is_pending(record)
+        ):
+            unchanged += 1
+            continue
+        decisions[exception_id] = decision
+        if new_text == before:
+            # Text kept (Keep Current, or Updated with identical text) while
+            # the pending mark is cleared: explicit acceptance without a
+            # text change.
+            unchanged += 1
+        elif new_text.strip():
             updated += 1
         else:
             cleared += 1
 
-    if updates:
+    if decisions:
         try:
-            repo.update_commentaries(parsed.as_of_date, updates)
+            repo.apply_commentary_upload(parsed.as_of_date, decisions)
+        except UnknownExceptionError as exc:
+            raise TrackingAPIError(
+                str(exc),
+                code="unknown_exception_ids",
+                details={"unknown_ids": list(exc.unknown_ids)},
+            ) from exc
         except (OSError, ValueError) as exc:
             raise TrackingAPIError(
                 str(exc),
@@ -910,3 +1084,86 @@ def import_commentary(
     else:
         result["scope"] = "date"
     return result
+
+
+def recertify_commentaries(
+    *,
+    as_of_date: str | None = None,
+    exception_ids: Iterable[str] | None = None,
+    revision_tokens: Mapping[str, str] | None = None,
+    repository: Any | None = None,
+) -> dict[str, Any]:
+    """Explicitly accept carried commentary for one as-of date.
+
+    Acceptance — including acceptance of unchanged carried text — happens only
+    here. Uploading an unchanged template, downloading, rerunning, exporting,
+    or importing never certifies inherited text implicitly, and blank text is
+    never certified. Unknown IDs, out-of-date revision tokens, and blank
+    commentary reject the whole call atomically; repeating an accepted batch
+    is a retry-safe no-op.
+    """
+
+    from apps.exception_tracking.errors import (
+        BlankCommentaryCertificationError,
+        StaleRevisionTokenError,
+        UnknownExceptionError,
+    )
+
+    if not as_of_date:
+        raise TrackingAPIError(
+            "An as-of date is required for recertification.",
+            code="invalid_as_of_date",
+        )
+    try:
+        parsed_date = parse_iso_date(as_of_date)
+    except ValueError as exc:
+        raise TrackingAPIError(str(exc), code="invalid_as_of_date") from exc
+    selected = [
+        str(exception_id) for exception_id in (exception_ids or []) if str(exception_id).strip()
+    ]
+    if not selected:
+        raise TrackingAPIError(
+            "No exception IDs were provided for recertification.",
+            code="invalid_recertification_request",
+        )
+    tokens = dict(revision_tokens or {})
+    approvals = {exception_id: str(tokens.get(exception_id, "")) for exception_id in selected}
+
+    repo = repository or get_repository()
+    try:
+        summary = repo.recertify_exceptions(parsed_date, approvals)
+    except UnknownExceptionError as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="unknown_exception_ids",
+            status_code=404,
+            details={"unknown_ids": list(exc.unknown_ids)},
+        ) from exc
+    except StaleRevisionTokenError as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="stale_revision_token",
+            status_code=409,
+            details={"stale_ids": list(exc.exception_ids)},
+        ) from exc
+    except BlankCommentaryCertificationError as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="blank_commentary_not_certified",
+            details={"blank_ids": list(exc.exception_ids)},
+        ) from exc
+    except (OSError, ValueError) as exc:
+        raise TrackingAPIError(
+            str(exc),
+            code="tracking_update_failed",
+            status_code=400,
+        ) from exc
+
+    records = list_exceptions(parsed_date, repo)
+    return {
+        "as_of_date": summary.as_of_date.isoformat(),
+        "accepted": list(summary.accepted),
+        "already_accepted": list(summary.already_accepted),
+        "total": summary.total,
+        "exceptions": records,
+    }

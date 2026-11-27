@@ -14,8 +14,14 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 
+from apps.rules import evolution as rule_evolution
 from apps.rules.identifiers import calculate_rule_identity_details, verify_identity
-from apps.rules.models import RuleStoreState, StoredValidationRule, ValidationRuleIdentity
+from apps.rules.models import (
+    RuleLineage,
+    RuleStoreState,
+    StoredValidationRule,
+    ValidationRuleIdentity,
+)
 from apps.rules.services import (
     Rule,
     normalize_rule_draft,
@@ -47,6 +53,30 @@ class StaleCursorError(CatalogError):
     """A pagination cursor was created against an older catalog revision."""
 
 
+class SaveDecisionRequired(CatalogError):
+    """An extensive edit needs an explicit modify-current/save-as-new choice."""
+
+    def __init__(self, details: dict[str, Any]) -> None:
+        self.details = details
+        super().__init__("Rule save requires an explicit decision")
+
+
+class StaleRevisionError(CatalogError):
+    """The source revision changed after the confirmation was prepared."""
+
+    def __init__(self, details: dict[str, Any]) -> None:
+        self.details = details
+        super().__init__("Rule source changed; confirmation is stale")
+
+
+class IdentityReuseConflict(CatalogError):
+    """The proposed identity already belongs to another business lineage."""
+
+    def __init__(self, details: dict[str, Any]) -> None:
+        self.details = details
+        super().__init__("Rule identity already belongs to another lineage")
+
+
 class InvalidCursorError(CatalogError):
     """A cursor is malformed or has invalid pagination parameters."""
 
@@ -60,6 +90,8 @@ class RuleSnapshot:
     enabled_position: int | None
     archived_at: datetime | None
     superseded_by_rule_id: str | None = None
+    lineage_id: str | None = None
+    evolution_revision: int | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +108,11 @@ class RulePage:
 class RuleEditResult:
     previous_rule_id: str
     rule: RuleSnapshot
+    save_decision: str = "modify_current"
+    saved_as_new: bool = False
+    equivalent_rule_id: str | None = None
+    evolution_event_id: str | None = None
+    lineage_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -182,6 +219,8 @@ def materialize_catalog_rule(row: StoredValidationRule) -> RuleSnapshot:
         superseded_by_rule_id=(
             row.superseded_by.rule_id if row.superseded_by is not None else None
         ),
+        lineage_id=row.lineage_id,
+        evolution_revision=row.evolution_revision,
     )
 
 
@@ -195,7 +234,13 @@ def _get_row(rule_id: str, *, lock: bool = False) -> StoredValidationRule:
         raise CatalogError(f"Rule {rule_id} not found") from exc
 
 
-def create_catalog_rule(draft: dict[str, Any], enabled: bool = True) -> RuleSnapshot:
+def create_catalog_rule(
+    draft: dict[str, Any],
+    enabled: bool = True,
+    *,
+    source: str = "ui_create",
+    changed_by: str | None = None,
+) -> RuleSnapshot:
     with transaction.atomic():
         state = _state()
         draft = normalize_rule_draft(draft)
@@ -212,6 +257,34 @@ def create_catalog_rule(draft: dict[str, Any], enabled: bool = True) -> RuleSnap
             existing.enabled_position = _enabled_position() if enabled else None
             existing.save()
             _bump(state)
+            if was_archived:
+                lineage = rule_evolution.ensure_lineage_for_row(existing, source=source)
+                event = rule_evolution.record_event(
+                    lineage=lineage,
+                    revision_number=rule_evolution.latest_revision_number(lineage),
+                    previous_event=rule_evolution.latest_event(lineage),
+                    source_rule=None,
+                    target_rule=existing,
+                    source_identifier=None,
+                    target_identifier=existing.identity_id,
+                    change_type=rule_evolution.REINSTATE,
+                    save_decision=rule_evolution.ORDINARY_CREATE,
+                    before_payload=None,
+                    after_payload=copy.deepcopy(draft),
+                    change_summary=rule_evolution.build_change_summary(
+                        previous_draft=None,
+                        new_draft=draft,
+                        previous_identifier=None,
+                        new_identifier=existing.identity_id,
+                        extreme_changes=[],
+                        extra={"reinstated_archived_identity": True},
+                    ),
+                    commentary_policy=rule_evolution.NO_INHERITANCE,
+                    source=source,
+                    changed_by=changed_by,
+                )
+                existing.evolution_revision = event.revision_number
+                existing.save(update_fields=["evolution_revision", "updated_at"])
             return materialize_catalog_rule(existing)
         index = state.next_index
         row = StoredValidationRule.objects.create(
@@ -225,6 +298,33 @@ def create_catalog_rule(draft: dict[str, Any], enabled: bool = True) -> RuleSnap
         state.next_index = index + 1
         _bump(state)
         state.save(update_fields=["next_index"])
+        lineage = rule_evolution.create_lineage()
+        row.lineage = lineage
+        row.evolution_revision = 1
+        row.save(update_fields=["lineage", "evolution_revision", "updated_at"])
+        rule_evolution.record_event(
+            lineage=lineage,
+            revision_number=1,
+            previous_event=None,
+            source_rule=None,
+            target_rule=row,
+            source_identifier=None,
+            target_identifier=row.identity_id,
+            change_type=rule_evolution.CREATION,
+            save_decision=rule_evolution.ORDINARY_CREATE,
+            before_payload=None,
+            after_payload=copy.deepcopy(draft),
+            change_summary=rule_evolution.build_change_summary(
+                previous_draft=None,
+                new_draft=draft,
+                previous_identifier=None,
+                new_identifier=row.identity_id,
+                extreme_changes=[],
+            ),
+            commentary_policy=rule_evolution.NO_INHERITANCE,
+            source=source,
+            changed_by=changed_by,
+        )
         return materialize_catalog_rule(row)
 
 
@@ -232,48 +332,323 @@ def get_catalog_rule(rule_id: str) -> RuleSnapshot:
     return materialize_catalog_rule(_get_row(rule_id))
 
 
-def update_catalog_rule(rule_id: str, draft: dict[str, Any]) -> RuleEditResult:
+def _resolve_row_lineage(row: StoredValidationRule, *, source: str) -> RuleLineage:
+    if row.lineage_id is None:
+        return rule_evolution.ensure_lineage_for_row(row, source=source)
+    return RuleLineage.objects.get(lineage_id=row.lineage_id)
+
+
+def update_catalog_rule(
+    rule_id: str,
+    draft: dict[str, Any],
+    *,
+    save_decision: str | None = None,
+    source_identifier: str | None = None,
+    require_confirmation: bool = False,
+    source: str = "ui_edit",
+    changed_by: str | None = None,
+) -> RuleEditResult:
+    """Save an edited draft over an existing catalog rule.
+
+    ``save_decision`` accepts ``modify_current`` (default) or ``save_as_new``.
+    When ``require_confirmation`` is true (interactive saves), a canonically
+    changed edit that retains zero original conditions or zero original
+    expectations raises :class:`SaveDecisionRequired` before any write, and a
+    ``source_identifier`` that no longer matches the stored rule raises
+    :class:`StaleRevisionError`. Programmatic callers that omit both keep the
+    historical default: ordinary executable edits revise the current lineage.
+    """
+    if save_decision not in (None, "modify_current", "save_as_new"):
+        raise CatalogError(f"Invalid save_decision: {save_decision!r}")
     with transaction.atomic():
         state = _state()
         draft = normalize_rule_draft(draft)
         previous = _get_row(rule_id, lock=True)
+        lineage = _resolve_row_lineage(previous, source=source)
+        previous_identifier = previous.identity_id
+        if source_identifier is not None and source_identifier != previous_identifier:
+            current = materialize_catalog_rule(previous)
+            raise StaleRevisionError(
+                {
+                    "code": "rule_save_stale",
+                    "original_rule_id": rule_id,
+                    "original_identifier": source_identifier,
+                    "current_identifier": previous_identifier,
+                    "lineage_id": lineage.lineage_id,
+                    "revision_number": current.evolution_revision,
+                }
+            )
         new_identity = _register_identity_in_transaction(draft)
-        if previous.identity_id == new_identity.identifier:
+        new_identifier = new_identity.identifier
+        if new_identifier == previous_identifier:
+            # Canonical no-op or metadata-only edit: same executable identity,
+            # so no new executable revision and no recertification.
+            before = copy.deepcopy(previous.authored_payload)
+            if before == draft:
+                return RuleEditResult(
+                    previous_rule_id=rule_id,
+                    rule=materialize_catalog_rule(previous),
+                    save_decision=save_decision or "modify_current",
+                    lineage_id=lineage.lineage_id,
+                )
             previous.authored_payload = copy.deepcopy(draft)
             previous.save()
             _bump(state)
-            return RuleEditResult(rule_id, materialize_catalog_rule(previous))
-        target = (
-            StoredValidationRule.objects.select_for_update().filter(identity=new_identity).first()
-        )
-        position = previous.enabled_position
-        was_enabled = previous.enabled and previous.archived_at is None
-        previous.enabled = False
-        previous.enabled_position = None
-        previous.archived_at = timezone.now()
-        previous.save()
-        if target is None:
-            index = state.next_index
-            target = StoredValidationRule.objects.create(
-                identity=new_identity,
-                rule_id=_format_rule_id(index),
-                catalog_position=index,
-                authored_payload=copy.deepcopy(draft),
-                enabled=was_enabled,
-                enabled_position=position if was_enabled else None,
+            revision = previous.evolution_revision or rule_evolution.latest_revision_number(
+                lineage
             )
-            state.next_index = index + 1
-            state.save(update_fields=["next_index"])
-        else:
-            target.authored_payload = copy.deepcopy(draft)
-            target.archived_at = None
-            target.enabled = was_enabled
-            target.enabled_position = position if was_enabled else None
-            target.save()
-        previous.superseded_by = target
-        previous.save(update_fields=["superseded_by", "updated_at"])
-        _bump(state)
-        return RuleEditResult(rule_id, materialize_catalog_rule(target))
+            event = rule_evolution.record_event(
+                lineage=lineage,
+                revision_number=revision,
+                previous_event=rule_evolution.latest_event(lineage),
+                source_rule=previous,
+                target_rule=previous,
+                source_identifier=previous_identifier,
+                target_identifier=previous_identifier,
+                change_type=rule_evolution.METADATA_EDIT,
+                save_decision=save_decision or rule_evolution.MODIFY_CURRENT,
+                before_payload=before,
+                after_payload=copy.deepcopy(draft),
+                change_summary=rule_evolution.build_change_summary(
+                    previous_draft=before,
+                    new_draft=draft,
+                    previous_identifier=previous_identifier,
+                    new_identifier=new_identifier,
+                    extreme_changes=[],
+                ),
+                commentary_policy=rule_evolution.NO_INHERITANCE,
+                source=source,
+                changed_by=changed_by,
+            )
+            previous.evolution_revision = revision
+            previous.save(update_fields=["evolution_revision", "updated_at"])
+            snapshot = materialize_catalog_rule(previous)
+            return RuleEditResult(
+                previous_rule_id=rule_id,
+                rule=snapshot,
+                save_decision=save_decision or "modify_current",
+                evolution_event_id=event.event_id,
+                lineage_id=lineage.lineage_id,
+            )
+        extreme_changes = rule_evolution.detect_extensive_changes(
+            previous.authored_payload, draft
+        )
+        if extreme_changes and save_decision is None and require_confirmation:
+            raise SaveDecisionRequired(
+                {
+                    "code": "rule_save_decision_required",
+                    "message": "Choose whether to modify the current rule or save as new.",
+                    "original_rule_id": rule_id,
+                    "original_identifier": previous_identifier,
+                    "proposed_identifier": new_identifier,
+                    "extreme_changes": extreme_changes,
+                }
+            )
+        decision = save_decision or "modify_current"
+        before_payload = copy.deepcopy(previous.authored_payload)
+        if decision == "save_as_new":
+            return _save_draft_as_new(
+                state,
+                previous,
+                draft,
+                new_identity,
+                before_payload,
+                source=source,
+                changed_by=changed_by,
+            )
+        return _revise_current_rule(
+            state,
+            previous,
+            lineage,
+            draft,
+            new_identity,
+            before_payload,
+            extreme_changes,
+            source=source,
+            changed_by=changed_by,
+        )
+
+
+def _save_draft_as_new(
+    state: RuleStoreState,
+    previous: StoredValidationRule,
+    draft: dict[str, Any],
+    new_identity: ValidationRuleIdentity,
+    before_payload: dict[str, Any],
+    *,
+    source: str,
+    changed_by: str | None,
+) -> RuleEditResult:
+    """Fork a draft into a separate lineage; the source row is untouched."""
+    target = (
+        StoredValidationRule.objects.select_for_update()
+        .filter(identity=new_identity)
+        .first()
+    )
+    if target is not None:
+        # Canonical deduplication wins: reuse the equivalent definition and
+        # inform the caller instead of merging unrelated business lineages or
+        # transferring their commentary.
+        target_lineage = _resolve_row_lineage(target, source=source)
+        return RuleEditResult(
+            previous_rule_id=previous.rule_id,
+            rule=materialize_catalog_rule(target),
+            save_decision="save_as_new",
+            saved_as_new=True,
+            equivalent_rule_id=target.rule_id,
+            lineage_id=target_lineage.lineage_id,
+        )
+    index = state.next_index
+    row = StoredValidationRule.objects.create(
+        identity=new_identity,
+        rule_id=_format_rule_id(index),
+        catalog_position=index,
+        authored_payload=copy.deepcopy(draft),
+        enabled=True,
+        enabled_position=_enabled_position(),
+    )
+    state.next_index = index + 1
+    state.save(update_fields=["next_index"])
+    new_lineage = rule_evolution.create_lineage()
+    row.lineage = new_lineage
+    row.evolution_revision = 1
+    row.save(update_fields=["lineage", "evolution_revision", "updated_at"])
+    _bump(state)
+    event = rule_evolution.record_event(
+        lineage=new_lineage,
+        revision_number=1,
+        previous_event=None,
+        source_rule=previous,
+        target_rule=row,
+        source_identifier=previous.identity_id,
+        target_identifier=row.identity_id,
+        change_type=rule_evolution.SAVE_AS_NEW,
+        save_decision=rule_evolution.SAVE_AS_NEW_DECISION,
+        before_payload=before_payload,
+        after_payload=copy.deepcopy(draft),
+        change_summary=rule_evolution.build_change_summary(
+            previous_draft=before_payload,
+            new_draft=draft,
+            previous_identifier=previous.identity_id,
+            new_identifier=row.identity_id,
+            extreme_changes=rule_evolution.detect_extensive_changes(
+                before_payload, draft
+            ),
+        ),
+        commentary_policy=rule_evolution.NO_INHERITANCE,
+        source=source,
+        changed_by=changed_by,
+    )
+    return RuleEditResult(
+        previous_rule_id=previous.rule_id,
+        rule=materialize_catalog_rule(row),
+        save_decision="save_as_new",
+        saved_as_new=True,
+        evolution_event_id=event.event_id,
+        lineage_id=new_lineage.lineage_id,
+    )
+
+
+def _revise_current_rule(
+    state: RuleStoreState,
+    previous: StoredValidationRule,
+    lineage: RuleLineage,
+    draft: dict[str, Any],
+    new_identity: ValidationRuleIdentity,
+    before_payload: dict[str, Any],
+    extreme_changes: list[str],
+    *,
+    source: str,
+    changed_by: str | None,
+) -> RuleEditResult:
+    """Archive the old definition and link the new revision in one lineage."""
+    target = (
+        StoredValidationRule.objects.select_for_update()
+        .filter(identity=new_identity)
+        .first()
+    )
+    position = previous.enabled_position
+    was_enabled = previous.enabled and previous.archived_at is None
+    reversion = False
+    # Release the enabled slot before creating or reactivating the revision
+    # target: the partial unique constraint forbids two enabled rows sharing
+    # one position even transiently.
+    previous.enabled = False
+    previous.enabled_position = None
+    previous.archived_at = timezone.now()
+    previous.save()
+    if target is not None:
+        target_lineage = _resolve_row_lineage(target, source=source)
+        if target_lineage.lineage_id != lineage.lineage_id:
+            raise IdentityReuseConflict(
+                {
+                    "code": "rule_identity_reuse_conflict",
+                    "original_rule_id": previous.rule_id,
+                    "original_identifier": previous.identity_id,
+                    "proposed_identifier": new_identity.identifier,
+                    "existing_rule_id": target.rule_id,
+                    "existing_lineage_id": target_lineage.lineage_id,
+                }
+            )
+        # Reversion to an earlier definition of the same lineage: reactivate
+        # the row that already carries the proposed identity.
+        reversion = True
+        target.authored_payload = copy.deepcopy(draft)
+        target.archived_at = None
+        target.enabled = was_enabled
+        target.enabled_position = position if was_enabled else None
+        target.save()
+    else:
+        index = state.next_index
+        target = StoredValidationRule.objects.create(
+            identity=new_identity,
+            rule_id=_format_rule_id(index),
+            catalog_position=index,
+            authored_payload=copy.deepcopy(draft),
+            enabled=was_enabled,
+            enabled_position=position if was_enabled else None,
+        )
+        state.next_index = index + 1
+        state.save(update_fields=["next_index"])
+    previous.superseded_by = target
+    previous.save(update_fields=["superseded_by", "updated_at"])
+    target.lineage = lineage
+    revision = rule_evolution.latest_revision_number(lineage) + 1
+    previous_event = rule_evolution.latest_event(lineage)
+    event = rule_evolution.record_event(
+        lineage=lineage,
+        revision_number=revision,
+        previous_event=previous_event,
+        source_rule=previous,
+        target_rule=target,
+        source_identifier=previous.identity_id,
+        target_identifier=target.identity_id,
+        change_type=rule_evolution.EXECUTABLE_REVISION,
+        save_decision=rule_evolution.MODIFY_CURRENT,
+        before_payload=before_payload,
+        after_payload=copy.deepcopy(draft),
+        change_summary=rule_evolution.build_change_summary(
+            previous_draft=before_payload,
+            new_draft=draft,
+            previous_identifier=previous.identity_id,
+            new_identifier=target.identity_id,
+            extreme_changes=extreme_changes,
+            extra={"reversion": reversion},
+        ),
+        commentary_policy=rule_evolution.CARRY_FORWARD_RECERTIFICATION,
+        source=source,
+        changed_by=changed_by,
+    )
+    target.evolution_revision = revision
+    target.save(update_fields=["lineage", "evolution_revision", "updated_at"])
+    _bump(state)
+    return RuleEditResult(
+        previous_rule_id=previous.rule_id,
+        rule=materialize_catalog_rule(target),
+        save_decision="modify_current",
+        evolution_event_id=event.event_id,
+        lineage_id=lineage.lineage_id,
+    )
 
 
 def set_rule_enabled(rule_id: str, enabled: bool) -> RuleSnapshot:
@@ -344,7 +719,9 @@ def reorder_enabled_rules(rule_ids: list[str]) -> tuple[RuleSnapshot, ...]:
         return tuple(materialize_catalog_rule(_get_row(rule_id)) for rule_id in rule_ids)
 
 
-def archive_catalog_rule(rule_id: str) -> RuleSnapshot:
+def archive_catalog_rule(
+    rule_id: str, *, source: str = "archive", changed_by: str | None = None
+) -> RuleSnapshot:
     with transaction.atomic():
         state = _state()
         row = _get_row(rule_id, lock=True)
@@ -353,6 +730,33 @@ def archive_catalog_rule(rule_id: str) -> RuleSnapshot:
         row.archived_at = timezone.now()
         row.save()
         _bump(state)
+        lineage = _resolve_row_lineage(row, source=source)
+        revision = row.evolution_revision or rule_evolution.latest_revision_number(lineage)
+        rule_evolution.record_event(
+            lineage=lineage,
+            revision_number=revision,
+            previous_event=rule_evolution.latest_event(lineage),
+            source_rule=row,
+            target_rule=row,
+            source_identifier=row.identity_id,
+            target_identifier=row.identity_id,
+            change_type=rule_evolution.ARCHIVE,
+            save_decision=rule_evolution.SYSTEM_DECISION,
+            before_payload=copy.deepcopy(row.authored_payload),
+            after_payload=copy.deepcopy(row.authored_payload),
+            change_summary=rule_evolution.build_change_summary(
+                previous_draft=row.authored_payload,
+                new_draft=row.authored_payload,
+                previous_identifier=row.identity_id,
+                new_identifier=row.identity_id,
+                extreme_changes=[],
+            ),
+            commentary_policy=rule_evolution.NO_INHERITANCE,
+            source=source,
+            changed_by=changed_by,
+        )
+        row.evolution_revision = revision
+        row.save(update_fields=["evolution_revision", "updated_at"])
         return materialize_catalog_rule(row)
 
 
@@ -391,7 +795,9 @@ def configuration_conflicts(drafts: list[dict[str, Any]]) -> list[dict[str, Any]
     return conflicts
 
 
-def reinstate_catalog_rule(rule_id: str) -> RuleSnapshot:
+def reinstate_catalog_rule(
+    rule_id: str, *, source: str = "reinstate", changed_by: str | None = None
+) -> RuleSnapshot:
     with transaction.atomic():
         state = _state()
         row = _get_row(rule_id, lock=True)
@@ -401,6 +807,34 @@ def reinstate_catalog_rule(rule_id: str) -> RuleSnapshot:
         row.enabled_position = _enabled_position()
         row.save()
         _bump(state)
+        lineage = _resolve_row_lineage(row, source=source)
+        revision = row.evolution_revision or rule_evolution.latest_revision_number(lineage)
+        rule_evolution.record_event(
+            lineage=lineage,
+            revision_number=revision,
+            previous_event=rule_evolution.latest_event(lineage),
+            source_rule=None,
+            target_rule=row,
+            source_identifier=None,
+            target_identifier=row.identity_id,
+            change_type=rule_evolution.REINSTATE,
+            save_decision=rule_evolution.SYSTEM_DECISION,
+            before_payload=None,
+            after_payload=copy.deepcopy(row.authored_payload),
+            change_summary=rule_evolution.build_change_summary(
+                previous_draft=None,
+                new_draft=row.authored_payload,
+                previous_identifier=None,
+                new_identifier=row.identity_id,
+                extreme_changes=[],
+                extra={"cleared_predecessor_link": True},
+            ),
+            commentary_policy=rule_evolution.NO_INHERITANCE,
+            source=source,
+            changed_by=changed_by,
+        )
+        row.evolution_revision = revision
+        row.save(update_fields=["evolution_revision", "updated_at"])
         return materialize_catalog_rule(row)
 
 
@@ -481,8 +915,37 @@ def list_catalog_rules(cursor: str | None = None, page_size: int = 50) -> RulePa
 
 
 def apply_rule_configuration(
-    drafts: list[dict[str, Any]], *, config_name: str | None = None
+    drafts: list[dict[str, Any]],
+    *,
+    config_name: str | None = None,
+    source: str = "named_config_import",
+    lineage_hints: dict[int, str] | None = None,
+    changed_by: str | None = None,
 ) -> RuleImportResult:
+    """Apply a validated configuration with one consistent lineage policy.
+
+    - Unchanged canonical definitions reuse their lineage: no duplicate
+      events, and a repeated identical application changes nothing at all
+      (no catalog bump, no history rows).
+    - New unmatched identities become independent lineages with no
+      commentary inheritance.
+    - An explicit ``lineage_hints`` entry (1-based draft position to
+      lineage id, sourced from annotated YAML/config lineage metadata)
+      imports the draft as a revision of that lineage. Hints naming an
+      unknown lineage preserve the supplied id on a fresh lineage; hints
+      that contradict the located row's lineage, or name a lineage with no
+      catalog rows to revise, fail atomically with no partial mutation.
+    """
+    valid_sources = {
+        "yaml_import",
+        "named_config_import",
+        "startup_sync",
+        "ui_edit",
+        "copy",
+    }
+    if source not in valid_sources:
+        raise CatalogError(f"Invalid import source: {source!r}")
+    hints = dict(lineage_hints or {})
     with transaction.atomic():
         state = _state()
         drafts = [normalize_rule_draft(draft) for draft in drafts]
@@ -500,8 +963,19 @@ def apply_rule_configuration(
                     f"at entries {previous} and {position}"
                 )
             first_positions[identity.identifier] = position
+        for hint_position, hinted_id in hints.items():
+            if not isinstance(hinted_id, str) or not hinted_id:
+                raise CatalogError(
+                    f"Invalid lineage hint for configuration entry {hint_position}."
+                )
+        enabled_before = list(
+            StoredValidationRule.objects.filter(
+                enabled=True, archived_at__isnull=True
+            ).order_by("enabled_position", "catalog_position").values_list("rule_id", flat=True)
+        )
         bindings: dict[str, str] = {}
         imported = reused = 0
+        changed = False
         # Clear the old order before applying the imported enabled set. The
         # partial unique constraint otherwise rejects a position reused by a
         # newly imported or reordered rule.
@@ -512,11 +986,76 @@ def apply_rule_configuration(
             if row.enabled_position is not None:
                 row.enabled_position = None
                 row.save(update_fields=["enabled_position", "updated_at"])
-        for draft, identity in zip(drafts, identities, strict=True):
+        for position, (draft, identity) in enumerate(zip(drafts, identities, strict=True), start=1):
+            hinted_lineage_id = hints.get(position)
             existing_row = (
                 StoredValidationRule.objects.select_for_update().filter(identity=identity).first()
             )
-            if existing_row is None:
+            if existing_row is not None:
+                row = existing_row
+                reused += 1
+                row_lineage = _resolve_row_lineage(row, source=source)
+                if hinted_lineage_id is not None and hinted_lineage_id != row_lineage.lineage_id:
+                    raise IdentityReuseConflict(
+                        {
+                            "code": "rule_identity_reuse_conflict",
+                            "original_rule_id": row.rule_id,
+                            "original_identifier": identity.identifier,
+                            "proposed_identifier": identity.identifier,
+                            "existing_rule_id": row.rule_id,
+                            "existing_lineage_id": row_lineage.lineage_id,
+                        }
+                    )
+                before = copy.deepcopy(row.authored_payload)
+                if row.archived_at is not None or before != draft:
+                    was_archived = row.archived_at is not None
+                    row.authored_payload = copy.deepcopy(draft)
+                    row.archived_at = None
+                    revision = row.evolution_revision or rule_evolution.latest_revision_number(
+                        row_lineage
+                    )
+                    rule_evolution.record_event(
+                        lineage=row_lineage,
+                        revision_number=revision,
+                        previous_event=rule_evolution.latest_event(row_lineage),
+                        source_rule=None if was_archived else row,
+                        target_rule=row,
+                        source_identifier=None if was_archived else identity.identifier,
+                        target_identifier=identity.identifier,
+                        change_type=(
+                            rule_evolution.REINSTATE
+                            if was_archived
+                            else rule_evolution.METADATA_EDIT
+                        ),
+                        save_decision=rule_evolution.SYSTEM_DECISION,
+                        before_payload=None if was_archived else before,
+                        after_payload=copy.deepcopy(draft),
+                        change_summary=rule_evolution.build_change_summary(
+                            previous_draft=None if was_archived else before,
+                            new_draft=draft,
+                            previous_identifier=None if was_archived else identity.identifier,
+                            new_identifier=identity.identifier,
+                            extreme_changes=[],
+                        ),
+                        commentary_policy=rule_evolution.NO_INHERITANCE,
+                        source=source,
+                        changed_by=changed_by,
+                    )
+                    row.evolution_revision = revision
+                    changed = True
+            elif hinted_lineage_id is not None:
+                row = _import_hinted_revision(
+                    state,
+                    draft,
+                    identity,
+                    hinted_lineage_id,
+                    position,
+                    source=source,
+                    changed_by=changed_by,
+                )
+                imported += 1
+                changed = True
+            else:
                 index = state.next_index
                 row = StoredValidationRule.objects.create(
                     identity=identity,
@@ -525,12 +1064,35 @@ def apply_rule_configuration(
                     authored_payload=copy.deepcopy(draft),
                 )
                 state.next_index = index + 1
+                lineage = rule_evolution.create_lineage()
+                row.lineage = lineage
+                row.evolution_revision = 1
+                row.save(update_fields=["lineage", "evolution_revision", "updated_at"])
+                rule_evolution.record_event(
+                    lineage=lineage,
+                    revision_number=1,
+                    previous_event=None,
+                    source_rule=None,
+                    target_rule=row,
+                    source_identifier=None,
+                    target_identifier=identity.identifier,
+                    change_type=rule_evolution.CREATION,
+                    save_decision=rule_evolution.ORDINARY_CREATE,
+                    before_payload=None,
+                    after_payload=copy.deepcopy(draft),
+                    change_summary=rule_evolution.build_change_summary(
+                        previous_draft=None,
+                        new_draft=draft,
+                        previous_identifier=None,
+                        new_identifier=identity.identifier,
+                        extreme_changes=[],
+                    ),
+                    commentary_policy=rule_evolution.NO_INHERITANCE,
+                    source=source,
+                    changed_by=changed_by,
+                )
                 imported += 1
-            else:
-                row = existing_row
-                reused += 1
-                row.authored_payload = copy.deepcopy(draft)
-                row.archived_at = None
+                changed = True
             row.enabled = True
             row.enabled_position = drafts.index(draft) + 1
             row.save()
@@ -544,6 +1106,128 @@ def apply_rule_configuration(
             row.enabled = False
             row.enabled_position = None
             row.save(update_fields=["enabled", "enabled_position", "updated_at"])
+        # Bindings are inserted in file order, so their key order is the
+        # resulting enabled order. A repeated identical application leaves the
+        # enabled set untouched and records nothing.
+        if list(enabled_before) != list(bindings):
+            changed = True
         state.save(update_fields=["next_index"])
-        _bump(state)
+        if changed:
+            _bump(state)
         return RuleImportResult(len(drafts), imported, reused, bindings)
+
+
+def _import_hinted_revision(
+    state: RuleStoreState,
+    draft: dict[str, Any],
+    identity: ValidationRuleIdentity,
+    hinted_lineage_id: str,
+    position: int,
+    *,
+    source: str,
+    changed_by: str | None,
+) -> StoredValidationRule:
+    """Import one draft as an explicit revision of a hinted lineage."""
+    lineage = RuleLineage.objects.filter(lineage_id=hinted_lineage_id).first()
+    if lineage is None:
+        # Annotated lineage metadata on a fresh database: preserve the
+        # supplied lineage id on a new lineage instead of inventing a
+        # relationship to unrelated rows.
+        lineage, _ = rule_evolution.get_or_create_lineage(hinted_lineage_id)
+        index = state.next_index
+        row = StoredValidationRule.objects.create(
+            identity=identity,
+            rule_id=_format_rule_id(index),
+            catalog_position=index,
+            authored_payload=copy.deepcopy(draft),
+        )
+        state.next_index = index + 1
+        row.lineage = lineage
+        row.evolution_revision = 1
+        row.save(update_fields=["lineage", "evolution_revision", "updated_at"])
+        rule_evolution.record_event(
+            lineage=lineage,
+            revision_number=1,
+            previous_event=None,
+            source_rule=None,
+            target_rule=row,
+            source_identifier=None,
+            target_identifier=identity.identifier,
+            change_type=rule_evolution.CREATION,
+            save_decision=rule_evolution.ORDINARY_CREATE,
+            before_payload=None,
+            after_payload=copy.deepcopy(draft),
+            change_summary=rule_evolution.build_change_summary(
+                previous_draft=None,
+                new_draft=draft,
+                previous_identifier=None,
+                new_identifier=identity.identifier,
+                extreme_changes=[],
+                extra={"imported_lineage_id": hinted_lineage_id},
+            ),
+            commentary_policy=rule_evolution.NO_INHERITANCE,
+            source=source,
+            changed_by=changed_by,
+        )
+        return row
+    tip = (
+        StoredValidationRule.objects.select_for_update()
+        .filter(lineage=lineage)
+        .order_by("-evolution_revision", "-catalog_position")
+        .first()
+    )
+    if tip is None:
+        raise CatalogError(
+            f"Configuration entry {position} names lineage {hinted_lineage_id} "
+            "which has no catalog rows to revise."
+        )
+    tip_lineage = _resolve_row_lineage(tip, source=source)
+    before = copy.deepcopy(tip.authored_payload)
+    extreme_changes = rule_evolution.detect_extensive_changes(before, draft)
+    position_value = tip.enabled_position
+    was_enabled = tip.enabled and tip.archived_at is None
+    index = state.next_index
+    row = StoredValidationRule.objects.create(
+        identity=identity,
+        rule_id=_format_rule_id(index),
+        catalog_position=index,
+        authored_payload=copy.deepcopy(draft),
+        enabled=was_enabled,
+        enabled_position=position_value if was_enabled else None,
+    )
+    state.next_index = index + 1
+    tip.enabled = False
+    tip.enabled_position = None
+    tip.archived_at = timezone.now()
+    tip.save()
+    tip.superseded_by = row
+    tip.save(update_fields=["superseded_by", "updated_at"])
+    revision = rule_evolution.latest_revision_number(tip_lineage) + 1
+    rule_evolution.record_event(
+        lineage=tip_lineage,
+        revision_number=revision,
+        previous_event=rule_evolution.latest_event(tip_lineage),
+        source_rule=tip,
+        target_rule=row,
+        source_identifier=tip.identity_id,
+        target_identifier=identity.identifier,
+        change_type=rule_evolution.IMPORT_SYNC,
+        save_decision=rule_evolution.MODIFY_CURRENT,
+        before_payload=before,
+        after_payload=copy.deepcopy(draft),
+        change_summary=rule_evolution.build_change_summary(
+            previous_draft=before,
+            new_draft=draft,
+            previous_identifier=tip.identity_id,
+            new_identifier=identity.identifier,
+            extreme_changes=extreme_changes,
+            extra={"import_hinted_revision": True},
+        ),
+        commentary_policy=rule_evolution.CARRY_FORWARD_RECERTIFICATION,
+        source=source,
+        changed_by=changed_by,
+    )
+    row.lineage = tip_lineage
+    row.evolution_revision = revision
+    row.save(update_fields=["lineage", "evolution_revision", "updated_at"])
+    return row

@@ -8,7 +8,7 @@ from typing import Any
 
 DEFAULT_PAGE_SIZE = 50
 ALLOWED_PAGE_SIZES = (50, 100, 200, 500)
-STATUS_RANK = {"New": 0, "NotCommented": 0, "Commented": 1}
+STATUS_RANK = {"New": 0, "NotCommented": 0, "RecertificationRequired": 0, "Commented": 1}
 DETAIL_PREFIX = "detail:"
 
 

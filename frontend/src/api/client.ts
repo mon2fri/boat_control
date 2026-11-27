@@ -22,6 +22,24 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * User-facing message for a request failure. The transport only recognises
+ * legacy `error`/`detail` envelopes; rule-evolution 409 bodies carry the
+ * human-readable text under `message`, so prefer that when present rather
+ * than showing a bare status code.
+ */
+export function apiErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const detail = error.detail;
+    if (detail && typeof detail === "object" && "message" in detail) {
+      const message = (detail as { message?: unknown }).message;
+      if (typeof message === "string" && message.trim().length > 0) return message;
+    }
+    return error.message;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 /** Reject any URL that is not a same-origin relative path. */
 function assertRelativePath(path: string): void {
   if (/^[a-z]+:\/\//i.test(path) || path.startsWith("//")) {

@@ -191,7 +191,17 @@ def test_business_edit_replaces_visible_rule_and_archives_previous_version() -> 
     original = client.post("/api/rules/", draft(), format="json").json()
     edited = {**draft(target="pending"), "name": "Edited"}
 
-    response = client.put(f"/api/rules/{original['rule_id']}/", edited, format="json")
+    # Swapping the only expectation is an extensive edit, so the interactive
+    # save requires an explicit decision before it revises the lineage.
+    required = client.put(f"/api/rules/{original['rule_id']}/", edited, format="json")
+    assert required.status_code == 409
+    assert required.json()["code"] == "rule_save_decision_required"
+
+    response = client.put(
+        f"/api/rules/{original['rule_id']}/",
+        {**edited, "save_decision": "modify_current"},
+        format="json",
+    )
 
     assert response.status_code == 200
     assert response.json()["resulting_rule_id"] != original["rule_id"]

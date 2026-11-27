@@ -347,6 +347,20 @@ def _exception_table_columns(
     )
 
 
+def _violation_recertification(violation: Mapping[str, Any]) -> str:
+    """Pending-recertification marker for exception report tables.
+
+    Only pending rows show the marker; accepted or ordinary rows render blank
+    so reviewers can distinguish inherited text awaiting review. The marker is
+    the exact ``Recertification due to rule change`` reason carried with the
+    occurrence.
+    """
+
+    if not violation.get("recertification_required"):
+        return ""
+    return str(violation.get("recertification_reason") or "")
+
+
 def _render_exception_table(
     result: dict[str, Any], validation: dict[str, Any], key_columns: list[str]
 ) -> str:
@@ -361,6 +375,7 @@ def _render_exception_table(
         "Rule identifier",
         *(aggregation_labels.get(column, column) for column in aggregation_columns),
         *exception_columns,
+        "Recertification",
     ]
     data_rows: list[list[str]] = []
     for rule_id, violations in violations_by_rule.items():
@@ -383,6 +398,7 @@ def _render_exception_table(
                 or "Unavailable",
                 *(grouping.get(column, "—") for column in aggregation_columns),
                 *(extras.get(column, "—") for column in exception_columns),
+                _violation_recertification(violation),
             ]
             data_rows.append([str(value) if value is not None else "—" for value in row_values])
     if not data_rows:
@@ -1274,6 +1290,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
             agg_labels.get(col, col) for col in agg_columns
         ),
         *exception_cols,
+        "Recertification",
     ]
     _append_row(exc_sheet, 3, exc_headers)
     exc_row = 4
@@ -1307,6 +1324,7 @@ def export_excel(result: dict[str, Any], report_name: str) -> bytes:
                     *(
                         _excel_value(filtered_extra.get(col, "")) for col in exception_cols
                     ),
+                    _excel_value(_violation_recertification(violation)),
                 ],
             )
             exc_row += 1

@@ -4,20 +4,25 @@ import { ApiError } from "../api/client";
 import {
   downloadExceptionCommentaryTemplate,
   ExportError,
+  asRecertifyError,
 } from "../api/endpoints";
 import type {
   ExceptionStatus,
   ExceptionTrackingColumn,
+  RecertifySelection,
   TrackedException,
 } from "../api/domain";
+import { RECERTIFICATION_LABEL } from "../api/domain";
 import { defaultAsOfDate, formatIsoDate, isValidIsoDate } from "../lib/asOfDate";
 import { formatDateTime } from "../utils/format";
 import { AsOfDateSelector } from "../features/tracking/AsOfDateSelector";
 import {
   useExceptionTrackingDates,
   useImportCommentary,
+  useRecertify,
   useTrackedExceptions,
 } from "../features/tracking/useTracking";
+import { RecertificationBadge } from "../features/results/RecertificationBadge";
 import {
   EXCEPTION_TRACKING_DATES_KEY,
   EXCEPTION_TRACKING_KEY,
@@ -27,6 +32,7 @@ const STATUS_CLASS: Record<ExceptionStatus, string> = {
   New: "status-badge status-badge--new",
   Commented: "status-badge status-badge--commented",
   NotCommented: "status-badge status-badge--not-commented",
+  RecertificationRequired: "status-badge status-badge--recertification-required",
 };
 
 const PAGE_SIZES = [50, 100, 200, 500] as const;
@@ -93,6 +99,9 @@ export function ExceptionTrackingPage() {
 
   const listQuery = useTrackedExceptions(selectedDate, queryOptions);
   const importMutation = useImportCommentary(selectedDate);
+  const recertifyMutation = useRecertify(selectedDate);
+  /** Selected rows with their frozen revision tokens ("" when never carried). */
+  const [selected, setSelected] = useState<RecertifySelection[]>([]);
   const data = listQuery.data;
   const exceptions = useMemo(() => data?.exceptions ?? [], [data]);
   const columns = useMemo(() => data?.columns ?? [], [data]);
@@ -143,6 +152,60 @@ export function ExceptionTrackingPage() {
       return next;
     });
     resetPaging();
+  }
+
+  function toggleSelected(exceptionId: string, revisionToken: string, checked: boolean): void {
+    setSelected((current) =>
+      checked
+        ? [...current.filter((entry) => entry.exceptionId !== exceptionId), { exceptionId, revisionToken }]
+        : current.filter((entry) => entry.exceptionId !== exceptionId),
+    );
+  }
+
+  function togglePageSelection(checked: boolean): void {
+    const pageEntries = pageRows.map((row) => ({
+      exceptionId: row.exceptionId,
+      revisionToken: row.revisionToken ?? "",
+    }));
+    const pageIds = new Set(pageEntries.map((entry) => entry.exceptionId));
+    setSelected((current) =>
+      checked
+        ? [...current.filter((entry) => !pageIds.has(entry.exceptionId)), ...pageEntries]
+        : current.filter((entry) => !pageIds.has(entry.exceptionId)),
+    );
+  }
+
+  const selectedIdSet = new Set(selected.map((entry) => entry.exceptionId));
+
+  function handleRecertify(): void {
+    if (selected.length === 0 || recertifyMutation.isPending) return;
+    setNotice(null);
+    recertifyMutation.mutate(selected, {
+      onSuccess: (result) => {
+        setSelected([]);
+        const accepted = result.accepted.length;
+        const repeated = result.alreadyAccepted.length;
+        setNotice({
+          tone: "success",
+          text:
+            result.message ??
+            `Recertified ${accepted} exception(s)${
+              repeated > 0 ? ` (${repeated} already accepted)` : ""
+            } for ${formatIsoDate(result.asOfDate ?? selectedDate)}. The list has been refreshed.`,
+        });
+      },
+      onError: (error) => {
+        // Atomic failure: nothing was written, so the selection is kept for
+        // correction and retry. Frozen error codes name the affected IDs.
+        const recertifyError = asRecertifyError(error);
+        setNotice({
+          tone: "error",
+          text: recertifyError
+            ? `Recertification was rejected and nothing was accepted: ${recertifyError.message}`
+            : `Recertification was rejected and nothing was accepted: ${error.message}`,
+        });
+      },
+    });
   }
 
   async function handleDownload(): Promise<void> {
@@ -213,10 +276,45 @@ export function ExceptionTrackingPage() {
             idMessages.push(`${label}: ${values.map(String).join(", ")}`);
           }
         }
+        // Worker D (frozen Round-2): an invalid Commentary Recertify value
+        // rejects the whole file atomically with code
+        // `invalid_recertification_selection`; `details.invalid_rows[]`
+        // names each affected row for correction and retry.
+        const invalidRows = ids?.["invalid_rows"];
+        const rowMessages: string[] = [];
+        const primitiveText = (value: unknown): string | null => {
+          if (typeof value === "string") return value;
+          if (typeof value === "number" || typeof value === "boolean") return String(value);
+          return null;
+        };
+        if (Array.isArray(invalidRows)) {
+          for (const entry of invalidRows) {
+            if (!entry || typeof entry !== "object") continue;
+            const record = entry as Record<string, unknown>;
+            const parts: string[] = [];
+            const row = primitiveText(record["row"]);
+            if (row !== null) parts.push(`row ${row}`);
+            const exceptionId = primitiveText(record["exception_id"]);
+            if (exceptionId !== null) parts.push(exceptionId);
+            const value = primitiveText(record["value"]);
+            if (value !== null) parts.push(`value ${JSON.stringify(value)}`);
+            if (parts.length > 0) rowMessages.push(parts.join(" "));
+          }
+        }
+        const MAX_LISTED_ROWS = 5;
+        const listedRows = rowMessages.slice(0, MAX_LISTED_ROWS).join("; ");
+        const remainingRows = rowMessages.length > MAX_LISTED_ROWS
+          ? `; and ${rowMessages.length - MAX_LISTED_ROWS} more`
+          : "";
+        const extras: string[] = [];
+        if (idMessages.length > 0) extras.push(idMessages.join("; "));
+        if (rowMessages.length > 0) {
+          extras.push(`Invalid Commentary Recertify values: ${listedRows}${remainingRows}`);
+        }
         setNotice({
           tone: "error",
           text: `The commentary template was rejected: ${error.message}${
-            idMessages.length > 0 ? ` (${idMessages.join("; ")})` : ""
+            extras.length > 0 ? ` (${extras.join("; ")})` : ""
           }`,
         });
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -225,8 +323,49 @@ export function ExceptionTrackingPage() {
   }
 
   function renderCell(column: ExceptionTrackingColumn, row: TrackedException) {
-    if (column.key === "status") return <StatusBadge status={row.status} />;
-    if (column.key === "exception_id") return <code>{row.exceptionId}</code>;
+    if (column.key === "status") {
+      // Single status presentation: the status badge alone. Pending
+      // provenance (exact reason + carried-from detail) lives in the purple
+      // R marker beside the exception ID, as a title tooltip / accessible
+      // name — never as a second visible badge.
+      return (
+        <span className="tracking-status-cell">
+          <StatusBadge status={row.status} />
+        </span>
+      );
+    }
+    if (column.key === "recertification") {
+      return row.recertificationRequired ? (
+        <RecertificationBadge
+          reason={row.recertificationReason}
+          carriedFromExceptionId={row.carriedFromExceptionId}
+          carriedFromAsOfDate={row.carriedFromAsOfDate}
+          carriedFromRuleIdentifier={row.carriedFromRuleIdentifier}
+          ruleEvolutionEventId={row.ruleEvolutionEventId}
+        />
+      ) : (
+        "—"
+      );
+    }
+    if (column.key === "exception_id") {
+      return (
+        <span className="tracking-exception-id">
+          <code>{row.exceptionId}</code>
+          {row.recertificationRequired && (
+            <>
+              {" "}
+              <RecertificationBadge
+                reason={row.recertificationReason}
+                carriedFromExceptionId={row.carriedFromExceptionId}
+                carriedFromAsOfDate={row.carriedFromAsOfDate}
+                carriedFromRuleIdentifier={row.carriedFromRuleIdentifier}
+                ruleEvolutionEventId={row.ruleEvolutionEventId}
+              />
+            </>
+          )}
+        </span>
+      );
+    }
     if (column.key === "commentary") {
       return <span className="tracking-commentary">{row.exceptionCommentary || "—"}</span>;
     }
@@ -237,6 +376,10 @@ export function ExceptionTrackingPage() {
     if (column.key === "exception_as_of_date") return row.exceptionAsOfDate;
     if (column.key === "exception_first_seen_as_of_date") return row.exceptionFirstSeenAsOfDate;
     if (column.key === "exception_last_seen_as_of_date") return row.exceptionLastSeenAsOfDate;
+    if (column.key === "carried_from_exception_id") return row.carriedFromExceptionId || "—";
+    if (column.key === "carried_from_as_of_date") return row.carriedFromAsOfDate || "—";
+    if (column.key === "carried_from_rule_identifier") return row.carriedFromRuleIdentifier || "—";
+    if (column.key === "rule_evolution_event_id") return row.ruleEvolutionEventId || "—";
     if (column.key.startsWith("detail:")) {
       return row.detailValues[detailName(column)] || "—";
     }
@@ -265,6 +408,7 @@ export function ExceptionTrackingPage() {
             setNotice(null);
             setFilters({});
             setSort(null);
+            setSelected([]);
             resetPaging();
           }}
         />
@@ -328,8 +472,19 @@ export function ExceptionTrackingPage() {
         )}
         <p className="field-hint">
           Unknown, duplicate or mismatched exception IDs are rejected as a whole; no partial
-          commentary updates are applied. Columns after the standard tracking metadata are
-          informational and ignored.
+          commentary updates are applied. Downloaded templates end the metadata columns with{" "}
+          <strong>Commentary Recertify</strong> (blank default; Keep Current/Updated dropdown)
+          — the six provenance columns are removed, and pending recertification shows via
+          Exception Status instead. For pending rows, Keep Current accepts the stored
+          commentary as-is (clearing pending: Commented when text is present, otherwise Not
+          Commented/New); Updated stores the sheet text and clears pending (an empty cell
+          deliberately clears it to Not Commented, while unchanged text counts as acceptance
+          to Commented); a blank cell preserves everything. For ordinary commented rows, a
+          nonempty cell accepts the text (even from a stale template) and an empty cell
+          preserves it. An invalid Commentary Recertify value rejects the whole file; the
+          error names each affected row (row number, exception ID, value). Uploading
+          commentary text never recertifies carried commentary — use{" "}
+          <strong>Recertify selected</strong> below to accept it, including unchanged text.
         </p>
       </div>
 
@@ -338,7 +493,48 @@ export function ExceptionTrackingPage() {
           <span>As-of Date: <strong>{isValidIsoDate(selectedDate) ? formatIsoDate(selectedDate) : selectedDate}</strong></span>
           <span>Filtered total: <strong>{total}</strong></span>
           <span>All rows: <strong>{unfilteredTotal}</strong></span>
+          <span>Pending recertification on this page: <strong>{pageRows.filter((row) => row.recertificationRequired).length}</strong></span>
+          <span>Selected: <strong>{selected.length}</strong></span>
         </div>
+
+        {(data?.carryWarnings ?? []).length > 0 && (
+          <div className="alert alert--warn" role="status">
+            <strong>Carry warnings:</strong> predecessor ambiguity meant no commentary
+            was carried for some exceptions — nothing was guessed.
+            <ul>
+              {(data?.carryWarnings ?? []).map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="config-inline-row tracking-recertify-bar">
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={handleRecertify}
+            disabled={selected.length === 0 || recertifyMutation.isPending || dateInvalid}
+            title="Explicitly accept the carried commentary for the selected exceptions, including unchanged text"
+          >
+            {recertifyMutation.isPending ? "Recertifying…" : `Recertify selected (${selected.length})`}
+          </button>
+          {selected.length > 0 && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() => setSelected([])}
+              disabled={recertifyMutation.isPending}
+            >
+              Clear selection
+            </button>
+          )}
+        </div>
+        <p className="field-hint">
+          Pending recertification (“{RECERTIFICATION_LABEL}”) stays reviewable even when its
+          commentary text is nonblank: selecting the row and using Recertify selected accepts
+          it for the current rule revision. Uploading an unchanged template never accepts it.
+        </p>
 
         <details className="tracking-column-chooser">
           <summary>
@@ -394,6 +590,21 @@ export function ExceptionTrackingPage() {
                 </caption>
                 <thead>
                   <tr>
+                    <th scope="col">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all exceptions on this page"
+                        checked={pageRows.length > 0 && pageRows.every((row) => selectedIdSet.has(row.exceptionId))}
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate =
+                              pageRows.some((row) => selectedIdSet.has(row.exceptionId)) &&
+                              !pageRows.every((row) => selectedIdSet.has(row.exceptionId));
+                          }
+                        }}
+                        onChange={(event) => togglePageSelection(event.target.checked)}
+                      />
+                    </th>
                     {visibleColumnDefs.map((column) => (
                       <th key={column.key} scope="col" aria-sort={
                         sort?.key === column.key
@@ -430,6 +641,14 @@ export function ExceptionTrackingPage() {
                 <tbody>
                   {pageRows.map((exception) => (
                     <tr key={exception.exceptionId}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select exception ${exception.exceptionId}`}
+                          checked={selectedIdSet.has(exception.exceptionId)}
+                          onChange={(event) => toggleSelected(exception.exceptionId, exception.revisionToken ?? "", event.target.checked)}
+                        />
+                      </td>
                       {visibleColumnDefs.map((column) => (
                         <td key={column.key} className={
                           column.key === "commentary" || column.key.startsWith("detail:")

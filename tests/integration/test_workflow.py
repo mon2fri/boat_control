@@ -101,9 +101,28 @@ class TestRulesWorkflow:
             },
             format="json",
         )
+        # Replacing the only expectation is an extensive edit, so the
+        # interactive save requires an explicit decision first.
+        assert response.status_code == 409
+        assert response.json()["code"] == "rule_save_decision_required"
+
+        response = api_client.put(
+            f"/api/rules/{rule_id}/",
+            {
+                "name": "Updated Rule",
+                "logic": {
+                    "format": "value_vs_column",
+                    "column_name": "status",
+                    "operator": "eq",
+                    "target_value": "inactive",
+                },
+                "save_decision": "modify_current",
+            },
+            format="json",
+        )
         assert response.status_code == 200
 
-        response = api_client.delete(f"/api/rules/{rule_id}/")
+        response = api_client.delete(f"/api/rules/{response.json()['resulting_rule_id']}/")
         assert response.status_code == 200
 
 

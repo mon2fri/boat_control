@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWorkflow } from "../state/WorkflowContext";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RuleEditor } from "../features/rules/RuleEditor";
 import { RuleEditorOverlay } from "../features/rules/RuleEditorOverlay";
+import { SaveDecisionDialog, type SaveDecisionConflict } from "../features/rules/SaveDecisionDialog";
+import { RuleHistoryPanel } from "../features/rules/RuleHistoryPanel";
 import { useCreateRule, useDeleteRule, useReorderRules, useRules, useSetRulesEnabled, useUpdateRule } from "../features/rules/useRules";
 import { SortableRuleList } from "../features/rules/SortableRuleList";
 import { useFamilies } from "../features/settings/useSettings";
@@ -12,9 +14,9 @@ import { ConfigLoader } from "../features/configs/ConfigLoader";
 import { ConfigManager } from "../features/configs/ConfigManager";
 import { mapRuleToWireDraft } from "../api/mapping";
 import { mapRulesToConfigContent, resolveRulesConfig } from "../api/configContent";
-import { importRulesConfig } from "../api/endpoints";
-import { ApiError } from "../api/client";
-import type { Rule, RuleDraft } from "../api/domain";
+import { importRulesConfig, asRuleSaveDecisionRequired, asRuleSaveStale, asRuleIdentityReuseConflict } from "../api/endpoints";
+import { ApiError, apiErrorMessage } from "../api/client";
+import type { Rule, RuleDraft, SaveDecision } from "../api/domain";
 
 const RULES_KEY = ["rules"] as const;
 const CONTINUATION_CATALOG_PAGE_SIZE = 10;
@@ -37,6 +39,21 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
   const [editor, setEditor] = useState<EditorState>({ mode: "closed" });
   const [pendingDelete, setPendingDelete] = useState<Rule | null>(null);
   const [deleteAllConfirm, setDeleteAllConfirm] = useState(false);
+  /**
+   * Extensive-edit decision state. While set, the editor stays open with the
+   * draft intact and the prompt renders inside the editor overlay (within the
+   * native modal's top layer). Cleared only by an explicit choice or a
+   * successful save — never by dismissal, which returns to editing.
+   */
+  const [pendingDecision, setPendingDecision] = useState<{
+    rule: Rule;
+    draft: RuleDraft;
+    conflict: SaveDecisionConflict;
+  } | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [historyRule, setHistoryRule] = useState<Rule | null>(null);
+  /** Latest edit draft, retained so a 409 prompt can retry without retyping. */
+  const lastDraftRef = useRef<RuleDraft | null>(null);
   const [configLoadName, setConfigLoadName] = useState<string | null>(null);
   const [loadedConfigData, setLoadedConfigData] = useState<unknown>(null);
   const [loadedConfigName, setLoadedConfigName] = useState<string | null>(null);
@@ -55,6 +72,9 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
   function openEditor(next: EditorState): void {
     createRule.reset();
     updateRule.reset();
+    setPendingDecision(null);
+    setDecisionError(null);
+    lastDraftRef.current = null;
     setEditor(next);
   }
 
@@ -243,24 +263,131 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
     );
   }
 
+  function handleUpdateSuccess(updated: {
+    previousRuleId?: string;
+    resultingRuleId?: string;
+    savedAsNew?: boolean;
+    newRuleId?: string;
+    index: string;
+  }): void {
+    if (updated.savedAsNew || (updated.newRuleId && !updated.previousRuleId)) {
+      // Save as new: preserve the source selection and add the new rule
+      // rather than replacing the source's selected ID.
+      const newId = updated.newRuleId ?? updated.resultingRuleId ?? updated.index;
+      dispatch({
+        type: "setSelectedRules",
+        ruleIndexes: [...new Set([...selected, newId])],
+      });
+    } else if (updated.resultingRuleId && updated.previousRuleId) {
+      dispatch({
+        type: "setSelectedRules",
+        ruleIndexes: selected
+          .map((id) => id === updated.previousRuleId ? updated.resultingRuleId! : id),
+      });
+    }
+    setPendingDecision(null);
+    setDecisionError(null);
+    setEditor({ mode: "closed" });
+  }
+
+  /** User-facing save failure text. Frozen 409 bodies carry their fields
+   * (not an `error` envelope), so typed conflicts surface their constructed
+   * messages instead of a bare status code. */
+  function describeSaveError(error: Error): string {
+    return (
+      asRuleSaveStale(error)?.message ??
+      asRuleIdentityReuseConflict(error)?.message ??
+      apiErrorMessage(error)
+    );
+  }
+
+  function handleSaveError(error: Error): void {    // A 409 decision prompt keeps the editor open with the draft intact and
+    // moves the failure into the in-overlay decision prompt.
+    const decision = asRuleSaveDecisionRequired(error);
+    if (decision && editor.mode === "edit") {
+      setDecisionError(null);
+      updateRule.reset();
+      setPendingDecision({
+        rule: editor.rule,
+        draft: lastDraftRef.current ?? ({ name: "" } as RuleDraft),
+        conflict: {
+          originalRuleId: decision.originalRuleId,
+          originalIdentifier: decision.originalIdentifier,
+          proposedIdentifier: decision.proposedIdentifier,
+          extremeChanges: decision.extremeChanges,
+          serverMessage: decision.serverMessage,
+        },
+      });
+      return;
+    }
+    // A stale source must never apply an old confirmation to new content:
+    // collapse any open prompt and surface the message with the draft intact.
+    // An identity-reuse conflict must not merge lineages: surface it in the
+    // editor and keep the draft for explicit handling.
+    if (asRuleSaveStale(error) || asRuleIdentityReuseConflict(error)) {
+      setPendingDecision(null);
+      setDecisionError(null);
+    }
+  }
+
+  function retryWithDecision(decision: SaveDecision): void {
+    if (editor.mode !== "edit" || !pendingDecision) return;
+    setDecisionError(null);
+    // Frozen concurrency token: the identifier the edit started from.
+    const sourceIdentifier =
+      pendingDecision.rule.identifier ?? pendingDecision.conflict.originalIdentifier;
+    updateRule.mutate(
+      {
+        index: pendingDecision.rule.index,
+        draft: pendingDecision.draft,
+        saveDecision: decision,
+        sourceIdentifier,
+      },
+      {
+        onSuccess: handleUpdateSuccess,
+        onError: (error: Error) => {
+          // A repeated decision prompt refreshes the conflict context; any
+          // other failure stays on the prompt with the draft intact.
+          const again = asRuleSaveDecisionRequired(error);
+          if (again) {
+            setPendingDecision((current) => current && {
+              rule: current.rule,
+              draft: current.draft,
+              conflict: {
+                originalRuleId: again.originalRuleId,
+                originalIdentifier: again.originalIdentifier,
+                proposedIdentifier: again.proposedIdentifier,
+                extremeChanges: again.extremeChanges,
+                serverMessage: again.serverMessage,
+              },
+            });
+            return;
+          }
+          if (asRuleSaveStale(error)) {
+            setPendingDecision(null);
+            return;
+          }
+          // Identity-reuse conflicts stay on the prompt: the draft is kept
+          // and no lineage is merged; Back to editing revises it explicitly.
+          setDecisionError(describeSaveError(error));
+        },
+      },
+    );
+  }
+
   function handleSave(draft: RuleDraft): void {
     if (editor.mode === "edit") {
+      lastDraftRef.current = draft;
       updateRule.mutate(
         { index: editor.rule.index, draft },
         {
-          onSuccess: (updated) => {
-            if (updated.resultingRuleId && updated.previousRuleId) {
-              dispatch({
-                type: "setSelectedRules",
-                ruleIndexes: selected
-                  .map((id) => id === updated.previousRuleId ? updated.resultingRuleId! : id),
-              });
-            }
-            setEditor({ mode: "closed" });
-          },
+          onSuccess: handleUpdateSuccess,
+          onError: handleSaveError,
         },
       );
     } else {
+      // Copy and create stay new-rule workflows: they never carry a save
+      // decision and never replace an existing selection.
       createRule.mutate(draft, {
         onSuccess: (created) => {
            if (created.equivalentRuleId) {
@@ -281,8 +408,8 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
 
   const saveError =
     editor.mode === "edit"
-      ? updateRule.error?.message ?? null
-      : createRule.error?.message ?? null;
+      ? (updateRule.error ? describeSaveError(updateRule.error) : null)
+      : (createRule.error ? apiErrorMessage(createRule.error) : null);
 
   const editorOverlay = editor.mode !== "closed" ? (
     <RuleEditorOverlay>
@@ -298,7 +425,30 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
         onSave={handleSave}
         onCancel={() => setEditor({ mode: "closed" })}
       />
+      {pendingDecision && editor.mode === "edit" && (
+        <SaveDecisionDialog
+          original={pendingDecision.rule}
+          draft={pendingDecision.draft}
+          conflict={pendingDecision.conflict}
+          retryError={decisionError}
+          retrying={updateRule.isPending}
+          onModifyCurrent={() => retryWithDecision("modify_current")}
+          onSaveAsNew={() => retryWithDecision("save_as_new")}
+          onBackToEditing={() => {
+            setPendingDecision(null);
+            setDecisionError(null);
+          }}
+        />
+      )}
     </RuleEditorOverlay>
+  ) : null;
+
+  const historyPanel = historyRule ? (
+    <RuleHistoryPanel
+      ruleId={historyRule.index}
+      ruleName={historyRule.name}
+      onClose={() => setHistoryRule(null)}
+    />
   ) : null;
 
   if (embedded) {
@@ -351,6 +501,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                     onToggleAll={toggleAll}
                     onEdit={(rule) => openEditor({ mode: "edit", rule })}
                     onCopy={(rule) => openEditor({ mode: "copy", rule })}
+                    onHistory={setHistoryRule}
                     onDelete={setPendingDelete}
                     onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}
                     serverPaged
@@ -447,6 +598,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
         )}
         </fieldset>
         {editorOverlay}
+        {historyPanel}
 
         <ConfirmDialog
           title="Delete rule?"
@@ -524,6 +676,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
                 onToggleAll={toggleAll}
                 onEdit={(rule) => openEditor({ mode: "edit", rule })}
                 onCopy={(rule) => openEditor({ mode: "copy", rule })}
+                onHistory={setHistoryRule}
                 onDelete={setPendingDelete}
                 onReorder={(ruleIds) => reorderRules.mutate(ruleIds)}
                 serverPaged
@@ -550,6 +703,7 @@ export function RulesPage({ embedded = false, disabled = false, columnValues = {
           </div>
 
           {editorOverlay}
+          {historyPanel}
         </>
       )}
 

@@ -30,6 +30,7 @@ from apps.rules.identifiers import RuleIdentityError, calculate_rule_identifier
 from apps.rules.models import StoredValidationRule
 from apps.rules.repository import (
     CatalogError,
+    IdentityReuseConflict,
     RuleConfigConflict,
     apply_rule_configuration,
     configuration_conflicts,
@@ -205,6 +206,8 @@ class RulesConfigDetailView(BaseConfigDetailView):
                 else 400
             )
             return Response({"error": str(exc)}, status=status)
+        except IdentityReuseConflict as exc:
+            return Response({**exc.details, "error": str(exc)}, status=409)
         return Response({"name": config.name, "version": config.version, **result})
 
 
@@ -213,6 +216,9 @@ class RuleConfigImportView(APIView):  # type: ignore[misc]
         content = request.data.get("content", request.data.get("rules", []))
         config_name = request.data.get("config_name")
         decisions = request.data.get("decisions")
+        source = request.data.get("source") or (
+            "named_config_import" if config_name or isinstance(decisions, dict) else "yaml_import"
+        )
         try:
             return Response(
                 _import_rule_content(
@@ -220,12 +226,15 @@ class RuleConfigImportView(APIView):  # type: ignore[misc]
                     config_name=config_name,
                     decisions=decisions,
                     persist_config=bool(decisions),
+                    source=source,
                 )
             )
         except serializers.ValidationError as exc:
             return Response({"error": str(exc.detail)}, status=400)
         except RuleConfigConflict as exc:
             return Response({"error": str(exc), "conflicts": exc.conflicts}, status=409)
+        except IdentityReuseConflict as exc:
+            return Response({**exc.details, "error": str(exc)}, status=409)
         except (CatalogError, ValueError) as exc:
             return Response({"error": str(exc)}, status=400)
 
@@ -237,14 +246,20 @@ def _enabled_rule_payload() -> list[dict[str, Any]]:
 def _rule_snapshot_payload(snapshot: Any) -> dict[str, Any]:
     # The shared serializer includes the executable grouping tree and the
     # complete outcome expression (legacy ``logic`` or grouped clauses) so an
-    # export/import round trip cannot silently drop grouping.
-    return {
+    # export/import round trip cannot silently drop grouping. The lineage id
+    # is explicit revision metadata: an annotated reimport may revise that
+    # lineage, while unannotated payloads always import as independent rules.
+    payload = {
         "rule_identifier": snapshot.rule_identifier,
         **rule_definition_payload(
             snapshot.rule,
             include_empty_target_values=True,
         ),
     }
+    lineage_id = getattr(snapshot, "lineage_id", None)
+    if lineage_id is not None:
+        payload["lineage_id"] = lineage_id
+    return payload
 
 
 def _import_rule_content(
@@ -253,6 +268,7 @@ def _import_rule_content(
     config_name: str | None = None,
     decisions: dict[str, str] | None = None,
     persist_config: bool = False,
+    source: str = "named_config_import",
 ) -> dict[str, Any]:
     if isinstance(content, dict):
         if isinstance(content.get("items"), list):
@@ -268,12 +284,23 @@ def _import_rule_content(
             raise ValueError(f"Rule {index} must be an object.")
         supplied_identifier = raw_draft.get("rule_identifier")
         if supplied_identifier is not None:
+            # Lineage metadata is not part of the executable definition and
+            # must not affect the hash check below.
             draft_without_identifier = {
-                key: value for key, value in raw_draft.items() if key != "rule_identifier"
+                key: value
+                for key, value in raw_draft.items()
+                if key not in ("rule_identifier", "lineage_id")
             }
             expected_identifier = calculate_rule_identifier(draft_without_identifier)
             if supplied_identifier != expected_identifier:
                 raise ValueError(f"Rule {index} has a mismatching rule_identifier.")
+    # Explicit revision metadata: 1-based draft position to lineage id.
+    # Unannotated drafts carry no hint and import as independent rules.
+    lineage_hints = {
+        index: raw_draft["lineage_id"]
+        for index, raw_draft in enumerate(drafts, start=1)
+        if isinstance(raw_draft, dict) and raw_draft.get("lineage_id")
+    }
     serializer = RuleSerializer(data=drafts, many=True)
     serializer.is_valid(raise_exception=True)
     validated = [dict(item) for item in serializer.validated_data]
@@ -321,14 +348,26 @@ def _import_rule_content(
                 continue
             raise RuleConfigConflict([conflict])
         validated = resolved
-    result = apply_rule_configuration(validated, config_name=config_name)
+    result = apply_rule_configuration(
+        validated, config_name=config_name, lineage_hints=lineage_hints, source=source
+    )
     if persist_config and config_name:
         existing = get_config(get_rule_config_dir(), config_name)
         if existing is not None:
-            persisted = [
-                {"rule_identifier": calculate_rule_identifier(draft), **draft}
-                for draft in validated
-            ]
+            persisted = []
+            for rule_id, identifier in result.bindings.items():
+                stored = StoredValidationRule.objects.filter(rule_id=rule_id).first()
+                matched: dict[str, Any] | None = None
+                for item in validated:
+                    if calculate_rule_identifier(item) == identifier:
+                        matched = item
+                        break
+                entry: dict[str, Any] = {"rule_identifier": identifier}
+                if matched is not None:
+                    entry.update(matched)
+                if stored is not None and stored.lineage_id is not None:
+                    entry["lineage_id"] = stored.lineage_id
+                persisted.append(entry)
             update_config(get_rule_config_dir(), config_name, persisted, existing.version)
     return {
         "imported": result.imported,

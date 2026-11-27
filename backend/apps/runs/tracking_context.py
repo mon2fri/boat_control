@@ -40,9 +40,9 @@ from apps.runs.tracking_capture import (
 logger = logging.getLogger(__name__)
 
 CONTEXT_REPOSITORY_MODULE = "apps.exception_tracking.repository"
-NEW_EXCEPTION_STATUSES = frozenset({"New", "NotCommented"})
-ALL_STATUSES = frozenset({"New", "Commented", "NotCommented"})
-STATUS_ORDER = {"New": 0, "NotCommented": 1, "Commented": 2}
+NEW_EXCEPTION_STATUSES = frozenset({"New", "NotCommented", "RecertificationRequired"})
+ALL_STATUSES = frozenset({"New", "Commented", "NotCommented", "RecertificationRequired"})
+STATUS_ORDER = {"New": 0, "NotCommented": 1, "RecertificationRequired": 0, "Commented": 2}
 
 
 def parse_new_exceptions_only(value: object | None, *, default: bool = True) -> bool:
@@ -131,7 +131,28 @@ def _record_identity(record: object) -> tuple[str, tuple[tuple[str, str], ...]] 
     return identifier, pairs
 
 
+def _record_pending(record: object) -> bool:
+    """Whether a tracking record requires commentary recertification.
+
+    Pending recertification must never be inferred from commentary text: a
+    ``commentary.strip()`` check would collapse inherited text into an
+    accepted comment and hide the item from review.
+    """
+
+    for field_name in ("recertification_required",):
+        value = getattr(record, field_name, None)
+        if value is True:
+            return True
+        if isinstance(value, int) and value == 1:
+            return True
+        if isinstance(value, str) and value.strip().lower() in {"1", "true"}:
+            return True
+    return False
+
+
 def _record_status(record: object) -> str | None:
+    if _record_pending(record):
+        return "RecertificationRequired"
     status = getattr(record, "status", None)
     if isinstance(status, str) and status in ALL_STATUSES:
         return status
@@ -147,6 +168,40 @@ def _record_status(record: object) -> str | None:
     return None
 
 
+def _optional_record_text(record: object, field_name: str) -> str:
+    value = getattr(record, field_name, None)
+    if value is None:
+        return ""
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return str(value)
+
+
+def _record_recert(record: object) -> dict[str, str | bool]:
+    """Extract additive recertification provenance for report payloads."""
+
+    pending = _record_pending(record)
+    return {
+        "recertification_required": pending,
+        "recertification_reason": _optional_record_text(record, "recertification_reason"),
+        "carried_from_exception_id": _optional_record_text(
+            record, "carried_from_exception_id"
+        ),
+        "carried_from_as_of_date": _optional_record_text(
+            record, "carried_from_as_of_date"
+        ),
+        "carried_from_rule_identifier": _optional_record_text(
+            record, "carried_from_rule_identifier"
+        ),
+        "rule_evolution_event_id": _optional_record_text(
+            record, "rule_evolution_event_id"
+        ),
+        "recertified_at": _optional_record_text(record, "recertified_at"),
+        "revision_token": _optional_record_text(record, "revision_token")
+        or _optional_record_text(record, "rule_evolution_event_id"),
+    }
+
+
 def _record_context(
     as_of_date: date,
     *,
@@ -155,6 +210,7 @@ def _record_context(
 ) -> tuple[
     dict[tuple[str, tuple[tuple[str, str], ...]], tuple[str | None, str | None]],
     dict[str, tuple[str | None, str | None]],
+    dict[str, dict[str, str | bool]],
 ]:
     records = list_exception_records(
         as_of_date, db_path=db_path, repository=repository
@@ -163,6 +219,7 @@ def _record_context(
         tuple[str, tuple[tuple[str, str], ...]], tuple[str | None, str | None]
     ] = {}
     by_id: dict[str, tuple[str | None, str | None]] = {}
+    recert_by_id: dict[str, dict[str, str | bool]] = {}
     for record in records:
         context = (
             getattr(record, "exception_id", None),
@@ -174,7 +231,8 @@ def _record_context(
         exception_id = getattr(record, "exception_id", None)
         if isinstance(exception_id, str) and exception_id:
             by_id[exception_id] = context
-    return by_identity, by_id
+            recert_by_id[exception_id] = _record_recert(record)
+    return by_identity, by_id, recert_by_id
 
 
 def enrich_execution_result(
@@ -187,7 +245,7 @@ def enrich_execution_result(
 ) -> ExecutionResult:
     """Attach authoritative exception IDs/statuses to a just-captured run."""
 
-    by_identity, by_id = _record_context(
+    by_identity, by_id, _ = _record_context(
         as_of_date, db_path=db_path, repository=repository
     )
     enriched: dict[str, list[ValidationViolation]] = {}
@@ -282,7 +340,7 @@ def refresh_result_dict(
         return refreshed
     try:
         parsed_date = parse_as_of_date(as_of_date)
-        by_identity, by_id = _record_context(
+        by_identity, by_id, recert_by_id = _record_context(
             parsed_date, db_path=db_path, repository=repository
         )
     except (AsOfDateError, ExceptionCaptureError, OSError, ValueError) as exc:
@@ -315,6 +373,9 @@ def refresh_result_dict(
                 violation["exception_id"] = exception_id
             if status is not None:
                 violation["exception_status"] = status
+            recert = recert_by_id.get(str(violation.get("exception_id") or ""))
+            if recert is not None:
+                violation.update(recert)
     return refreshed
 
 

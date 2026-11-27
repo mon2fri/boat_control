@@ -26,7 +26,10 @@ import type {
   LogicOperator,
   OverallSummary,
   PresetSource,
+  RecertifyResult,
   Rule,
+  RuleHistory,
+  RuleHistoryEvent,
   RuleResult,
   RunResult,
   RunSummary,
@@ -49,6 +52,8 @@ import type {
   WireLogic,
   WirePresetSource,
   WireRule,
+  WireRuleHistoryEvent,
+  WireRuleHistoryResponse,
   WireRunDocument,
   LegacyWireRunDocument,
   WireRunMetadata,
@@ -422,6 +427,8 @@ export function mapWireRule(rule: WireRule): Rule {
   return {
     index: rule.rule_id,
     identifier: rule.rule_identifier ?? null,
+    ...(rule.lineage_id ? { lineageId: rule.lineage_id } : {}),
+    ...(rule.revision_number !== undefined ? { revisionNumber: rule.revision_number } : {}),
     ...(rule.equivalent_rule_id ? { equivalentRuleId: rule.equivalent_rule_id } : {}),
     enabled: rule.enabled ?? false,
     enabledPosition: rule.enabled_position ?? null,
@@ -685,7 +692,7 @@ export function mapViolation(
     options.keyColumnNames ?? Object.keys(violation.key_columns),
     keyColumns,
   );
-  return {
+  const row: DetailRow = {
     rowKey: `${rowKeyOf(violation.key_columns, violation.row_index)}#${index}`,
     ...(exceptionId ? { exceptionId } : {}),
     keyColumns,
@@ -706,6 +713,44 @@ export function mapViolation(
       : {}),
     ...(aggregationValues ? { aggregationValues } : {}),
   };
+  // Rule-evolution review state rides the violation through to rendered
+  // results + reloaded historical reports; a current-catalog lookup must
+  // never overwrite these persisted historical definitions.
+  const reviewStatus = normalizeReviewStatus(
+    (violation as { exception_status?: unknown }).exception_status,
+  );
+  if (reviewStatus) row.exceptionStatus = reviewStatus;
+  const provenance = violation as {
+    recertification_required?: unknown;
+    recertification_reason?: unknown;
+    carried_from_exception_id?: unknown;
+    carried_from_as_of_date?: unknown;
+    carried_from_rule_identifier?: unknown;
+    rule_evolution_event_id?: unknown;
+    recertified_at?: unknown;
+  };
+  if (provenance.recertification_required === true) {
+    row.exceptionStatus = "RecertificationRequired";
+  }
+  if (typeof provenance.recertification_reason === "string" && provenance.recertification_reason) {
+    row.recertificationReason = provenance.recertification_reason;
+  }
+  if (typeof provenance.carried_from_exception_id === "string") {
+    row.carriedFromExceptionId = provenance.carried_from_exception_id;
+  }
+  if (typeof provenance.carried_from_as_of_date === "string") {
+    row.carriedFromAsOfDate = provenance.carried_from_as_of_date;
+  }
+  if (typeof provenance.carried_from_rule_identifier === "string") {
+    row.carriedFromRuleIdentifier = provenance.carried_from_rule_identifier;
+  }
+  if (typeof provenance.rule_evolution_event_id === "string") {
+    row.ruleEvolutionEventId = provenance.rule_evolution_event_id;
+  }
+  if (typeof provenance.recertified_at === "string") {
+    row.recertifiedAt = provenance.recertified_at;
+  }
+  return row;
 }
 
 export function mapRunDocumentToResult(doc: WireRunDocument | LegacyWireRunDocument): RunResult {
@@ -1046,10 +1091,29 @@ export function formatKeyColumns(value: WireTrackedException["key_columns"]): st
 function fallbackExceptionStatus(
   exception: WireTrackedException,
 ): ExceptionStatus {
+  // A pending recertification is never inferred as accepted commentary, even
+  // when the carried text is nonblank: it stays reviewable until the user
+  // explicitly recertifies it.
+  if (exception.recertification_required === true) return "RecertificationRequired";
   if ((exception.exception_commentary ?? "").trim().length > 0) return "Commented";
   return exception.exception_first_seen_as_of_date === exception.exception_as_of_date
     ? "New"
     : "NotCommented";
+}
+
+/**
+ * Normalise a backend-supplied review status from a run/violation payload.
+ * Unknown or absent values stay undefined so the row remains visible rather
+ * than being hidden by a guessed scope decision.
+ */
+export function normalizeReviewStatus(value: unknown): ExceptionStatus | undefined {
+  if (typeof value !== "string") return undefined;
+  const compact = value.replace(/[\s_-]/g, "").toLowerCase();
+  if (compact === "new") return "New";
+  if (compact === "commented") return "Commented";
+  if (compact === "notcommented") return "NotCommented";
+  if (compact === "recertificationrequired") return "RecertificationRequired";
+  return undefined;
 }
 
 export function mapTrackedException(wire: WireTrackedException): TrackedException {
@@ -1059,6 +1123,9 @@ export function mapTrackedException(wire: WireTrackedException): TrackedExceptio
       value === null ? "" : String(value),
     ]),
   );
+  const explicit = wire.status;
+  const recertificationRequired =
+    wire.recertification_required === true || explicit === "RecertificationRequired";
   const exception: TrackedException = {
     exceptionId: wire.exception_id,
     exceptionRuleIdentifier: wire.exception_rule_identifier,
@@ -1070,8 +1137,28 @@ export function mapTrackedException(wire: WireTrackedException): TrackedExceptio
     exceptionFirstSeenAsOfDate: wire.exception_first_seen_as_of_date,
     exceptionLastSeenAsOfDate: wire.exception_last_seen_as_of_date,
     detailValues,
-    status: wire.status ?? fallbackExceptionStatus(wire),
+    status: explicit ?? fallbackExceptionStatus({ ...wire, recertification_required: recertificationRequired }),
+    recertificationRequired,
+    recertificationReason: wire.recertification_reason ?? null,
   };
+  if (wire.carried_from_exception_id) {
+    exception.carriedFromExceptionId = wire.carried_from_exception_id;
+  }
+  if (wire.carried_from_as_of_date) {
+    exception.carriedFromAsOfDate = wire.carried_from_as_of_date;
+  }
+  if (wire.carried_from_rule_identifier) {
+    exception.carriedFromRuleIdentifier = wire.carried_from_rule_identifier;
+  }
+  if (wire.rule_evolution_event_id) {
+    exception.ruleEvolutionEventId = wire.rule_evolution_event_id;
+  }
+  if (wire.recertified_at) {
+    exception.recertifiedAt = wire.recertified_at;
+  }
+  if (wire.revision_token) {
+    exception.revisionToken = wire.revision_token;
+  }
   if (wire.exception_first_seen_timestamp) {
     exception.exceptionFirstSeenTimestamp = wire.exception_first_seen_timestamp;
   }
@@ -1100,6 +1187,7 @@ export function mapExceptionTrackingList(
       asOfDate: wire[0]?.exception_as_of_date ?? null,
       exceptions,
       detailColumns,
+      carryWarnings: [],
       total: exceptions.length,
       unfilteredTotal: exceptions.length,
       offset: 0,
@@ -1120,6 +1208,7 @@ export function mapExceptionTrackingList(
     asOfDate: wire.as_of_date ?? null,
     exceptions,
     detailColumns,
+    carryWarnings: [...(wire.carry_warnings ?? [])],
     total: wire.total ?? exceptions.length,
     unfilteredTotal: wire.unfiltered_total ?? wire.total ?? exceptions.length,
     offset: wire.offset ?? 0,
@@ -1136,6 +1225,7 @@ function fallbackTrackingColumns(detailColumns: string[]): import("./domain").Ex
   const standard: Array<[string, string, boolean]> = [
     ["exception_id", "Exception ID", true],
     ["status", "Exception Status", true],
+    ["recertification", "Recertification", false],
     ["commentary", "Commentary", true],
     ["rule_index", "Rule Index", true],
     ["exception_rule_identifier", "Exception Rule Identifier", false],
@@ -1144,6 +1234,10 @@ function fallbackTrackingColumns(detailColumns: string[]): import("./domain").Ex
     ["exception_as_of_date", "Exception As-of Date", false],
     ["exception_first_seen_as_of_date", "Exception First Seen As-of Date", false],
     ["exception_last_seen_as_of_date", "Exception Last Seen As-of Date", false],
+    ["carried_from_exception_id", "Carried From Exception ID", false],
+    ["carried_from_as_of_date", "Carried From As-of Date", false],
+    ["carried_from_rule_identifier", "Carried From Rule Identifier", false],
+    ["rule_evolution_event_id", "Rule Evolution Event ID", false],
   ];
   return [
     ...standard.map(([key, label, visible]) => ({
@@ -1179,6 +1273,7 @@ export function mapCommentaryImportResult(
     unchanged?: number | undefined;
     imported?: number | undefined;
     message?: string | undefined;
+    carry_warnings?: string[] | undefined;
   },
 ): CommentaryImportResult {
   return {
@@ -1187,6 +1282,62 @@ export function mapCommentaryImportResult(
     clearedCount: wire.cleared ?? 0,
     unchangedCount: wire.unchanged ?? 0,
     message: wire.message ?? null,
+    carryWarnings: [...(wire.carry_warnings ?? [])],
+  };
+}
+
+export function mapRecertifyResult(wire: {
+  as_of_date?: string | undefined;
+  accepted?: string[] | undefined;
+  already_accepted?: string[] | undefined;
+  total?: number | undefined;
+  exceptions?: WireTrackedException[] | undefined;
+  message?: string | undefined;
+}): RecertifyResult {
+  return {
+    asOfDate: wire.as_of_date ?? null,
+    accepted: [...(wire.accepted ?? [])],
+    alreadyAccepted: [...(wire.already_accepted ?? [])],
+    total: wire.total ?? 0,
+    exceptions: (wire.exceptions ?? []).map(mapTrackedException),
+    message: wire.message ?? null,
+  };
+}
+
+export function mapRuleHistory(wire: WireRuleHistoryResponse): RuleHistory {
+  return {
+    ruleId: wire.rule_id,
+    lineageId: wire.lineage_id,
+    revisionNumber: wire.revision_number,
+    events: wire.events.map(mapRuleHistoryEvent),
+  };
+}
+
+export function mapRuleHistoryEvent(wire: WireRuleHistoryEvent): RuleHistoryEvent {
+  return {
+    eventId: wire.event_id,
+    lineageId: wire.lineage_id,
+    revisionNumber: wire.revision_number,
+    ...(wire.previous_event_id !== undefined && wire.previous_event_id !== null
+      ? { previousEventId: wire.previous_event_id }
+      : {}),
+    ...(wire.source_catalog_rule_id ? { sourceCatalogRuleId: wire.source_catalog_rule_id } : {}),
+    ...(wire.target_catalog_rule_id ? { targetCatalogRuleId: wire.target_catalog_rule_id } : {}),
+    ...(wire.source_identifier ? { sourceIdentifier: wire.source_identifier } : {}),
+    ...(wire.target_identifier ? { targetIdentifier: wire.target_identifier } : {}),
+    changeType: wire.change_type,
+    ...(wire.save_decision !== undefined && wire.save_decision !== null
+      ? { saveDecision: wire.save_decision }
+      : {}),
+    ...(wire.before_payload !== undefined ? { beforePayload: wire.before_payload } : {}),
+    ...(wire.after_payload !== undefined ? { afterPayload: wire.after_payload } : {}),
+    changeSummary: [...wire.change_summary],
+    ...(wire.commentary_policy !== undefined && wire.commentary_policy !== null
+      ? { commentaryPolicy: wire.commentary_policy }
+      : {}),
+    ...(wire.source ? { source: wire.source } : {}),
+    createdAt: wire.created_at,
+    ...(wire.changed_by ? { changedBy: wire.changed_by } : {}),
   };
 }
 

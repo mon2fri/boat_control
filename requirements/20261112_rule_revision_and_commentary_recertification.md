@@ -1,7 +1,7 @@
 # Rule revisions and commentary recertification
 
-Date: 12 November 2026  
-Branch: `work/20261108-grouped-validation`  
+Date: 12 November 2026
+Branch: `feat/rule-evolution` (from merged `main`, `c3d190d`)
 Status: Requirements draft; not implemented
 
 ## 1. Objective
@@ -26,7 +26,8 @@ each execution of a rule.
    whether to **save as new** or **modify current**.
 3. Record rule evolution in a table in the application/configuration database,
    not in the exception-tracking database.
-4. Develop the eventual implementation on the grouped validation branch.
+4. Following the user's later branch decision, develop this feature from merged
+   `main` on `feat/rule-evolution`. Grouped validation was merged through PR #6.
 5. Trace the transition from each old canonical identifier to its successor
    identifier so commentary can cross changed exception IDs for the same book.
 6. Carry-forward must work across as-of dates: commentary recorded on

@@ -26,9 +26,11 @@ export function NewExceptionsOnlyToggle({ checked, onChange, disabled = false, b
         New Exceptions Only
       </label>
       <SectionHint label="New Exceptions Only help">
-        Includes new exceptions and recurring exceptions without commentary (NotCommented);
-        commented exceptions are hidden from results and HTML/Excel reports. All exceptions
-        remain stored, and the commentary template still includes every exception.
+        Includes new exceptions, recurring exceptions without commentary (NotCommented), and
+        exceptions pending recertification — inherited text still awaiting review is never
+        hidden by being nonblank. All exceptions remain stored; commented exceptions are
+        hidden from results and HTML/Excel reports, and the commentary template still
+        includes every exception.
       </SectionHint>
       </div>
       {busy && <span className="field-hint" role="status">Applying exception scope…</span>}

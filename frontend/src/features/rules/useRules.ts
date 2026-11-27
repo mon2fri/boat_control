@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createRule, deleteRule, loadRulesPage, reorderRules, setRulesEnabled, updateRule } from "../../api/endpoints";
-import type { LogicClause, Rule, RuleDraft } from "../../api/domain";
+import type { LogicClause, Rule, RuleDraft, SaveDecision } from "../../api/domain";
 import { resolveGroupedExpression } from "../../lib/grouping";
 import { formatGroupTreeHierarchy } from "./groupingTree";
 
@@ -37,7 +37,17 @@ export function useCreateRule() {
 export function useUpdateRule() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: ({ index, draft }: { index: string; draft: RuleDraft }) => updateRule(index, draft),
+    mutationFn: ({
+      index,
+      draft,
+      saveDecision,
+      sourceIdentifier,
+    }: {
+      index: string;
+      draft: RuleDraft;
+      saveDecision?: SaveDecision;
+      sourceIdentifier?: string;
+    }) => updateRule(index, draft, { ...(saveDecision ? { saveDecision } : {}), ...(sourceIdentifier !== undefined ? { sourceIdentifier } : {}) }),
     onSuccess: () => client.invalidateQueries({ queryKey: RULES_KEY }),
   });
 }

@@ -128,6 +128,12 @@ def _coerce_occurrence(payload: Mapping[str, object] | ExceptionOccurrence) -> E
             "Occurrence exception_rule_index must be text when supplied."
         )
 
+    lineage_id = payload.get("lineage_id")
+    if lineage_id is not None and not isinstance(lineage_id, str):
+        raise ExceptionTrackingError(
+            "Occurrence lineage_id must be text when supplied."
+        )
+
     extra_values = payload.get(
         "exception_extra_values", payload.get("extra_values")
     )
@@ -145,6 +151,7 @@ def _coerce_occurrence(payload: Mapping[str, object] | ExceptionOccurrence) -> E
         exception_commentary=commentary,
         exception_rule_index=rule_index,
         exception_extra_values=extra_values,
+        lineage_id=lineage_id,
     )
 
 
@@ -154,6 +161,7 @@ def capture_exceptions(
     *,
     db_path: str | Path | None = None,
     extra_columns: Sequence[str] | None = None,
+    lineage_resolver: object | None = None,
 ) -> RecordingSummary:
     """Record one run's occurrences for an as-of date in a single transaction.
 
@@ -162,11 +170,17 @@ def capture_exceptions(
     ordered Extra Columns for Commentary Template selection; only its values may
     be supplied in each occurrence.  ``db_path`` is the resolved tracking
     database path supplied by Worker C/B; when omitted, the settings resolver (or
-    the documented project-root default) is used.
+    the documented project-root default) is used.  ``lineage_resolver`` is
+    Worker A's agreed lineage service (``None`` probes the agreed service and
+    degrades to same-identity carry when unavailable); it enables
+    cross-revision commentary inheritance with recertification.
     """
 
     repository = ExceptionTrackingRepository(resolve_database_path(db_path))
     coerced = [_coerce_occurrence(occurrence) for occurrence in occurrences]
     return repository.record_exceptions(
-        as_of_date, coerced, extra_columns=extra_columns
+        as_of_date,
+        coerced,
+        extra_columns=extra_columns,
+        lineage_resolver=lineage_resolver,
     )

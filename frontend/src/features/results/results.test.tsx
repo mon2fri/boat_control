@@ -131,7 +131,8 @@ describe("result components", () => {
     );
 
     const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
-    expect(headers.slice(0, 4)).toEqual(["Exception ID", "id", "region", "Column"]);
+    expect(headers.slice(0, 4)).toEqual(["#", "id", "region", "Column"]);
+    expect(headers[headers.length - 1]).toBe("Exception ID");
     fireEvent.click(screen.getByRole("button", { name: "Filter region" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "EMEA" }));
     expect(screen.getByRole("cell", { name: "EMEA" })).toBeInTheDocument();
