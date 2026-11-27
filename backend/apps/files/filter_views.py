@@ -16,6 +16,7 @@ from apps.files.filter_services import (
     validate_target_columns,
 )
 from apps.files.preparation_cache import load_preparation, save_preparation
+from apps.files.preparation_store import get_prepared, put_prepared, restrict_columns
 from apps.files.sessions import get_session
 
 logger = logging.getLogger(__name__)
@@ -57,8 +58,44 @@ class FilterPreparationView(APIView):  # type: ignore[misc]
         force_reload = bool(request.data.get("force_reload", False))
 
         try:
-            result = None if force_reload else load_preparation(path_a, path_b, common_columns)
-            cache_used = result is not None
+            result: FilterPreparationResult | None = None
+            cache_used = False
+            if not force_reload:
+                # 1. Pre-warmed value sets kept in RAM (full common columns).
+                full_result = get_prepared(path_a, path_b)
+                if full_result is not None:
+                    result = restrict_columns(full_result, common_columns)
+                    cache_used = True
+                    # Persist the full common-column result so a later session
+                    # or process restart can reuse it from disk.
+                    _CACHE_EXECUTOR.submit(
+                        _save_preparation_in_background,
+                        path_a,
+                        path_b,
+                        session.common_columns,
+                        full_result,
+                    )
+                else:
+                    # 2. Exact persisted cache for the requested columns.
+                    result = load_preparation(path_a, path_b, common_columns)
+                    if result is not None:
+                        cache_used = True
+                    # 3. Persisted full cache: load it, keep it in RAM, slice.
+                    elif common_columns != session.common_columns:
+                        full_result = load_preparation(path_a, path_b, session.common_columns)
+                        if full_result is not None:
+                            put_prepared(path_a, path_b, full_result)
+                            result = restrict_columns(full_result, common_columns)
+                            cache_used = True
+            if result is None:
+                result = prepare_filters(path_a, path_b, common_columns)
+                _CACHE_EXECUTOR.submit(
+                    _save_preparation_in_background,
+                    path_a,
+                    path_b,
+                    common_columns,
+                    result,
+                )
             logger.warning(
                 "Preparation cache decision: %s session=%s force_reload=%s "
                 "columns=%s files=(%s, %s)",
@@ -69,15 +106,6 @@ class FilterPreparationView(APIView):  # type: ignore[misc]
                 path_a.name,
                 path_b.name,
             )
-            if result is None:
-                result = prepare_filters(path_a, path_b, common_columns)
-                _CACHE_EXECUTOR.submit(
-                    _save_preparation_in_background,
-                    path_a,
-                    path_b,
-                    common_columns,
-                    result,
-                )
         except ValueError as exc:
             return Response({"error": str(exc)}, status=400)
         except Exception:
